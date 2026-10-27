@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 4: tested the dossier opis feature (PUBLISERV model), client isolation, the base settings (company/instruments/staff/audit), signer eligibility, the finalize snapshot, and regression. New suite tests/test_dossier_opis.py: 15/15 passed. Full backend run (all 3 suites): 50 passed, 1 skipped (AI not called). UI: all requested flows work. Client docs slots upload and list files. The prosumator edit page shows dossier-extras: an expired signer option is disabled, the instrument select and reglaj-typical work, test-a0 works, and all of these persist after save. The opis table shows 17 rows. Status change, report toggle, preview modal open/close, upload -> atașat -> clear, and finalize/reopen all work. The PDF, Word and export links are correct. /setari-baza: all 4 tabs work, adding an instrument and a staff member with an authorization works, badges are correct (lipsă/expirat/valabil), company save works, and the audit log shows entries with the user email. All old pages load without JS errors. Two functional gaps were found (client sheet edits are not propagated; Word export is incomplete for multi-document positions) plus minor issues.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "docgen.Ctx.raw / GET /api/dossier/{id}/file/*", "issue": "The dossier record takes precedence over the client sheet. Ctx.raw checks rec first, then client. When a dossier was created with client fields (import/prosumator with address/phone/pod..., which the AI import always does), later edits in the client sheet are NOT propagated to the generated documents. Reproduced: imported with address 'Str. VECHE 1', then changed the client address to 'Str. NOUA 2'; the PDF still shows VECHE. This violates 'data auto-propagated to all docs' and the UI label 'datele clientului se preiau automat din fișa clientului'.", "priority": "HIGH"},
+      {"endpoint": "GET /api/dossier/{id}/file/{key}?fmt=docx", "issue": "Word export renders only docs[0] of the position (server.py: return docs[0]). Position 6 'pif' (pv_pif + pv_teste) is missing PV teste in Word. Position 7 'receptie' (pv_receptie + serii) is missing the serial numbers list. The PDF for these positions contains both documents.", "priority": "MEDIUM"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/dossier/{id}/reopen", "issue": "Returns 200 {ok:true} and writes an audit entry for a nonexistent dossier id. It should return 404 like finalize does."},
+      {"endpoint": "PUT /api/dossier/{id}/item/{key}", "issue": "The key is not validated against the positions, so arbitrary keys (e.g. 'bogus_key') are stored in opis with 200."},
+      {"endpoint": "GET/PUT /api/data/staff|instruments/{id}", "issue": "guard() is applied on list/create/delete but NOT on get_item/update_item, so the role restriction can be bypassed for single-item read/update. Not testable now because every registered user gets role admin."},
+      {"endpoint": "effective_settings", "issue": "An ineligible signer only blanks s['rep'] for the executant role. For other roles (verifier/measurer/designer...), a value already present in the base settings remains in the docs. Also, the auth label uses the first verified authorization, which may be an expired one instead of the valid one."},
+      {"endpoint": "Finalize snapshot", "issue": "Only settings are frozen. Client sheet edits after finalize still change a finalized dossier's docs. This may be acceptable per spec, but worth confirming."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DossierOpis status select", "issue": "Long status text is truncated ('necesită semnătu...') because minWidth is 160px", "selector": "[data-testid^='opis-status-']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Prosumator edit -> signers/instrument", "issue": "The opis panel (signer_warnings/missing) only refreshes after Save + reopen, because the form closes on save. Changing signer/reglaj/tests gives no live feedback in the opis.", "affected_selectors": ["[data-testid='signer-executant']", "[data-testid='dossier-opis']"]}
+    ],
+    "design_issues": [
+      {"screen": "/setari-baza (instruments, staff authorizations, ANRE dates)", "issues": ["Uses the native browser date picker (mm/dd/yyyy US format) instead of the shadcn calendar / RO format dd.mm.yyyy"]},
+      {"screen": "Opis report", "issues": ["Common client and executant missing fields are repeated in every position (missing_total=156 for one dossier), which makes the report very long. Consider a 'common data' group listed once."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_dossier_opis.py", "/app/backend/tests/test_cef_catalog.py", "/app/backend/tests/test_prosumator_docs.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Make client-sheet fields (name, idcode, address, county, pod, operator, phone, hq_address, regcom, rep_*) take precedence over values copied into the dossier record, or stop copying them into the record at import, so that client edits propagate to all docs",
+    "Word export for multi-document positions (pif, receptie): include all docs in a single docx",
+    "Return 404 on /dossier/{id}/reopen for a missing dossier; validate the item key in PUT /dossier/{id}/item/{key}",
+    "Apply guard() in get_item/update_item for staff/instruments",
+    "Widen the opis status select"
+  ],
+  "critical_code_review_comments": [
+    "server.py dossier_file builds `pdf = merge_pdfs(parts[0], [])` and then recomputes it with PdfWriter when len(parts)>1. This is dead or duplicate code.",
+    "Frontend DossierExtras.status() has no 'aproape de expirare' state, so it differs from the backend doc_status. Eligibility is the same, but keep one shared helper.",
+    "Pre-existing leftover test data from earlier iterations is still in the admin account: clients 'TEST DERIVE', 'UI Client X', 'Test Client', 'Test Client SRL'; prosumator records 'prosumator 1', 'PROS-UI-1' and one empty record (number None). I did not delete them; the main agent should confirm and clean up."
+  ],
+  "updated_files": ["/app/backend/tests/test_dossier_opis.py"],
+  "success_rate": {"backend": "100% of the suite (15/15 new, 50/51 total, 1 skipped AI); 2 functional gaps found via probes", "frontend": "~95%"},
+  "seed_data_creation": "All test clients, dossiers, staff and instruments created by me were deleted. The ZOLTAN dossier was only read and exported (signers {}, no snapshot, no instrument). The settings phone was restored after the snapshot test.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && SKIP_AI=1 REACT_APP_BACKEND_URL=<url> python -m pytest tests/ -n0. The pytest.ini adds -n by default, so use -n0. Login token is stored in localStorage den_token. /prosumator edit-{id} opens a form with dossier-extras + dossier-opis; saving closes the form. The PDF preview iframe shows blank in headless Chromium (no PDF viewer); verify via API instead. Probe script showing the propagation bug: import with address, edit the client address, check notificare PDF text."
+}

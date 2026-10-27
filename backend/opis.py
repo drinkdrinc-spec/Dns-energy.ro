@@ -61,9 +61,11 @@ async def build_positions(db, owner, rec, client, settings):
     req_common = COMMON + (["regcom", "rep_name", "rep_role"] if pj else [])
     pos = []
 
+    common = [L.get(k, k) for k in req_common if ctx.raw(k) in (None, "")] + [EL.get(k, k) for k in EXEC if settings.get(k) in (None, "")]
+
     def missing(keys, ekeys):
-        m = [L.get(k, k) for k in keys + req_common if ctx.raw(k) in (None, "")]
-        m += [EL.get(k, k) for k in ekeys + EXEC if settings.get(k) in (None, "")]
+        m = [L.get(k, k) for k in keys if ctx.raw(k) in (None, "")]
+        m += [EL.get(k, k) for k in ekeys if settings.get(k) in (None, "")]
         return list(dict.fromkeys(m))
 
     for key, title, docs, keys, ekeys in GEN:
@@ -112,13 +114,14 @@ async def build_positions(db, owner, rec, client, settings):
         p["nr"] = i + 1
         o = opis.get(p["key"]) or {}
         p["upload"] = o.get("upload")
-        auto = "atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else ("de completat" if p["missing"] else "generat")
+        gen_missing = p["missing"] or (p["source"] == "generat" and common)
+        auto = "atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else ("de completat" if gen_missing else "generat")
         p["auto_status"] = auto
         p["status"] = o.get("status") or auto
         if o.get("upload"):
             p["missing"] = []
-    total = sum(len(p["missing"]) for p in pos)
-    return {"positions": pos, "missing_total": total, "complete": total == 0, "titles": [p["title"] for p in pos]}
+    total = sum(len(p["missing"]) for p in pos) + len(common)
+    return {"positions": pos, "common_missing": common, "missing_total": total, "complete": total == 0, "titles": [p["title"] for p in pos]}
 
 
 def file_pdf(data: bytes, ct: str) -> bytes:

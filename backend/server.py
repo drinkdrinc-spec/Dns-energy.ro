@@ -194,6 +194,7 @@ async def create_item(module: str, request: Request, user: dict = Depends(get_cu
 async def get_item(module: str, item_id: str, user: dict = Depends(get_current_user)):
     if module not in MODULES:
         raise HTTPException(status_code=404, detail="Modul inexistent")
+    guard(module, user)
     doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
     if not doc:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă")
@@ -203,6 +204,7 @@ async def get_item(module: str, item_id: str, user: dict = Depends(get_current_u
 async def update_item(module: str, item_id: str, request: Request, user: dict = Depends(get_current_user)):
     if module not in MODULES:
         raise HTTPException(status_code=404, detail="Modul inexistent")
+    guard(module, user)
     data = await request.json()
     data.pop("_id", None); data.pop("id", None); data.pop("owner", None); data.pop("created_at", None)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -568,12 +570,11 @@ async def effective_settings(owner: str, rec: dict, base: dict):
             warns.append(f"{label}: persoana selectată nu mai există."); continue
         if not staff_eligible(p):
             warns.append(f"{label}: {p.get('name')} nu are o autorizație valabilă și verificată — nu este completat în documente.")
-            if role == "executant":
-                s["rep"] = ""
+            s[{"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]] = ""
             continue
         key = {"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]
         s[key] = p.get("name")
-        auth = next((a for a in p.get("auths") or [] if a.get("verified")), {})
+        auth = next((a for a in p.get("auths") or [] if a.get("verified") and doc_status(a.get("expires", ""), bool(a.get("file"))) != "expirat"), {})
         s[key + "_auth"] = f"{auth.get('type', '')} nr. {auth.get('number', '')}".strip()
     iid = rec.get("instrument_id")
     if iid:
@@ -603,7 +604,9 @@ async def dossier_finalize(item_id: str, user: dict = Depends(get_current_user))
 
 @api_router.post("/dossier/{item_id}/reopen")
 async def dossier_reopen(item_id: str, user: dict = Depends(get_current_user)):
-    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"snapshot": ""}})
+    res = await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"snapshot": ""}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
     await audit(user, "redeschidere", "prosumator", item_id, ["snapshot"])
     return {"ok": True}
 
@@ -618,6 +621,9 @@ async def dossier_item(item_id: str, key: str, request: Request, user: dict = De
     rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0, "opis": 1})
     if rec is None:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    _, _, _, info = await dossier_ctx(user["id"], item_id)
+    if key not in {p["key"] for p in info["positions"]}:
+        raise HTTPException(status_code=404, detail="Poziție inexistentă în opis")
     cur = (rec.get("opis") or {}).get(key) or {}
     if "status" in body:
         if body["status"] and body["status"] not in OPIS.STATUSES:
@@ -644,8 +650,8 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
     if fmt == "docx":
         if p["source"] != "generat":
             raise HTTPException(status_code=400, detail="Export Word doar pentru documentele generate")
-        docs = [docgen.render_docx(k, rec, settings, client, info["titles"]) for k in p["docs"]]
-        return Response(content=docs[0], media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        docx = docgen.render_docx(p["docs"], rec, settings, client, info["titles"])
+        return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         headers={"Content-Disposition": f'attachment; filename="{name}.docx"'})
     parts = await OPIS.position_pdf(p, rec, client, settings, info["titles"], get_object, force_generated=bool(generated))
     if not parts:

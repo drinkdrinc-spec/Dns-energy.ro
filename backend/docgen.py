@@ -97,8 +97,12 @@ def sizing(r):
 ALIASES = {"idcode": ["cnp"], "name": ["client_name"]}
 
 
+CLIENT_KEYS = {"name", "idcode", "kind", "regcom", "ci_series", "rep_name", "rep_role", "hq_address", "phone", "email", "iban", "bank",
+               "address", "locality", "county", "pod", "nlc", "cadastral_nr", "cf_nr", "supplier", "operator"}
+
+
 class Ctx:
-    """Dossier data resolved from dossier record -> client sheet -> executant settings. Missing = None."""
+    """Dossier data resolved from client sheet (client fields) / dossier record -> executant settings. Missing = None."""
 
     def __init__(self, rec, settings, client, opis_titles=None):
         self.r, self.s, self.c = rec, settings or {}, client or {}
@@ -107,11 +111,12 @@ class Ctx:
 
     def raw(self, k):
         self.used.add(k)
-        for src in (self.r, self.c):
+        order = (self.c, self.r) if (k in CLIENT_KEYS and self.c) else (self.r, self.c)
+        for src in order:
             if src.get(k) not in (None, ""):
                 return src.get(k)
         for a in ALIASES.get(k, []):
-            for src in (self.r, self.c):
+            for src in order:
                 if src.get(a) not in (None, ""):
                     return src.get(a)
         return None
@@ -748,6 +753,9 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None):
             p.alignment = align
         return runs(p, text, size, bold)
 
+    if isinstance(doc_key, (list, tuple)) and len(doc_key) == 1:
+        doc_key = doc_key[0]
+    keys = list(doc_key) if isinstance(doc_key, (list, tuple)) else None
     if doc_key in ("schema_cef", "schema"):
         sec.orientation = WD_ORIENT.LANDSCAPE
         sec.page_width, sec.page_height = Mm(297), Mm(210)
@@ -758,7 +766,12 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None):
                 d.add_page_break()
             d.add_picture(io.BytesIO(page.get_pixmap(dpi=150).tobytes("png")), width=Mm(265))
     else:
-        for b in DOCS[doc_key][1](ctx):
+        blocks = []
+        for i, k in enumerate(keys or [doc_key]):
+            if i:
+                blocks.append(B("pagebreak"))
+            blocks += DOCS[k][1](ctx)
+        for b in blocks:
             k = b[0]
             if k == "hdr":
                 t = d.add_table(rows=1, cols=2)

@@ -23,7 +23,7 @@ function Row({ p, id, statuses, reload, preview }) {
         {p.missing.length > 0 && <div className="text-[11px] mt-1" style={{ color: "#9b2c2c" }}>Lipsă: {p.missing.join(", ")}</div>}
       </td>
       <td className="px-2 py-2.5">
-        <select className="den-input text-xs py-1" style={{ background: bg, color: fg, fontWeight: 700, minWidth: 160 }} value={p.status} data-testid={`opis-status-${p.nr}`}
+        <select className="den-input text-xs py-1" style={{ background: bg, color: fg, fontWeight: 700, minWidth: 190 }} value={p.status} data-testid={`opis-status-${p.nr}`}
           onChange={(e) => put({ status: e.target.value === p.auto_status ? null : e.target.value })}>
           {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -66,8 +66,10 @@ export function DossierOpis({ id }) {
       </div>
       {d.finalized && <p className="text-xs mb-2" style={{ color: "#166534" }} data-testid="opis-finalized">Finalizat la {new Date(d.finalized).toLocaleString("ro-RO")} — modificările din setări nu mai afectează acest dosar.</p>}
       {d.signer_warnings?.map((w) => <p key={w} className="text-xs mb-1" style={{ color: "#9b2c2c" }} data-testid="signer-warning">⚠ {w}</p>)}
+      <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>Modificările din formular (semnatari, teste, reglaje, date) se reflectă în opis și documente după „Salvează”.</p>
       {showReport && (
         <div className="rounded-lg bg-white border p-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="opis-report">
+          {d.common_missing?.length > 0 && <div className="mb-2"><b>Date comune (client / executant), folosite în toate documentele generate:</b> {d.common_missing.join(", ")}</div>}
           {d.positions.filter((p) => p.missing.length).map((p) => <div key={p.key} className="mb-1"><b>{p.nr}. {p.title}:</b> {p.missing.join(", ")}</div>)}
           {d.complete && "Nu lipsește nimic."}
         </div>
