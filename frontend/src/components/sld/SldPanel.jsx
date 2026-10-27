@@ -45,7 +45,7 @@ export function SldPanel({ id, form, setVal }) {
         <Btn onClick={() => open(`/sld/${id}/pdf`)} disabled={busy} data-testid="sld-preview"><Eye size={14} /> Previzualizare schemă ({d.format})</Btn>
         <Btn variant="secondary" onClick={() => open(`/sld/${id}/pdf?fmt=${d.format === "A3" ? "A4" : "A3"}`)} disabled={busy} data-testid="sld-preview-alt"><FileDown size={14} /> PDF {d.format === "A3" ? "A4" : "A3"}</Btn>
         <Btn variant="secondary" onClick={() => open(`/sld/${id}/report`)} disabled={busy} data-testid="sld-report"><FileDown size={14} /> Raport de calcul</Btn>
-        <a href={`${API}/sld/demo/pdf?auth=${tok()}`} target="_blank" rel="noopener noreferrer" data-testid="sld-demo"><Btn variant="secondary"><Eye size={14} /> Schemă demonstrativă</Btn></a>
+        <Btn variant="secondary" onClick={() => window.open(`${API}/sld/demo/pdf?auth=${tok()}`, "_blank")} data-testid="sld-demo"><Eye size={14} /> Schemă demonstrativă</Btn>
       </div>
       <SldChecks d={d} />
       <div className="grid sm:grid-cols-2 gap-4 mt-4">
@@ -63,7 +63,9 @@ export function SldPanel({ id, form, setVal }) {
         </div>
         <div className="rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="sld-approval-box">
           <div className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--blue)" }}>Verificare și aprobare tehnică</div>
-          {d.approval.status !== "draft" && <p className="text-xs mb-2" data-testid="sld-approval-info">{d.approval.role_label}: <b>{d.approval.name}</b> {d.approval.auth} · {String(d.approval.at).slice(0, 16).replace("T", " ")} UTC · rev. {d.revision}</p>}
+          {Object.entries(d.approval.approvals || {}).map(([r, a]) => (
+            <p key={r} className="text-xs mb-1" style={{ color: a.valid ? "#1e7a46" : "#8a5a00" }} data-testid={`sld-approval-info-${r}`}>{a.role_label}: <b>{a.name}</b> {a.auth} · {String(a.at).slice(0, 16).replace("T", " ")} UTC · rev. {d.revision}{a.valid ? "" : " — anulată (configurație modificată)"}</p>
+          ))}
           {["designer", "verifier"].map((r) => {
             const p = d.people[r];
             return (

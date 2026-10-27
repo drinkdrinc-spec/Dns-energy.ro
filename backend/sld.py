@@ -226,7 +226,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                 y = ys[k]
                 S.pv(6, y)
                 S.text(6, y + 4.9, f"-PV{i + 1}.{k + 1}", 4.8, True)
-                S.text(24, y + 1.2, f"S{k + 1}: {s['panels']}×{gv(n(inv.get('panel_w')), ' W') or '[W lipsă]'} = {s['kwp']:g} kWp", 4.8, w=31)
+                S.text(24, y + 1.2, f"S{k + 1}: {s['panels']}×{gv(n(inv.get('panel_w')), ' W') or '[W lipsă]'} = " + (f"{s['kwp']:g} kWp" if s['kwp'] else "[kWp lipsă]"), 4.8, w=31)
                 S.text(24, y - 3.0, f"Voc({base['tmin']:g}°C) {s['voc_cold']:.0f} V · Isc {s['isc']:g} A", 4.4, color=GREY, w=31)
                 S.wire(22, y, 72, y, "dc")
                 if fuses:
@@ -411,7 +411,8 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
     kw = f"{t['inverters_kw']:g} kW" if t["inverters_kw"] else "[kW lipsă]"
     loc = ", ".join(str(x) for x in [get("address"), get("locality"), ("jud. " + str(get("county"))) if get("county") else None] if x)
     st = approval.get("status")
-    stat = {"approved": f"APROBAT — {approval.get('name')} ({approval.get('role_label')}), {str(approval.get('at'))[:10]}",
+    names = "; ".join(f"{a.get('name')} ({a.get('role_label')}, {str(a.get('at'))[:10]})" for a in (approval.get("approvals") or {}).values() if a.get("valid"))
+    stat = {"approved": f"APROBAT — {names or approval.get('name')}",
             "stale": "APROBARE ANULATĂ — configurația s-a modificat", "draft": "CIORNĂ — neverificat / neaprobat"}.get(st, "CIORNĂ")
     if demo:
         stat = "EXEMPLU DEMONSTRATIV — nu este document de execuție"
@@ -604,7 +605,7 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     area = frame(S, PW, PH, rec, client, settings, res, approval, 1, 2, fmt, demo)
     W, H, draw = diagram(S, rec, res, client)
     x1, y1, x2, y2 = area
-    s = min((x2 - x1) / W, (y2 - y1 - 6) / H, 1.25)
+    s = min((x2 - x1) / W, (y2 - y1 - 6) / H, 1.6)
     c.saveState(); c.translate(x1 + ((x2 - x1) - W * s) / 2, y1 + max(1, ((y2 - y1 - 6) - H * s) / 2)); c.scale(s, s)
     draw()
     c.restoreState()

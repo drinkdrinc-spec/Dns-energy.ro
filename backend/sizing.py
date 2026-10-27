@@ -263,6 +263,10 @@ def compute(rec: dict, client: dict | None = None) -> dict:
     for b in cef.get("shared_batteries") or []:
         o.need("shared.i_max", f"Baterie comună {b.get('model') or ''} — curent max (A)", b.get("i_max"), "Baterii")
     o.it(G, "Pierderi totale estimate în cabluri", g(tot_loss, " W", 1), "calculat", "Σ pierderi DC + AC (la Pmax / STC)")
+    for it in o.items:
+        if it["ok"] is False:
+            msg = f"{it['group']}: {it['label']} = {it['value']} — NECONFORM ({it['formula']}{' · ' + it['note'] if it['note'] else ''})"
+            (o.warnings if "recomandat" in (it["note"] or "") or "de confirmat" in (it["note"] or "") else o.errors).append(msg)
     ns = sum(len(i["strings"]) for i in base["inverters"])
     complex_ = len(invs) > 1 or ns > 2 or gr["anti"] or bool(cef.get("shared_batteries")) or any(
         i.get("battery_mode") == "own" or (i.get("backup") or {}).get("enabled") for i in invs)

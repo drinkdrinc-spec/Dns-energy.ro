@@ -1,0 +1,41 @@
+{
+  "summary": "Tested the new SLD generator (backend + frontend). Backend: new suite test_sld_generator.py has 19 tests, all passing. With the existing suites that is 81/81 passing, so there are no regressions. Demo PDF is A3 landscape with 2 pages and a title block. Status, PDF in A3/A4/auto and report all work. Apply fills only empty fields and records auto_filled. Approve correctly returns 400 for missing data, no signer, ineligible signer and an invalid role. approved->stale->re-approve bumps the revision to 1, and unapprove resets to draft. Source/upload/clear_upload work. Frontend: all requested data-testids are present. The missing list, the disabled approve button and the toggle-all (1 vs 51 rows) work. Preview, A4/A3, report and demo all open the correct URLs. Approve shows 'Aprobată · name'. However, a CRITICAL data-loss bug wipes the approval and the uploaded schema on the next save.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "sld.py line 229 (string label in diagram)", "issue": "When panel W is missing, the PDF prints 'S1: 10×[W lipsă] = 0 kWp'. This violates the 'no 0 kWp when data missing' requirement. Should print '[kWp lipsă]' when s['kwp'] is 0."},
+      {"endpoint": "POST /api/sld/{id}/approve", "issue": "Items with ok=False (NECONFORM) do not block approval, because ready only checks missing+errors. The DEMO config itself shows 'Selectivitate (cascadă) INV 20 A < TG 40 A ≤ BMP 32 A — NECONFORM' (TG 40 A > BMP 32 A) and still reports ready=true and can be approved. Either move NECONFORM checks into errors or fix the DEMO values (e.g. TG 32 / BMP 40)."},
+      {"endpoint": "POST /api/sld/{id}/approve", "issue": "sld.approval holds a single object, so approving as verifier overwrites the designer approval. You cannot keep both a designer and a verifier approval at the same time."},
+      {"endpoint": "sizing/cef check", "issue": "If grid.supply is empty, a 'invertor monofazat pe racord trifazat' warning is shown. It assumes a three-phase grid when the supply type is unknown."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SldPanel persist() / ModulePage save", "issue": "CRITICAL DATA LOSS. form is {...item} loaded when the record is opened, and it includes the old `sld` object. persist() and the main Salvează do PUT /data/prosumator/{id} with the whole form. update_item does not strip `sld`, so the stale form.sld overwrites the DB. Reproduced in the UI: approve designer shows 'Aprobată' → click sld-refresh → 'Ciornă — neaprobată'. Upload PDF + select 'uploaded' → click sld-refresh → the upload is gone and the source is back to generated. Because of this, the 'stale' status can never appear in the UI; any save returns the record to draft.", "selector": "[data-testid=sld-refresh], [data-testid=sld-preview], [data-testid=sld-approve-*], [data-testid=save-btn]", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "SLD PDF page 1", "issues": ["The diagram sits in the middle band; the top ~30% of the drawing area is empty, and the text is very small at A3 scale. Consider scaling or centering the drawing vertically."]},
+      {"screen": "SldPanel", "issues": ["sld-demo is an <a> wrapping a <Btn> (a button inside an anchor), which is invalid nested interactive markup."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_sld_generator.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "CRITICAL: stop the generic PUT /api/data/prosumator/{id} from overwriting `sld`. In update_item, pop 'sld' for prosumator, like opis/snapshot (sld is managed only via the /sld/* endpoints). Alternatively, strip sld from the form in SldPanel.persist and ModulePage.save. Then retest: approve → Salvează și verifică keeps 'Aprobată'; changing a CEF field → 'stale'; the upload survives a save.",
+    "Fix sld.py:229 so it prints '[kWp lipsă]' instead of '= 0 kWp' when panel_w is missing.",
+    "Decide whether NECONFORM checks should block approval, and fix the DEMO TG/BMP values so the demo does not show a NECONFORM selectivity.",
+    "Consider storing separate approvals per role (designer and verifier)."
+  ],
+  "critical_code_review_comments": [
+    "server.py update_item: the prosumator branch pops opis/snapshot/snapshot_history but not sld. This is the root cause of the data-loss bug.",
+    "SldPanel.open(): window.open is called after await persist(). Popups can be blocked if the save takes more than about 5 s (transient user activation expires). Consider opening the window synchronously and then setting its location.",
+    "sld_unapprove does not check that the record exists (it returns ok for an unknown id)."
+  ],
+  "updated_files": ["/app/backend/tests/test_sld_generator.py"],
+  "success_rate": {"backend": "100% (81/81 incl. regression; 4 minor logic/content issues)", "frontend": "85% (all elements/flows work, but approval/upload persistence is broken by the save overwrite)"},
+  "seed_data_creation": "Test records (TEST_ prefixed prosumator/clients/staff) were created and deleted. None remain.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run test_sld_generator.py (it creates its own TEST_ client, staff and prosumator from sld_demo.DEMO_REC). For the UI, set localStorage den_token and open /prosumator → edit-{id}. Regression check for the fix: approve, then click sld-refresh; the status must stay 'Aprobată'. Then change a CEF field and save; the status must become 'Aprobare anulată'.",
+  "rca of the issue": "ModulePage.openEdit sets form={...item}, which includes sld from the list fetch. The /sld/{id}/approve and /source endpoints update sld in the DB, but form.sld stays stale. SldPanel.persist() (used by refresh, preview, report and approve) and ModulePage.save send the full form, and update_item does $set on it including sld. Result: the approval, upload and revision are reverted. Repro via API: GET the record, POST approve, PUT the old record → status=draft. Mitigation: data.pop('sld', None) in update_item for prosumator."
+}

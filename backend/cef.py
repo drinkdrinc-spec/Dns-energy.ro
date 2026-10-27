@@ -97,7 +97,7 @@ def check(cef: dict) -> dict:
             w.append(f"{tag}: limitarea configurată ({p_lim} kW) depășește puterea nominală ({p_nom} kW).")
         if tri and not tri_grid:
             e.append(f"{tag}: invertor trifazat pe branșament monofazat — configurație incompatibilă.")
-        if not tri and tri_grid and not inv.get("phase"):
+        if not tri and tri_grid and grid.get("supply") and not inv.get("phase"):
             w.append(f"{tag}: invertor monofazat pe racord trifazat — specifică faza (L1/L2/L3).")
         if not strings:
             if inv.get("kind") != "Invertor de baterie (AC)":

@@ -210,7 +210,7 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     if module == "prosumator":
         data = derive_cef(data)
-        data.pop("opis", None); data.pop("snapshot", None); data.pop("snapshot_history", None)
+        data.pop("opis", None); data.pop("snapshot", None); data.pop("snapshot_history", None); data.pop("sld", None)
         if data.get("client_name"):
             c = await db.clients.find_one({"owner": user["id"], "name": data["client_name"]}, {"id": 1})
             if c:
@@ -474,9 +474,12 @@ async def sld_ctx(owner: str, item_id: str):
     s, warns = await effective_settings(owner, rec, base)
     res = SZ.compute(rec, client)
     sld = rec.get("sld") or {}
-    ap = sld.get("approval")
-    status = "draft" if not ap else ("approved" if ap.get("hash") == SZ.fingerprint(rec, client) else "stale")
-    state = {**(ap or {}), "status": status,
+    fp = SZ.fingerprint(rec, client)
+    aps = sld.get("approvals") or ({sld["approval"]["role"]: sld["approval"]} if sld.get("approval") else {})
+    valid = {r: a for r, a in aps.items() if a.get("hash") == fp}
+    ap = max(valid.values(), key=lambda a: a.get("at") or "") if valid else (max(aps.values(), key=lambda a: a.get("at") or "") if aps else None)
+    status = "draft" if not aps else ("approved" if valid else "stale")
+    state = {**(ap or {}), "status": status, "approvals": {r: {**a, "valid": r in valid} for r, a in aps.items()},
              "designer": f"{s.get('designer_name')} ({s.get('designer_name_auth')})" if s.get("designer_name") else None,
              "verifier": f"{s.get('verifier')} ({s.get('verifier_auth')})" if s.get("verifier") else None}
     return rec, client, s, res, state, warns
@@ -567,18 +570,21 @@ async def sld_approve(item_id: str, request: Request, user: dict = Depends(get_c
         raise HTTPException(status_code=400, detail=f"{p.get('name')} nu are o autorizație valabilă și verificată în Setări de bază.")
     auth_doc = next((a for a in p.get("auths") or [] if a.get("verified")), {})
     rev = (sld.get("revision") or 0) + (1 if state["status"] == "stale" else 0)
+    aps = {r: a for r, a in (sld.get("approvals") or {}).items() if state["status"] != "stale" and r != role}
     sld.update({"revision": rev, "approval": {"role": role, "role_label": SLD_ROLES[role], "staff_id": sid, "name": p.get("name"),
                                              "auth": f"{auth_doc.get('type', '')} nr. {auth_doc.get('number', '')}".strip(), "source": src,
                                              "at": datetime.now(timezone.utc).isoformat(), "by": user.get("email")}})
     rec["sld"] = sld
     sld["approval"]["hash"] = SZ.fingerprint(rec, client)
+    aps[role] = sld["approval"]
+    sld["approvals"] = aps
     await db.prosumator.update_one({"id": item_id}, {"$set": {"sld": sld}})
     await audit(user, "schemă aprobată", "prosumator", item_id, [role, p.get("name")])
     return sld["approval"]
 
 @api_router.post("/sld/{item_id}/unapprove")
 async def sld_unapprove(item_id: str, user: dict = Depends(get_current_user)):
-    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"sld.approval": ""}})
+    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"sld.approval": "", "sld.approvals": ""}})
     await audit(user, "schemă — aprobare retrasă", "prosumator", item_id, [])
     return {"ok": True}
 

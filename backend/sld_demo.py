@@ -4,7 +4,7 @@ DEMO_REC = {
     "project_no": "DEMO-001", "doc_date": "", "sld": {"revision": 0},
     "cef": {
         "tmin": -10,
-        "grid": {"supply": "Trifazat", "bransament_kw": 20, "bmp_a": 32, "earthing": "TN-C-S", "ik_ka": 6, "tg_breaker_a": 40,
+        "grid": {"supply": "Trifazat", "bransament_kw": 20, "bmp_a": 40, "earthing": "TN-C-S", "ik_ka": 6, "tg_breaker_a": 32,
                  "column_cable": "CYAbY 5×10 mm² Cu", "column_section": 10, "column_length": 25, "column_material": "Cu", "column_install": "D",
                  "meter": "Smart meter trifazat (exemplu)", "sm_ct_ratio": "", "spd_ac": "tip 1+2", "rcd_ma": 300,
                  "grounding_ohm": 3.2, "bond_section": 6, "tmin": -10},
