@@ -11,6 +11,7 @@ import { DossierOpis } from "@/components/dossier/DossierOpis";
 import { DossierExtras } from "@/components/dossier/DossierExtras";
 import { ClientDocs } from "@/components/dossier/ClientDocs";
 import { SignRequests } from "@/components/sign/SignRequests";
+import { SldPanel } from "@/components/sld/SldPanel";
 
 function Field({ f, value, onChange, refOptions }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -121,6 +122,7 @@ export default function ModulePage({ moduleKey }) {
           )}
 
           {key === "prosumator" && <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />}
+          {key === "prosumator" && editId && <SldPanel id={editId} form={form} setVal={setVal} />}
           {key === "prosumator" && <DossierExtras form={form} setVal={setVal} />}
           {key === "prosumator" && editId && <DossierOpis id={editId} />}
           {key === "prosumator" && editId && <SignRequests dossierId={editId} />}

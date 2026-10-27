@@ -455,6 +455,134 @@ def derive_cef(d: dict) -> dict:
 async def cef_check(request: Request, user: dict = Depends(get_current_user)):
     return CEF.check(await request.json())
 
+# ---------------- Schemă monofilară (generator nou) ----------------
+import sizing as SZ
+import sld as SLD
+from sld_demo import DEMO_REC, DEMO_CLIENT
+
+SLD_ROLES = {"designer": "Proiectant schemă", "verifier": "Verificator schemă"}
+
+def pdf_resp(data: bytes, name: str):
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
+
+async def sld_ctx(owner: str, item_id: str):
+    rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    client = await get_client(owner, rec)
+    base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
+    s, warns = await effective_settings(owner, rec, base)
+    res = SZ.compute(rec, client)
+    sld = rec.get("sld") or {}
+    ap = sld.get("approval")
+    status = "draft" if not ap else ("approved" if ap.get("hash") == SZ.fingerprint(rec, client) else "stale")
+    state = {**(ap or {}), "status": status,
+             "designer": f"{s.get('designer_name')} ({s.get('designer_name_auth')})" if s.get("designer_name") else None,
+             "verifier": f"{s.get('verifier')} ({s.get('verifier_auth')})" if s.get("verifier") else None}
+    return rec, client, s, res, state, warns
+
+@api_router.get("/sld/demo/pdf")
+async def sld_demo(authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("A3")):
+    user = await user_from_token(authorization, auth)
+    s = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    res = SZ.compute(DEMO_REC, DEMO_CLIENT)
+    return pdf_resp(SLD.render(DEMO_REC, DEMO_CLIENT, s, res, {"status": "draft"}, fmt, demo=True), "schema_monofilara_DEMO.pdf")
+
+@api_router.get("/sld/{item_id}")
+async def sld_status(item_id: str, user: dict = Depends(get_current_user)):
+    rec, client, s, res, state, warns = await sld_ctx(user["id"], item_id)
+    sld = rec.get("sld") or {}
+    signers = rec.get("signers") or {}
+    people = {}
+    for role in SLD_ROLES:
+        sid = signers.get(role)
+        p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
+        people[role] = {"name": p.get("name"), "eligible": staff_eligible(p)} if p else None
+    return {"items": res["items"], "missing": res["missing"], "errors": res["errors"], "warnings": res["warnings"], "cables": res["cables"],
+            "ready": res["ready"], "format": res["format"], "totals": res["base"]["totals"], "approval": state, "settings_warnings": warns,
+            "source": sld.get("source") or "generated", "upload": sld.get("upload"), "revision": sld.get("revision") or 0,
+            "auto_filled": (rec.get("cef") or {}).get("auto_filled") or [], "people": people}
+
+@api_router.get("/sld/{item_id}/pdf")
+async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("auto")):
+    user = await user_from_token(authorization, auth)
+    rec, client, s, res, state, _ = await sld_ctx(user["id"], item_id)
+    return pdf_resp(SLD.render(rec, client, s, res, state, fmt), f"schema_monofilara_{rec.get('number') or item_id}.pdf")
+
+@api_router.get("/sld/{item_id}/report")
+async def sld_report(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, s, res, state, _ = await sld_ctx(user["id"], item_id)
+    return pdf_resp(SLD.report(rec, client, s, res, state), f"raport_calcul_{rec.get('number') or item_id}.pdf")
+
+@api_router.post("/sld/{item_id}/apply")
+async def sld_apply(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    body = await request.json() if (await request.body()) else {}
+    cef, filled = SZ.apply(body.get("cef") or rec.get("cef") or {})
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef}})
+    await audit(user, "dimensionare automată", "prosumator", item_id, filled)
+    return {"filled": filled, "cef": cef}
+
+@api_router.put("/sld/{item_id}/source")
+async def sld_source(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    body = await request.json()
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    sld = rec.get("sld") or {}
+    if body.get("source") in ("generated", "uploaded"):
+        sld["source"] = body["source"]
+    if body.get("upload"):
+        sld["upload"] = body["upload"]
+    if body.get("clear_upload"):
+        sld.pop("upload", None)
+        if sld.get("source") == "uploaded":
+            sld["source"] = "generated"
+    if sld.get("source") == "uploaded" and not sld.get("upload"):
+        raise HTTPException(status_code=400, detail="Încărcați întâi schema realizată de specialist.")
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"sld": sld}})
+    await audit(user, "schemă — sursă", "prosumator", item_id, [sld.get("source") or "generated"])
+    return sld
+
+@api_router.post("/sld/{item_id}/approve")
+async def sld_approve(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    role = (await request.json()).get("role")
+    if role not in SLD_ROLES:
+        raise HTTPException(status_code=400, detail="Rol invalid")
+    rec, client, s, res, state, _ = await sld_ctx(user["id"], item_id)
+    sld = rec.get("sld") or {}
+    src = sld.get("source") or "generated"
+    if src == "generated" and not res["ready"]:
+        raise HTTPException(status_code=400, detail=f"Schema nu poate fi aprobată: {len(res['missing'])} date lipsă, {len(res['errors'])} erori.")
+    if src == "uploaded" and not sld.get("upload"):
+        raise HTTPException(status_code=400, detail="Nu există schemă încărcată.")
+    sid = (rec.get("signers") or {}).get(role)
+    p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
+    if not p:
+        raise HTTPException(status_code=400, detail=f"Selectați {SLD_ROLES[role].lower()} în secțiunea Semnatari a dosarului (din Setări de bază → Personal).")
+    if not staff_eligible(p):
+        raise HTTPException(status_code=400, detail=f"{p.get('name')} nu are o autorizație valabilă și verificată în Setări de bază.")
+    auth_doc = next((a for a in p.get("auths") or [] if a.get("verified")), {})
+    rev = (sld.get("revision") or 0) + (1 if state["status"] == "stale" else 0)
+    sld.update({"revision": rev, "approval": {"role": role, "role_label": SLD_ROLES[role], "staff_id": sid, "name": p.get("name"),
+                                             "auth": f"{auth_doc.get('type', '')} nr. {auth_doc.get('number', '')}".strip(), "source": src,
+                                             "at": datetime.now(timezone.utc).isoformat(), "by": user.get("email")}})
+    rec["sld"] = sld
+    sld["approval"]["hash"] = SZ.fingerprint(rec, client)
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"sld": sld}})
+    await audit(user, "schemă aprobată", "prosumator", item_id, [role, p.get("name")])
+    return sld["approval"]
+
+@api_router.post("/sld/{item_id}/unapprove")
+async def sld_unapprove(item_id: str, user: dict = Depends(get_current_user)):
+    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"sld.approval": ""}})
+    await audit(user, "schemă — aprobare retrasă", "prosumator", item_id, [])
+    return {"ok": True}
+
+
 def catalog_ids(rec: dict) -> list:
     c = rec.get("cef") or {}
     ids = []

@@ -81,6 +81,10 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
             <F label="Tensiune (V)" type="number" value={inv.battery?.voltage} onChange={sub("battery", "voltage")} testid={`${t}-bat-v`} />
             <F label="Nr. module" type="number" value={inv.battery?.modules} onChange={sub("battery", "modules")} testid={`${t}-bat-modules`} />
             <F label="Protecție baterie" value={inv.battery?.protection} onChange={sub("battery", "protection")} testid={`${t}-bat-prot`} />
+            <F label="Curent max descărcare (A)" type="number" value={inv.battery?.i_max} onChange={sub("battery", "i_max")} testid={`${t}-bat-imax`} />
+            <F label="Siguranță DC baterie (A)" type="number" value={inv.battery?.fuse_a} onChange={sub("battery", "fuse_a")} testid={`${t}-bat-fuse`} />
+            <F label="Cablu baterie: secțiune (mm²)" type="number" value={inv.battery?.cable_section} onChange={sub("battery", "cable_section")} testid={`${t}-bat-cable`} />
+            <F label="Cablu baterie: lungime (m)" type="number" value={inv.battery?.cable_length} onChange={sub("battery", "cable_length")} testid={`${t}-bat-cable-len`} />
           </>}
         </div>
         <div className="mt-3"><Check label="Circuit de backup / EPS" value={inv.backup?.enabled} onChange={sub("backup", "enabled")} testid={`${t}-backup`} /></div>
@@ -103,6 +107,10 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           <F label={`AC: disjunctor (A)${pa.breaker_a ? ` · Ib ${pa.ib} A, propus ${pa.breaker_a}` : ""}`} type="number" value={inv.ac?.breaker_a} onChange={sub("ac", "breaker_a")} testid={`${t}-ac-breaker`} />
           <F label="Factor corecție (grupare/temp.)" type="number" value={inv.ac?.k_correction} onChange={sub("ac", "k_correction")} testid={`${t}-ac-k`} />
           <F label="Diferențial invertor" value={inv.rcd} onChange={s("rcd")} testid={`${t}-rcd`} />
+          <F label="Tip DDR (din manualul invertorului)" value={inv.rcd_type} onChange={s("rcd_type")} options={["Tip A", "Tip F", "Tip B", "Nu este cerut de producător"]} testid={`${t}-rcd-type`} />
+          <F label="DDR IΔn (mA)" type="number" value={inv.rcd_ma} onChange={s("rcd_ma")} testid={`${t}-rcd-ma`} />
+          <F label="AC: secțiune PE (mm²)" type="number" value={inv.ac?.pe_section} onChange={sub("ac", "pe_section")} testid={`${t}-ac-pe`} />
+          <F label="AC: Icu întreruptor (kA)" type="number" value={inv.ac?.icu_ka} onChange={sub("ac", "icu_ka")} testid={`${t}-ac-icu`} />
           <F label="DC: tip cablu" value={inv.dc?.cable_type} onChange={sub("dc", "cable_type")} testid={`${t}-dc-type`} />
           <F label="DC: lungime (m)" type="number" value={inv.dc?.length_m} onChange={sub("dc", "length_m")} testid={`${t}-dc-len`} />
           <F label={`DC: secțiune (mm²)${pd.section ? ` · propus ${pd.section}` : ""}`} value={inv.dc?.section} onChange={(v) => sub("dc", "section")(Number(v))} options={SECTIONS.slice(1)} testid={`${t}-dc-section`} />

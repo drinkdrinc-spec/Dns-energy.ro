@@ -1,4 +1,4 @@
-import { F, Check, CatalogPick } from "./F";
+import { F, Check, CatalogPick, INSTALL } from "./F";
 
 export function GridCard({ grid, set, catalog, res }) {
   const s = (k) => (v) => set({ ...grid, [k]: v });
@@ -19,7 +19,18 @@ export function GridCard({ grid, set, catalog, res }) {
         <F label="Diferențial general" value={grid.rcd} onChange={s("rcd")} testid="grid-rcd" />
         <F label="Rezistență priză pământ (Ω)" type="number" value={grid.grounding_ohm} onChange={s("grounding_ohm")} testid="grid-ground" />
         <F label="Temperatură minimă calcul (°C)" type="number" value={grid.tmin} onChange={s("tmin")} testid="grid-tmin" />
+        <F label="Sistem legare la pământ" value={grid.earthing} onChange={s("earthing")} options={["TN-C-S", "TN-S", "TT"]} testid="grid-earthing" />
+        <F label="Ik la punctul de racord (kA, din ATR/OD)" type="number" value={grid.ik_ka} onChange={s("ik_ka")} testid="grid-ik" />
+        <F label="Întreruptor general TG (A)" type="number" value={grid.tg_breaker_a} onChange={s("tg_breaker_a")} testid="grid-tg-a" />
+        <F label="Diferențial general IΔn (mA)" type="number" value={grid.rcd_ma} onChange={s("rcd_ma")} testid="grid-rcd-ma" />
+        <F label="Coloană: secțiune (mm²)" type="number" value={grid.column_section} onChange={s("column_section")} testid="grid-col-section" />
+        <F label="Coloană: lungime (m)" type="number" value={grid.column_length} onChange={s("column_length")} testid="grid-col-length" />
+        <F label="Coloană: material" value={grid.column_material || "Cu"} onChange={s("column_material")} options={["Cu", "Al"]} testid="grid-col-mat" />
+        <F label="Coloană: mod de pozare" value={grid.column_install || "D"} onChange={s("column_install")} options={INSTALL} testid="grid-col-install" />
+        <F label="Smart meter: raport TC (gol = conectare directă)" value={grid.sm_ct_ratio} onChange={s("sm_ct_ratio")} testid="grid-sm-ct" />
+        <F label="Conductor echipotențial rame PV (mm²)" type="number" value={grid.bond_section} onChange={s("bond_section")} testid="grid-bond" />
       </div>
+      <p className="text-[11px] mt-2" style={{ color: "var(--muted)" }}>Rezistența prizei de pământ se completează doar cu valoarea măsurată (buletin PRAM); aplicația nu estimează rezultate de măsurare.</p>
       <div className="mt-3 flex flex-wrap items-center gap-4">
         <Check label="Tablou antiinsularizare cerut prin ATR / soluția de racordare" value={grid.anti_required} onChange={s("anti_required")} testid="grid-anti" />
         {gr?.anti_auto && <span className="text-xs font-bold" style={{ color: "#b03a2e" }}>Peste 27 kW — tabloul se adaugă automat</span>}
