@@ -1,0 +1,44 @@
+{
+  "summary": "Tested prosumator AI import + document generation end-to-end. Backend: 21/21 pytest pass (+1 AI test passed in an earlier run, skipped on rerun to save cost). AI extract on /tmp/antal.pdf returned correct fields (ZOLTAN ANTAL, CNP, POD, power, inverter) + storage file. Import creates prosumator(PROS-YYYY-NNN)/client(no dup)/works/mono/3 equipment/documents. All 11 doc types + 'all' (11 pages) return valid PDFs; 404 unknown type/id/other user, 401 no/bad token. Sizing tri vs mono correct (4P/2P, 3P+N+PE/1P+N+PE), warning when inverter_kw > bransament_kw. Settings cui/regcom/anre_attest persist and appear in PDF header. Frontend: AI import button uploads PDF, toast, opens prefilled form; Save on new calls /import/prosumator (PROS-2026-004 created, then cleaned up); edit Antal shows generated-docs panel with 12 links + attached-file, all return application/pdf. Antal visible in Prosumator, Clienți, Lucrări, Documente; Scheme monofilare shows SM-PROS-2026-003; Echipamente has Solis/Aiko/Ecobat rows. Regression CRUD diu/panels/anti/pram/power/projects OK.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/import/prosumator", "issue": "Number = count+1 -> duplicate numbers possible after deletions (e.g. delete 002 then import -> new 003 duplicates existing). Also no duplicate-dossier check: importing the same PDF twice creates duplicate prosumator + works + mono + equipment + documents records."},
+      {"endpoint": "DELETE /api/data/prosumator/{id}", "issue": "No cascade: works/mono/equipment/documents created by import (pros_ref) stay orphaned when dossier deleted."},
+      {"endpoint": "POST /api/import/prosumator", "issue": "d.setdefault('number') keeps empty string if frontend sends number:'' (user typed then cleared) -> dossier without number. Use `if not d.get('number')`."},
+      {"endpoint": "docgen.sizing", "issue": "Main breaker sized on max(i_br, i_inv): for mono 3 kW branșament + 5 kW inverter gives BMP 32 A (exceeds branșament). Warning is shown, but consider sizing main from branșament only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Settings", "issue": "Inputs editable before GET /settings resolves; typed values are overwritten by the async load (race). Disable inputs / show loader until loaded.", "selector": "[data-testid^=set-]", "priority": "LOW"},
+      {"component": "GeneratedDocs", "issue": "On a new (unsaved) form 'Dosar complet (PDF)' button still rendered with href /api/docs/all/null -> 404 when clicked. Hide it when !id.", "selector": "[data-testid=doc-all]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All module pages search box", "issues": ["Search icon overlaps placeholder text ('Caută...') – .den-input padding:10px 12px overrides Tailwind pl-9 (computed padding-left 12px)."]},
+      {"screen": "Prosumator form", "issues": ["Checklist header reads 'Checklist documente DI-U' on the prosumator form – should be module-specific."]},
+      {"screen": "Echipamente list", "issues": ["Imported equipment rows don't show client/dossier, so user can't tell which beneficiary they belong to."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_prosumator_docs.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Hide doc-all link when record not saved (id null)",
+    "Fix search input padding (icon overlaps placeholder)",
+    "Make prosumator numbering robust (max existing number +1) and treat empty number as missing",
+    "Optionally warn on duplicate import (same POD/client) and cascade-delete pros_ref records",
+    "Prevent Settings form edits before data load",
+    "Rename checklist title per module"
+  ],
+  "critical_code_review_comments": [
+    "ai_extract endpoint stores the file in object storage before AI extraction; on 502 the file is orphaned (minor)",
+    "No file size limit on /ai/extract and /upload",
+    "CORS allow_origins=['*'] with token in query string (?auth=) for PDFs — token leaks into browser history/logs; acceptable for MVP"
+  ],
+  "updated_files": ["/app/backend/tests/test_prosumator_docs.py"],
+  "success_rate": {"backend": "100%", "frontend": "95%"},
+  "seed_data_creation": "None persisted. All TEST_PROS records, the UI-created duplicate PROS-2026-004 (and its works/mono/equipment/documents) and 2 registered test_pros_* users were deleted. Settings restored to original (anre_attest '23982 (tip B)', cui/regcom empty).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && SKIP_AI=1 REACT_APP_BACKEND_URL=... pytest tests/test_prosumator_docs.py -n0 (must run serially; tests share state). Antal prosumator id 3f6fd4d4-f603-4880-9a11-304820c2d3e3 (PROS-2026-003) is real data – don't delete. Routes are Romanian: /clienti /lucrari /mono /echipamente /documente /setari. AI extract took ~20s on the 7.6MB PDF. Settings test in pytest restores original values; be careful not to blank anre_attest."
+}

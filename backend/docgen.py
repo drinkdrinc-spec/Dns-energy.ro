@@ -6,7 +6,10 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Flowable
+from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame, NextPageTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Flowable
+from reportlab.lib.pagesizes import landscape
+import cef as CEF
+import schema_cef
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
@@ -62,11 +65,11 @@ def sizing(r):
     br_kw = num(r.get("bransament_kw")) or num(r.get("power")) or inv_kw
     n = int(num(r.get("panel_count")))
     w = num(r.get("panel_w"))
-    kwp = n * w / 1000
+    kwp = num(r.get("_kwp")) or n * w / 1000
     mppt = 2 if n > 12 else 1
     i_br = cur(br_kw) if br_kw else 0
     i_inv = cur(inv_kw) if inv_kw else 0
-    main = pick(max(i_br, i_inv) * 1.25) if br_kw else 0
+    main = pick(i_br * 1.25) if br_kw else 0
     invb = pick(i_inv * 1.25) if inv_kw else 0
     warnings = []
     if inv_kw and br_kw and inv_kw > br_kw:
@@ -455,17 +458,28 @@ DOCS = {
     "buletin_priza": ("Buletin priză de pământ", doc_buletin_priza),
     "buletin_reglaj": ("Buletin reglaj protecții invertor", doc_buletin_reglaj),
     "declaratie_autenticitate": ("Declarație autenticitate documente", doc_autenticitate),
-    "schema": ("Schema monofilară", doc_schema),
+    "schema": ("Schema monofilară (simplificată)", doc_schema),
+    "schema_cef": ("Schema monofilară CEF (multi-invertor)", None),
 }
 
 
 def render(doc_keys, rec, settings, client):
-    ctx = Ctx(rec, settings, client)
+    ctx = Ctx(CEF.flatten(rec), settings, client)
     buf = io.BytesIO()
-    pdf = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
-                            title=f"D-ENERGY — {ctx.name}")
+    m = 14 * mm
+    pw, ph = A4
+    port = PageTemplate("port", [Frame(18 * mm, m, pw - 36 * mm, ph - 2 * m, id="fp")], pagesize=A4)
+    land = PageTemplate("land", [Frame(12 * mm, 10 * mm, ph - 24 * mm, pw - 20 * mm, id="fl")], pagesize=landscape(A4))
+    first_land = doc_keys and doc_keys[0] == "schema_cef"
+    pdf = BaseDocTemplate(buf, pageTemplates=[land, port] if first_land else [port, land], title=f"D-ENERGY — {ctx.name}")
     story = []
     for i, k in enumerate(doc_keys):
+        if k == "schema_cef":
+            draw, tbl = schema_cef.story(ctx, P, table, S)
+            if i:
+                story += [NextPageTemplate("land"), PageBreak()]
+            story += draw + [PageBreak()] + tbl + [NextPageTemplate("port")]
+            continue
         if i:
             story.append(PageBreak())
         story += DOCS[k][1](ctx)

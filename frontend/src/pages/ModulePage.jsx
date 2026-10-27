@@ -6,6 +6,7 @@ import { PageHeader, Btn } from "@/components/Layout";
 import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { AiImportButton, GeneratedDocs } from "@/components/ProsumatorTools";
+import { CefEditor } from "@/components/cef/CefEditor";
 
 function Field({ f, value, onChange, refOptions }) {
   const common = { className: "den-input", value: value ?? "", onChange: (e) => onChange(f.name, e.target.value), placeholder: f.placeholder || "", "data-testid": `field-${f.name}` };
@@ -65,7 +66,7 @@ export default function ModulePage({ moduleKey }) {
       else await api.post(`/data/${key}`, payload);
       toast.success("Salvat cu succes");
       setForm(null); setEditId(null); setChecks({}); load();
-    } catch (e) { toast.error("Eroare la salvare"); }
+    } catch (e) { toast.error(e.response?.data?.detail || "Eroare la salvare"); }
   };
 
   const remove = async (id) => {
@@ -100,7 +101,7 @@ export default function ModulePage({ moduleKey }) {
           {cfg.checklist && (
             <div className="mt-6">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-sm">Checklist documente DI-U</h3>
+                <h3 className="font-bold text-sm">Checklist documente — {cfg.title}</h3>
                 <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{ background: "#eef4ff", color: "var(--blue)" }}>{checkedCount} / {cfg.checklist.length} bifate</span>
               </div>
               <div className="grid sm:grid-cols-2 gap-2">
@@ -114,6 +115,7 @@ export default function ModulePage({ moduleKey }) {
             </div>
           )}
 
+          {key === "prosumator" && <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />}
           {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} />}
 
           <div className="flex gap-2 mt-6 den-noprint">
@@ -129,7 +131,7 @@ export default function ModulePage({ moduleKey }) {
           <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({items.length})</span></h2>
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
-            <input data-testid="search-input" className="den-input pl-9 w-[240px]" placeholder="Caută..." value={q} onChange={(e) => setQ(e.target.value)} />
+            <input data-testid="search-input" className="den-input w-[240px]" style={{ paddingLeft: 34 }} placeholder="Caută..." value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
 

@@ -24,7 +24,8 @@ const NAV = [
     { to: "/antiinsularizare", icon: "ShieldAlert", text: "Antiinsularizare", testid: "nav-anti" },
     { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
     { to: "/echipamente", icon: "Cpu", text: "Echipamente", testid: "nav-equipment" },
-    { to: "/catalog", icon: "BookOpen", text: "Catalog tehnic", testid: "nav-catalog" },
+    { to: "/catalog-echipamente", icon: "Cpu", text: "Catalog echipamente", testid: "nav-equipment-catalog" },
+    { to: "/catalog", icon: "BookOpen", text: "Catalog tehnic (linkuri)", testid: "nav-catalog" },
   ]},
   { label: "Racordare", items: [
     { to: "/spor-putere", icon: "PlugZap", text: "Spor de putere / BMP", testid: "nav-power" },

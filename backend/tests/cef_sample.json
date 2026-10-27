@@ -1,0 +1,12 @@
+{"tmin":-10,"grid":{"supply":"Trifazat","bransament_kw":20,"meter":"Eastron SDM630","anti_required":false},
+"inverters":[
+{"brand_model":"Solis S6-EH3P12K02-NV-YD-L","type":"Hibrid","phases":"Trifazat","p_nom_kw":12,"p_max_kw":13.2,"p_limit_kw":12,"vdc_max":1000,"mppt_min":160,"mppt_max":850,"mppt_count":2,"imax_mppt":32,
+ "panel_model":"Aiko Neostar 475 W","panel_w":475,"panel_voc":40.2,"panel_vmp":33.6,"panel_isc":14.9,"panel_coef_voc":-0.26,
+ "strings":[{"panels":13,"mppt":1},{"panels":13,"mppt":2}],"battery_mode":"own","battery":{"model":"Ecobat Tower X","kwh":16.08,"ah":314,"voltage":51.2,"modules":1,"coupling":"DC"},
+ "backup":{"enabled":true,"type":"parțial","breaker":"C16 2P","circuits":"frigider, centrală, iluminat"},
+ "ac":{"material":"Cu","install":"C","length_m":15,"section":4,"breaker_a":25},"dc":{"material":"Cu","length_m":20,"section":6,"spd_ucpv":1000}},
+{"brand_model":"Deye SUN-6K-SG03LP1-EU","type":"Hibrid","phases":"Monofazat","phase":"L2","p_nom_kw":6,"p_max_kw":6.6,"vdc_max":500,"mppt_min":125,"mppt_max":425,"mppt_count":2,"imax_mppt":13,
+ "panel_model":"LONGi 440","panel_w":440,"panel_voc":39.9,"panel_vmp":33.3,"panel_isc":14.04,
+ "strings":[{"panels":12,"mppt":1}],"battery_mode":"shared","shared_battery_id":"b1",
+ "ac":{"material":"Cu","install":"B1","length_m":30,"section":2.5,"breaker_a":40},"dc":{"section":4,"length_m":25}}],
+"shared_batteries":[{"id":"b1","model":"Pylontech US5000","kwh":4.8,"modules":3,"coupling":"DC"}]}

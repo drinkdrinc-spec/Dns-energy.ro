@@ -207,10 +207,11 @@ export const MODULES = {
     display: (i) => i.name || "Echipament",
     columns: [
       { key: "name", label: "Denumire" }, { key: "model", label: "Producător / model" },
-      { key: "serial", label: "Serie" }, { key: "rating", label: "Parametri" },
+      { key: "client_name", label: "Beneficiar" }, { key: "serial", label: "Serie" }, { key: "rating", label: "Parametri" },
     ],
     fields: [
       { name: "name", label: "Denumire echipament", type: "text" },
+      { name: "client_name", label: "Beneficiar", type: "ref", ref: "clients" },
       { name: "model", label: "Producător / model", type: "text" },
       { name: "serial", label: "Serie", type: "text" },
       { name: "rating", label: "Putere / parametri nominali", type: "text" },

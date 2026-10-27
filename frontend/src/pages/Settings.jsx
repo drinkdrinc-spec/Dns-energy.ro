@@ -6,8 +6,9 @@ import { toast } from "sonner";
 
 export default function Settings() {
   const [f, setF] = useState({ company: "", brand: "", rep: "", phone: "", address: "" });
+  const [loaded, setLoaded] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  useEffect(() => { api.get("/settings").then((r) => setF({ company: "", brand: "", rep: "", phone: "", address: "", ...r.data })).catch(() => {}); }, []);
+  useEffect(() => { api.get("/settings").then((r) => setF({ company: "", brand: "", rep: "", phone: "", address: "", ...r.data })).catch(() => {}).finally(() => setLoaded(true)); }, []);
 
   const save = async () => {
     await api.put("/settings", f);
@@ -29,11 +30,11 @@ export default function Settings() {
           {fields.map(([k, label, full]) => (
             <div key={k} className={`den-field ${full ? "sm:col-span-2" : ""}`}>
               <label>{label}</label>
-              <input className="den-input" value={f[k] || ""} onChange={(e) => set(k, e.target.value)} data-testid={`set-${k}`} />
+              <input className="den-input" disabled={!loaded} value={f[k] || ""} onChange={(e) => set(k, e.target.value)} data-testid={`set-${k}`} />
             </div>
           ))}
         </div>
-        <div className="mt-6"><Btn onClick={save} data-testid="save-settings"><Save size={15} /> Salvează setările</Btn></div>
+        <div className="mt-6"><Btn onClick={save} disabled={!loaded} data-testid="save-settings"><Save size={15} /> Salvează setările</Btn></div>
       </div>
     </div>
   );

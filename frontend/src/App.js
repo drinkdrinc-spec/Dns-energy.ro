@@ -10,6 +10,7 @@ import Catalog from "@/pages/Catalog";
 import Operators from "@/pages/Operators";
 import Simulare from "@/pages/Simulare";
 import Settings from "@/pages/Settings";
+import EquipmentCatalog from "@/pages/EquipmentCatalog";
 import "@/App.css";
 
 function Protected({ children }) {
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route path="/echipamente" element={<ModulePage moduleKey="equipment" />} />
         <Route path="/spor-putere" element={<ModulePage moduleKey="power" />} />
         <Route path="/catalog" element={<Catalog />} />
+        <Route path="/catalog-echipamente" element={<EquipmentCatalog />} />
         <Route path="/simulare" element={<Simulare />} />
         <Route path="/distribuitori" element={<Operators />} />
         <Route path="/documente" element={<Documents />} />

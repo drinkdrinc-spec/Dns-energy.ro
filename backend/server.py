@@ -153,7 +153,7 @@ async def logout(user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 # ---------------- Generic module CRUD ----------------
-MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "works", "projects", "documents"]
+MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "works", "projects", "documents", "catalog"]
 
 def clean(doc: dict) -> dict:
     doc.pop("_id", None)
@@ -164,6 +164,8 @@ async def list_items(module: str, q: Optional[str] = None, user: dict = Depends(
     if module not in MODULES:
         raise HTTPException(status_code=404, detail="Modul inexistent")
     query = {"owner": user["id"]}
+    if module == "catalog":
+        await seed_catalog(user["id"])
     items = await db[module].find(query).sort("created_at", -1).to_list(2000)
     items = [clean(i) for i in items]
     if q:
@@ -211,6 +213,9 @@ async def delete_item(module: str, item_id: str, user: dict = Depends(get_curren
     if module not in MODULES:
         raise HTTPException(status_code=404, detail="Modul inexistent")
     await db[module].delete_one({"id": item_id, "owner": user["id"]})
+    if module == "prosumator":
+        for m in ("works", "mono", "equipment"):
+            await db[m].delete_many({"owner": user["id"], "pros_ref": item_id})
     return {"ok": True}
 
 # ---------------- Dashboard ----------------
@@ -316,20 +321,26 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     if not name:
         raise HTTPException(status_code=400, detail="Lipsește numele beneficiarului")
     client = await db.clients.find_one({"owner": user["id"], "name": name}, {"_id": 0})
+    if d.get("pod") and await db.prosumator.find_one({"owner": user["id"], "client_name": name, "pod": d["pod"]}):
+        raise HTTPException(status_code=409, detail="Există deja un dosar pentru acest client și acest POD")
     if not client:
         client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""),
                              "email": d.get("email", ""), "address": d.get("address", "")})
         await db.clients.insert_one(dict(client))
-    count = await db.prosumator.count_documents({"owner": user["id"]})
-    d.setdefault("number", f"PROS-{datetime.now().year}-{count + 1:03d}")
-    d.setdefault("status", "Depus la operator")
+    if not d.get("number"):
+        year = datetime.now().year
+        nums = [int(x["number"].split("-")[-1]) for x in await db.prosumator.find(
+            {"owner": user["id"], "number": {"$regex": f"^PROS-{year}-\\d+$"}}, {"number": 1}).to_list(5000)]
+        d["number"] = f"PROS-{year}-{(max(nums) if nums else 0) + 1:03d}"
+    if not d.get("status"):
+        d["status"] = "În pregătire"
     files = d.get("files") or []
     pros = _new(user, d)
     await db.prosumator.insert_one(dict(pros))
     sz = docgen.sizing(d)
     await db.works.insert_one(_new(user, {"title": f"Sistem fotovoltaic {docgen.fmt(sz['kwp'] or docgen.num(d.get('power')))} kWp — {name}",
         "client_name": name, "type": "Sistem fotovoltaic", "status": "Finalizat" if d.get("status") == "Prosumator activ" else "În execuție",
-        "start_date": d.get("date", ""), "responsible": d.get("executant_rep", ""), "notes": f"Generat din dosar {pros['number']}"}))
+        "start_date": d.get("date", ""), "responsible": d.get("executant_rep", ""), "notes": f"Generat din dosar {pros['number']}", "pros_ref": pros["id"]}))
     await db.mono.insert_one(_new(user, {"code": f"SM-{pros['number']} / rev. 0", "type": "Sistem fotovoltaic", "voltage": "230/400 V AC",
         "dc_voltage": "conform MPPT invertor", "fuses": f"BMP {sz['main']} A {sz['poles']}P C · invertor {sz['invb']} A {sz['poles']}P C · gPV 15 A DC",
         "spd_ac": "Tip 1+2", "spd_dc": "Tip 2", "grounding": f"{d.get('grounding_ohm', '')} Ω",
@@ -339,7 +350,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
                               ("Module fotovoltaice", d.get("panels"), f"{d.get('panel_count', '')} × {d.get('panel_w', '')} W"),
                               ("Sistem de stocare", d.get("battery"), f"{d.get('battery_kwh', '')} kWh")]:
         if model:
-            await db.equipment.insert_one(_new(user, {"name": nm, "model": model, "rating": rating, "serial": "", "pros_ref": pros["id"]}))
+            await db.equipment.insert_one(_new(user, {"name": nm, "model": model, "rating": rating, "serial": "", "client_name": name, "pros_ref": pros["id"]}))
     for f in files:
         await db.documents.insert_one(_new(user, {"client_id": client["id"], "client_name": name, "kind": "Dosar prosumator",
                                                   "doc_type": "Dosar prosumator (import)", **f}))
@@ -357,19 +368,106 @@ async def doc_sizing(item_id: str, user: dict = Depends(get_current_user)):
     return docgen.sizing(rec)
 
 @api_router.get("/docs/{doc_type}/{item_id}")
-async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(None), auth: str = Query(None),
+                       attach: int = Query(0)):
     user = await user_from_token(authorization, auth)
-    keys = list(docgen.DOCS.keys()) if doc_type == "all" else [doc_type]
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if doc_type == "all":
+        has_cef = bool(((rec or {}).get("cef") or {}).get("inverters"))
+        keys = [k for k in docgen.DOCS if k != ("schema" if has_cef else "schema_cef")]
+    else:
+        keys = [doc_type]
     if any(k not in docgen.DOCS for k in keys):
         raise HTTPException(status_code=404, detail="Tip document inexistent")
-    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     client = await db.clients.find_one({"owner": user["id"], "name": rec.get("client_name")}, {"_id": 0}) or {}
     pdf = docgen.render(keys, rec, settings, client)
+    if attach:
+        pdf = merge_pdfs(pdf, await catalog_files(user["id"], rec))
     fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{fname}"'})
+
+# ---------------- CEF checks & catalog ----------------
+import cef as CEF
+from catalog_seed import SEED as CATALOG_SEED, NOTE as CATALOG_NOTE
+from pypdf import PdfReader, PdfWriter
+import io
+
+async def seed_catalog(owner: str):
+    s = await db.settings.find_one({"owner": owner}, {"catalog_seeded": 1})
+    if s and s.get("catalog_seeded"):
+        return
+    if not await db.catalog.count_documents({"owner": owner}):
+        await db.catalog.insert_many([_new({"id": owner}, {**x, "notes": CATALOG_NOTE}) for x in CATALOG_SEED])
+    await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}}, upsert=True)
+
+@api_router.post("/cef/check")
+async def cef_check(request: Request, user: dict = Depends(get_current_user)):
+    return CEF.check(await request.json())
+
+def catalog_ids(rec: dict) -> list:
+    c = rec.get("cef") or {}
+    ids = []
+    for i in c.get("inverters") or []:
+        ids += [i.get("catalog_id"), i.get("panel_catalog_id"), (i.get("battery") or {}).get("catalog_id")]
+    ids += [b.get("catalog_id") for b in c.get("shared_batteries") or []]
+    g = c.get("grid") or {}
+    ids.append(g.get("meter_catalog_id"))
+    return list(dict.fromkeys(x for x in ids if x))
+
+async def catalog_files(owner: str, rec: dict) -> list:
+    out = []
+    for cid in catalog_ids(rec):
+        it = await db.catalog.find_one({"owner": owner, "id": cid}, {"_id": 0})
+        if not it:
+            continue
+        for k, label in (("datasheet", "Fișă tehnică"), ("conformity", "Declarație de conformitate")):
+            f = it.get(k)
+            if f and f.get("storage_path"):
+                out.append({"catalog_id": cid, "model": it.get("brand_model"), "kind": label, **f})
+    return out
+
+@api_router.get("/prosumator/{item_id}/catalog-files")
+async def pros_catalog_files(item_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    return await catalog_files(user["id"], rec)
+
+@api_router.post("/prosumator/{item_id}/attach-catalog")
+async def attach_catalog(item_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    client = await db.clients.find_one({"owner": user["id"], "name": rec.get("client_name")}, {"_id": 0}) or {}
+    added = 0
+    for f in await catalog_files(user["id"], rec):
+        if await db.documents.find_one({"owner": user["id"], "storage_path": f["storage_path"], "client_name": rec.get("client_name")}):
+            continue
+        await db.documents.insert_one(_new(user, {"client_id": client.get("id", ""), "client_name": rec.get("client_name", ""),
+            "kind": "Catalog", "doc_type": f"{f['kind']} — {f['model']}", "storage_path": f["storage_path"],
+            "original_filename": f.get("original_filename"), "content_type": f.get("content_type"), "size": f.get("size"), "pros_ref": item_id}))
+        added += 1
+    return {"added": added}
+
+def merge_pdfs(base: bytes, extra: list) -> bytes:
+    w = PdfWriter()
+    for p in PdfReader(io.BytesIO(base)).pages:
+        w.add_page(p)
+    for f in extra:
+        if "pdf" not in (f.get("content_type") or "") and not str(f.get("storage_path")).endswith(".pdf"):
+            continue
+        try:
+            data, _ = get_object(f["storage_path"])
+            for p in PdfReader(io.BytesIO(data)).pages:
+                w.add_page(p)
+        except Exception as e:
+            logger.error(f"merge skip {f.get('storage_path')}: {e}")
+    out = io.BytesIO()
+    w.write(out)
+    return out.getvalue()
 
 # ---------------- Startup ----------------
 @app.on_event("startup")
