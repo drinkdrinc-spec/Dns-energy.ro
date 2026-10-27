@@ -1,0 +1,15 @@
+{
+  "summary": "Iteration 5 (partial): Reproduced the 6 IndexError failures in test_prosumator_docs.py. Root cause is in the TEST FILE, not the app. pytest.ini uses xdist -n 2 --dist loadscope, which sends each test class to a separate worker process. TestSizing/TestDocs therefore ran on a worker whose module-global CREATED list was empty. Fix: merged TestSizing and TestDocs into the TestImport class so they share one worker. Also guarded the session cleanup so it does nothing on a worker that created no records (previously it deleted every TEST_PROS record and could race with the other worker). Full suite result: 50 passed, 1 skipped (AI not called). The other review items were NOT independently verified in this iteration because the session ended. They were checked by code review only: client-priority Ctx.raw/CLIENT_KEYS, common_missing/missing_total in opis.py, status select minWidth 190, the hint text, and the Date comune line in DossierOpis.jsx.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_prosumator_docs.py", "/app/backend/tests/test_dossier_opis.py", "/app/backend/tests/test_cef_catalog.py"],
+  "action_items": ["Retest not yet done: client-address propagation to PDF, multi-doc docx (pif/receptie), 404s for reopen/item bogus key, staff/instrument guard, signer blanking, UI regression of opis + /setari-baza"],
+  "critical_code_review_comments": ["opis.py: common_missing is computed separately and added to missing_total; per-position missing excludes COMMON fields. Matches the spec.", "docgen.Ctx.raw gives the client sheet priority for CLIENT_KEYS when a client exists. Matches the spec.", "server.py is 709 lines and docgen.py is 819 lines; consider splitting them."],
+  "updated_files": ["/app/backend/tests/test_prosumator_docs.py"],
+  "success_rate": {"backend": "100% (50/50 automated, 1 skipped)", "frontend": "not tested this iteration"},
+  "seed_data_creation": "none persistent; test data cleaned by fixtures",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && SKIP_AI=1 REACT_APP_BACKEND_URL=<url> python -m pytest tests/ (it uses xdist; tests that share state must stay in the same class). Still to do: the iteration_5 feature checks (PDF text after a client address edit, docx content, the 404s, UI checks).",
+  "rca of the issue": "IndexError on CREATED['prosumator']: xdist --dist loadscope puts each class on its own worker; module globals are not shared across processes. Fixed in the test file."
+}

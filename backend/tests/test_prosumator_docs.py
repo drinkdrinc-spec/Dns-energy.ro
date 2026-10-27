@@ -29,6 +29,8 @@ def s(token):
 @pytest.fixture(scope="session", autouse=True)
 def cleanup(request):
     yield
+    if not CREATED["prosumator"]:
+        return  # this xdist worker created nothing; don't touch other workers' data
     r = requests.post(f"{API}/auth/login", json={"email": EMAIL, "password": PASSWORD}, timeout=30)
     h = {"Authorization": f"Bearer {r.json()['access_token']}"}
     # delete all records referencing TEST_ prefixed names
@@ -54,7 +56,8 @@ def _import(s, **kw):
     return r
 
 
-# --- Import prosumator ---
+# --- Import prosumator + sizing + doc generation ---
+# NOTE: kept in ONE class: pytest.ini uses xdist --dist loadscope (one class per worker), and these tests share CREATED state.
 class TestImport:
     def test_import_creates_all(self, s):
         r = _import(s)
@@ -93,7 +96,6 @@ class TestImport:
 
 
 # --- Sizing ---
-class TestSizing:
     def test_sizing_tri_vs_mono(self, s):
         tri_id, mono_id = CREATED["prosumator"][0], CREATED["prosumator"][1]
         t = s.get(f"{API}/docs/sizing/{tri_id}").json()
@@ -111,7 +113,6 @@ class TestSizing:
 
 
 # --- Doc generation ---
-class TestDocs:
     def test_types_and_each_pdf(self, s, token):
         types = s.get(f"{API}/docs/types").json()
         keys = [t["key"] for t in types]
