@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileDown, RefreshCw, Download } from "lucide-react";
+import { FileDown, RefreshCw, Download, FileType2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, API } from "@/lib/api";
 import { Btn } from "@/components/Layout";
@@ -46,8 +46,9 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
         <div key={p.key} className="flex items-start justify-between gap-2 rounded-lg bg-white border px-3 py-2 text-xs" style={{ borderColor: "var(--line)" }} data-testid={`diu-doc-${p.key}`}>
           <div><b>{p.nr}. {p.title}</b>{p.missing.length > 0 && <div style={{ color: "#9b2c2c" }}>Lipsă: {p.missing.join(", ")}</div>}</div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="font-bold rounded-full px-2 py-0.5" style={p.missing.length ? { background: "#fff0f0", color: "#9b2c2c" } : { background: "#eef4ff", color: "#1d4ed8" }} data-testid={`diu-doc-status-${p.key}`}>{p.status}</span>
-            <a href={pdf(p.key)} target="_blank" rel="noopener noreferrer" data-testid={`diu-doc-pdf-${p.key}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></a>
+            <span className="font-bold rounded-full px-2 py-0.5" style={p.status === "semnat" ? { background: "#ecfdf3", color: "#166534" } : p.missing.length ? { background: "#fff0f0", color: "#9b2c2c" } : { background: "#eef4ff", color: "#1d4ed8" }} data-testid={`diu-doc-status-${p.key}`}>{p.status}{p.signed_at ? ` ${new Date(p.signed_at).toLocaleDateString("ro-RO")}` : ""}</span>
+            <a href={pdf(p.key)} target="_blank" rel="noopener noreferrer" title={p.signed_at ? "PDF semnat" : "PDF"} data-testid={`diu-doc-pdf-${p.key}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></a>
+            {p.docx && <a href={`${API}/diu/${id}/pdf?doc=${p.key}&fmt=docx&auth=${tok()}`} title="Word (editabil)" data-testid={`diu-doc-docx-${p.key}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></a>}
           </div>
         </div>))}</div>
     </div>

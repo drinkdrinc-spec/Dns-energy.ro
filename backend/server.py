@@ -1316,7 +1316,7 @@ def sign_status(r: dict) -> str:
     return r["status"]
 
 def sign_public(r: dict) -> dict:
-    out = {k: r.get(k) for k in ("id", "group_id", "dossier_id", "client_name", "pos_key", "doc_title", "signer_name", "signer_email",
+    out = {k: r.get(k) for k in ("id", "group_id", "dossier_id", "module", "client_name", "pos_key", "doc_title", "signer_name", "signer_email",
                                  "signer_phone", "role", "expires_at", "created_at", "signed_at", "refused_reason", "doc_sha256", "signed_sha256", "revoked")}
     out["status"] = sign_status(r)
     out["history"] = r.get("history", [])
@@ -1397,13 +1397,15 @@ async def create_sign_requests(user, did, keys, signers, days):
     return out
 
 @api_router.get("/sign/requests")
-async def sign_list(dossier_id: Optional[str] = None, client_name: Optional[str] = None, user: dict = Depends(get_current_user)):
+async def sign_list(dossier_id: Optional[str] = None, client_name: Optional[str] = None, module: str = "prosumator", user: dict = Depends(get_current_user)):
     need(user, "sign_remote")
     q = {"owner": user["id"]}
     if not is_admin(user):
-        q["dossier_id"] = {"$in": [x["id"] for x in await db.prosumator.find(scope_q(user, "prosumator"), {"id": 1}).to_list(5000)]}
+        q["dossier_id"] = {"$in": [x["id"] for m in ("prosumator", "diu") for x in await db[m].find(scope_q(user, m), {"id": 1}).to_list(5000)]}
     if dossier_id:
-        await check_access(user, "prosumator", dossier_id)
+        if module not in ("prosumator", "diu"):
+            raise HTTPException(status_code=400, detail="Modul invalid")
+        await check_access(user, module, dossier_id)
         q["dossier_id"] = dossier_id
     if client_name:
         q["client_name"] = client_name
@@ -1414,7 +1416,7 @@ async def sign_own(user, rid):
     if not r:
         raise HTTPException(status_code=404, detail="Cerere inexistentă")
     if not is_admin(user):
-        await check_access(user, "prosumator", r["dossier_id"])
+        await check_access(user, r.get("module") or "prosumator", r["dossier_id"])
     return r
 
 @api_router.post("/sign/requests/{rid}/sent")
@@ -1595,9 +1597,13 @@ async def rebuild_group(owner: str, gid: str):
         f["pif_hash"] = reqs[0]["pif_hash"]
     await db.sign_requests.update_many({"owner": owner, "group_id": gid}, {"$set": {"signed_file": f, "signed_sha256": sha(final)}})
     if len(signed) == len(reqs):
-        await db.prosumator.update_one({"id": reqs[0]["dossier_id"], "owner": owner},
-                                       {"$set": {f"opis.{reqs[0]['pos_key']}.upload": f, f"opis.{reqs[0]['pos_key']}.status": "atașat"}})
-        prec = await db.prosumator.find_one({"id": reqs[0]["dossier_id"], "owner": owner}, {"_id": 0}) or {}
+        did, mod = reqs[0]["dossier_id"], reqs[0].get("module") or "prosumator"
+        if mod == "diu":
+            await db.diu.update_one({"id": did, "owner": owner}, {"$set": {f"signed.{reqs[0]['pos_key']}": {**f, "signed_at": signed[-1]["signed_at"]}}})
+        else:
+            await db.prosumator.update_one({"id": did, "owner": owner},
+                                           {"$set": {f"opis.{reqs[0]['pos_key']}.upload": f, f"opis.{reqs[0]['pos_key']}.status": "atașat"}})
+        prec = await db[mod].find_one({"id": did, "owner": owner}, {"_id": 0}) or {}
         cl = await get_client(owner, prec)
         await db.documents.insert_one({"id": str(uuid.uuid4()), "owner": owner, "created_at": now_iso(), "updated_at": now_iso(), "client_id": cl.get("id"),
                                        "dossier_id": reqs[0]["dossier_id"], "client_name": reqs[0].get("client_name"), "kind": "Semnat electronic",

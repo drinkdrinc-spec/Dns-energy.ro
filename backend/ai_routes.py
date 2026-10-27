@@ -174,24 +174,38 @@ async def collect(chat: LlmChat, text: str) -> str:
     return out
 
 
-@api.post("/ai/dossier/{item_id}/precheck")
-async def ai_precheck(item_id: str, user: dict = Depends(get_current_user)):
-    ai_need(user)
-    S.guard("prosumator", user, write=True)
-    ctx = await dossier_summary(user, item_id)
-    prompt = ("Verifică dosarul de prosumator înainte de FINALIZARE. Răspunde DOAR cu JSON valid: "
+async def run_precheck(summary: dict, what: str) -> list:
+    prompt = (f"Verifică {what}. Răspunde DOAR cu JSON valid: "
               '{"items":[{"text":"acțiune concretă de verificat sau completat","severity":"critic|important|minor"}]}. '
               "Maximum 15 puncte, fiecare scurt (max 160 caractere), fără puncte pentru date corecte. Dacă dosarul e complet și coerent, items = [].\n\nDOSAR (JSON):\n"
-              + json.dumps(ctx, ensure_ascii=False, default=str)[:14000])
+              + json.dumps(summary, ensure_ascii=False, default=str)[:14000])
     try:
-        out = await collect(new_chat("Ești verificator de dosare de prosumator pentru D-ENERGY. " + RULES), prompt)
+        out = await collect(new_chat("Ești verificator de dosare electrice pentru D-ENERGY. " + RULES), prompt)
         m = re.search(r"\{.*\}", out, re.S)
         raw = (json.loads(m.group(0)) if m else {}).get("items") or []
     except Exception as e:
         logger.error(f"AI precheck failed: {e}")
-        raise HTTPException(status_code=502, detail="Verificarea AI nu a putut fi efectuată acum. Poți finaliza dosarul și fără ea.")
-    items = [{"text": str(i.get("text"))[:300], "severity": i.get("severity") if i.get("severity") in SEV else "important"}
-             for i in raw if isinstance(i, dict) and i.get("text")][:15]
+        raise HTTPException(status_code=502, detail="Verificarea AI nu a putut fi efectuată acum. Poți continua și fără ea.")
+    return [{"text": str(i.get("text"))[:300], "severity": i.get("severity") if i.get("severity") in SEV else "important"}
+            for i in raw if isinstance(i, dict) and i.get("text")][:15]
+
+
+async def save_ack(user, module, item_id, request):
+    ai_need(user)
+    S.guard(module, user, write=True)
+    rec = await S.check_access(user, module, item_id)
+    n = len((rec.get("ai_precheck") or {}).get("items") or [])
+    checked = sorted({int(i) for i in (await request.json()).get("checked") or [] if str(i).isdigit() and int(i) < n})
+    await db[module].update_one({"id": item_id}, {"$set": {"ai_precheck.checked": checked, "ai_precheck.ack_at": now()}})
+    await S.audit(user, "verificare AI", module, item_id, [f"{len(checked)}/{n} puncte bifate"])
+    return {"checked": checked, "unchecked": n - len(checked)}
+
+
+@api.post("/ai/dossier/{item_id}/precheck")
+async def ai_precheck(item_id: str, user: dict = Depends(get_current_user)):
+    ai_need(user)
+    S.guard("prosumator", user, write=True)
+    items = await run_precheck(await dossier_summary(user, item_id), "dosarul de prosumator înainte de FINALIZARE")
     pc = {"at": now(), "by": user.get("email"), "items": items, "checked": []}
     await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {"ai_precheck": pc}})
     return pc
@@ -199,15 +213,34 @@ async def ai_precheck(item_id: str, user: dict = Depends(get_current_user)):
 
 @api.post("/ai/dossier/{item_id}/precheck/ack")
 async def ai_precheck_ack(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    return await save_ack(user, "prosumator", item_id, request)
+
+
+DIU_KEYS = ("number", "client_name", "type", "power", "address", "operator", "atr", "date", "status", "supply", "earthing", "bmp_a", "tg_breaker_a",
+            "column_cable", "memoriu_desc", "receptie_date", "receptie_decision", "receptie_findings", "pif_date", "pif_decision", "warranty_months", "warranty_start")
+
+
+@api.post("/ai/diu/{item_id}/precheck")
+async def ai_diu_precheck(item_id: str, user: dict = Depends(get_current_user)):
+    import diu_routes as DR
+    import diu_doc as DD
     ai_need(user)
-    S.guard("prosumator", user, write=True)
-    rec = await S.check_access(user, "prosumator", item_id)
-    pc = rec.get("ai_precheck") or {}
-    n = len(pc.get("items") or [])
-    checked = sorted({int(i) for i in (await request.json()).get("checked") or [] if str(i).isdigit() and int(i) < n})
-    await db.prosumator.update_one({"id": item_id}, {"$set": {"ai_precheck.checked": checked, "ai_precheck.ack_at": now()}})
-    await S.audit(user, "verificare AI la finalizare", "prosumator", item_id, [f"{len(checked)}/{n} puncte bifate"])
-    return {"checked": checked, "unchecked": n - len(checked)}
+    S.guard("diu", user, write=True)
+    rec, r, client, s = await DR.diu_ctx(user, item_id)
+    summary = {"date_diu": {k: r.get(k) for k in DIU_KEYS if r.get(k) not in (None, "")}, "circuite_si_masuratori": r.get("circuits") or [],
+               "pram_general": r.get("pram_m") or {}, "client": {k: client.get(k) for k in ("name", "address", "phone", "email") if client.get(k)},
+               "executant": {k: s.get(k) for k in ("company", "anre_attest", "anre_valid", "rep") if s.get(k)},
+               "documente": [{"nr": p["nr"], "document": p["title"], "status": p["status"], "lipsa": p["missing"]} for p in DD.positions(r, s)]}
+    items = await run_precheck(summary, "dosarul instalației de utilizare (DI-U) înainte de PREDAREA către beneficiar: completitudine documente, "
+                                        "coerență circuite/protecții/secțiuni, rezultate PRAM (izolație ≥1 MΩ, DDR ≤300 ms, priză ≤ valoarea admisă), date recepție/PIF/garanție")
+    pc = {"at": now(), "by": user.get("email"), "items": items, "checked": []}
+    await db.diu.update_one({"id": item_id, "owner": user["id"]}, {"$set": {"ai_precheck": pc}})
+    return pc
+
+
+@api.post("/ai/diu/{item_id}/precheck/ack")
+async def ai_diu_precheck_ack(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    return await save_ack(user, "diu", item_id, request)
 
 
 # ---------------- Mesaj AI către client (linkuri de semnare) ----------------
@@ -223,11 +256,15 @@ async def ai_sign_message(request: Request, user: dict = Depends(get_current_use
     if not links or not b.get("dossier_id"):
         raise HTTPException(status_code=400, detail="Nu există linkuri active de trimis")
     ch = b.get("channel") if b.get("channel") in CHANNELS else "whatsapp"
-    rec, client, s, _ = await S.dossier_ctx(user, b["dossier_id"])
+    if b.get("module") == "diu":
+        import diu_routes as DR
+        rec, _, client, s = await DR.diu_ctx(user, b["dossier_id"])
+    else:
+        rec, client, s, _ = await S.dossier_ctx(user, b["dossier_id"])
     lst = "\n".join(f"- {str(x.get('title'))[:120]}: {x['url']}" for x in links)
     prompt = (f"Scrie UN SINGUR mesaj pentru canalul {CHANNELS[ch]} către clientul {client.get('name') or rec.get('client_name') or ''}, "
               f"din partea firmei {s.get('company') or 'DNS HOSTESS SRL'} (contact: {s.get('phone') or ''} {s.get('email') or ''}). "
-              "Mesajul cere semnarea electronică a documentelor dosarului de prosumator. Include TOATE linkurile de mai jos, fiecare pe rândul lui, copiate EXACT, caracter cu caracter. "
+              "Mesajul cere semnarea electronică a documentelor dosarului (prosumator sau DI-U, după titluri). Include TOATE linkurile de mai jos, fiecare pe rândul lui, copiate EXACT, caracter cu caracter. "
               "Explică pe scurt pașii: deschide linkul, citește documentul, cere codul primit pe e-mail, semnează pe ecran. Menționează că fiecare link este valabil 7 zile "
               "și că este o semnătură electronică simplă. Răspunde doar cu textul mesajului.\n\nDocumente și linkuri:\n" + lst)
     return sse(new_chat("Ești asistentul de comunicare cu clienții al firmei. " + RULES), prompt)

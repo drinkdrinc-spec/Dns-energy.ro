@@ -71,10 +71,17 @@ def missing(key, r, s):
 
 def positions(r, s):
     out = []
+    sg = r.get("signed") or {}
     for i, (k, t) in enumerate(DOCS):
         m = missing(k, r, s)
-        out.append({"nr": i + 1, "key": k, "title": t, "missing": m, "status": "de completat" if m else "generat"})
+        out.append({"nr": i + 1, "key": k, "title": t, "missing": m, "status": "semnat" if sg.get(k) else ("de completat" if m else "generat"),
+                    "signed_at": (sg.get(k) or {}).get("signed_at"), "docx": k != "schema_tg"})
     return out
+
+
+def render_docx(key, r, s, client):
+    ctx = D.Ctx(r, s, client, [t for k, t in DOCS])
+    return D.render_docx(None, {}, s, client, blocks=RENDER[key](ctx, r, positions(r, s)), ctx=ctx)
 
 
 def pram_head(ctx, r, title, norm):

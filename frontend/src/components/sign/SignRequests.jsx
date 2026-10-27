@@ -60,19 +60,22 @@ function Req({ r, token, reload, setToken }) {
   );
 }
 
-function CreateForm({ dossierId, onCreated }) {
+function CreateForm({ dossierId, module, onCreated }) {
   const [positions, setPositions] = useState([]);
   const [keys, setKeys] = useState([]);
   const [signers, setSigners] = useState([{ name: "", email: "", phone: "", role: "Beneficiar" }]);
   const [days, setDays] = useState(7);
-  useEffect(() => { api.get(`/dossier/${dossierId}`).then((r) => {
-    setPositions(r.data.positions.filter((p) => p.source === "generat"));
+  const diu = module === "diu";
+  useEffect(() => { api.get(diu ? `/diu/${dossierId}/docs` : `/dossier/${dossierId}`).then((r) => {
+    setPositions(diu ? r.data.positions : r.data.positions.filter((p) => p.source === "generat"));
     const c = r.data.client || {};
     setSigners([{ name: c.name || "", email: c.email || "", phone: c.phone || "", role: "Beneficiar" }]);
-  }); }, [dossierId]);
+  }); }, [dossierId]); // eslint-disable-line
   const upd = (i, k, v) => setSigners(signers.map((s, j) => (j === i ? { ...s, [k]: v } : s)));
   const create = async () => {
-    try { const { data } = await api.post("/sign/requests", { dossier_id: dossierId, pos_keys: keys, signers, expires_days: days }); onCreated(data); setKeys([]); toast.success(`${data.length} cereri de semnare create`); }
+    try {
+      const { data } = diu ? await api.post(`/diu/${dossierId}/sign`, { pos_keys: keys, signer: signers[0], expires_days: days })
+        : await api.post("/sign/requests", { dossier_id: dossierId, pos_keys: keys, signers, expires_days: days }); onCreated(data); setKeys([]); toast.success(`${data.length} cereri de semnare create`); }
     catch (e) { toast.error(e.response?.data?.detail || "Eroare"); }
   };
   return (
@@ -95,11 +98,11 @@ function CreateForm({ dossierId, onCreated }) {
   );
 }
 
-export function SignRequests({ dossierId, clientName }) {
+export function SignRequests({ dossierId, clientName, module = "prosumator" }) {
   const [list, setList] = useState([]);
   const [tokens, setTokens] = useState({});
   const [show, setShow] = useState(false);
-  const q = dossierId ? `?dossier_id=${dossierId}` : clientName ? `?client_name=${encodeURIComponent(clientName)}` : "";
+  const q = dossierId ? `?dossier_id=${dossierId}&module=${module}` : clientName ? `?client_name=${encodeURIComponent(clientName)}` : "";
   const load = () => api.get(`/sign/requests${q}`).then((r) => setList(r.data)).catch(() => {});
   useEffect(() => { load(); }, [q]); // eslint-disable-line
   const { user } = useAuth();
@@ -110,8 +113,8 @@ export function SignRequests({ dossierId, clientName }) {
         <div><h3 className="font-bold">Semnături</h3><p className="text-[11px]" style={{ color: "var(--muted)" }}>Semnătură electronică simplă (eIDAS) cu cod pe e-mail și fișă de evidență — nu este semnătură calificată.</p></div>
         {dossierId && <Btn variant="secondary" onClick={() => setShow(!show)} data-testid="sign-new-toggle"><Plus size={14} /> Cerere de semnare</Btn>}
       </div>
-      {show && dossierId && <CreateForm dossierId={dossierId} onCreated={(rs) => { setTokens({ ...tokens, ...Object.fromEntries(rs.map((r) => [r.id, r.token])) }); setShow(false); load(); }} />}
-      {dossierId && can(user, "ai_gpt") && active.length > 0 && <AiClientMessage dossierId={dossierId} items={active} linkOf={linkOf} onSent={load} />}
+      {show && dossierId && <CreateForm dossierId={dossierId} module={module} onCreated={(rs) => { setTokens({ ...tokens, ...Object.fromEntries(rs.map((r) => [r.id, r.token])) }); setShow(false); load(); }} />}
+      {dossierId && can(user, "ai_gpt") && active.length > 0 && <AiClientMessage dossierId={dossierId} module={module} items={active} linkOf={linkOf} onSent={load} />}
       <div className="space-y-2">{list.length ? list.map((r) => <Req key={r.id} r={r} token={tokens[r.id]} reload={load} setToken={(id, t) => setTokens({ ...tokens, [id]: t })} />)
         : <p className="text-xs" style={{ color: "var(--muted)" }}>Nicio cerere de semnare.</p>}</div>
     </div>

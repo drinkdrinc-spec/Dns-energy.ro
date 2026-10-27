@@ -21,6 +21,7 @@ import { PifPanel } from "@/components/dossier/PifPanel";
 import { AiDossierCheck } from "@/components/ai/AiDossierCheck";
 import { AiDraft } from "@/components/ai/AiDraft";
 import { DiuDossier } from "@/components/dossier/DiuDossier";
+import { AiPrecheck } from "@/components/ai/AiPrecheck";
 import { can } from "@/lib/plan";
 
 function Field({ f, value, onChange, refOptions, ai }) {
@@ -56,6 +57,7 @@ export default function ModulePage({ moduleKey }) {
   const [refOptions, setRefOptions] = useState({});
   const [q, setQ] = useState("");
   const [savedAt, setSavedAt] = useState(0);
+  const [diuPre, setDiuPre] = useState(false);
 
   const load = () => api.get(`/data/${key}`).then((r) => {
     setItems(r.data);
@@ -81,6 +83,11 @@ export default function ModulePage({ moduleKey }) {
   const setVal = (name, value) => setForm((p) => ({ ...p, [name]: value }));
 
   const save = async () => {
+    const orig = items.find((i) => i.id === editId);
+    if (key === "diu" && editId && form.status === "Predat beneficiarului" && orig?.status !== "Predat beneficiarului" && can(user, "ai_gpt")) { setDiuPre(true); return; }
+    return doSave().catch(() => {});
+  };
+  const doSave = async () => {
     const required = (cfg.fields || []).filter((f) => f.required);
     for (const f of required) { if (!form[f.name]) { toast.error(`Completează: ${f.label.replace(" *", "")}`); return; } }
     const payload = { ...form };
@@ -92,7 +99,7 @@ export default function ModulePage({ moduleKey }) {
       toast.success("Salvat cu succes");
       if (key === "diu" && editId) { setSavedAt(Date.now()); load(); return; }
       setForm(null); setEditId(null); setChecks({}); load();
-    } catch (e) { toast.error(e.response?.data?.detail || "Eroare la salvare"); }
+    } catch (e) { toast.error(e.response?.data?.detail || "Eroare la salvare"); throw e; }
   };
 
   const remove = async (id) => {
@@ -152,6 +159,9 @@ export default function ModulePage({ moduleKey }) {
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
           {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} savedAt={savedAt} />}
+          {key === "diu" && editId && <SignRequests dossierId={editId} module="diu" />}
+          {key === "diu" && editId && <AiPrecheck id={editId} base="diu" open={diuPre} onClose={() => setDiuPre(false)} onFinalize={doSave}
+            title="Verificare AI înainte de predarea către beneficiar" action="Salvează ca „Predat beneficiarului”" />}
           {key === "prosumator" && editId && <AiDossierCheck id={editId} />}
           {key === "prosumator" && editId && <SignRequests dossierId={editId} />}
           {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} />}

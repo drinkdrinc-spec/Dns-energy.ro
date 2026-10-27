@@ -1,4 +1,8 @@
+import io
+import uuid
 from datetime import datetime, timezone
+
+from pypdf import PdfReader, PdfWriter
 
 from fastapi import HTTPException, Request, Depends, Header, Query, Response
 
@@ -35,32 +39,77 @@ async def diu_docs(item_id: str, user: dict = Depends(get_current_user)):
     rec, r, client, s = await diu_ctx(user, item_id)
     pos = DD.positions(r, s)
     return {"positions": pos, "complete": not any(p["missing"] for p in pos), "pros_id": rec.get("pros_id"),
+            "client": {"name": client.get("name") or r.get("client_name") or "", "email": client.get("email") or "", "phone": client.get("phone") or ""},
             "pros_name": r.get("client_name") if rec.get("pros_id") else None}
 
 
+def doc_pdf(k, r, s, client, signed_ok=True):
+    f = (r.get("signed") or {}).get(k) if signed_ok else None
+    return S.get_object(f["storage_path"])[0] if f else DD.render([k], r, s, client)
+
+
 @api.get("/diu/{item_id}/pdf")
-async def diu_pdf(item_id: str, doc: str = "all", authorization: str = Header(None), auth: str = Query(None)):
+async def diu_pdf(item_id: str, doc: str = "all", fmt: str = "pdf", orig: int = 0, authorization: str = Header(None), auth: str = Query(None)):
     user = await S.user_from_token(authorization, auth)
     rec, r, client, s = await diu_ctx(user, item_id)
     if doc != "all" and doc not in DD.TITLES:
         raise HTTPException(status_code=404, detail="Document inexistent")
+    base = f"DIU_{doc}_{(client.get('name') or r.get('client_name') or 'dosar').replace(' ', '_')}"
+    if fmt == "docx":
+        if doc in ("all", "schema_tg"):
+            raise HTTPException(status_code=400, detail="Exportul Word este disponibil pe fiecare document, cu excepția schemei desenate")
+        return Response(content=DD.render_docx(doc, r, s, client), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        headers={"Content-Disposition": S.disp("attachment", base + ".docx")})
     keys = [k for k, _ in DD.DOCS] if doc == "all" else [doc]
-    pdf = DD.render(keys, r, s, client)
-    pos = DD.positions(r, s)
-    draft = any(p["missing"] for p in pos if p["key"] in keys)
-    if draft or r.get("is_test"):
-        from pypdf import PdfReader, PdfWriter
-        import io
-        w = PdfWriter()
-        for pg in PdfReader(io.BytesIO(pdf)).pages:
+    signed = r.get("signed") or {}
+    pos = {p["key"]: p for p in DD.positions(r, s)}
+    draft = any(pos[k]["missing"] for k in keys if not signed.get(k))
+    w = PdfWriter()
+    for k in keys:
+        is_signed = bool(signed.get(k)) and not orig
+        part = doc_pdf(k, r, s, client, not orig)
+        pw = PdfWriter()
+        for pg in PdfReader(io.BytesIO(part)).pages:
+            pw.add_page(pg)
+        if not is_signed and pos[k]["missing"]:
+            OPIS.watermark(pw)
+        if not is_signed and r.get("is_test"):
+            OPIS.watermark(pw, "DOSAR DE TEST — NEOFICIAL", 38)
+        for pg in pw.pages:
             w.add_page(pg)
-        if draft:
-            OPIS.watermark(w)
+    o = io.BytesIO(); w.write(o)
+    return Response(content=o.getvalue(), media_type="application/pdf", headers={"Content-Disposition": S.disp("inline", base + ("_CIORNA" if draft else "") + ".pdf")})
+
+
+@api.post("/diu/{item_id}/sign")
+async def diu_sign(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    S.guard("diu", user, write=True)
+    S.need(user, "sign_remote", True)
+    rec, r, client, s = await diu_ctx(user, item_id)
+    b = await request.json()
+    keys, sg = b.get("pos_keys") or [], b.get("signer") or {}
+    if not keys or any(k not in DD.TITLES for k in keys):
+        raise HTTPException(status_code=400, detail="Alege documentele DI-U de semnat")
+    if not (sg.get("name") or "").strip() or "@" not in (sg.get("email") or ""):
+        raise HTTPException(status_code=400, detail="Clientul are nevoie de nume și e-mail valid (pentru codul de verificare)")
+    days = S.parse_days(b.get("expires_days"))
+    out = []
+    for k in keys:
+        pdf = DD.render([k], r, s, client)
         if r.get("is_test"):
-            OPIS.watermark(w, "DOSAR DE TEST — NEOFICIAL", 38)
-        o = io.BytesIO(); w.write(o); pdf = o.getvalue()
-    name = f"DIU_{doc}_{(client.get('name') or r.get('client_name') or 'dosar').replace(' ', '_')}{'_CIORNA' if draft else ''}.pdf"
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": S.disp("inline", name)})
+            pdf = OPIS.mark_test(pdf)
+        gid = str(uuid.uuid4())
+        stored = S.put_object(f"{S.APP_NAME}/sign/{user['id']}/{gid}/original.pdf", pdf, "application/pdf")
+        t, th, exp = S.new_token(days)
+        req = S._new(user, {"module": "diu", "group_id": gid, "dossier_id": item_id, "client_name": client.get("name") or r.get("client_name"), "pos_key": k,
+                            "doc_title": f"DI-U — {DD.TITLES[k]}", "doc_path": stored["path"], "doc_sha256": S.sha(pdf), "signer_name": sg["name"].strip(),
+                            "signer_email": sg["email"].strip(), "signer_phone": (sg.get("phone") or "").strip(), "role": "Beneficiar", "status": "De trimis",
+                            "token_hash": th, "expires_at": exp, "otp_sends": 0, "otp_attempts": 0, "is_test": bool(r.get("is_test")),
+                            "history": [S.hist("Cerere creată", None, f"de {user.get('email')}; link valabil până la {exp[:16]} UTC")]})
+        await db.sign_requests.insert_one(dict(req))
+        out.append({**S.sign_public(req), "token": t})
+    await S.audit(user, "cerere semnare", "diu", item_id, keys)
+    return out
 
 
 @api.post("/diu/{item_id}/import-pros")

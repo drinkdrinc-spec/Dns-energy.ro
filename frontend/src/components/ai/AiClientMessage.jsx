@@ -4,14 +4,14 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { streamAI } from "@/lib/ai";
 
-export function AiClientMessage({ dossierId, items, linkOf, onSent }) {
+export function AiClientMessage({ dossierId, module, items, linkOf, onSent }) {
   const [channel, setChannel] = useState("whatsapp");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const r0 = items[0].r;
   const gen = async () => {
     setBusy(true); setText("");
-    try { await streamAI("/ai/sign-message", { dossier_id: dossierId, channel, links: items.map(({ r, token }) => ({ title: r.doc_title, url: linkOf(token) })) }, setText); }
+    try { await streamAI("/ai/sign-message", { dossier_id: dossierId, module, channel, links: items.map(({ r, token }) => ({ title: r.doc_title, url: linkOf(token) })) }, setText); }
     catch (e) { toast.error(e.message); }
     finally { setBusy(false); }
   };

@@ -758,13 +758,13 @@ def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
 
 
 # ---------- DOCX renderer ----------
-def render_docx(doc_key, rec, settings, client, opis_titles=None):
+def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, ctx=None):
     from docx import Document
     from docx.shared import Pt, Mm, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.enum.section import WD_ORIENT
     import pymupdf
-    ctx = Ctx(CEF.flatten(rec), settings, client, opis_titles)
+    ctx = ctx or Ctx(CEF.flatten(rec), settings, client, opis_titles)
     d = Document()
     sec = d.sections[0]
     sec.page_width, sec.page_height = Mm(210), Mm(297)
@@ -793,7 +793,7 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None):
     if isinstance(doc_key, (list, tuple)) and len(doc_key) == 1:
         doc_key = doc_key[0]
     keys = list(doc_key) if isinstance(doc_key, (list, tuple)) else None
-    if doc_key in ("schema_cef", "schema"):
+    if blocks is None and doc_key in ("schema_cef", "schema"):
         sec.orientation = WD_ORIENT.LANDSCAPE
         sec.page_width, sec.page_height = Mm(297), Mm(210)
         pdfb = render([doc_key], rec, settings, client)
@@ -803,11 +803,12 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None):
                 d.add_page_break()
             d.add_picture(io.BytesIO(page.get_pixmap(dpi=150).tobytes("png")), width=Mm(265))
     else:
-        blocks = []
-        for i, k in enumerate(keys or [doc_key]):
-            if i:
-                blocks.append(B("pagebreak"))
-            blocks += DOCS[k][1](ctx)
+        if blocks is None:
+            blocks = []
+            for i, k in enumerate(keys or [doc_key]):
+                if i:
+                    blocks.append(B("pagebreak"))
+                blocks += DOCS[k][1](ctx)
         for b in blocks:
             k = b[0]
             if k == "hdr":
