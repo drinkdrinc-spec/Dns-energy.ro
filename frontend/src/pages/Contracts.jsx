@@ -55,7 +55,7 @@ export default function Contracts() {
               <td><select className="den-input !py-1 !text-xs" value={c.status} onChange={(e) => status(c.id, e.target.value)} data-testid={`contract-status-${c.number}`}>{ST.map((s) => <option key={s}>{s}</option>)}</select></td>
               <td className="flex items-center gap-2 py-2"><a href={`${API}/contracts/${c.id}/pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" data-testid={`contract-pdf-${c.number}`}><FileDown size={16} style={{ color: "var(--blue)" }} /></a>
                 <SignedLink c={c} />
-                <button className="text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => setSign(c)} data-testid={`contract-sign-${c.number}`}>Semnare online</button></td>
+                {c.status !== "Semnat" && !c.signed && <button className="text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => setSign(c)} data-testid={`contract-sign-${c.number}`}>Semnare online</button>}</td>
             </tr>))}
             {!list.length && <tr><td colSpan={8} className="py-6 text-center text-sm" style={{ color: "var(--muted)" }}>Niciun contract încă — acceptă o ofertă și apasă „Generează contract”.</td></tr>}</tbody>
         </table>

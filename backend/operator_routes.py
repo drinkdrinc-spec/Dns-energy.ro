@@ -58,7 +58,8 @@ async def op_doc(file: UploadFile = File(...), user: dict = Depends(get_current_
     owner_only(user)
     data = await file.read()
     ct = file.content_type or ""
-    if ct not in ("application/pdf", "image/jpeg", "image/png") or len(data) > 10 * 1024 * 1024:
+    magic = {"application/pdf": b"%PDF", "image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n"}
+    if ct not in magic or not data.startswith(magic[ct]) or len(data) > 10 * 1024 * 1024 or (ct != "application/pdf" and len(data) < 2000):
         raise HTTPException(status_code=400, detail="Încărcați atestatul ca PDF, JPG sau PNG, maxim 10 MB")
     st = S.put_object(f"{S.APP_NAME}/operators/{user['id']}/{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{(file.filename or 'atestat')[-60:]}", data, ct)
     await db.operators.update_one({"tenant": user["id"]}, {"$set": {"tenant": user["id"], "doc_path": st["path"], "doc_name": file.filename, "doc_type": ct, "doc_size": len(data),

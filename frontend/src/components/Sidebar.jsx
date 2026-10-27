@@ -46,6 +46,7 @@ const NAV = [
     { to: "/utilizatori", icon: "ShieldCheck", text: "Utilizatori și roluri", testid: "nav-users", admin: true },
     { to: "/abonament", icon: "CreditCard", text: "Abonament și facturare", testid: "nav-subscription", owner: true },
     { to: "/atestat-anre", icon: "ShieldCheck", text: "Atestat ANRE firmă", testid: "nav-operator-attest", owner: true },
+    { to: "/dosare-anre", icon: "Briefcase", text: "Dosare ANRE (premium)", testid: "nav-anre" },
     { to: "/abonamente-admin", icon: "Receipt", text: "Utilizatori și abonamente", testid: "nav-admin-billing", platform: true },
     { to: "/module-platforma", icon: "LayoutGrid", text: "Module platformă", testid: "nav-platform-modules", platform: true },
     { to: "/operatori-anre", icon: "ShieldCheck", text: "Operatori și atestate ANRE", testid: "nav-admin-operators", platform: true },

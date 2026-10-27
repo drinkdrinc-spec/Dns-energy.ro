@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 23 tested Etapa 2 billing (500/900/1250 lei + VAT, payment by bank transfer/OP), ANRE operator attestation with access gating (new and legacy accounts), contract online signing end-to-end, and creating an offer from a prosumer dossier. Backend: 17 of 17 pytest cases passed (tests/test_iter23_billing_attest_sign.py). Frontend: Playwright covered the subscriber pages (Subscription, transfer details box, Atestat ANRE form and upload), the platform admin Operators page (reject without notes, approve, legacy toggle), the Contracts 'Semnare online' dialog with link and public page, and the Offers 'from dossier' select. All requested flows work. Only minor issues were found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/billing/checkout (transfer)", "issue": "The transfer details return iban=null and bank=null because the platform settings (db.settings owner=platform) have no IBAN or bank. The UI shows 'IBAN: de completat în setările platformei', so subscribers cannot pay by OP until the IBAN is configured."},
+      {"endpoint": "POST /api/offers/from-dossier", "issue": "An empty CEF inverter slot (no brand_model, strings ['']) still produces an empty 'Invertor' line. Seen on dossier e98aaf0f: its 2nd inverter is blank. Skip inverters with no brand_model and no panels."},
+      {"endpoint": "POST /api/offers/from-dossier", "issue": "Battery quantity reads battery.count, but CEF battery data uses 'modules' (e.g. Deye SE-G5.1 Pro, kwh 5.12, modules 6, which gives qty 1). Check whether qty should come from modules, or show the capacity as kwh x modules."},
+      {"endpoint": "POST /api/offers/from-dossier", "issue": "Manufacturer/model are split on the first space. Panels: 'Aiko Neostar 475 W' becomes model 'Neostar 475 W' plus power '475 W' (duplicated). Generic names: 'Modul monocristalin 450 W' becomes manufacturer 'Modul'. Use the catalog's manufacturer/model fields when catalog_id is available."},
+      {"endpoint": "POST /api/offers/from-dossier", "issue": "The title has no kW when the CEF inverter lacks ac_kw (all tested dossiers): 'Achiziție sistem fotovoltaic'. The beneficiary kind is PF even when the client is 'Test Client SRL' (no client kind). Consider getting kW from the catalog or DC power."},
+      {"endpoint": "POST /api/contracts/{id}/sign", "issue": "Nothing blocks creating a new sign request for a contract that is already 'Semnat' (or Reziliat). The UI still shows the 'Semnare online' button on signed contracts. Consider rejecting this, or requiring confirmation."},
+      {"endpoint": "POST /api/operator/document", "issue": "The file type check trusts the client-sent content-type only; there is no magic-byte check. A fake PNG (b'\\x89PNG'+zeros) was accepted."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminOperators attest-block-toggle", "issue": "Once (run right after a decision save with a failed-then-success toast), the first click sent PUT true but the checkbox stayed unchecked. The second click then sent true again, so the rule became TRUE while the UI showed it as off. A clean retest worked correctly. toggle() has no try/catch and no reload of the true state. Make the toggle robust: disable it while saving, and use try/catch to set cfg from the response.", "selector": "[data-testid='attest-block-toggle']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Subscription (/abonament)", "issues": ["The header subtitle still says 'apoi plătiți securizat. Cardul nu este debitat automat la reînnoire.' (card wording) although payment_mode is transfer.", "Plan cards are vertically misaligned: START, PRO and FULL titles/prices sit at different heights because the content is vertically centred. Align the content to the top."]},
+      {"screen": "Atestat ANRE firmă", "issues": ["'Valabil până la' uses the browser's native date input instead of the shadcn calendar used elsewhere."]},
+      {"screen": "Offers from dossier", "issues": ["The select keeps the chosen dossier after creation, so picking the same dossier again does not fire onChange. Reset the value to '' after creation."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter23_billing_attest_sign.py", "/app/backend/tests/iter23_ui_setup.py", "/app/backend/tests/iter23_inspect.py", "/app/test_reports/pytest/pytest_iter23.xml"],
+  "action_items": [
+    "Set the platform IBAN and bank in settings, or make IBAN mandatory before transfer checkout is allowed.",
+    "from-dossier: skip empty inverters; get battery qty/capacity from modules; take manufacturer/model from the catalog instead of a naive split; avoid the duplicated panel power.",
+    "Block or confirm re-signing for contracts already 'Semnat', and hide the 'Semnare online' button on them.",
+    "Update the Subscription page subtitle for transfer mode, and top-align the plan cards.",
+    "Harden the attest-block-toggle (try/catch, disable while saving).",
+    "Optional: check magic bytes on operator document upload."
+  ],
+  "critical_code_review_comments": [
+    "plan_info legacy check compares owner.created_at with attest_cutoff as ISO strings. This works because both use the same isoformat UTC (+00:00). attest_cutoff was set at startup (2026-10-27T20:15), so every account created before deployment is legacy.",
+    "op_save sets the status back to 'în așteptare' when key fields change, and op_doc resets it on every upload. This correctly forces re-verification, and it immediately blocks new (non-legacy) accounts. This is intended, but the UI should warn before re-upload.",
+    "AdminOperators rows use the CUI in their data-testid and key on the tenant. Duplicate CUIs across tenants would produce duplicate testids.",
+    "server.py (1778 lines) and billing_routes.py (730 lines) exceed 700 lines."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter23_billing_attest_sign.py", "/app/backend/tests/iter23_ui_setup.py", "/app/backend/tests/iter23_inspect.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "~95% (all flows work; minor UX issues)"},
+  "seed_data_creation": "All test data has been cleaned up: sub_iter23* users with their subscriptions, invoices, operators, billing profiles and billing history; TEST offers 250-253; contracts 93/94 with their sign_requests and documents. The contract:* counter was deleted. The offer counter was restored to next=250, its pre-test value: offer 249 (no beneficiary) pre-existed and was left untouched. attest_block_existing=false. Plan prices and payment_mode were not changed. The invoice number sequence advanced (DEN-PF-2026-0038 used).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest tests/test_iter23_billing_attest_sign.py; it is self-cleaning, using random suffixed sub_iter23* users. Legacy is simulated by setting users.created_at to 2025 in Mongo. Contract signing is driven by injecting otp_hash=sha256(f'{id}:123456') into sign_requests. The from-dossier test uses pros e98aaf0f (Aiko 475 W x24, Solis, Deye battery, plus a blank 2nd inverter). For UI: python tests/iter23_ui_setup.py registers sub_iter23ui@example.com / Test2026!x; 'python tests/iter23_ui_setup.py clean' removes it. Routes: /abonament, /atestat-anre, /operatori-anre, /contracte, /oferte."
+}

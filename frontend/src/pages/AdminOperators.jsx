@@ -28,11 +28,12 @@ export default function AdminOperators() {
   const [cfg, setCfg] = useState(null);
   const load = () => { api.get("/admin/operators").then((r) => setList(r.data)); api.get("/admin/attest-config").then((r) => setCfg(r.data)); };
   useEffect(() => { load(); }, []);
-  const toggle = async (v) => { const { data } = await api.put("/admin/attest-config", { attest_block_existing: v }); setCfg(data); toast.success("Regulă actualizată"); };
+  const [busyT, setBusyT] = useState(false);
+  const toggle = async (v) => { setBusyT(true); try { const { data } = await api.put("/admin/attest-config", { attest_block_existing: v }); setCfg(data); toast.success("Regulă actualizată"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); api.get("/admin/attest-config").then((r) => setCfg(r.data)); } finally { setBusyT(false); } };
   return (
     <div data-testid="admin-operators-page">
       <PageHeader eyebrow="Administrare platformă" title="Operatori economici și atestate ANRE" sub="Verificare manuală: documentul încărcat nu este dovadă suficientă până la verificarea în registrul ANRE." />
-      {cfg && <label className="den-panel mb-4 flex items-center gap-2 text-sm" data-testid="attest-block-existing"><input type="checkbox" checked={cfg.attest_block_existing} onChange={(e) => toggle(e.target.checked)} data-testid="attest-block-toggle" />
+      {cfg && <label className="den-panel mb-4 flex items-center gap-2 text-sm" data-testid="attest-block-existing"><input type="checkbox" checked={cfg.attest_block_existing} disabled={busyT} onChange={(e) => toggle(e.target.checked)} data-testid="attest-block-toggle" />
         Blochează imediat și conturile existente (create înainte de {cfg.attest_cutoff ? new Date(cfg.attest_cutoff).toLocaleDateString("ro-RO") : "—"}) fără atestat aprobat. Dezactivat = își păstrează accesul până la verificare.</label>}
       <div className="den-panel overflow-x-auto">
         <table className="w-full text-sm"><thead><tr className="text-left text-xs" style={{ color: "var(--muted)" }}><th className="py-2">Firmă</th><th>Atestat</th><th>Document</th><th>Verificat</th><th>Status și observații</th></tr></thead>

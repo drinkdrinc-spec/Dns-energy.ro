@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime, timezone, timedelta
 from html import escape
@@ -520,19 +521,21 @@ async def offer_from_dossier(request: Request, user: dict = Depends(get_current_
             panels[k] = panels.get(k, 0) + cnt
     for (model, w), cnt in panels.items():
         mf, md = split(model)
+        md = re.sub(r"\s*\d+([.,]\d+)?\s*W[p]?$", "", md) if w else md
         items.append({"category": "panouri", "kind": "echipament", "name": "Panouri fotovoltaice", "manufacturer": mf, "model": md, "power": f"{w} W" if w else "", "qty": cnt, "unit": "buc", "unit_price": 0})
-    for inv in (p.get("cef") or {}).get("inverters") or []:
+    for inv in [i for i in (p.get("cef") or {}).get("inverters") or [] if i.get("brand_model")]:
         mf, md = split(inv.get("brand_model"))
         items.append({"category": "invertor", "kind": "echipament", "name": "Invertor", "manufacturer": mf, "model": md, "power": f"{inv.get('ac_kw')} kW" if inv.get("ac_kw") else "", "qty": 1, "unit": "buc", "unit_price": 0})
         b = inv.get("battery") or {}
         if b.get("model") or b.get("brand_model") or b.get("kwh"):
             mf, md = split(b.get("model") or b.get("brand_model"))
             items.append({"category": "baterii", "kind": "echipament", "name": "Baterie", "manufacturer": mf, "model": md, "capacity": f"{b.get('kwh')} kWh" if b.get("kwh") else "",
-                          "qty": int(OD.num(b.get("count"), 1)) or 1, "unit": "buc", "unit_price": 0})
+                          "qty": int(OD.num(b.get("modules") or b.get("count"), 1)) or 1, "unit": "buc", "unit_price": 0})
     items += [{"category": c, "kind": "serviciu", "name": n, "qty": 1, "unit": "buc", "unit_price": 0} for c, n in
               (("montaj", "Montaj"), ("probe", "Probe, măsurători și punere în funcțiune"), ("dosar", "Dosar de prosumator / racordare"))]
-    kw = sum(OD.num(i.get("ac_kw")) for i in (p.get("cef") or {}).get("inverters") or [])
-    ben = {"kind": "PJ" if cl.get("kind") in ("PJ", "firma", "juridica") else "PF", "name": cl.get("name") or p.get("client_name"), "cui_cnp": cl.get("cui") or cl.get("cnp"),
+    kw = sum(OD.num(i.get("ac_kw")) for i in (p.get("cef") or {}).get("inverters") or []) or round(sum(c * OD.num(w) for (_, w), c in panels.items()) / 1000, 2)
+    pj = cl.get("kind") in ("PJ", "firma", "juridica") or bool(re.search(r"\b(SRL|S\.R\.L\.|SA|S\.A\.|PFA|II|IF)\b", str(cl.get("name") or p.get("client_name") or "")))
+    ben = {"kind": "PJ" if pj else "PF", "name": cl.get("name") or p.get("client_name"), "cui_cnp": cl.get("cui") or cl.get("cnp"),
            "reg_com": cl.get("regcom"), "address": cl.get("address") or p.get("address"), "install_address": p.get("address"), "phone": cl.get("phone"), "email": cl.get("email")}
     o = {"id": str(uuid.uuid4()), "owner": user["id"], "number": await next_number(user["id"], "offer"), "status": "Ciornă", "version": 1, "created_at": now(), "updated_at": now(),
          "created_by": user.get("email"), "date": datetime.now(timezone.utc).date().isoformat(), "vat_rate": 21, "currency": "RON", "validity_days": 30, "show_line_prices": True,
@@ -549,6 +552,8 @@ async def contract_sign(cid: str, request: Request, user: dict = Depends(get_cur
     need(user, True)
     S.need(user, "sign_remote", True)
     c = await own("contracts", user, cid)
+    if c.get("status") in ("Semnat", "Reziliat", "Finalizat") or c.get("signed"):
+        raise HTTPException(status_code=400, detail=f"Contractul este {c.get('status')} — nu se mai trimite la semnare")
     sg = (await request.json()).get("signer") or {}
     if not (sg.get("name") or "").strip() or "@" not in (sg.get("email") or ""):
         raise HTTPException(status_code=400, detail="Clientul are nevoie de nume și e-mail valid (pentru codul de verificare)")
