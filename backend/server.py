@@ -219,6 +219,13 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă")
     await audit(user, "modificare", module, item_id, list(data.keys()))
+    if module == "prosumator":
+        try:
+            await request_approval(user, item_id, request.headers.get("origin") or "", True)
+        except HTTPException:
+            pass
+        except Exception as e:
+            logger.error(f"auto approval request: {e}")
     doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
     return clean(doc)
 
@@ -429,7 +436,7 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     if attach:
         pdf = merge_pdfs(pdf, await catalog_files(user["id"], rec))
     fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{fname}"'})
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{fname}")})
 
 # ---------------- CEF checks & catalog ----------------
 import cef as CEF
@@ -462,8 +469,15 @@ from sld_demo import DEMO_REC, DEMO_CLIENT
 
 SLD_ROLES = {"designer": "Proiectant schemă", "verifier": "Verificator schemă"}
 
+from urllib.parse import quote as _q
+import unicodedata as _ud
+
+def disp(kind: str, name: str) -> str:
+    a = _ud.normalize("NFKD", name).encode("ascii", "ignore").decode().replace('"', "") or "document"
+    return f"{kind}; filename=\"{a}\"; filename*=UTF-8''{_q(name)}"
+
 def pdf_resp(data: bytes, name: str):
-    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
 
 async def sld_ctx(owner: str, item_id: str):
     rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
@@ -497,7 +511,9 @@ async def sld_status(item_id: str, user: dict = Depends(get_current_user)):
             "ready": res["ready"], "format": res["format"], "totals": res["base"]["totals"], "approval": state, "settings_warnings": warns,
             "source": sld.get("source") or "generated", "upload": sld.get("upload"), "revision": sld.get("revision") or 0,
             "auto_filled": (rec.get("cef") or {}).get("auto_filled") or [], "people": people,
-            "history": [{k: v for k, v in h.items() if k != "hash"} | {"current": h.get("hash") == state["fingerprint"]} for h in reversed(sld.get("history") or [])]}
+            "history": [{k: v for k, v in h.items() if k not in ("hash", "values")} | {"current": h.get("hash") == state["fingerprint"], "index": i, "has_values": bool(h.get("values"))}
+                        for i, h in reversed(list(enumerate(sld.get("history") or [])))],
+            "approval_requests": (sld.get("approval_requests") or [])[-5:], "is_test": bool(rec.get("is_test"))}
 
 @api_router.get("/sld/{item_id}/pdf")
 async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("auto")):
@@ -580,10 +596,73 @@ async def sld_approve(item_id: str, request: Request, user: dict = Depends(get_c
         stored = put_object(f"{APP_NAME}/sld/{user['id']}/{item_id}/rev{rev}_{uuid.uuid4().hex[:8]}.pdf", pdf, "application/pdf")
         f = {"storage_path": stored["path"], "original_filename": f"schema_rev{rev}.pdf", "content_type": "application/pdf", "size": len(pdf)}
     entry = {"revision": rev, "at": sld["approval"]["at"], "role": role, "role_label": SLD_ROLES[role], "name": p.get("name"),
-             "auth": sld["approval"]["auth"], "hash": sld["approval"]["hash"], "source": src, "file": f, "by": user.get("email")}
+             "auth": sld["approval"]["auth"], "hash": sld["approval"]["hash"], "source": src, "file": f, "by": user.get("email"),
+             "values": SLD.snapshot(rec2, res2)}
     await db.prosumator.update_one({"id": item_id}, {"$push": {"sld.history": entry}})
     await audit(user, "schemă aprobată", "prosumator", item_id, [role, p.get("name")])
     return sld["approval"]
+
+async def deliver(owner: str, is_test: bool, to: str, subject: str, html: str) -> str:
+    """Returns the address actually used, or '' when not sent (test dossier without test e-mail)."""
+    if is_test:
+        st = await db.settings.find_one({"owner": owner}, {"_id": 0, "test_email": 1}) or {}
+        to = (st.get("test_email") or "").strip()
+        if "@" not in to:
+            return ""
+        subject = "[TEST] " + subject
+        html = '<p style="color:#b03a2e;font-family:Arial"><b>DOSAR DE TEST — date fictive. Nu este un document sau o semnătură oficială.</b></p>' + html
+    await send_email(to=to, subject=subject, html=html)
+    return to
+
+@api_router.get("/sld/{item_id}/compare")
+async def sld_compare(item_id: str, a: int, b: int, user: dict = Depends(get_current_user)):
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0, "sld": 1})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    h = (rec.get("sld") or {}).get("history") or []
+    if not (0 <= a < len(h) and 0 <= b < len(h)):
+        raise HTTPException(status_code=404, detail="Revizie inexistentă")
+    va, vb = h[a].get("values"), h[b].get("values")
+    if not va or not vb:
+        raise HTTPException(status_code=400, detail="Una dintre versiuni a fost aprobată înainte de salvarea valorilor pentru comparare")
+    rows = [{"key": k, "a": va.get(k, "—"), "b": vb.get(k, "—"), "changed": va.get(k) != vb.get(k)} for k in dict.fromkeys(list(va) + list(vb))]
+    meta = lambda x: {k: x.get(k) for k in ("revision", "at", "name", "role_label", "source")}
+    return {"a": meta(h[a]), "b": meta(h[b]), "rows": rows, "changed": sum(r["changed"] for r in rows)}
+
+async def request_approval(user: dict, item_id: str, origin: str, auto: bool):
+    rec, client, s, res, state, _ = await sld_ctx(user["id"], item_id)
+    sld = rec.get("sld") or {}
+    if state["status"] == "approved":
+        raise HTTPException(status_code=400, detail="Schema este deja aprobată pentru configurația actuală")
+    if (sld.get("source") or "generated") == "generated" and not res["ready"]:
+        raise HTTPException(status_code=400, detail=f"Datele nu sunt complete: {len(res['missing'])} lipsă, {len(res['errors'])} erori")
+    if auto and sld.get("approval_request_hash") == state["fingerprint"]:
+        return None
+    sent = []
+    for role, label in SLD_ROLES.items():
+        sid = (rec.get("signers") or {}).get(role)
+        p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
+        if not p or "@" not in (p.get("email") or ""):
+            continue
+        link = f"{origin.rstrip('/')}/prosumator"
+        html = (f'<div style="font-family:Arial,sans-serif;color:#0b1f3a"><p>Bună ziua, {hesc(p["name"])},</p>'
+                f'<p>Schema monofilară și dimensionarea tehnică pentru <b>{hesc(str(client.get("name") or rec.get("client_name") or ""))}</b> '
+                f'(dosar {hesc(str(rec.get("number") or ""))}) sunt complete și așteaptă verificarea dvs. ca {hesc(label.lower())}.</p>'
+                f'<p><a href="{hesc(link)}">Deschide aplicația D-ENERGY</a> → Dosar de prosumator → secțiunea „Schemă monofilară”.</p></div>')
+        to = await deliver(user["id"], bool(rec.get("is_test")), p["email"], f"Cerere de aprobare schemă — {rec.get('number') or ''}", html)
+        sent.append({"role": role, "name": p["name"], "to": to, "sent": bool(to)})
+    entry = {"at": datetime.now(timezone.utc).isoformat(), "auto": auto, "recipients": sent, "by": user.get("email")}
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"sld.approval_request_hash": state["fingerprint"]}, "$push": {"sld.approval_requests": entry}})
+    await audit(user, "cerere aprobare schemă", "prosumator", item_id, [x["name"] for x in sent])
+    return entry
+
+@api_router.post("/sld/{item_id}/request-approval")
+async def sld_request_approval(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    b = await request.json() if (await request.body()) else {}
+    entry = await request_approval(user, item_id, b.get("origin") or request.headers.get("origin") or "", False)
+    if not entry["recipients"]:
+        raise HTTPException(status_code=400, detail="Nu există proiectant/verificator selectat cu e-mail completat")
+    return entry
 
 @api_router.post("/sld/{item_id}/send-sign")
 async def sld_send_sign(item_id: str, request: Request, user: dict = Depends(get_current_user)):
@@ -610,10 +689,14 @@ async def sld_send_sign(item_id: str, request: Request, user: dict = Depends(get
                 f'pentru beneficiarul {hesc(str(r.get("client_name") or ""))}, în calitate de {hesc(SLD_ROLES[role].lower())}.</p>'
                 f'<p><a href="{hesc(link)}" style="background:#2878f0;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Deschide documentul</a></p>'
                 f'<p>La semnare veți primi un cod unic pe această adresă de e-mail. Linkul este personal și expiră la {r["expires_at"][:10]}.</p></td></tr></table>')
-        await send_email(to=p["email"], subject=f"Semnare {r['doc_title'][:60]}", html=html)
-        await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Link trimis"}, "$push": {"history": hist("Link trimis", None, f"e-mail automat către {mask(p['email'])}; de {user.get('email')}")}})
+        to = await deliver(user["id"], bool(rec.get("is_test")), p["email"], f"Semnare {r['doc_title'][:60]}", html)
+        if to:
+            await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Link trimis"}, "$push": {"history": hist("Link trimis", None, f"e-mail automat către {mask(to)}; de {user.get('email')}")}})
+        else:
+            await db.sign_requests.update_one({"id": r["id"]}, {"$push": {"history": hist("E-mail netrimis", None, "dosar de TEST fără e-mail de test configurat în Setări de bază")}})
+        r["email_sent"] = bool(to)
     await audit(user, "schemă trimisă la semnare", "prosumator", item_id, [role, p.get("name")])
-    return [{**sign_public({**{k: v for k, v in r.items() if k != "token"}, "history": [], "status": "Link trimis"}), "token": r["token"]} for r in reqs]
+    return [{**{k: v for k, v in r.items()}, "status": "Link trimis" if r.get("email_sent") else "De trimis"} for r in reqs]
 
 @api_router.post("/sld/{item_id}/unapprove")
 async def sld_unapprove(item_id: str, user: dict = Depends(get_current_user)):
@@ -817,13 +900,17 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         raise HTTPException(status_code=404, detail="Poziție inexistentă")
     name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
     if fmt == "docx":
-        if key in ("schema", "fisa_tehnica"):
-            raise HTTPException(status_code=400, detail="Schema și fișa tehnică se exportă doar în PDF (vectorial)")
+        if key == "fisa_tehnica":
+            docx = SLD.tech_sheet_docx(rec, client, settings, SZ.compute(rec, client), SZ.state(rec, client, settings))
+            return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            headers={"Content-Disposition": disp('attachment', f"{name}.docx")})
+        if key == "schema":
+            raise HTTPException(status_code=400, detail="Schema monofilară se exportă doar în PDF (vectorial)")
         if p["source"] != "generat":
             raise HTTPException(status_code=400, detail="Export Word doar pentru documentele generate")
         docx = docgen.render_docx(p["docs"], rec, settings, client, info["titles"])
         return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        headers={"Content-Disposition": f'attachment; filename="{name}.docx"'})
+                        headers={"Content-Disposition": disp('attachment', f"{name}.docx")})
     parts = await OPIS.position_pdf(p, rec, client, settings, info["titles"], get_object, force_generated=bool(generated))
     if not parts:
         raise HTTPException(status_code=404, detail="Documentul nu este încă încărcat")
@@ -834,7 +921,9 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
             for pg in PdfReader(io.BytesIO(b)).pages:
                 w.add_page(pg)
         o = io.BytesIO(); w.write(o); pdf = o.getvalue()
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}.pdf"'})
+    if rec.get("is_test") and key != "schema":
+        pdf = OPIS.mark_test(pdf)
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}.pdf")})
 
 @api_router.get("/dossier/{item_id}/export")
 async def dossier_export(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
@@ -842,7 +931,7 @@ async def dossier_export(item_id: str, authorization: str = Header(None), auth: 
     rec, client, settings, info = await dossier_ctx(user["id"], item_id)
     pdf = await OPIS.export_bundle(info, rec, client, settings, get_object, logger)
     name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
 
 # ---------------- Semnare la distanță (semnătură electronică simplă) ----------------
 import hashlib
@@ -932,7 +1021,7 @@ async def create_sign_requests(user, did, keys, signers, days):
                             "doc_title": pos[k]["title"], "doc_path": stored["path"], "doc_sha256": sha(pdf), "signer_name": s["name"].strip(),
                             "signer_email": s["email"].strip(), "signer_phone": (s.get("phone") or "").strip(), "role": (s.get("role") or "Beneficiar").strip(),
                             "status": "De trimis", "token_hash": th, "expires_at": exp, "otp_sends": 0, "otp_attempts": 0,
-                            "sld_hash": st_sld["fingerprint"] if k in ("schema", "fisa_tehnica") else None,
+                            "sld_hash": st_sld["fingerprint"] if k in ("schema", "fisa_tehnica") else None, "is_test": bool(rec.get("is_test")),
                             "history": [hist("Cerere creată", None, f"de {user.get('email')}; link valabil până la {exp[:16]} UTC")]})
             await db.sign_requests.insert_one(dict(r))
             out.append({**sign_public(r), "token": t})
@@ -993,7 +1082,7 @@ async def sign_file(rid: str, kind: str = "signed", authorization: str = Header(
     if not path:
         raise HTTPException(status_code=404, detail="Documentul semnat nu există încă")
     data, _ = get_object(path)
-    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{kind}_{r["pos_key"]}.pdf"'})
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{kind}_{r['pos_key']}.pdf")})
 
 async def sign_by_token(token: str) -> dict:
     r = await db.sign_requests.find_one({"token_hash": sha(token.encode())}, {"_id": 0}) if token else None
@@ -1062,7 +1151,8 @@ async def pub_sign_otp(token: str, request: Request):
             f'<p style="font-size:28px;font-weight:bold;letter-spacing:6px">{code}</p>'
             f'<p>Codul este valabil 10 minute. Introdu-l doar pe pagina de semnare deschisă din linkul primit. Dacă nu ai cerut acest cod, ignoră mesajul.</p>'
             f'<p style="font-size:12px;color:#888">Trimis de {hesc(EMAIL_FROM_NAME)}. Nu îți vom cere niciodată parole sau date de card prin e-mail.</p></td></tr></table>')
-    await send_email(to=r["signer_email"], subject=f"Cod de semnare — {r['doc_title'][:60]}", html=html)
+    if not await deliver(r["owner"], bool(r.get("is_test")), r["signer_email"], f"Cod de semnare — {r['doc_title'][:60]}", html):
+        raise HTTPException(status_code=400, detail="Dosar de TEST: nu este configurat un e-mail de test în Setări de bază — codul nu a fost trimis")
     await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"otp_hash": sha(f"{r['id']}:{code}".encode()), "otp_exp": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
                                                                  "otp_last": now_iso(), "otp_attempts": 0}, "$inc": {"otp_sends": 1},
                                                         "$push": {"history": hist("Cod de verificare trimis", client_meta(request), f"către {mask(r['signer_email'])}")}})
@@ -1073,7 +1163,9 @@ def evidence_page(r: dict, sig_png: bytes, meta: dict, declared: str, signed_at:
     c = rlc.Canvas(buf, pagesize=RA4)
     W, H = RA4
     y = H - 60
-    c.setFont("LSB", 14); c.drawString(50, y, "FIȘĂ DE EVIDENȚĂ A SEMNĂRII ELECTRONICE")
+    c.setFont("LSB", 14); c.drawString(50, y, "FIȘĂ DE EVIDENȚĂ A SEMNĂRII ELECTRONICE" + (" — TEST" if r.get("is_test") else ""))
+    if r.get("is_test"):
+        c.setFillColorRGB(0.7, 0.15, 0.15); c.setFont("LSB", 10); c.drawString(50, y - 32, "SEMNĂTURĂ DE TEST — date fictive. NU este o semnătură oficială și nu are efecte juridice."); c.setFillColorRGB(0, 0, 0); y -= 14
     y -= 18; c.setFont("LS", 9); c.drawString(50, y, "Tip semnătură: semnătură electronică SIMPLĂ (Reg. UE 910/2014 eIDAS, art. 3 pct. 10). Nu este semnătură avansată sau calificată.")
     rows = [("Document", r["doc_title"]), ("Emitent", owner_company), ("Beneficiar / dosar", r.get("client_name") or ""),
             ("Semnatar (identitate declarată)", declared), ("Rol", r["role"]), ("E-mail verificat prin cod unic", r["signer_email"]),
@@ -1112,7 +1204,7 @@ async def rebuild_group(owner: str, gid: str):
     signed = [x for x in reqs if x["status"] == "Semnat" and x.get("evidence_path")]
     base, _ = get_object(reqs[0]["doc_path"])
     w = PdfWriter()
-    for pg in PdfReader(io.BytesIO(stamp_pages(base, "Semnat electronic (semnătură simplă) de: " + ", ".join(f"{x['signer_name']} {x['signed_at'][:16]} UTC" for x in signed) + f" · SHA-256 original {reqs[0]['doc_sha256'][:16]}…"))).pages:
+    for pg in PdfReader(io.BytesIO(stamp_pages(base, ("[TEST — NU ESTE SEMNĂTURĂ OFICIALĂ] " if reqs[0].get("is_test") else "") + "Semnat electronic (semnătură simplă) de: " + ", ".join(f"{x['signer_name']} {x['signed_at'][:16]} UTC" for x in signed) + f" · SHA-256 original {reqs[0]['doc_sha256'][:16]}…"))).pages:
         w.add_page(pg)
     for x in signed:
         ev, _ = get_object(x["evidence_path"])
@@ -1176,6 +1268,53 @@ async def pub_refuse(token: str, request: Request):
     await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Refuzat", "refused_reason": reason},
                                                         "$push": {"history": hist("Refuzat", client_meta(request), reason)}})
     return {"ok": True}
+
+# ---------------- Dosar de test ----------------
+import test_data as TD
+
+@api_router.post("/test-dossier")
+async def test_dossier_create(user: dict = Depends(get_current_user)):
+    st = await db.settings.find_one({"owner": user["id"]}, {"_id": 0, "test_email": 1}) or {}
+    stamp = datetime.now(timezone.utc).strftime("%m%d%H%M%S")
+    files = {}
+    for k, title in [("auth", "Autorizație personal (TEST)"), ("cert", "Certificat etalonare aparat (TEST)"), ("datasheet", "Fișă tehnică echipament (TEST)"),
+                     ("conformity", "Declarație de conformitate echipament (TEST)"), ("clientdoc", "Document client (TEST)")]:
+        data = TD.placeholder_pdf(title)
+        stored = put_object(f"{APP_NAME}/uploads/{user['id']}/test_{stamp}_{k}.pdf", data, "application/pdf")
+        files[k] = {"storage_path": stored["path"], "original_filename": f"TEST_{k}.pdf", "content_type": "application/pdf", "size": len(data)}
+    D = TD.build(stamp, (st.get("test_email") or "").strip() or None, files)
+    mk = lambda d: _new(user, {**d, "is_test": True})
+    staff = {}
+    for p in D["staff"]:
+        doc = mk({k: v for k, v in p.items() if k != "key"}); await db.staff.insert_one(dict(doc)); staff[p["key"]] = doc["id"]
+    inst = mk(D["instrument"]); await db.instruments.insert_one(dict(inst))
+    cat = {}
+    for c in D["catalog"]:
+        doc = mk(c); await db.catalog.insert_one(dict(doc)); cat[c["category"]] = doc["id"]
+    client_doc = mk(D["client"]); await db.clients.insert_one(dict(client_doc))
+    pros = D["prosumator"]
+    inv = pros["cef"]["inverters"][0]
+    inv["catalog_id"], inv["panel_catalog_id"] = cat["Invertor"], cat["Panou"]
+    inv["battery"]["catalog_id"] = cat["Baterie"]
+    pros["cef"]["grid"]["meter_catalog_id"] = cat["Smart meter"]
+    pros.update({"client_id": client_doc["id"], "instrument_id": inst["id"], "signers": {"designer": staff["designer"], "verifier": staff["verifier"]}})
+    pros = derive_cef(pros)
+    pdoc = mk(pros); await db.prosumator.insert_one(dict(pdoc))
+    diu = mk(D["diu"]); await db.diu.insert_one(dict(diu))
+    await db.pram.insert_one(dict(mk({**D["pram"], "diu_ref": diu["number"]})))
+    await audit(user, "creare dosar de test", "prosumator", pdoc["id"], [])
+    return {"prosumator_id": pdoc["id"], "number": pdoc["number"], "client": client_doc["name"], "test_email": st.get("test_email") or None}
+
+@api_router.delete("/test-dossier")
+async def test_dossier_delete(user: dict = Depends(get_current_user)):
+    q = {"owner": user["id"], "is_test": True}
+    ids = [x["id"] for x in await db.prosumator.find(q, {"id": 1}).to_list(1000)]
+    n = (await db.sign_requests.delete_many({"owner": user["id"], "$or": [{"is_test": True}, {"dossier_id": {"$in": ids}}]})).deleted_count
+    for c in TD.TEST_COLLECTIONS:
+        n += (await db[c].delete_many(q)).deleted_count
+    n += (await db.documents.delete_many({"owner": user["id"], "client_name": {"$regex": "^TEST — "}})).deleted_count
+    await audit(user, "ștergere date de test", "prosumator", "", [str(n)])
+    return {"deleted": n}
 
 # ---------------- Startup ----------------
 @app.on_event("startup")

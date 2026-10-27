@@ -158,13 +158,13 @@ def file_pdf(data: bytes, ct: str) -> bytes:
     return buf.getvalue()
 
 
-def watermark(writer):
+def watermark(writer, text="CIORNĂ", size=70):
     for page in writer.pages:
         w, h = float(page.mediabox.width), float(page.mediabox.height)
         buf = io.BytesIO()
         c = rl_canvas.Canvas(buf, pagesize=(w, h))
-        c.setFont("LSB", 70); c.setFillColor(colors.Color(0.8, 0.1, 0.1, alpha=0.12))
-        c.translate(w / 2, h / 2); c.rotate(40); c.drawCentredString(0, 0, "CIORNĂ"); c.save()
+        c.setFont("LSB", size); c.setFillColor(colors.Color(0.8, 0.1, 0.1, alpha=0.12))
+        c.translate(w / 2, h / 2); c.rotate(40); c.drawCentredString(0, 0, text); c.save()
         page.merge_page(PdfReader(io.BytesIO(buf.getvalue())).pages[0])
 
 
@@ -211,6 +211,17 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
             logger.error(f"bundle merge skip: {e}")
     if not positions_info["complete"]:
         watermark(w)
+    if rec.get("is_test"):
+        watermark(w, "DOSAR DE TEST — NEOFICIAL", 38)
     out = io.BytesIO()
     w.write(out)
     return out.getvalue()
+
+
+def mark_test(pdf: bytes) -> bytes:
+    w = PdfWriter()
+    for pg in PdfReader(io.BytesIO(pdf)).pages:
+        w.add_page(pg)
+    watermark(w, "DOSAR DE TEST — NEOFICIAL", 38)
+    o = io.BytesIO(); w.write(o)
+    return o.getvalue()

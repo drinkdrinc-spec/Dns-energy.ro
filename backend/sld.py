@@ -612,6 +612,8 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     S.text(x1 + 1, y2 - 3, "Notă: c.c. — linie continuă subțire, c.a. — linie continuă, PE — linie întreruptă verde. Valorile marcate [lipsă] trebuie completate și verificate.", 5, color=GREY)
     if demo:
         watermark(S, PW, PH, "EXEMPLU DEMONSTRATIV")
+    elif rec.get("is_test"):
+        watermark(S, PW, PH, "DOSAR DE TEST — NU ESTE OFICIAL")
     elif approval.get("status") != "approved":
         watermark(S, PW, PH, "CIORNĂ — NEVERIFICAT" if approval.get("status") != "stale" else "APROBARE ANULATĂ")
     c.showPage()
@@ -654,39 +656,26 @@ def protections(rec, res):
     return out
 
 
-def tech_sheet(rec, client, settings, res, approval) -> bytes:
-    from reportlab.platypus import SimpleDocTemplate, Spacer
-    from reportlab.lib.pagesizes import A4 as P4
-    St = docgen.S
+def sheet_data(rec, client, settings, res, approval):
     cef = rec.get("cef") or {}
     grid = cef.get("grid") or {}
     base = res["base"]
     t = base["totals"]
     get = lambda k: client.get(k) or rec.get(k)
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=P4, leftMargin=16 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title="Fișă tehnică instalație")
-    Pp = lambda x, st="p": Paragraph(x, St[st])
-    C_ = lambda x, b=False: Paragraph(escape(str(x)) if x not in (None, "") else "<font color='#c0392b'>[lipsă]</font>", CELLB if b else CELL)
-    def tbl(rows, ws):
-        tb = Table([[C_(h, True) for h in rows[0]]] + [[C_(c) for c in r] for r in rows[1:]], colWidths=[w * mm for w in ws], repeatRows=1)
-        tb.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f7")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-        return tb
     loc = ", ".join(str(x) for x in [get("address"), get("locality"), ("jud. " + str(get("county"))) if get("county") else None] if x)
     st = approval.get("status")
-    out = [Pp(f"<b>{escape(settings.get('company') or 'DNS HOSTESS S.R.L.')}</b>", "small"), Spacer(1, 4),
-           Pp("FIȘĂ TEHNICĂ A INSTALAȚIEI DE PRODUCERE — ECHIPAMENTE, CABLURI ȘI PROTECȚII", "h"),
-           Pp("Valorile provin din aceeași configurație ca schema monofilară și raportul de calcul (sursă unică de date)." +
-              {"approved": " <b>Configurație verificată și aprobată.</b>", "stale": " <font color='#b03a2e'><b>Aprobarea a fost anulată — configurația s-a modificat.</b></font>"}.get(st, " <font color='#b03a2e'><b>CIORNĂ — configurație neaprobată.</b></font>"), "small"),
-           Pp("1. Date generale", "b"),
-           tbl([["Câmp", "Valoare"], ["Beneficiar", get("name")], ["Loc de producere / consum", loc or None], ["POD", get("pod")],
-                ["Operator de distribuție", get("operator")], ["Număr proiect", get("project_no")],
-                ["Branșament", f"{grid.get('supply')}, putere aprobată {gv(n(grid.get('bransament_kw')), ' kW') or '[lipsă]'}" if grid.get("supply") else None],
-                ["Putere instalată DC", gv(t["kwp"], " kWp")], ["Putere invertoare AC (nominal / maxim)", f"{t['inverters_kw']:g} / {t['inverters_kw_max']:g} kW" if t["inverters_kw"] else None],
-                ["Putere maximă evacuată", gv(t["export_kw"], " kW")], ["Capacitate stocare", gv(t["storage_kwh"], " kWh") or "fără stocare"],
-                ["Sistem de legare la pământ", grid.get("earthing")], ["Ik la punctul de racord", gv(n(grid.get("ik_ka")), " kA")],
-                ["Priză de pământ (măsurat / admis)", f"{gv(n(grid.get('grounding_ohm') or rec.get('grounding_ohm')), ' Ω') or '[nemăsurat]'} / {gv(n(grid.get('grounding_limit') or rec.get('grounding_limit')), ' Ω') or '[nestabilit]'}"]], [70, 112]),
-           Pp("2. Lista echipamentelor", "b")]
-    eq = [["Cod", "Echipament", "Marcă / model", "Caracteristici", "Cant."]]
+    status = {"approved": "Configurație verificată și aprobată.", "stale": "Aprobarea a fost anulată — configurația s-a modificat."}.get(st, "CIORNĂ — configurație neaprobată.")
+    if rec.get("is_test"):
+        status = "DOSAR DE TEST — date fictive, nu este document oficial. " + status
+    sec = [("1. Date generale", ["Câmp", "Valoare"], [
+        ["Beneficiar", get("name")], ["Loc de producere / consum", loc or None], ["POD", get("pod")], ["Operator de distribuție", get("operator")],
+        ["Număr proiect", get("project_no")],
+        ["Branșament", f"{grid.get('supply')}, putere aprobată {gv(n(grid.get('bransament_kw')), ' kW') or '[lipsă]'}" if grid.get("supply") else None],
+        ["Putere instalată DC", gv(t["kwp"], " kWp")], ["Putere invertoare AC (nominal / maxim)", f"{t['inverters_kw']:g} / {t['inverters_kw_max']:g} kW" if t["inverters_kw"] else None],
+        ["Putere maximă evacuată", gv(t["export_kw"], " kW")], ["Capacitate stocare", gv(t["storage_kwh"], " kWh") or "fără stocare"],
+        ["Sistem de legare la pământ", grid.get("earthing")], ["Ik la punctul de racord", gv(n(grid.get("ik_ka")), " kA")],
+        ["Priză de pământ (măsurat / admis)", f"{gv(n(grid.get('grounding_ohm') or rec.get('grounding_ohm')), ' Ω') or '[nemăsurat]'} / {gv(n(grid.get('grounding_limit') or rec.get('grounding_limit')), ' Ω') or '[nestabilit]'}"]], [70, 112])]
+    eq = []
     for i, inv in enumerate(cef.get("inverters") or []):
         r = base["inverters"][i]
         eq.append([f"-U{i + 1}", f"Invertor {inv.get('type') or ''}".strip(), inv.get("brand_model"),
@@ -703,22 +692,83 @@ def tech_sheet(rec, client, settings, res, approval) -> bytes:
     if grid.get("meter"):
         eq.append(["-P2", "Smart meter", grid.get("meter"), f"TC {grid.get('sm_ct_ratio')}" if grid.get("sm_ct_ratio") else "conectare directă", "1"])
     eq.append(["-P1", "Contor bidirecțional OD", "proprietate OD", f"măsură prin TC {grid.get('ct_ratio')}" if grid.get("ct_ratio") else "măsură directă", "1"])
-    out.append(tbl(eq, [16, 34, 46, 72, 14]))
-    out.append(Pp("3. Lista cablurilor", "b"))
-    cb = [["Cod", "Traseu", "Tip", "Conductoare", "Secțiune", "L (m)", "Ib / Iz (A)", "ΔU %"]]
-    for x in res["cables"]:
-        cb.append([x["id"], f"{x['from']} → {x['to']}", x.get("type"), x.get("cores"), f"{gv(x.get('section'))} mm² {x.get('material') or ''}" + (f", PE {gv(x.get('pe'))}" if x.get("pe") else ""),
-                   gv(x.get("length")), f"{gv(x.get('ib')) or '—'} / {gv(x.get('iz')) or '—'}", gv(x.get("du")) or "0"])
-    out.append(tbl(cb, [14, 36, 24, 28, 30, 14, 22, 14]))
-    out.append(Pp("4. Aparate de protecție", "b"))
-    out.append(tbl([["Cod", "Aparat", "Valori nominale", "Amplasare"]] + [list(p) for p in protections(rec, res)], [22, 70, 60, 30]))
-    if res["missing"] or res["errors"]:
-        out.append(Pp("5. Date lipsă / neconformități", "b"))
-        for m in res["missing"]:
-            out.append(Pp(f"<font color='#b03a2e'>LIPSĂ: {escape(m['label'])}</font>", "li"))
-        for e in res["errors"]:
-            out.append(Pp(f"<font color='#b03a2e'>EROARE: {escape(e)}</font>", "li"))
+    sec.append(("2. Lista echipamentelor", ["Cod", "Echipament", "Marcă / model", "Caracteristici", "Cant."], eq, [16, 34, 46, 72, 14]))
+    cb = [[x["id"], f"{x['from']} → {x['to']}", x.get("type"), x.get("cores"), f"{gv(x.get('section'))} mm² {x.get('material') or ''}" + (f", PE {gv(x.get('pe'))}" if x.get("pe") else ""),
+           gv(x.get("length")), f"{gv(x.get('ib')) or '—'} / {gv(x.get('iz')) or '—'}", gv(x.get("du")) or "0"] for x in res["cables"]]
+    sec.append(("3. Lista cablurilor", ["Cod", "Traseu", "Tip", "Conductoare", "Secțiune", "L (m)", "Ib / Iz (A)", "ΔU %"], cb, [14, 36, 24, 28, 30, 14, 22, 14]))
+    sec.append(("4. Aparate de protecție", ["Cod", "Aparat", "Valori nominale", "Amplasare"], [list(p) for p in protections(rec, res)], [22, 70, 60, 30]))
+    issues = [f"LIPSĂ: {m['label']}" for m in res["missing"]] + [f"EROARE: {e}" for e in res["errors"]]
     aps = [a for a in (approval.get("approvals") or {}).values() if a.get("valid")]
-    out += [Spacer(1, 8), Pp("Verificat și aprobat: " + ("; ".join(f"{escape(a['name'])} ({escape(a['role_label'])}, {escape(a.get('auth') or '')}), {a['at'][:10]}" for a in aps) if aps else "<font color='#b03a2e'>neaprobat</font>"), "small")]
+    appr = "; ".join(f"{a['name']} ({a['role_label']}, {a.get('auth') or ''}), {a['at'][:10]}" for a in aps) if aps else "neaprobat"
+    return {"company": settings.get("company") or "DNS HOSTESS S.R.L.", "status": status, "sections": sec, "issues": issues, "approved_by": appr}
+
+
+TS_TITLE = "FIȘĂ TEHNICĂ A INSTALAȚIEI DE PRODUCERE — ECHIPAMENTE, CABLURI ȘI PROTECȚII"
+TS_NOTE = "Valorile provin din aceeași configurație ca schema monofilară și raportul de calcul (sursă unică de date). "
+
+
+def tech_sheet(rec, client, settings, res, approval) -> bytes:
+    from reportlab.platypus import SimpleDocTemplate, Spacer
+    from reportlab.lib.pagesizes import A4 as P4
+    St = docgen.S
+    D = sheet_data(rec, client, settings, res, approval)
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=P4, leftMargin=16 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title="Fișă tehnică instalație")
+    Pp = lambda x, st="p": Paragraph(x, St[st])
+    C_ = lambda x, b=False: Paragraph(escape(str(x)) if x not in (None, "") else "<font color='#c0392b'>[lipsă]</font>", CELLB if b else CELL)
+    out = [Pp(f"<b>{escape(D['company'])}</b>", "small"), Spacer(1, 4), Pp(TS_TITLE, "h"), Pp(escape(TS_NOTE + D["status"]), "small")]
+    for title, head, rows, ws in D["sections"]:
+        tb = Table([[C_(h, True) for h in head]] + [[C_(c) for c in r] for r in rows], colWidths=[w * mm for w in ws], repeatRows=1)
+        tb.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f7")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        out += [Pp(title, "b"), tb]
+    if D["issues"]:
+        out.append(Pp("5. Date lipsă / neconformități", "b"))
+        out += [Pp(f"<font color='#b03a2e'>{escape(x)}</font>", "li") for x in D["issues"]]
+    out += [Spacer(1, 8), Pp("Verificat și aprobat: " + escape(D["approved_by"]), "small")]
     doc.build(out)
     return buf.getvalue()
+
+
+def tech_sheet_docx(rec, client, settings, res, approval) -> bytes:
+    from docx import Document
+    from docx.shared import Pt, Mm, RGBColor
+    D = sheet_data(rec, client, settings, res, approval)
+    d = Document()
+    s = d.sections[0]
+    s.page_width, s.page_height = Mm(210), Mm(297)
+    s.left_margin = s.right_margin = Mm(16); s.top_margin = s.bottom_margin = Mm(14)
+    d.styles["Normal"].font.name = "Arial"; d.styles["Normal"].font.size = Pt(9)
+    d.add_paragraph().add_run(D["company"]).bold = True
+    h = d.add_paragraph(); r = h.add_run(TS_TITLE); r.bold = True; r.font.size = Pt(12)
+    d.add_paragraph(TS_NOTE + D["status"]).runs[0].font.size = Pt(8)
+    for title, head, rows, ws in D["sections"]:
+        d.add_paragraph().add_run(title).bold = True
+        tb = d.add_table(rows=1, cols=len(head)); tb.style = "Table Grid"
+        for j, x in enumerate(head):
+            tb.rows[0].cells[j].text = x
+            tb.rows[0].cells[j].paragraphs[0].runs[0].bold = True
+        for row in rows:
+            cells = tb.add_row().cells
+            for j, x in enumerate(row):
+                cells[j].text = str(x) if x not in (None, "") else "[lipsă]"
+                if x in (None, ""):
+                    cells[j].paragraphs[0].runs[0].font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
+        for row in tb.rows:
+            for j, w in enumerate(ws):
+                row.cells[j].width = Mm(w)
+    if D["issues"]:
+        d.add_paragraph().add_run("5. Date lipsă / neconformități").bold = True
+        for x in D["issues"]:
+            d.add_paragraph(x).runs[0].font.color.rgb = RGBColor(0xB0, 0x3A, 0x2E)
+    d.add_paragraph("Verificat și aprobat: " + D["approved_by"])
+    o = io.BytesIO(); d.save(o)
+    return o.getvalue()
+
+
+def snapshot(rec, res):
+    v = {f"{it['group']} · {it['label']}": str(it["value"]) if it["value"] is not None else "—" for it in res["items"]}
+    for x in res["cables"]:
+        v[f"Cablu {x['id']}"] = f"{x.get('type') or ''} {gv(x.get('section'))} mm² {x.get('material') or ''}, L={gv(x.get('length')) or '—'} m, ΔU {gv(x.get('du')) or 0}%".strip()
+    for code, name, val, loc in protections(rec, res):
+        v[f"Protecție {code} {name}"] = str(val or "—")
+    return v

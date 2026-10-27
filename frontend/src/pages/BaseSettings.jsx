@@ -29,7 +29,8 @@ function FileSlot({ label, file, onFile, testid }) {
 
 const CO = [["company", "Denumire firmă"], ["cui", "CUI"], ["regcom", "Nr. Registrul Comerțului"], ["phone", "Telefon"], ["email", "E-mail"], ["address", "Adresă sediu", true],
   ["anre_attest", "Atestat ANRE — număr"], ["anre_category", "Atestat ANRE — tip/categorie"], ["anre_issuer", "Emitent"], ["anre_issued", "Data emiterii", false, "date"],
-  ["anre_valid", "Valabil până la", false, "date"], ["warranty_months", "Garanție lucrări (luni)"], ["kit_bmp", "Text standard kit BMP (PV recepție)", true], ["kit_structure", "Text standard kit structură (PV recepție)", true]];
+  ["anre_valid", "Valabil până la", false, "date"], ["warranty_months", "Garanție lucrări (luni)"], ["kit_bmp", "Text standard kit BMP (PV recepție)", true], ["kit_structure", "Text standard kit structură (PV recepție)", true],
+  ["test_email", "E-mail pentru teste (primește toate e-mailurile dosarelor TEST; gol = nu se trimit)"]];
 
 function Company() {
   const [s, setS] = useState(null);

@@ -31,7 +31,7 @@ function Row({ p, id, statuses, reload, preview }) {
       <td className="px-2 py-2.5 whitespace-nowrap text-right">
         {canView && <button className="p-1.5 rounded hover:bg-[#eef4ff]" title="Previzualizare" onClick={() => preview(url, p.title)} data-testid={`opis-preview-${p.nr}`}><Eye size={15} style={{ color: "var(--blue)" }} /></button>}
         {canView && <a className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="PDF" href={url} target="_blank" rel="noopener noreferrer" data-testid={`opis-pdf-${p.nr}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></a>}
-        {p.source === "generat" && !["schema", "fisa_tehnica"].includes(p.key) && <a className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="Word" href={`${url}&fmt=docx`} data-testid={`opis-docx-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></a>}
+        {p.source === "generat" && p.key !== "schema" && <a className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="Word" href={`${url}&fmt=docx`} data-testid={`opis-docx-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></a>}
         <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" data-testid={`opis-upload-input-${p.nr}`}
           onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; await put({ upload: await uploadFile(f), status: null }); toast.success("Document atașat"); ref.current.value = ""; }} />
         <button className="p-1.5 rounded hover:bg-[#eef4ff]" title="Încarcă document existent / semnat" onClick={() => ref.current.click()} data-testid={`opis-upload-${p.nr}`}><Upload size={15} style={{ color: "var(--blue)" }} /></button>

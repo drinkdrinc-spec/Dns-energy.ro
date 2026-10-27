@@ -12,6 +12,7 @@ import { DossierExtras } from "@/components/dossier/DossierExtras";
 import { ClientDocs } from "@/components/dossier/ClientDocs";
 import { SignRequests } from "@/components/sign/SignRequests";
 import { SldPanel } from "@/components/sld/SldPanel";
+import { TestDossierButtons } from "@/components/sld/TestDossier";
 
 function Field({ f, value, onChange, refOptions }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -93,6 +94,7 @@ export default function ModulePage({ moduleKey }) {
     <div>
       <PageHeader eyebrow={cfg.eyebrow} title={cfg.title} sub={cfg.sub}
         action={<div className="flex gap-2 flex-wrap">
+          {key === "prosumator" && <TestDossierButtons onDone={load} />}
           {key === "prosumator" && <AiImportButton onExtracted={(d) => { setForm(d); setEditId(null); setChecks({}); }} />}
           <Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>
         </div>} />

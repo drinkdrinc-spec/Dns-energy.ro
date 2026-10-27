@@ -5,6 +5,7 @@ import { api, API, fileUrl } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { SldChecks } from "./SldChecks";
+import { SldCompare } from "./SldCompare";
 
 const tok = () => localStorage.getItem("den_token");
 const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare anulată — configurație modificată", "#fff4e0", "#8a5a00"], draft: ["Ciornă — neaprobată", "#fff0f0", "#9b2c2c"] };
@@ -26,7 +27,8 @@ export function SldPanel({ id, form, setVal }) {
   const open = (path) => run(async () => { await persist(); window.open(`${API}${path}${path.includes("?") ? "&" : "?"}auth=${tok()}`, "_blank"); await load(); });
   const approve = (role) => run(async () => { await persist(); await api.post(`/sld/${id}/approve`, { role }); await load(); toast.success("Schema a fost aprobată"); });
   const unapprove = () => run(async () => { await api.post(`/sld/${id}/unapprove`); await load(); });
-  const sendSign = (role) => run(async () => { await api.post(`/sld/${id}/send-sign`, { role, origin: window.location.origin, pos_keys: ["schema"] }); toast.success("Link de semnare trimis pe e-mail"); });
+  const requestApproval = () => run(async () => { await persist(); const r = await api.post(`/sld/${id}/request-approval`, { origin: window.location.origin }); await load(); toast.success(r.data.recipients.some((x) => x.sent) ? "Cerere de aprobare trimisă" : "Cerere înregistrată — e-mail netrimis (dosar TEST fără e-mail de test)"); });
+  const sendSign = (role) => run(async () => { const r = await api.post(`/sld/${id}/send-sign`, { role, origin: window.location.origin, pos_keys: ["schema"] }); toast.success(r.data.every((x) => x.email_sent) ? "Link de semnare trimis pe e-mail" : "Cerere creată — e-mail netrimis (dosar TEST fără e-mail de test)"); });
   const source = (body) => run(async () => { await api.put(`/sld/${id}/source`, body); await load(); });
 
   if (!d) return null;
@@ -35,7 +37,7 @@ export function SldPanel({ id, form, setVal }) {
     <div className="mt-6 rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="sld-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="font-bold">Schemă monofilară și dimensionare tehnică <span className="text-[10px] font-bold ml-1 rounded-full px-2 py-0.5" style={{ background: "#eef4ff", color: "var(--blue)" }}>generator nou — în verificare</span></h3>
+          <h3 className="font-bold">Schemă monofilară și dimensionare tehnică <span className="text-[10px] font-bold ml-1 rounded-full px-2 py-0.5" style={{ background: "#eef4ff", color: "var(--blue)" }}>generator nou — în verificare</span>{d.is_test && <span className="text-[10px] font-bold ml-1 rounded-full px-2 py-0.5" style={{ background: "#fff0f0", color: "#9b2c2c" }} data-testid="sld-test-badge">DOSAR DE TEST</span>}</h3>
           <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Simboluri SR EN 60617 · calcule HD 60364 / IEC 62548. Dimensionarea este o propunere verificabilă; devine document final doar după aprobarea proiectantului / verificatorului.</p>
         </div>
         <span className="text-xs font-bold rounded-full px-3 py-1" style={{ background: st[1], color: st[2] }} data-testid="sld-status">{st[0]}{d.approval.status === "approved" ? ` · ${Object.values(d.approval.approvals || {}).filter((a) => a.valid).map((a) => a.name).join(" + ")}` : ""}</span>
@@ -77,6 +79,15 @@ export function SldPanel({ id, form, setVal }) {
             );
           })}
           {d.source === "generated" && !d.ready && <p className="text-[11px] mt-1" style={{ color: "#9b2c2c" }}>Aprobarea este blocată până la completarea datelor lipsă și rezolvarea erorilor.</p>}
+          {d.approval.status !== "approved" && (
+            <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--line)" }}>
+              <Btn variant="secondary" disabled={busy || (d.source === "generated" && !d.ready)} onClick={requestApproval} data-testid="sld-request-approval"><Send size={13} /> Cere aprobare pe e-mail</Btn>
+              <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Se trimite și automat, o singură dată pe versiune, la salvare, când datele sunt complete și fără erori.</p>
+              {(d.approval_requests || []).slice().reverse().slice(0, 3).map((q, i) => (
+                <p key={i} className="text-[11px]" data-testid={`sld-approval-request-${i}`}>{String(q.at).slice(0, 16).replace("T", " ")} UTC · {q.auto ? "automat" : "manual"} · {q.recipients.map((x) => `${x.name}: ${x.sent ? "trimis la " + x.to : "netrimis (TEST fără e-mail de test)"}`).join("; ") || "fără destinatari cu e-mail"}</p>
+              ))}
+            </div>
+          )}
           {d.approval.status !== "draft" && <button className="text-xs mt-1 underline" style={{ color: "#b33333" }} onClick={unapprove} data-testid="sld-unapprove">Retrage aprobarea</button>}
           {d.approval.status === "approved" && (
             <div className="mt-3 pt-2 border-t" style={{ borderColor: "var(--line)" }}>
@@ -102,6 +113,7 @@ export function SldPanel({ id, form, setVal }) {
               {h.file && <a className="underline" style={{ color: "var(--blue)" }} href={fileUrl(h.file.storage_path)} target="_blank" rel="noopener noreferrer" data-testid={`sld-history-file-${i}`}>PDF</a>}
             </div>
           ))}
+          <SldCompare id={id} history={d.history} />
         </div>
       )}
     </div>
