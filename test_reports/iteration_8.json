@@ -1,0 +1,29 @@
+{
+  "summary": "Retest of the SLD generator fixes from iteration 7. All fixes are verified. Backend: 89/89 passing (81 existing incl. test_sld_generator.py, plus 8 new in test_sld_iter8.py). The CRITICAL data-loss bug is FIXED: update_item now pops `sld`. A full-form PUT containing a stale sld keeps the approvals and the uploaded schema/source, confirmed by both API and UI (sld-refresh, sld-preview and save-btn all keep 'Aprobată' and the upload). Dual approvals work: designer and verifier are stored in sld.approvals with valid=true for both. Changing cef (AC length or TG) makes the status 'stale' with both valid=false, and the UI shows '— anulată' on sld-approval-info-designer/-verifier. Re-approving bumps the revision (0->1) and drops the stale approval of the other role. Unapprove clears both. NECONFORM routing: TG 50 > BMP 40 gives a Selectivitate error, ready=false, approve returns 400 and the UI approve button is disabled with the blocking message. A DC voltage drop >1% is only a warning. Demo config is TG 32 / BMP 40 with ready=true, no errors and no NECONFORM items. The PDF string label shows '[kWp lipsă]' (text extracted with pypdf; no '= 0 kWp'). There is no single-phase-on-three-phase warning when supply is empty, and it still appears when supply is Trifazat. sld-demo is a BUTTON whose parent is a DIV (no anchor) and it opens /api/sld/demo/pdf. Restoring the original values makes the approval valid again because the hash matches.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "sizing.py line 258", "issue": "A measured earth resistance > 4 Ω only goes to warnings, because the note contains 'de confirmat'. This is probably intended; confirm with the domain owner. The TT condition RA·IΔn ≤ 50 V is still an error."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "SldPanel", "issues": [
+        "The status pill shows only the latest approver ('Aprobată · TEST_UI verifier') even when both designer and verifier are valid. Consider 'Aprobată · proiectant + verificator'.",
+        "When the source is 'uploaded', sld-preview still opens the generated PDF. Consider labelling it or opening the uploaded file."
+      ]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_sld_generator.py", "/app/backend/tests/test_sld_iter8.py", "/app/test_reports/pytest/pytest_iter8.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Switching the source to uploaded or generated changes the fingerprint (source and upload are hashed). Existing approvals therefore become stale, and the next approval bumps the revision and drops the other role's approval. This is consistent, but the user may be surprised; consider a toast warning.",
+    "sld_unapprove still returns ok for an unknown id (no 404).",
+    "SldPanel.open still calls window.open after await persist(). The popup may be blocked if the save is slow."
+  ],
+  "updated_files": ["/app/backend/tests/test_sld_iter8.py", "/app/backend/tests/seed_sld_ui.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "TEST_ staff, client and prosumator were created via seed_sld_ui.py for the UI tests and cleaned up afterwards.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run pytest with -n0 for a single file (pytest.ini sets xdist). seed_sld_ui.py seed|show|clean creates a ready demo record with an eligible designer and verifier for UI testing. Credentials: drinkdrinc@gmail.com / DEnergy2026!."
+}

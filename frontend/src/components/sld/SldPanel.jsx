@@ -37,12 +37,12 @@ export function SldPanel({ id, form, setVal }) {
           <h3 className="font-bold">Schemă monofilară și dimensionare tehnică <span className="text-[10px] font-bold ml-1 rounded-full px-2 py-0.5" style={{ background: "#eef4ff", color: "var(--blue)" }}>generator nou — în verificare</span></h3>
           <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Simboluri SR EN 60617 · calcule HD 60364 / IEC 62548. Dimensionarea este o propunere verificabilă; devine document final doar după aprobarea proiectantului / verificatorului.</p>
         </div>
-        <span className="text-xs font-bold rounded-full px-3 py-1" style={{ background: st[1], color: st[2] }} data-testid="sld-status">{st[0]}{d.approval.status === "approved" ? ` · ${d.approval.name}` : ""}</span>
+        <span className="text-xs font-bold rounded-full px-3 py-1" style={{ background: st[1], color: st[2] }} data-testid="sld-status">{st[0]}{d.approval.status === "approved" ? ` · ${Object.values(d.approval.approvals || {}).filter((a) => a.valid).map((a) => a.name).join(" + ")}` : ""}</span>
       </div>
       <div className="flex flex-wrap gap-2 mt-4">
         <Btn variant="secondary" onClick={refresh} disabled={busy} data-testid="sld-refresh"><RefreshCw size={14} /> Salvează și verifică</Btn>
         <Btn variant="secondary" onClick={apply} disabled={busy} data-testid="sld-apply"><Wand2 size={14} /> Completează automat valorile calculate</Btn>
-        <Btn onClick={() => open(`/sld/${id}/pdf`)} disabled={busy} data-testid="sld-preview"><Eye size={14} /> Previzualizare schemă ({d.format})</Btn>
+        <Btn onClick={() => open(`/sld/${id}/pdf`)} disabled={busy} data-testid="sld-preview"><Eye size={14} /> Previzualizare schemă generată ({d.format})</Btn>
         <Btn variant="secondary" onClick={() => open(`/sld/${id}/pdf?fmt=${d.format === "A3" ? "A4" : "A3"}`)} disabled={busy} data-testid="sld-preview-alt"><FileDown size={14} /> PDF {d.format === "A3" ? "A4" : "A3"}</Btn>
         <Btn variant="secondary" onClick={() => open(`/sld/${id}/report`)} disabled={busy} data-testid="sld-report"><FileDown size={14} /> Raport de calcul</Btn>
         <Btn variant="secondary" onClick={() => window.open(`${API}/sld/demo/pdf?auth=${tok()}`, "_blank")} data-testid="sld-demo"><Eye size={14} /> Schemă demonstrativă</Btn>
