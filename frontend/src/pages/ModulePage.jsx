@@ -1,0 +1,157 @@
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
+import { api } from "@/lib/api";
+import { MODULES } from "@/config/modules";
+import { PageHeader, Btn } from "@/components/Layout";
+import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
+import { toast } from "sonner";
+
+function Field({ f, value, onChange, refOptions }) {
+  const common = { className: "den-input", value: value ?? "", onChange: (e) => onChange(f.name, e.target.value), placeholder: f.placeholder || "", "data-testid": `field-${f.name}` };
+  return (
+    <div className={`den-field ${f.full ? "sm:col-span-2" : ""}`}>
+      <label>{f.label}</label>
+      {f.type === "textarea" ? (
+        <textarea {...common} rows={3} />
+      ) : f.type === "select" ? (
+        <select {...common}><option value="">Alege...</option>{f.options.map((o) => <option key={o} value={o}>{o}</option>)}</select>
+      ) : f.type === "ref" ? (
+        <select {...common}><option value="">Alege...</option>{(refOptions[f.ref] || []).map((o) => <option key={o.id} value={o.label}>{o.label}</option>)}</select>
+      ) : (
+        <input {...common} type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"} step={f.type === "number" ? "any" : undefined} />
+      )}
+    </div>
+  );
+}
+
+export default function ModulePage({ moduleKey }) {
+  const params = useParams();
+  const key = moduleKey || params.module;
+  const cfg = MODULES[key];
+  const [items, setItems] = useState([]);
+  const [form, setForm] = useState(null); // null=hidden, {} = open
+  const [editId, setEditId] = useState(null);
+  const [checks, setChecks] = useState({});
+  const [refOptions, setRefOptions] = useState({});
+  const [q, setQ] = useState("");
+
+  const load = () => api.get(`/data/${key}`).then((r) => setItems(r.data)).catch(() => {});
+
+  useEffect(() => {
+    setForm(null); setEditId(null); setChecks({}); setQ("");
+    load();
+    const refs = [...new Set((cfg.fields || []).filter((f) => f.type === "ref").map((f) => f.ref))];
+    refs.forEach((ref) => {
+      api.get(`/data/${ref}`).then((r) => {
+        setRefOptions((prev) => ({ ...prev, [ref]: r.data.map((x) => ({ id: x.id, label: MODULES[ref].display(x) })) }));
+      }).catch(() => {});
+    });
+    // eslint-disable-next-line
+  }, [key]);
+
+  const openNew = () => { setForm({}); setEditId(null); setChecks({}); };
+  const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); };
+  const setVal = (name, value) => setForm((p) => ({ ...p, [name]: value }));
+
+  const save = async () => {
+    const required = (cfg.fields || []).filter((f) => f.required);
+    for (const f of required) { if (!form[f.name]) { toast.error(`Completează: ${f.label.replace(" *", "")}`); return; } }
+    const payload = { ...form };
+    if (cfg.checklist) payload.checklist = checks;
+    try {
+      if (editId) await api.put(`/data/${key}/${editId}`, payload);
+      else await api.post(`/data/${key}`, payload);
+      toast.success("Salvat cu succes");
+      setForm(null); setEditId(null); setChecks({}); load();
+    } catch (e) { toast.error("Eroare la salvare"); }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Ștergi această înregistrare?")) return;
+    await api.delete(`/data/${key}/${id}`);
+    toast.success("Șters"); load();
+  };
+
+  const filtered = useMemo(() => {
+    if (!q) return items;
+    const ql = q.toLowerCase();
+    return items.filter((i) => JSON.stringify(i).toLowerCase().includes(ql));
+  }, [items, q]);
+
+  const checkedCount = cfg.checklist ? cfg.checklist.filter((c) => checks[c]).length : 0;
+
+  return (
+    <div>
+      <PageHeader eyebrow={cfg.eyebrow} title={cfg.title} sub={cfg.sub}
+        action={<Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>} />
+
+      {form && (
+        <div className="den-panel mb-6" data-testid="module-form">
+          <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {cfg.fields.map((f) => <Field key={f.name} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} />)}
+          </div>
+
+          {cfg.checklist && (
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-sm">Checklist documente DI-U</h3>
+                <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{ background: "#eef4ff", color: "var(--blue)" }}>{checkedCount} / {cfg.checklist.length} bifate</span>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {cfg.checklist.map((c) => (
+                  <label key={c} className="flex items-center gap-3 rounded-lg border px-3 py-2.5 cursor-pointer text-sm" style={{ borderColor: "var(--line)" }}>
+                    <input type="checkbox" checked={!!checks[c]} onChange={(e) => setChecks((p) => ({ ...p, [c]: e.target.checked }))} data-testid={`check-${c}`} />
+                    <span>{c}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-6 den-noprint">
+            <Btn onClick={save} data-testid="save-btn">Salvează</Btn>
+            <Btn variant="secondary" onClick={() => window.print()} data-testid="pdf-btn">Tipărește / PDF</Btn>
+            <Btn variant="secondary" onClick={() => setForm(null)}>Anulează</Btn>
+          </div>
+        </div>
+      )}
+
+      <div className="den-panel">
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({items.length})</span></h2>
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
+            <input data-testid="search-input" className="den-input pl-9 w-[240px]" placeholder="Caută..." value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="text-sm py-8 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>Nu există înregistrări încă.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="items-table">
+              <thead>
+                <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
+                  {cfg.columns.map((c) => <th key={c.key} className="px-3 py-2.5 font-semibold text-[12px] whitespace-nowrap">{c.label}</th>)}
+                  <th className="px-3 py-2.5 text-right"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((it) => (
+                  <tr key={it.id} className="border-t hover:bg-[#fafcff]" style={{ borderColor: "var(--line)" }}>
+                    {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      <button onClick={() => openEdit(it)} data-testid={`edit-${it.id}`} className="p-1.5 rounded hover:bg-[#eef4ff]" title="Editează"><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
+                      <button onClick={() => remove(it.id)} data-testid={`delete-${it.id}`} className="p-1.5 rounded hover:bg-[#fff0f0] ml-1" title="Șterge"><Trash2 size={15} style={{ color: "#b33333" }} /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
