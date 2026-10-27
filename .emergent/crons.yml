@@ -7,6 +7,14 @@ crons:
     method: POST
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     enabled: true
+  - name: atr-deadlines
+    description: "Reamintiri pentru termenele cererilor ATR (verificare documente, emitere aviz)"
+    cron: "0 8 * * *"
+    timezone: "Europe/Bucharest"
+    endpoint: "{{BASE_URL}}/api/cron/atr-deadlines"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true
   - name: forms-check
     description: "Verifică săptămânal linkurile și versiunile formularelor oficiale ale distribuitorilor"
     cron: "0 6 * * 1"

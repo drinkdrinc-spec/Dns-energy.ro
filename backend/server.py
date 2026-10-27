@@ -361,7 +361,8 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     guard(module, user, write=True)
     cur = await check_access(user, module, item_id)
     data = await request.json()
-    data.pop("_id", None); data.pop("id", None); data.pop("owner", None); data.pop("created_at", None); data.pop("created_by", None); data.pop("created_by_email", None)
+    data.pop("_id", None); data.pop("id", None)
+    data.pop("atr_track", None); data.pop("owner", None); data.pop("created_at", None); data.pop("created_by", None); data.pop("created_by_email", None)
     data["updated_by"] = user.get("email")
     if not is_admin(user):
         data.pop("assigned_to", None)
@@ -494,7 +495,7 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
     if not is_admin(user):
         import json as _j
         ok = False
-        for m in ("prosumator", "clients", "documents", "diu"):
+        for m in ("prosumator", "clients", "documents", "diu", "atr", "power"):
             async for d in db[m].find(scope_q(user, m), {"_id": 0}):
                 if path in _j.dumps(d, default=str):
                     ok = True; break
@@ -1176,6 +1177,10 @@ import atr_doc as ATR
 async def atr_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
     rec = await check_access(user, "atr", item_id)
+    pdf, name = await atr_pack(user, rec, full)
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
+
+async def atr_pack(user: dict, rec: dict, full: int):
     client = await get_client(user["id"], rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     pros, info = None, None
@@ -1214,7 +1219,7 @@ async def atr_pdf(item_id: str, full: int = 0, authorization: str = Header(None)
     o = io.BytesIO(); w.write(o)
     miss = [k for k in ATR.required(rec) if k not in attached]
     name = f"{'DOSAR_ATR' if full else 'CERERE_ATR'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and miss else ''}.pdf"
-    return Response(content=o.getvalue(), media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
+    return o.getvalue(), name
 
 @api_router.get("/power/{item_id}/pdf")
 async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
@@ -1689,6 +1694,7 @@ async def shutdown():
 
 import billing_routes  # noqa: E402
 import forms_routes  # noqa: E402
+import atr_routes  # noqa: E402
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

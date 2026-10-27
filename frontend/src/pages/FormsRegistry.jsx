@@ -33,13 +33,31 @@ function Row({ f, admin, reload }) {
   );
 }
 
+const OPS = ["DEER", "Delgaz Grid", "Rețele Electrice România", "Distribuție Energie Oltenia", "ANRE"];
+
+function Contacts() {
+  const [rows, setRows] = useState([]);
+  useEffect(() => { api.get("/operator-contacts").then((r) => setRows(r.data)); }, []);
+  const save = async (op, email) => { try { await api.put(`/operator-contacts/${op}`, { email }); toast.success("Adresă salvată"); } catch (e) { err(e); } };
+  return (
+    <div className="den-panel mb-5" data-testid="operator-contacts">
+      <b className="text-sm">Adrese de e-mail pentru depunerea cererilor ATR</b>
+      <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>Doar adrese de pe domeniul oficial al fiecărui operator. Utilizatorii le pot modifica la fiecare trimitere (tot pe domeniul oficial).</p>
+      {rows.map((c) => <div key={c.op} className="flex flex-wrap gap-2 items-end py-1">
+        <div className="den-field flex-1 min-w-[260px]"><label>{c.name} ({c.domains.join(", ")})</label>
+          <input className="den-input" defaultValue={c.email} onBlur={(e) => e.target.value !== c.email && save(c.op, e.target.value)} data-testid={`contact-${c.op}`} /></div></div>)}
+    </div>
+  );
+}
+
 function AddForm({ reload }) {
   const [f, setF] = useState({ operator: "DEER", title: "", kind: "", url: "" });
   const save = async () => { try { await api.post("/forms", f); toast.success("Formular adăugat și verificat"); setF({ ...f, title: "", url: "", kind: "" }); reload(); } catch (e) { err(e); } };
   return (
-    <div className="den-panel mb-5 grid sm:grid-cols-[150px_1fr_150px_1fr_auto] gap-2 items-end" data-testid="form-add">
-      {[["operator", "Operator"], ["title", "Denumire formular"], ["kind", "Tip"], ["url", "Link oficial (https://…)"]].map(([k, l]) => (
-        <div key={k} className="den-field"><label>{l}</label><input className="den-input" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} data-testid={`form-add-${k}`} /></div>))}
+    <div className="den-panel mb-5 flex flex-wrap gap-2 items-end" data-testid="form-add">
+      <div className="den-field w-48"><label>Operator</label><select className="den-input" value={f.operator} onChange={(e) => setF({ ...f, operator: e.target.value })} data-testid="form-add-operator">{OPS.map((o) => <option key={o}>{o}</option>)}</select></div>
+      {[["title", "Denumire formular", "flex-1 min-w-[200px]"], ["kind", "Tip", "w-36"], ["url", "Link oficial (https://…)", "flex-1 min-w-[240px]"]].map(([k, l, w]) => (
+        <div key={k} className={`den-field ${w}`}><label>{l}</label><input className="den-input" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} data-testid={`form-add-${k}`} /></div>))}
       <Btn onClick={save} data-testid="form-add-save">Adaugă</Btn>
     </div>
   );
@@ -60,6 +78,7 @@ export default function FormsRegistry() {
     <div>
       <PageHeader eyebrow="Racordare" title="Registru formulare oficiale" sub="Linkurile oficiale DEER, Delgaz Grid, Rețele Electrice și Distribuție Energie Oltenia, cu verificare automată săptămânală (luni 06:00) a linkurilor și a versiunilor; administratorul primește e-mail la modificări."
         action={user?.platform && <Btn onClick={checkAll} disabled={busy} data-testid="forms-check-all"><RefreshCw size={15} />{busy ? "Se verifică…" : "Verifică acum toate"}</Btn>} />
+      {user?.platform && <Contacts />}
       {user?.platform && <AddForm reload={load} />}
       <div className="flex gap-2 flex-wrap mb-4">{["", ...ops].map((o) => <button key={o || "all"} onClick={() => setOp(o)} data-testid={`forms-filter-${o || "all"}`} className="rounded-full px-4 py-2 text-[12px] font-bold border"
         style={o === op ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>{o || "Toți operatorii"}</button>)}</div>

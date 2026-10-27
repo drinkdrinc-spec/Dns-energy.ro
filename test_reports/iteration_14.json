@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 14: Cerere ATR module, Anexa 1 operator header, official forms registry + cron. Backend 13/13 pytest pass (ATR CRUD, PDF full=0/1 both kinds, _INCOMPLET logic, upload->complete, START/PRO 402, FULL allowed, cross-tenant 404, Power Anexa 1 Delgaz/RER header, forms list 16 seeded, non-platform 403 on all admin ops, invalid/duplicate url 400, create+check, confirm->valid+version, check?fid, delete, Delgaz -> 'neverificabil automat' HTTP 403, cron 401/accepted/duplicate). Frontend: admin sees nav-atr/nav-forms; /cerere-atr create producer + link prosumator + receptor + save + reopen -> atr-dossier with checklist, 13 doc/upload slots, auto schema/fise badges, both PDF links return 200 (full has _INCOMPLET); START sees upgrade-gate; FULL subscriber can use ATR; /formulare-oficiale lists 16, filters work (Delgaz=3), admin add/delete/bad-url toast work; non-platform users see no admin controls. Regression /spor-putere power-dossier and /abonament OK.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "GET /api/files/{path}", "issue": "Non-admin (team inginer/electrician) file access check only scans prosumator/clients/documents/diu collections — files attached to ATR (and power) records would 404 for non-admin roles. Add 'atr','power' to the scanned modules."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AtrDossier Slot rows (Slot from PowerDossier)", "issue": "Key prefix column is too narrow for longer keys: 'plan)', 'prop)', 'acord)', 'memoriu)', 'schema)', 'atr_prev)' overlap the label text (e.g. 'acord)cord notarial', 'atr_prev)' over 'ATR / certificat'). Widen/auto-size the key column or hide raw keys / use a), b), c) numbering.", "selector": "[data-testid^=atr-doc-]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/formulare-oficiale", "issues": ["Add-form panel (form-add) renders as a single stacked column on 1920px although intended as a 1-row grid sm:grid-cols-[150px_1fr_150px_1fr_auto]; full-width 'Adaugă' button looks heavy", "Operator in add-form is free text; a select with the 4 operators would avoid filter fragmentation (filters are built from distinct operator strings)"]},
+      {"screen": "/cerere-atr", "issues": ["'Data PIF centrală' and other date fields use the native browser date picker (mm/dd/yyyy, US format) instead of shadcn calendar / RO format"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter14_atr_forms.py", "/app/backend/tests/seed_iter14_ui.py", "/app/test_reports/pytest/pytest_iter14.xml"],
+  "action_items": [
+    "Fix overlapping key/label in ATR document slots (Slot component)",
+    "Add 'atr' and 'power' to module scan in /api/files download check for non-admin roles",
+    "Optional: make forms add panel a single row and operator a select; use RO-format date picker"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1699 lines — should be split (atr/power PDF endpoints into own router module like forms_routes.py)",
+    "forms check_all runs sequentially with 40s timeout per URL; /api/forms/check (all) can take long and block the request — consider asyncio.gather with a semaphore",
+    "check_one: when status is BLOCKED with no prior hash, history keeps growing per check (sliced to 30, fine)",
+    "atr_pdf: errors in attachment conversion are only logged; the merged PDF silently omits the file while checklist still marks it attached"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter14_atr_forms.py", "/app/backend/tests/seed_iter14_ui.py"],
+  "success_rate": {"backend": "100%", "frontend": "95% (one layout overlap bug)"},
+  "test_credentials": "drinkdrinc@gmail.com / DEnergy2026! (platform admin); temporary test_i14_*@example.com and ui14_*@example.com subscribers created and deleted",
+  "seed_data_creation": "None persisted. All @example.com users, their data, test ATR/power records, test forms and cron_runs were cleaned up. Plans untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest tests/test_iter14_atr_forms.py (self-contained, creates/cleans users). 16 seeded forms; Delgaz forms are 'neverificabil automat' (HTTP 403) as expected. Plans in DB customized by user — do not modify. UI seed: python tests/seed_iter14_ui.py [clean] creates ui14_start/ui14_full@example.com / Test2026!x."
+}

@@ -3,6 +3,8 @@ import { api, API } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Slot } from "@/components/dossier/PowerDossier";
 import { Plus, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { FormAlert } from "@/components/dossier/FormAlert";
+import { AtrTracking } from "@/components/dossier/AtrTracking";
 
 const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schiță de amplasament", "req"], ["cf", "Extras de carte funciară (CF / nr. cadastral)", "req"],
   ["prop", "Act de proprietate / drept de folosință", "req"], ["id", "Act de identitate / CUI / acte de funcționare", "req"], ["cu", "Certificat de urbanism", "new"],
@@ -25,6 +27,7 @@ export function AtrDossier({ id, form, setVal }) {
   const setR = (i, k, v) => setVal("receptors", recs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="atr-dossier">
+      <FormAlert operator={form.operator} scope="atr" />
       <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (> 27 kW)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
@@ -54,6 +57,7 @@ export function AtrDossier({ id, form, setVal }) {
           <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>
         </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați cererea pentru a genera documentele.</span>}
       </div>
+      {id && <AtrTracking id={id} operator={form.operator} />}
     </div>
   );
 }

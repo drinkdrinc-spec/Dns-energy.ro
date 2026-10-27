@@ -4,6 +4,7 @@ import { uploadFile } from "@/components/dossier/ClientDocs";
 import { Btn } from "@/components/Layout";
 import { FileText, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { FormAlert } from "@/components/dossier/FormAlert";
 
 const DOCS = [["a", "Act de identitate / CUI / autorizații de funcționare"], ["b", "Certificat constatator (prosumator PJ)"], ["c", "Certificat de urbanism (loc nou)"],
   ["d", "Plan de situație (loc nou)"], ["e", "PUZ / PUD (loc nou, dacă e cerut)"], ["f", "Act de proprietate / drept de folosință (loc nou)"], ["g", "Autorizație de construire (loc nou)"],
@@ -15,7 +16,7 @@ export function Slot({ k, label, files, onChange, auto, autoLabel, testPrefix = 
   const ref = useRef();
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs py-1.5 border-t" style={{ borderColor: "var(--line)" }} data-testid={`${testPrefix}-doc-${k}`}>
-      <b className="w-5">{k})</b><span className="min-w-[220px] flex-1">{label}</span>
+      <b className="w-20 shrink-0">{k})</b><span className="min-w-[220px] flex-1">{label}</span>
       {files.map((f, i) => <span key={f.storage_path} className="inline-flex items-center gap-1"><a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--blue)" }}><FileText size={11} className="inline" /> {f.original_filename}</a>
         <button type="button" onClick={() => onChange(files.filter((_, j) => j !== i))}><Trash2 size={11} style={{ color: "#b33333" }} /></button></span>)}
       {!files.length && auto && <span style={{ color: "#166534" }}>auto din dosarul de prosumator: {autoLabel || AUTO[k]}</span>}
@@ -34,6 +35,7 @@ export function PowerDossier({ id, form, setVal }) {
   const chk = (k, l, def) => <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={form[k] ?? def ?? false} onChange={(e) => setVal(k, e.target.checked)} data-testid={`power-${k}`} />{l}</label>;
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="power-dossier">
+      <FormAlert operator={form.operator} scope="power" />
       <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere de racordare — Anexa 1 (Ord. ANRE 69/2020, model DEER) și dosar</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="den-field"><label>Tip cerere</label><select className="den-input" value={form.request_kind || "existent"} onChange={(e) => setVal("request_kind", e.target.value)} data-testid="power-kind">
