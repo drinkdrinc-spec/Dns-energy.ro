@@ -115,7 +115,7 @@ def doc_memoriu(ctx, r, pos):
     if (r.get("cef") or {}).get("inverters") or r.get("inverter"):
         out += [B("b", "4. Echipamente principale"), B("table", D.equipment_lines(ctx), [60, 24, 90], True)]
     out += [B("b", "5. Circuitele tabloului general"),
-            B("table", [["Nr.", "Circuit", "Protecție", "Cablu"]] + [[str(i + 1), escape(c["name"]), f"{e(c.get('curve'))}{e(c.get('breaker_a'))} A" + (f" + DDR {e(c.get('rcd_ma'))} mA tip {e(c.get('rcd_type'))}" if c.get("rcd_ma") else ""),
+            B("table", [["Nr.", "Circuit", "Protecție", "Cablu"]] + [[str(i + 1), escape(c["name"]), f"{e(c.get('curve'))}{e(c.get('breaker_a'))} A" + (f" + DDR {e(c.get('rcd_ma'))} mA tip {e(str(c.get('rcd_type') or '').replace('Tip', '').strip())}" if c.get("rcd_ma") else ""),
                                                                     f"{e(c.get('cable'))} {e(c.get('section'))} mm², L={e(c.get('length'))} m"] for i, c in enumerate(cs)] or [["—", M, M, M]], [6, 40, 30, 30], True),
             B("b", "6. Măsuri de protecție"),
             B("bullets", ["Protecția la suprasarcină și scurtcircuit se realizează cu întreruptoarele automate indicate în schema monofilară a tabloului.",
@@ -207,7 +207,7 @@ def doc_ddr(ctx, r, pos):
     rows = [["Nr.", "Circuit", "DDR (IΔn, tip)", "Curent declanșare măsurat (mA)", "Timp declanșare la IΔn (ms)", "Rezultat"]]
     for i, c in enumerate([c for c in circuits(r) if c.get("rcd_ma")]):
         tm = num(c.get("rcd_t"))
-        rows.append([str(i + 1), escape(c["name"]), f"{e(c.get('rcd_ma'))} mA tip {e(c.get('rcd_type'))}", e(c.get("rcd_i")), e(c.get("rcd_t")), verdict(None if tm is None else tm <= DDR_MAX_MS)])
+        rows.append([str(i + 1), escape(c["name"]), f"{e(c.get('rcd_ma'))} mA tip {e(str(c.get('rcd_type') or '').replace('Tip', '').strip())}", e(c.get("rcd_i")), e(c.get("rcd_t")), verdict(None if tm is None else tm <= DDR_MAX_MS)])
     if len(rows) == 1:
         rows.append(["—", "niciun circuit cu DDR", M, M, M, "—"])
     return pram_head(ctx, r, "BULETIN DE VERIFICARE A DISPOZITIVELOR DIFERENȚIALE (DDR)", f"SR HD 60364-6, art. 6.4.3.7 (timp maxim la IΔn: {DDR_MAX_MS:g} ms, DDR general)") + [

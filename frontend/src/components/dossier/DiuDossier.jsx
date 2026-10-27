@@ -7,12 +7,13 @@ import { DiuCircuits } from "./DiuCircuits";
 
 const tok = () => localStorage.getItem("den_token");
 
-export function DiuDossier({ id, form, setVal, setForm }) {
+export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
   const [pros, setPros] = useState([]);
   const [pid, setPid] = useState(form.pros_id || "");
   const [docs, setDocs] = useState(null);
   const loadDocs = () => api.get(`/diu/${id}/docs`).then((r) => setDocs(r.data)).catch(() => {});
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); loadDocs(); }, [id]); // eslint-disable-line
+  useEffect(() => { if (savedAt) loadDocs(); }, [savedAt]); // eslint-disable-line
 
   const importPros = async () => {
     try { const { data } = await api.post(`/diu/${id}/import-pros`, { pros_id: pid }); setForm({ ...form, ...data }); toast.success("Date preluate din dosarul de prosumator"); loadDocs(); }
@@ -35,7 +36,7 @@ export function DiuDossier({ id, form, setVal, setForm }) {
       <DiuCircuits form={form} setVal={setVal} />
       <div className="flex items-center justify-between flex-wrap gap-2 mt-5">
         <div className="text-xs font-bold" style={{ color: docs?.complete ? "#166534" : "#9b2c2c" }} data-testid="diu-docs-state">
-          {docs ? (docs.complete ? "Toate documentele sunt complete" : "Unele documente au date lipsă (export CIORNĂ)") : ""} · salvează dosarul pentru a actualiza</div>
+          {docs ? (docs.complete ? "Toate documentele sunt complete" : "Unele documente au date lipsă (export CIORNĂ)") : ""} · stările se actualizează după „Salvează”</div>
         <div className="flex gap-2">
           <Btn variant="secondary" onClick={loadDocs} data-testid="diu-docs-refresh"><RefreshCw size={14} /> Actualizează</Btn>
           <a href={pdf("all")} target="_blank" rel="noopener noreferrer" data-testid="diu-export"><Btn><FileDown size={14} /> Dosar DI-U complet PDF</Btn></a>

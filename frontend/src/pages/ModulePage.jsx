@@ -55,6 +55,7 @@ export default function ModulePage({ moduleKey }) {
   const [checks, setChecks] = useState({});
   const [refOptions, setRefOptions] = useState({});
   const [q, setQ] = useState("");
+  const [savedAt, setSavedAt] = useState(0);
 
   const load = () => api.get(`/data/${key}`).then((r) => {
     setItems(r.data);
@@ -89,6 +90,7 @@ export default function ModulePage({ moduleKey }) {
       else if (key === "prosumator") await api.post("/import/prosumator", payload);
       else await api.post(`/data/${key}`, payload);
       toast.success("Salvat cu succes");
+      if (key === "diu" && editId) { setSavedAt(Date.now()); load(); return; }
       setForm(null); setEditId(null); setChecks({}); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Eroare la salvare"); }
   };
@@ -149,7 +151,7 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && editId && <PifPanel id={editId} />}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
-          {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} />}
+          {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} savedAt={savedAt} />}
           {key === "prosumator" && editId && <AiDossierCheck id={editId} />}
           {key === "prosumator" && editId && <SignRequests dossierId={editId} />}
           {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} />}

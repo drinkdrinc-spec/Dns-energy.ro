@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 20: tested the DI-U automatic documents (import from prosumer, 11 positions, missing lists, PDFs, PRAM verdicts, CIORNĂ), the AI precheck shown as a checklist before finalizing (plus ack), the single AI client message with all signing links, and plan gating (START/PRO/FULL). Backend: 16/16 pytest pass. Two first-run failures were mistakes in the test itself, now fixed: pypdf line-wraps text, and the test sent a 'name' field. Frontend: all requested flows work end to end. Only minor issues were found. LLM calls used: 5.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/ai/dossier/{id}/precheck/ack", "issue": "Missing ai_need(user). A non-FULL user can call ack (it only writes ai_precheck.checked). Not harmful, but it is inconsistent with the other AI routes."},
+      {"endpoint": "GET /api/diu/{id}/docs|pdf (diu_ctx merge)", "issue": "The DI-U merges in all fields of the linked prosumer record (receptie_date, pif_date, is_test, ...). Receptie, PIF and garantie therefore show 'generat' and use the prosumer's dates (e.g. warranty start 27.10.2026) while the DI-U form fields are still empty. This can confuse users. Consider importing these values into the DI-U explicitly, or showing their source."},
+      {"endpoint": "POST /api/diu/{id}/import-pros", "issue": "The imported circuit rcd_type is 'Tip A' (from CEF). The DDR bulletin and memoriu then render 'DDR 300 mA tip Tip A' (duplicated word). Normalize to 'A'/'AC'/'B'."},
+      {"endpoint": "POST /api/diu/{id}/import-pros", "issue": "'type' is always overwritten on every import, even if the user already chose a type (unlike supply/earthing/tg/bmp, which are only filled when empty). address stays None when the prosumer has no address of its own (it lives on the client); the docs fall back to the client address, so the output is OK."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AiPrecheck + DossierOpis.doLock", "issue": "When finalize fails (e.g. 400 'schema monofilară nu este aprobată'), the same error toast appears twice. doLock toasts and rethrows, and AiPrecheck.finalize catches and toasts again. Also, ack is saved before finalize, so it is recorded even when finalize fails.", "selector": "[data-testid=ai-precheck-finalize]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "DI-U edit -> Salvează -> diu-docs-refresh", "issue": "Save (ModulePage.save) closes the editor, so the DiuDossier panel unmounts and the user cannot click Actualizează to see updated statuses without reopening the record. The hint 'salvează dosarul pentru a actualiza' is misleading. Suggest: keep the form open for diu after save, or reload docs automatically.", "affected_selectors": ["[data-testid=save-btn]", "[data-testid=diu-docs-refresh]"]}
+    ],
+    "design_issues": [
+      {"screen": "DI-U PRAM fields", "issues": ["diu-pram-date uses the browser's native date picker (input type=date) instead of the shadcn calendar used elsewhere (same for receptie_date/pif_date/warranty_start)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter20_diu_ai_precheck.py", "/app/backend/tests/iter20_ui_setup.py", "/app/test_reports/pytest/pytest_iter20.xml", "/app/test_reports/pytest/pytest_iter20_diu.xml"],
+  "action_items": [
+    "LOW: Keep the DI-U editor open after save (or auto-refresh /diu/{id}/docs) so statuses update as described.",
+    "LOW: Remove the duplicate error toast in AiPrecheck.finalize (doLock already toasts).",
+    "LOW: Add ai_need(user) to /ai/dossier/{id}/precheck/ack.",
+    "LOW: Normalize rcd_type on import ('Tip A' -> 'A') to avoid 'tip Tip A' in the PDFs.",
+    "LOW: Make clear that receptie/PIF/warranty values come from the linked prosumer when the DI-U fields are empty (or import them into the DI-U form)."
+  ],
+  "critical_code_review_comments": [
+    "diu_routes.import_pros overwrites 'type' unconditionally; the other fill fields respect existing values.",
+    "diu_ctx merges the whole prosumer record (including is_test and status) into the DI-U render context, which leaks unrelated fields. Prefer an explicit whitelist.",
+    "ai_routes.ai_precheck_ack has no FULL check, unlike precheck.",
+    "DossierOpis.doLock + AiPrecheck.finalize both toast the same error."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter20_diu_ai_precheck.py", "/app/backend/tests/iter20_ui_setup.py"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "95% (all requested flows work; minor UX issues)"},
+  "seed_data_creation": "Temporary TEST dossiers, TEST DI-U records and sub_i20_* users; all cleaned up. DIU-TEST-1 (70b56325-...) was left untouched. Platform modules unchanged (disabled=[]).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=<url> python -m pytest tests/test_iter20_diu_ai_precheck.py -p no:xdist -o addopts='' -s (3 LLM calls, about 35s). UI setup: python tests/iter20_ui_setup.py setup|cleanup creates a TEST prosumer and an empty DI-U (/diu?edit=DID, /prosumator?edit=PID). The sign-pick checkboxes load asynchronously: wait for '[data-testid=sign-create] input[type=checkbox]'. The TEST client has no e-mail, so fill the 'E-mail client' placeholder input. Use whitespace-normalized pypdf text for verdict checks ('NU\\ncorespunde' wraps). Finalize always returns 400 without an approved SLD (expected).",
+  "rca of the issue": "Duplicate toast: DossierOpis.doLock calls toast.error and rethrows, and AiPrecheck.finalize's catch calls toast.error again. Docs 'generat' with empty DI-U fields: diu_ctx merged = {**prosumer, **diu_nonempty}, so prosumer receptie_date/pif_date fill the gaps."
+}

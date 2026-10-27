@@ -199,6 +199,7 @@ async def ai_precheck(item_id: str, user: dict = Depends(get_current_user)):
 
 @api.post("/ai/dossier/{item_id}/precheck/ack")
 async def ai_precheck_ack(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    ai_need(user)
     S.guard("prosumator", user, write=True)
     rec = await S.check_access(user, "prosumator", item_id)
     pc = rec.get("ai_precheck") or {}

@@ -8,6 +8,8 @@ import diu_doc as DD
 import opis as OPIS
 
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
+OWN = ("receptie_", "pif_date", "pif_decision", "warranty_", "doc_date", "date")
+rcd = lambda v: str(v).replace("Tip", "").replace("tip", "").strip() if v else v
 
 
 async def diu_ctx(user: dict, item_id: str):
@@ -20,6 +22,7 @@ async def diu_ctx(user: dict, item_id: str):
     client = await S.get_client(user["id"], rec) or (await S.get_client(user["id"], prec) if prec else {})
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     s, _ = await S.effective_settings(user["id"], prec, base)
+    prec = {k: v for k, v in prec.items() if not k.startswith(OWN)}
     merged = {**prec, **{k: v for k, v in rec.items() if v not in (None, "", [], {})}}
     for k in ("address", "county"):
         if not merged.get(k) and client.get(k):
@@ -71,18 +74,19 @@ async def diu_import(item_id: str, request: Request, user: dict = Depends(get_cu
     p = CEF.from_legacy(p)
     cef = p.get("cef") or {}
     g = cef.get("grid") or {}
-    upd = {"pros_id": pid, "client_name": p.get("client_name"), "address": p.get("address"), "operator": p.get("operator"), "power": p.get("power"),
-           "atr": p.get("atr"), "type": "Sistem fotovoltaic hibrid" if p.get("battery") or "hibrid" in str(p.get("system_type") or "").lower() else "Sistem fotovoltaic on-grid"}
+    upd = {"pros_id": pid, "client_name": p.get("client_name"), "address": p.get("address"), "operator": p.get("operator"), "power": p.get("power"), "atr": p.get("atr")}
     if p.get("client_id"):
         upd["client_id"] = p["client_id"]
-    fill = {"supply": p.get("supply"), "earthing": g.get("earthing"), "tg_breaker_a": g.get("tg_breaker_a"), "bmp_a": g.get("bmp_a")}
+    fill = {"supply": p.get("supply"), "earthing": g.get("earthing"), "tg_breaker_a": g.get("tg_breaker_a"), "bmp_a": g.get("bmp_a"),
+            "type": "Sistem fotovoltaic hibrid" if p.get("battery") or "hibrid" in str(p.get("system_type") or "").lower() else "Sistem fotovoltaic on-grid",
+            **{k: p.get(k) for k in ("receptie_date", "receptie_decision", "receptie_findings", "pif_date", "warranty_months")}}
     upd.update({k: v for k, v in fill.items() if v not in (None, "") and rec.get(k) in (None, "")})
     upd = {k: v for k, v in upd.items() if v not in (None, "")}
     if not rec.get("circuits"):
         upd["circuits"] = [{"name": f"INV{i + 1} — {inv.get('brand_model') or 'invertor'}", "breaker_a": (inv.get("ac") or {}).get("breaker_a"),
                             "curve": (inv.get("ac") or {}).get("curve") or "C", "section": (inv.get("ac") or {}).get("section"),
                             "cable": (inv.get("ac") or {}).get("cable_type"), "length": (inv.get("ac") or {}).get("length_m"),
-                            "rcd_ma": inv.get("rcd_ma"), "rcd_type": inv.get("rcd_type")} for i, inv in enumerate(cef.get("inverters") or [])]
+                            "rcd_ma": inv.get("rcd_ma"), "rcd_type": rcd(inv.get("rcd_type"))} for i, inv in enumerate(cef.get("inverters") or [])]
     gr = g.get("grounding_ohm") or p.get("grounding_ohm")
     pm = dict(rec.get("pram_m") or {})
     if gr and not pm.get("earth_ohm"):

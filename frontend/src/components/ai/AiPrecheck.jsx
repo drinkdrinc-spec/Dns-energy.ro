@@ -20,8 +20,9 @@ export function AiPrecheck({ id, open, onClose, onFinalize }) {
   const left = items.length - checked.length;
   const finalize = async () => {
     if (pc && left > 0 && !window.confirm(`Mai sunt ${left} puncte nebifate din verificarea AI. Finalizezi dosarul oricum?`)) return;
-    try { if (pc) await api.post(`/ai/dossier/${id}/precheck/ack`, { checked }); await onFinalize(); onClose(); }
-    catch (e) { toast.error(e.response?.data?.detail || "Eroare"); }
+    try { await onFinalize(); } catch (e) { return; }
+    try { if (pc) await api.post(`/ai/dossier/${id}/precheck/ack`, { checked }); } catch (e) { /* ack optional */ }
+    onClose();
   };
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
