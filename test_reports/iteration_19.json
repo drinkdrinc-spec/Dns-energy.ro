@@ -1,0 +1,27 @@
+{
+  "summary": "Iteration 19: tested the ChatGPT (openai gpt-6-sol) integration and the iteration 18 regression fixes. Backend pytest: 13/13 pass with live LLM calls. Tested: chat session CRUD, SSE streaming, persistence, multi-turn context, title from the first message, deletion and 404 isolation from other users; AI dossier check (Romanian, structured verdict/lipsuri/neconcordanțe/pași); draft (stream; 400 for an invalid module or empty label); /ai/extract on a generated PDF (engine 'ChatGPT (GPT 6 Sol)'; client_name, POD, address, county and operator all extracted correctly); gating (START/PRO get 402, ai_gpt disabled gives 403 for a FULL subscriber, platform admin unaffected, restored to []); regressions (an instalator team member now gets plan.disabled and is blocked; client PUT with stale docs keeps docs.semnate; PIF change invalidates the pif_pv signed upload and adds a missing note). Frontend: /asistent-ai chat streams, persists across reload and deletes; the prosumer edit form shows ai-check-section and its result streams; 'Redactează cu AI' -> generate -> apply fills the textarea; a START user sees the 'Este necesar abonamentul FULL' gate and no AI draft or check widgets. The sign-days input is now 80px inline. Total LLM calls: about 9.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Verificare AI / Asistent AI bubbles", "issues": ["The model sometimes returns markdown bold (e.g. '**Necesită completări.**', '**maximum 4 Ω**') even though RULES asks for plain text. It is rendered raw with whitespace-pre-wrap, so literal asterisks show. Strip ** in the frontend or render minimal markdown."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter19_ai_gpt.py", "/app/backend/tests/iter19_ui_setup.py", "/app/test_reports/pytest/iter19.xml"],
+  "action_items": ["LOW: strip or render markdown '**' in AI outputs (AiAssistant Bubble, AiDossierCheck, AiDraft result)."],
+  "critical_code_review_comments": [
+    "new_chat passes the system prompt both as system_message and as the first initial_messages entry. This may duplicate the system message (works, but wastes tokens). Verify that LlmChat does not prepend it again.",
+    "sse(): if the client disconnects mid-stream, on_done is never called, so the user message is persisted without an assistant reply. The next turn's history then has two consecutive user messages (acceptable).",
+    "ai_message history uses the last 30 messages without a token cap (each message up to 6000 chars), so it may get expensive on long sessions.",
+    "AiDraft's form payload sends the whole form, including large fields; the backend filters to scalars and truncates to 8000 chars. OK.",
+    "ai_extract falls back to Gemini when ai_gpt is unavailable (e.g. a PRO plan with ai_extract). Correct by design."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter19_ai_gpt.py", "/app/backend/tests/iter19_ui_setup.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Test dossiers were created via /api/test-dossier and deleted. Users sub_i19_*@example.com and sub_i19ui@example.com were deleted with their subscriptions. TEST AI sessions were deleted. One pre-existing admin AI session ('Ce valoare maxima are priza...') was left intact. Platform modules restored to disabled: [].",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=https://dns-energy.preview.emergentagent.com python -m pytest tests/test_iter19_ai_gpt.py -p no:xdist -o addopts='' -s. It makes about 5 LLM calls (around 60s). UI: python tests/iter19_ui_setup.py setup|cleanup creates a test dossier plus a START subscriber sub_i19ui@example.com / Test2026!x. Open the dossier via /prosumator?edit=PID. The pif_pv hash test injects opis.pif_pv.upload directly in mongo with pif_doc.fingerprint(rec).",
+  "rca of the issue": "N/A — all iteration 18 issues verified fixed."
+}

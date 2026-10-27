@@ -24,8 +24,10 @@ export async function streamAI(path, body, onDelta) {
       if (!p.startsWith("data: ")) continue;
       const ev = JSON.parse(p.slice(6));
       if (ev.error) throw new Error(ev.error);
-      if (ev.t) { full += ev.t; onDelta(full); }
+      if (ev.t) { full += ev.t; onDelta(clean(full)); }
     }
   }
-  return full;
+  return clean(full);
 }
+
+export const clean = (t) => (t || "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/^#{1,6}\s+/gm, "");

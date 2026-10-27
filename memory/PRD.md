@@ -38,3 +38,7 @@ Web app "D-ENERGY" for DNS HOSTESS S.R.L. (Romanian UI, responsive) to manage el
 - NEXT: Dosar prosumator simplu (C), Spor de putere Anexa 1 DEER (D), Cerere ATR (E), Registru formulare oficiale (F); RO e-Factura/SmartBill integration for fiscal invoices; proration on plan change.
 - P1: Official per-operator templates (Delgaz, Rețele Electrice, Oltenia); optional insertion of authorized stamp/signature images on user action; RO date picker.
 - P2: Multi-user roles UI; DI-U from prosumer dossier.
+
+- DONE 2026-06 (iteration 18): PV PIF (measurements, pif_doc.py) added to opis + simple dossier as 'pif_pv' right after PRAM 'priza', only when completed (date + values); signing: one link per document, client only (single signer), 7 days default, signed PDF saved to opis + documents + clients.docs.semnate; pif_hash invalidates signed PIF on change. Platform modules (/module-platforma, modules_routes.py, db.platform_modules) — only ADMIN_EMAIL uid can toggle; disabled modules show 'Indisponibil momentan' for everyone else (incl. platform team).
+- DONE 2026-06 (iteration 19, 13/13 + UI): ChatGPT GPT 6 Sol (openai gpt-6-sol, Emergent universal key) — feature 'ai_gpt' (FULL only, toggleable): ai_routes.py chat assistant with persisted sessions (ai_sessions/ai_messages, SSE streaming), /ai/dossier/{id}/check pre-submission review, /ai/draft text drafting on textarea fields, /ai/extract uses GPT (PDF pages→images) for FULL users, Gemini otherwise. GPT-Live-1.1 Quip not available via API.
+- PENDING: SmartBill keys (user deferred).

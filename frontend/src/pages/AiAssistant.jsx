@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, Send, Trash2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { streamAI } from "@/lib/ai";
+import { streamAI, clean } from "@/lib/ai";
 import { PageHeader, Btn } from "@/components/Layout";
 
 function Bubble({ m }) {
@@ -10,7 +10,7 @@ function Bubble({ m }) {
   return (
     <div className={`flex ${me ? "justify-end" : "justify-start"}`}>
       <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap" data-testid={`ai-msg-${m.role}`}
-        style={me ? { background: "var(--blue)", color: "#fff" } : { background: "#fff", border: "1px solid var(--line)" }}>{m.content}</div>
+        style={me ? { background: "var(--blue)", color: "#fff" } : { background: "#fff", border: "1px solid var(--line)" }}>{clean(m.content)}</div>
     </div>
   );
 }
