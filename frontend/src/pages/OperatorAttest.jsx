@@ -6,7 +6,7 @@ import { PageHeader, Btn } from "@/components/Layout";
 import { useAuth } from "@/context/AuthContext";
 
 const F = [["company", "Denumirea firmei"], ["cui", "CUI"], ["regcom", "Nr. Registrul Comerțului"], ["contact_name", "Persoană de contact"], ["contact_phone", "Telefon"],
-  ["contact_email", "E-mail"], ["attest_no", "Numărul atestatului ANRE"], ["attest_valid", "Valabil până la", "date"], ["holder_name", "Titularul atestatului (firma)"], ["holder_role", "Reprezentant / funcție"]];
+  ["contact_email", "E-mail"], ["attest_no", "Numărul atestatului ANRE"], ["attest_valid", "Valabil până la", "date"], ["holder_name", "Titularul atestatului (firma)"], ["holder_role", "Reprezentant / funcție"], ["visa_date", "Data vizării periodice", "date"]];
 const COL = { "aprobat": "#166534", "respins": "#9b2c2c", "expirat": "#9b2c2c", "în așteptare": "#8a5a00" };
 
 export default function OperatorAttest() {
@@ -28,6 +28,7 @@ export default function OperatorAttest() {
       <PageHeader eyebrow="Cont firmă" title="Atestat ANRE al operatorului economic" sub="Accesul la funcțiile profesionale se acordă firmelor cu atestat ANRE verificat de administrator și abonament plătit. Se verifică atestatul firmei, nu al fiecărui angajat." />
       <div className="den-panel mb-4 text-sm" data-testid="attest-status">Status verificare: <b style={{ color: COL[o.status] || "#6b7280" }}>{o.status || "netrimis"}</b>
         {o.verified_at && <> · verificat la {new Date(o.verified_at).toLocaleDateString("ro-RO")}</>}{o.admin_notes && <div className="text-xs mt-1">Observații administrator: {o.admin_notes}</div>}
+        {o.visa_date && <div className="text-xs mt-1" data-testid="attest-visa-status">Vizare periodică: <b>{new Date(o.visa_date).toLocaleDateString("ro-RO")}</b> — {o.visa_confirmed ? "confirmată de administrator; primiți memento pe e-mail cu 60 de zile înainte" : "în așteptarea confirmării administratorului"}</div>}
         {d.attest && d.attest !== "aprobat" && <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Documentul încărcat nu este considerat dovadă de valabilitate până la verificarea manuală.</div>}</div>
       <div className="den-panel grid sm:grid-cols-3 gap-2">
         {F.map(([k, l, t]) => <div key={k} className="den-field"><label>{l}</label><input className="den-input" type={t || "text"} value={f[k] ?? ""} onChange={(e) => setF({ ...f, [k]: e.target.value })} data-testid={`op-${k}`} /></div>)}

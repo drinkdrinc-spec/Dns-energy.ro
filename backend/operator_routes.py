@@ -1,13 +1,18 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
+import hmac
+import os
+import uuid
+from html import escape as hesc
 
-from fastapi import HTTPException, Request, Depends, UploadFile, File, Header, Query, Response
+from fastapi import HTTPException, Request, Depends, UploadFile, File, Header, Query, Response, BackgroundTasks
 
 import server as S
+from mailer import send_email
 
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
 TYPES = ["A1", "A2", "A3", "B", "Bi", "Bp", "C1A", "C1B", "C2A", "C2B", "D1", "D2", "E1", "E2"]
 STATUSES = ["în așteptare", "aprobat", "respins", "expirat"]
-FIELDS = ("company", "cui", "regcom", "contact_name", "contact_email", "contact_phone", "attest_no", "attest_types", "attest_other", "attest_valid", "holder_name", "holder_role")
+FIELDS = ("company", "cui", "regcom", "contact_name", "contact_email", "contact_phone", "attest_no", "attest_types", "attest_other", "attest_valid", "holder_name", "holder_role", "visa_date")
 REQ = {"company": "Denumirea firmei", "cui": "CUI", "contact_name": "Persoană de contact", "contact_phone": "Telefon", "contact_email": "E-mail",
        "attest_no": "Numărul atestatului ANRE", "holder_name": "Titularul atestatului (firma)"}
 now = lambda: datetime.now(timezone.utc).isoformat()
@@ -47,6 +52,13 @@ async def op_save(request: Request, user: dict = Depends(get_current_user)):
     cur = await db.operators.find_one({"tenant": user["id"]}, {"_id": 0}) or {}
     changed = any(cur.get(k) != d.get(k) for k in ("cui", "attest_no", "attest_types", "attest_other", "attest_valid", "holder_name"))
     st = "în așteptare" if changed or not cur.get("status") else cur["status"]
+    if d.get("visa_date"):
+        try:
+            d["visa_date"] = date.fromisoformat(str(d["visa_date"]).strip()).isoformat()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data vizării periodice invalidă (AAAA-LL-ZZ)")
+    if cur.get("visa_date") != d.get("visa_date"):
+        d["visa_confirmed"] = False
     await db.operators.update_one({"tenant": user["id"]}, {"$set": {**d, "tenant": user["id"], "email": user.get("email"), "status": st, "updated_at": now()},
                                                           "$push": {"history": {"at": now(), "by": user.get("email"), "event": "date atestat trimise" + (" — reverificare necesară" if changed and cur else "")}}}, upsert=True)
     await S.audit(user, "atestat ANRE trimis", "operators", user["id"], [st])
@@ -115,6 +127,62 @@ async def adm_decide(tenant: str, request: Request, user: dict = Depends(get_cur
                                                        "$push": {"history": {"at": now(), "by": user.get("email"), "event": f"decizie: {st}" + (f" — {notes}" if notes else "")}}})
     await S.audit(user, f"atestat {st}", "operators", tenant, [notes])
     return {"status": st}
+
+
+@api.post("/admin/operators/{tenant}/visa")
+async def adm_visa(tenant: str, request: Request, user: dict = Depends(get_current_user)):
+    platform_only(user)
+    b = await request.json()
+    o = await db.operators.find_one({"tenant": tenant}, {"_id": 0})
+    if not o:
+        raise HTTPException(status_code=404, detail="Operator inexistent")
+    vd = str(b.get("visa_date") or o.get("visa_date") or "").strip()
+    try:
+        vd = date.fromisoformat(vd).isoformat()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Completați data vizării periodice (AAAA-LL-ZZ)")
+    ok = bool(b.get("confirmed", True))
+    await db.operators.update_one({"tenant": tenant}, {"$set": {"visa_date": vd, "visa_confirmed": ok, "visa_confirmed_by": user.get("email"), "visa_confirmed_at": now()},
+                                                       "$push": {"history": {"at": now(), "by": user.get("email"), "event": f"dată vizare {'confirmată' if ok else 'neconfirmată'}: {vd}"}}})
+    await S.audit(user, "dată vizare ANRE", "operators", tenant, [vd, str(ok)])
+    return pub(await db.operators.find_one({"tenant": tenant}, {"_id": 0}))
+
+
+async def run_visa(run_id: str):
+    t = date.today()
+    lim = (t + timedelta(days=60)).isoformat()
+    async for o in db.operators.find({"visa_confirmed": True, "visa_date": {"$gte": t.isoformat(), "$lte": lim}}, {"_id": 0}):
+        key = f"visa:{o['tenant']}:{o['visa_date']}"
+        if await db.reminders.find_one({"id": key}):
+            continue
+        to = o.get("contact_email") or o.get("email")
+        if not to:
+            continue
+        vd = date.fromisoformat(o["visa_date"])
+        try:
+            await send_email(to=to, subject=f"Memento: vizarea periodică a atestatului ANRE — {vd.strftime('%d.%m.%Y')}",
+                             html=f'<div style="font-family:Arial,sans-serif;color:#0b1f3a"><p>Bună ziua,</p><p>Atestatul ANRE nr. <b>{hesc(str(o.get("attest_no") or "—"))}</b> al firmei '
+                                  f'<b>{hesc(str(o.get("company") or ""))}</b> are termenul de vizare periodică la <b>{vd.strftime("%d.%m.%Y")}</b> (peste {(vd - t).days} zile).</p>'
+                                  "<p>Vă recomandăm să pregătiți din timp dosarul de vizare (certificat constatator recent, personal autorizat, dotări). "
+                                  "În aplicația D-ENERGY → Dosare ANRE puteți comanda serviciul de pregătire a dosarului de vizare.</p><p>Echipa D-ENERGY</p></div>")
+        except HTTPException:
+            continue
+        await db.reminders.insert_one({"id": key, "at": now(), "run_id": run_id})
+        await db.operators.update_one({"tenant": o["tenant"]}, {"$set": {"visa_reminded_at": now()}, "$push": {"history": {"at": now(), "by": "cron", "event": f"memento vizare trimis la {to}"}}})
+
+
+@api.post("/cron/anre-visa")
+async def cron_visa(request: Request, background: BackgroundTasks):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    h = request.headers.get("authorization", "")
+    if not h.startswith("Bearer ") or not hmac.compare_digest(h[7:], os.environ.get("WEBHOOK_CRON_SECRET", "")):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    run_id = request.headers.get("x-webhook-id") or str(uuid.uuid4())
+    if await db.cron_runs.find_one({"id": run_id}):
+        return {"status": "duplicate"}
+    await db.cron_runs.insert_one({"id": run_id, "at": now(), "name": "anre-visa"})
+    background.add_task(run_visa, run_id)
+    return {"status": "accepted"}
 
 
 @api.get("/admin/attest-config")

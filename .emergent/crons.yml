@@ -23,3 +23,11 @@ crons:
     method: POST
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     enabled: true
+  - name: anre-visa
+    description: "Trimite firmelor memento cu 60 de zile înainte de vizarea periodică a atestatului ANRE"
+    cron: "0 9 * * *"
+    timezone: "Europe/Bucharest"
+    endpoint: "{{BASE_URL}}/api/cron/anre-visa"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

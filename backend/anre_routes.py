@@ -110,8 +110,14 @@ async def anre_create(request: Request, user: dict = Depends(get_current_user)):
          "company": {"name": op.get("company"), "cui": op.get("cui"), "regcom": op.get("regcom"), "email": op.get("contact_email"), "phone": op.get("contact_phone"),
                      "rep_name": op.get("contact_name"), "rep_role": op.get("holder_role"), "attest_no": op.get("attest_no"), "attest_types": ", ".join(op.get("attest_types") or []), "attest_valid": op.get("attest_valid")},
          "docs": {}, "staff": [], "equipment": [], "org": [], "history": [{"at": now(), "by": user.get("email"), "event": "comandă creată"}]}
+    import billing_routes as BR
+    inv = await BR.service_invoice(user["id"], user.get("email"), f"Serviciu D-ENERGY — pregătire Dosar ANRE ({AD.TYPES[b['kind']]}), ref. {d['id'][:8]}", PRICE, user.get("email"),
+                                   {"client_type": "pj", "company_name": op.get("company"), "cui": op.get("cui"), "regcom": op.get("regcom"), "billing_email": op.get("contact_email") or user.get("email"),
+                                    "phone": op.get("contact_phone"), "rep_name": op.get("contact_name"), "country": "România"})
+    d.update({"invoice_id": inv["id"], "invoice_number": inv["number"], "transfer": inv["transfer"]})
+    d["history"].append({"at": now(), "by": "sistem", "event": f"proformă emisă: {inv['number']}"})
     await db.anre_dossiers.insert_one(dict(d))
-    await S.audit(user, "comandă dosar ANRE", "anre", d["id"], [d["kind"]])
+    await S.audit(user, "comandă dosar ANRE", "anre", d["id"], [d["kind"], inv["number"]])
     return pub(d)
 
 
@@ -192,7 +198,8 @@ async def doc_bytes(d, key):
     if key == "raport":
         return AD.report_pdf(d, check(d)), "application/pdf", "Raport_verificare.pdf"
     if key in GEN:
-        return AD.render(key, d), "application/pdf", f"{key}.pdf"
+        import anre_templates as AT
+        return await AT.filled(key, d) or (AD.render(key, d), "application/pdf", f"{key}.pdf")
     f = (d.get("docs") or {}).get(key)
     if not f or not f.get("path"):
         raise HTTPException(status_code=404, detail="Document neîncărcat")
@@ -273,8 +280,15 @@ async def anre_pay(did: str, request: Request, user: dict = Depends(get_current_
     b = await request.json()
     if not (b.get("reference") or "").strip():
         raise HTTPException(status_code=400, detail="Introduceți referința OP / extrasului de cont")
-    if not await db.anre_dossiers.find_one({"id": did}, {"_id": 1}):
+    d = await db.anre_dossiers.find_one({"id": did}, {"_id": 0, "invoice_id": 1})
+    if d is None:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    if d.get("invoice_id"):
+        import billing_routes as BR
+        inv = await db.invoices.find_one({"id": d["invoice_id"]}, {"_id": 0, "total": 1, "status": 1})
+        if inv and inv["status"] != BR.PAID:
+            await db.invoices.update_one({"id": d["invoice_id"]}, {"$push": {"payments": {"at": now(), "amount": inv["total"], "method": "transfer bancar (OP)", "reference": b["reference"].strip()[:80], "by": user.get("email")}}})
+            await BR.activate(d["invoice_id"], user.get("email"), "plată OP confirmată de administrator")
     await db.anre_dossiers.update_one({"id": did}, {"$set": {"payment_status": "plătit", "payment": {"reference": b["reference"].strip()[:80], "at": now(), "by": user.get("email")}},
                                                    "$push": {"history": {"at": now(), "by": user.get("email"), "event": f"plată confirmată: {b['reference']}"}}})
     await S.audit(user, "plată dosar ANRE confirmată", "anre", did, [b["reference"]])

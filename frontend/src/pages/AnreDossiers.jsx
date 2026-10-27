@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { useAuth } from "@/context/AuthContext";
 import { AnreEditor } from "@/components/anre/AnreEditor";
+import { AnreTemplates } from "@/components/anre/AnreTemplates";
 
 const TYPES = { nou: "Atestat nou", b_c1a: "Extindere B → C1A", b_c2a: "Extindere B → C2A", modificare: "Modificarea datelor atestatului", vizare: "Vizare periodică", altele: "Altă solicitare" };
 
@@ -14,11 +15,12 @@ export default function AnreDossiers() {
   const [kind, setKind] = useState("nou");
   const load = () => api.get("/anre/dossiers").then((r) => setList(r.data));
   useEffect(() => { if (!open) load(); }, [open]);
-  const create = async () => { try { const { data } = await api.post("/anre/dossiers", { kind }); toast.success("Comandă creată"); setOpen(data.id); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
+  const create = async () => { try { const { data } = await api.post("/anre/dossiers", { kind }); toast.success(`Comandă creată — proforma ${data.invoice_number} a fost trimisă pe e-mail`); setOpen(data.id); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   if (open) return <AnreEditor id={open} platform={!!user?.platform} onBack={() => setOpen(null)} />;
   return (
     <div data-testid="anre-page">
       <PageHeader eyebrow="Serviciu premium" title="Dosare ANRE" sub="Pregătirea dosarelor de atestare / actualizare a atestatelor ANRE (Ord. ANRE 134/2021): opis, cereri și anexe precompletate, documente, verificare finală și asistent AI. Serviciu D-ENERGY: 3.200 lei + TVA; tarifele ANRE se plătesc separat. Nu garantăm aprobarea ANRE." />
+      {user?.platform && <AnreTemplates />}
       <div className="den-panel mb-4 flex flex-wrap items-end gap-2">
         <div className="den-field"><label>Tipul solicitării</label><select className="den-input" value={kind} onChange={(e) => setKind(e.target.value)} data-testid="anre-kind">{Object.entries(TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
         <Btn onClick={create} data-testid="anre-new">Comandă dosar (3.200 lei + TVA)</Btn>

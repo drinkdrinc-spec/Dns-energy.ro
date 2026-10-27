@@ -169,12 +169,42 @@ async def new_invoice(tenant: str, email: str, plan: dict, months: int, by: str,
     inv.pop("_id", None)
     return inv
 
+async def service_invoice(tenant: str, email: str, title: str, net: float, by: str, fallback_client: dict) -> dict:
+    prof = await get_profile(tenant) or fallback_client
+    cfg = await S.billing_cfg()
+    vr = float(cfg.get("vat_rate", 21))
+    vat = money(Decimal(str(net)) * Decimal(str(vr)) / 100)
+    issuer = await db.settings.find_one({"owner": S.PLATFORM["id"]}, {"_id": 0, "company": 1, "cui": 1, "regcom": 1, "address": 1, "phone": 1, "email": 1, "iban": 1, "bank": 1}) or {}
+    inv = {"id": str(uuid.uuid4()), "number": await next_number(), "tenant": tenant, "user_email": email, "plan": "service", "plan_name": title, "service": True,
+           "unit": money(net), "months": 1, "gross": money(net), "credit": 0.0, "net": money(net), "vat_rate": vr, "vat": vat, "total": money(Decimal(str(net)) + Decimal(str(vat))),
+           "currency": "RON", "status": PENDING, "client": {k: v for k, v in prof.items() if k not in ("_id", "tenant")}, "issuer": issuer, "note": fiscal_note(prof),
+           "source": "transfer", "payment_method": "transfer bancar (OP)", "created_at": now(), "created_by": by, "payments": []}
+    await db.invoices.insert_one(dict(inv))
+    await log(tenant, "proformă emisă", by, f"{inv['number']} — {title}, total {inv['total']:.2f} RON")
+    inv.pop("_id", None)
+    transfer = {"beneficiary": issuer.get("company") or "DNS HOSTESS S.R.L.", "cui": issuer.get("cui"), "iban": issuer.get("iban"), "bank": issuer.get("bank"), "amount": inv["total"], "reference": inv["number"]}
+    to = inv["client"].get("billing_email") or email
+    asyncio.create_task(mail(to, f"Proformă {inv['number']} — {title}",
+        f"<p>Bună ziua,</p><p>Am emis proforma <b>{hesc(inv['number'])}</b> pentru <b>{hesc(title)}</b>.</p>"
+        f"<p>Valoare: {inv['net']:.2f} RON + TVA {vr:g}% {inv['vat']:.2f} RON = <b>{inv['total']:.2f} RON</b></p>"
+        f"<p><b>Plata prin ordin de plată (OP):</b><br/>Beneficiar: {hesc(str(transfer['beneficiary']))}<br/>CUI: {hesc(str(transfer['cui'] or '—'))}<br/>"
+        f"IBAN: {hesc(str(transfer['iban'] or '—'))}<br/>Banca: {hesc(str(transfer['bank'] or '—'))}<br/>Suma: {inv['total']:.2f} RON<br/>Mențiune pe OP: <b>{hesc(inv['number'])}</b></p>"
+        "<p>Proforma în format PDF poate fi descărcată din aplicația D-ENERGY → Dosare ANRE sau Abonament. Serviciul se activează după confirmarea încasării de către administrator. "
+        "Tarifele ANRE se plătesc separat, direct către ANRE.</p><p>Echipa D-ENERGY</p>"))
+    return {**inv, "transfer": transfer}
+
 async def activate(inv_id: str, by: str, how: str) -> bool:
     """Marks the proforma paid exactly once and extends the subscription. Returns False when already processed."""
     inv = await db.invoices.find_one_and_update({"id": inv_id, "status": {"$in": [PENDING, FAILED, EXPIRED]}},
                                                 {"$set": {"status": PAID, "paid_at": now(), "paid_via": how}}, return_document=True)
     if not inv:
         return False
+    if inv.get("service"):
+        await db.anre_dossiers.update_one({"invoice_id": inv_id, "payment_status": {"$ne": "plătit"}}, {"$set": {"payment_status": "plătit", "payment": {"reference": inv["number"], "at": now(), "by": by}},
+                                          "$push": {"history": {"at": now(), "by": by, "event": f"plată confirmată: proforma {inv['number']}"}}})
+        await log(inv["tenant"], "serviciu plătit", by, f"{inv['plan_name']} ({how}; {inv['number']})")
+        asyncio.create_task(issue_fiscal(inv_id))
+        return True
     sub = await db.subscriptions.find_one({"tenant": inv["tenant"]}, {"_id": 0}) or {}
     if inv.get("credit") and inv.get("credit_from_invoice") and sub.get("last_invoice") != inv["credit_from_invoice"]:
         await log(inv["tenant"], "atenție credit", by, f"{inv['number']}: creditul de {inv['credit']:.2f} lei a fost calculat pe {inv['credit_from_invoice']}, dar abonamentul s-a modificat între timp — verificați manual")
@@ -204,7 +234,7 @@ def sb_payload(inv: dict, c: dict) -> dict:
     cl = inv.get("client") or {}
     pj = cl.get("client_type") == "pj"
     unit = money(Decimal(str(inv["net"])) / int(inv["months"]))
-    name = f"Abonament D-ENERGY {inv['plan_name']} ({inv.get('period_from')} - {inv.get('period_to')})"
+    name = inv["plan_name"] if inv.get("service") else f"Abonament D-ENERGY {inv['plan_name']} ({inv.get('period_from')} - {inv.get('period_to')})"
     if inv.get("credit"):
         name += f"; credit {inv['credit']:.2f} lei din abonamentul anterior"
     pay = inv.get("payments") or [{}]
@@ -214,7 +244,7 @@ def sb_payload(inv: dict, c: dict) -> dict:
                        "regCom": cl.get("regcom", "") if pj else "", "address": cl.get("hq_address") if pj else cl.get("address"), "city": cl.get("locality"),
                        "county": cl.get("county"), "country": cl.get("country") or "Romania", "email": cl.get("billing_email"),
                        "isTaxPayer": bool(cl.get("vat_payer")), "saveToDb": False},
-            "products": [{"name": name[:250], "code": f"DEN-{inv['plan'].upper()}", "isDiscount": False, "measuringUnitName": "luna", "currency": "RON",
+            "products": [{"name": name[:250], "code": f"DEN-{inv['plan'].upper()}", "isDiscount": False, "measuringUnitName": "buc" if inv.get("service") else "luna", "currency": "RON",
                           "quantity": int(inv["months"]), "price": unit, "isTaxIncluded": False, "taxName": "Normala", "taxPercentage": float(inv["vat_rate"]),
                           "isService": True, "saveToDb": False}],
             "payment": {"value": inv["total"], "type": "Card" if "Stripe" in str(pay[-1].get("method")) else "Ordin plata", "isCash": False}}
@@ -463,6 +493,7 @@ def render_invoice(inv: dict) -> bytes:
     f = lambda v: f"{v:,.2f}".replace(",", " ").replace(".", ",")
     per = f"{inv.get('period_from')} → {inv.get('period_to')}" if inv.get("period_from") else f"{inv['months']} lună(i) de la data plății"
     rows = [["Descriere", "Cant.", "Preț unitar fără TVA", "Valoare fără TVA", "Cota TVA", "Valoare TVA"],
+            [inv["plan_name"], "1 buc.", f(inv["unit"]), f(inv["net"]), f"{inv['vat_rate']:g}%", ""] if inv.get("service") else
             [f"Abonament D-ENERGY {inv['plan_name']} — perioada: {per}", f"{inv['months']} luni", f(inv["unit"]), f(inv.get("gross") or inv["net"]), f"{inv['vat_rate']:g}%", ""]]
     if inv.get("credit"):
         rows.append([f"Credit abonament anterior — {e(inv.get('credit_note'))}", "1", "−" + f(inv["credit"]), "−" + f(inv["credit"]), f"{inv['vat_rate']:g}%", ""])

@@ -1769,6 +1769,7 @@ import diu_routes  # noqa: E402
 import offers_routes  # noqa: E402
 import operator_routes  # noqa: E402
 import anre_routes  # noqa: E402
+import anre_templates  # noqa: E402
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
