@@ -1,0 +1,26 @@
+{
+  "summary": "Smoke-tested D-ENERGY backend (JWT auth, generic CRUD, dashboard stats, settings, object storage upload/download) and frontend (login, dashboard load, Prosumator vs DI-U checklists, client CRUD + search, Simulare calculation). All critical flows pass. 12 Romanian modules reachable; prosumator (12-item checklist) and diu (10-item checklist) are correctly separated.",
+  "tested_scope": ["frontend", "backend", "auth", "integration"],
+  "passed": [
+    "POST /api/auth/login returns access_token for drinkdrinc@gmail.com",
+    "GET /api/auth/me returns admin user with Bearer token",
+    "GET /api/stats/dashboard returns {clients, diu, mono, pending, recent}",
+    "GET /api/settings returns company data (D-ENERGY / DNS HOSTESS S.R.L.)",
+    "POST/GET /api/data/clients CRUD works; owner field populated",
+    "GET /api/data/prosumator, /api/data/works, /api/data/diu return 200",
+    "POST /api/upload stores file (storage_path returned); GET /api/files/{path}?auth=<token> returns the file bytes correctly",
+    "UI login via data-testid login-email/password/submit navigates to dashboard",
+    "Prosumator form shows 12 checklist items (data-testid check-*)",
+    "DI-U form shows 10 checklist items (correctly separated from prosumator)",
+    "Client CRUD via UI: add-btn opens form, save-btn persists, items-table shows row; search-input filters correctly (3 -> 1 row for 'UI Client X')",
+    "Prosumator UI save with required client_name ref persists record (rows went 1 -> 2)",
+    "Simulare page: sim-calc present; filling area=500 yields visible kWp (86.4) and annual production (86,400 kWh)",
+    "Settings page loads"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "Did not exhaustively test every module (mono, panels, anti, pram, equipment, power). Catalog/Distributors render not deeply verified beyond page load. Documents UI upload (doc-client select + doc-file + upload-btn) not driven through UI but underlying /api/upload + /api/files was verified end-to-end via API. Owner-based data isolation code path exists on backend (owner set on create) but was not verified by logging in as a second user."
+}
