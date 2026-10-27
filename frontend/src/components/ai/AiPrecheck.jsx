@@ -7,14 +7,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 const SEV = { critic: ["#fff0f0", "#9b2c2c"], important: ["#fff8e6", "#8a5a00"], minor: ["#eef4ff", "#1d4ed8"] };
 
-export function AiPrecheck({ id, open, onClose, onFinalize, base = "dossier", title = "Verificare AI înainte de finalizare", action = "Finalizează dosarul" }) {
+export function AiPrecheck({ id, open, onClose, onFinalize, base = "dossier", title = "Verificare AI înainte de finalizare", action = "Finalizează dosarul", form }) {
   const [pc, setPc] = useState(null);
   const [err, setErr] = useState("");
   const [checked, setChecked] = useState([]);
   useEffect(() => {
     if (!open) return;
     setPc(null); setErr(""); setChecked([]);
-    api.post(`/ai/${base}/${id}/precheck`, {}, { timeout: 180000 }).then((r) => setPc(r.data)).catch((e) => setErr(e.response?.data?.detail || "Verificarea AI a eșuat"));
+    api.post(`/ai/${base}/${id}/precheck`, form ? { form } : {}, { timeout: 180000 }).then((r) => setPc(r.data)).catch((e) => setErr(e.response?.data?.detail || "Verificarea AI a eșuat"));
   }, [open, id, base]);
   const items = pc?.items || [];
   const left = items.length - checked.length;

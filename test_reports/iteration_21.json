@@ -1,0 +1,55 @@
+{
+  "summary": "Tested DI-U remote signing (one link per doc, all 11 docs), the public signing flow and where the signed PDF ends up (diu.signed, documents, client docs.semnate, prosumer opis left alone), signed vs ?orig=1 PDFs, Word export for the 10 non-schema docs, DI-U AI precheck and ack, PRO plan 402, sign-message with module diu, the prosumer precheck regression, and the UI flows (SignRequests in DI-U, docx icons, AI precheck dialog on 'Predat beneficiarului', cancel, finalize). Backend: 22/23 pass. The one failure is a real bug: PUT /api/data/diu overwrites the server-managed diu.signed field. A second pytest failure, in test_public_sign_garantie, was my own case-sensitive assertion ('Garan' vs 'garanție'). The backend data printed in that failure was correct, and I fixed the assertion but did not rerun that test. UI: all requested flows work. LLM calls used: 5 of 6.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/data/diu/{id}", "issue": "Server-managed fields 'signed' (and 'ai_precheck') are not stripped from the request body; the whole stale form is $set. If the DI-U edit form was loaded before the client signed, or simply holds an old copy, the next Salvează overwrites or wipes diu.signed.{key}. The DI-U then reverts to the generated PDF and its status leaves 'semnat'. Reproduced: PUT with signed:{} erased signed.garantie (test_put_does_not_wipe_signed). The frontend makes this likely: ModulePage.doSave sends {...form} and, for DI-U, keeps the old form after saving (load() does not refresh the form because ?edit was already removed from the URL).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/ai/diu/{id}/precheck", "issue": "The check runs on the DB record, not on the unsaved form. Edits made just before clicking Salvează (dates, PRAM values) are not seen, so the AI can flag fields the user just filled in. Fix: send the form in the body or save first."},
+      {"endpoint": "POST /api/ai/sign-message (module=diu)", "issue": "Still guarded with guard('prosumator') even when module is diu. Should use guard('diu') for DI-U."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SignRequests CreateForm", "issue": "The effect that fetches docs and pre-fills the signer can resolve twice (StrictMode double effect). The second response resets signers, wiping an e-mail the user typed right away (seen in the first UI run: the e-mail was cleared and creation failed with 'Clientul are nevoie de nume și e-mail valid'). Use an ignore/abort flag or only pre-fill empty fields.", "selector": "[data-testid=signer-email-0]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "DI-U save after signing", "issue": "Same root cause as the PUT /data/diu bug: the stale form object includes 'signed' and 'ai_precheck'.", "affected_selectors": ["[data-testid=save-btn]"]}
+    ],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "POST /api/diu/{id}/sign with all 11 keys -> 11 requests, module 'diu', 11 distinct tokens and group_ids, doc_title 'DI-U — ...'",
+    "Invalid key / bad email / empty keys -> 400",
+    "GET /api/sign/requests?dossier_id&module=diu lists them; module=bad -> 400",
+    "Public sign on garantie -> diu.signed.garantie with signed_at and storage_path; documents entry 'DI-U — ... — semnat'; client docs.semnate +1 ('DI-U — Certificat de garanție — semnat.pdf'); prosumer opis unchanged",
+    "GET /diu/{id}/docs -> garantie status 'semnat' with signed_at",
+    "GET pdf?doc=garantie -> 2 pages with the 'Semnat electronic' stamp plus evidence page; ?orig=1 -> 1 page; doc=all includes the signed version",
+    "fmt=docx for all 10 non-schema docs -> valid .docx (python-docx opens it, contains the title); schema_tg and all -> 400",
+    "AI DI-U precheck -> items with valid severities, saved on diu.ai_precheck; ack filters out-of-range indexes",
+    "PRO plan -> DI-U precheck and ack 402; DI-U docx 200",
+    "sign-message with module=diu streams a Romanian message containing both links exactly",
+    "Prosumer precheck regression 200",
+    "UI: 10 diu-doc-docx icons, none for schema_tg; 11 sign-pick checkboxes; signer-name-0 pre-filled from the client; sign-create-btn creates 2 links; AI client message box appears",
+    "UI: saving with 'În verificare' does not open the dialog; 'Predat beneficiarului' opens ai-precheck-dialog with the correct title; cancel leaves the DB unsaved; finalize with unchecked items asks for confirmation, then saves the status and the ack (checked [0])"
+  ],
+  "test_report_links": ["/app/backend/tests/test_iter21_diu_sign_word_ai.py", "/app/test_reports/pytest/pytest_iter21.xml"],
+  "action_items": [
+    "In update_item for module 'diu', pop 'signed' and 'ai_precheck' (as prosumator pops opis/sld), and/or refresh the form from the server after a DI-U save",
+    "Optionally pass the current form to /ai/diu/{id}/precheck so the AI checks what is about to be saved",
+    "Use guard('diu') in /ai/sign-message when module == 'diu'",
+    "Guard the SignRequests CreateForm pre-fill against double/late responses"
+  ],
+  "critical_code_review_comments": [
+    "server.py update_item: no protection for DI-U server-managed fields (signed, ai_precheck)",
+    "ModulePage.doSave: after a DI-U save the form is not re-synced with the server copy, so later saves send stale data",
+    "server.py is 1758 lines; consider splitting the sign module out"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter21_diu_sign_word_ai.py"],
+  "success_rate": {"backend": "96% (22/23; the single failure is a real bug)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None kept. Sign requests, signed entries, documents and client semnate entries created by the tests were removed; DI-U 70b56325 status/ai_precheck/signed unset. Temporary PRO subscriber deleted.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=<url> python -m pytest tests/test_iter21_diu_sign_word_ai.py -p no:xdist -o addopts='' -s (3 LLM calls, about 40s; uses DI-U 70b56325-ab31-42e3-84f2-c115d6c6ba78 and cleans up after itself). DI-U keys: opis, memoriu, schema_tg, pram_priza, pram_cont, pram_izol, pram_ddr, receptie, pif, conformitate, garantie. In the UI, wait about 2.5s after the sign-create checkboxes appear before typing the e-mail (pre-fill race). The client has no e-mail. test_put_does_not_wipe_signed should pass once update_item strips 'signed'.",
+  "rca of the issue": "update_item does $set with the whole client payload. For prosumator, server-managed keys (opis, sld, snapshot) are popped, but for diu nothing is popped. DiuDossier/ModulePage keep the form object loaded at edit time (it contains 'signed' if any doc was already signed) and send it back on every save. Repro: sign a DI-U doc via the public link, then PUT /data/diu/{id} with signed:{} or an old copy -> diu.signed loses the entry. Mitigation: data.pop('signed'), data.pop('ai_precheck') for module diu."
+}

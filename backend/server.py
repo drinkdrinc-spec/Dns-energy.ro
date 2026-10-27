@@ -372,6 +372,8 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     data.pop("atr_track", None); data.pop("owner", None); data.pop("created_at", None); data.pop("created_by", None); data.pop("created_by_email", None)
     if module == "prosumator":
         data.pop("pif", None)
+    if module in ("prosumator", "diu"):
+        data.pop("ai_precheck", None); data.pop("signed", None)
     if module == "clients" and isinstance(data.get("docs"), dict):
         data["docs"]["semnate"] = (cur.get("docs") or {}).get("semnate") or []
     data["updated_by"] = user.get("email")

@@ -221,12 +221,18 @@ DIU_KEYS = ("number", "client_name", "type", "power", "address", "operator", "at
 
 
 @api.post("/ai/diu/{item_id}/precheck")
-async def ai_diu_precheck(item_id: str, user: dict = Depends(get_current_user)):
+async def ai_diu_precheck(item_id: str, request: Request, user: dict = Depends(get_current_user)):
     import diu_routes as DR
     import diu_doc as DD
     ai_need(user)
     S.guard("diu", user, write=True)
     rec, r, client, s = await DR.diu_ctx(user, item_id)
+    try:
+        form = (await request.json()).get("form") or {}
+    except Exception:
+        form = {}
+    if isinstance(form, dict):
+        r = {**r, **{k: v for k, v in form.items() if k in DIU_KEYS + ("circuits", "pram_m") and v not in (None, "")}}
     summary = {"date_diu": {k: r.get(k) for k in DIU_KEYS if r.get(k) not in (None, "")}, "circuite_si_masuratori": r.get("circuits") or [],
                "pram_general": r.get("pram_m") or {}, "client": {k: client.get(k) for k in ("name", "address", "phone", "email") if client.get(k)},
                "executant": {k: s.get(k) for k in ("company", "anre_attest", "anre_valid", "rep") if s.get(k)},
@@ -250,8 +256,8 @@ CHANNELS = {"whatsapp": "WhatsApp (scurt, prietenos, fără subiect)", "sms": "S
 @api.post("/ai/sign-message")
 async def ai_sign_message(request: Request, user: dict = Depends(get_current_user)):
     ai_need(user)
-    S.guard("prosumator", user, write=True)
     b = await request.json()
+    S.guard("diu" if b.get("module") == "diu" else "prosumator", user, write=True)
     links = [x for x in b.get("links") or [] if isinstance(x, dict) and str(x.get("url") or "").startswith("http")][:20]
     if not links or not b.get("dossier_id"):
         raise HTTPException(status_code=400, detail="Nu există linkuri active de trimis")

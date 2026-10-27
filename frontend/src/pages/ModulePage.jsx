@@ -160,7 +160,7 @@ export default function ModulePage({ moduleKey }) {
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
           {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} savedAt={savedAt} />}
           {key === "diu" && editId && <SignRequests dossierId={editId} module="diu" />}
-          {key === "diu" && editId && <AiPrecheck id={editId} base="diu" open={diuPre} onClose={() => setDiuPre(false)} onFinalize={doSave}
+          {key === "diu" && editId && <AiPrecheck id={editId} base="diu" open={diuPre} onClose={() => setDiuPre(false)} onFinalize={doSave} form={form}
             title="Verificare AI înainte de predarea către beneficiar" action="Salvează ca „Predat beneficiarului”" />}
           {key === "prosumator" && editId && <AiDossierCheck id={editId} />}
           {key === "prosumator" && editId && <SignRequests dossierId={editId} />}

@@ -69,7 +69,7 @@ function CreateForm({ dossierId, module, onCreated }) {
   useEffect(() => { api.get(diu ? `/diu/${dossierId}/docs` : `/dossier/${dossierId}`).then((r) => {
     setPositions(diu ? r.data.positions : r.data.positions.filter((p) => p.source === "generat"));
     const c = r.data.client || {};
-    setSigners([{ name: c.name || "", email: c.email || "", phone: c.phone || "", role: "Beneficiar" }]);
+    setSigners((cur) => [{ name: cur[0].name || c.name || "", email: cur[0].email || c.email || "", phone: cur[0].phone || c.phone || "", role: "Beneficiar" }]);
   }); }, [dossierId]); // eslint-disable-line
   const upd = (i, k, v) => setSigners(signers.map((s, j) => (j === i ? { ...s, [k]: v } : s)));
   const create = async () => {
