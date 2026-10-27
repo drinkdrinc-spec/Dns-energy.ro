@@ -13,6 +13,7 @@ import { ClientDocs } from "@/components/dossier/ClientDocs";
 import { SignRequests } from "@/components/sign/SignRequests";
 import { SldPanel } from "@/components/sld/SldPanel";
 import { TestDossierButtons } from "@/components/sld/TestDossier";
+import { AssignBox } from "@/components/AssignBox";
 
 function Field({ f, value, onChange, refOptions }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -123,6 +124,7 @@ export default function ModulePage({ moduleKey }) {
             </div>
           )}
 
+          {key === "prosumator" && <AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} />}
           {key === "prosumator" && <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />}
           {key === "prosumator" && editId && <SldPanel id={editId} form={form} setVal={setVal} />}
           {key === "prosumator" && <DossierExtras form={form} setVal={setVal} />}

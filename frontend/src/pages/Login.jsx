@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { BrandMark } from "@/components/BrandMark";
 import { Btn } from "@/components/Layout";
-import { formatApiErrorDetail } from "@/lib/api";
+import { api, formatApiErrorDetail } from "@/lib/api";
 import { toast } from "sonner";
 
 export default function Login() {
@@ -11,11 +11,17 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("login");
+  const [name, setName] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
     setErr(""); setLoading(true);
     try {
+      if (mode === "register") {
+        const { data } = await api.post("/auth/register", { email, password, name });
+        if (data.pending) { toast.success(data.message); setMode("login"); return; }
+      }
       await login(email, password);
       toast.success("Autentificare reușită");
     } catch (ex) {
@@ -40,8 +46,9 @@ export default function Login() {
       <div className="flex items-center justify-center p-6 sm:p-12" style={{ background: "var(--bg)" }}>
         <form onSubmit={submit} className="w-full max-w-sm den-panel" data-testid="login-form">
           <div className="lg:hidden flex items-center gap-3 mb-6"><BrandMark size={40} /><span className="text-xl font-extrabold">D-ENERGY</span></div>
-          <h1 className="text-2xl font-extrabold">Autentificare</h1>
-          <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>Accesează spațiul tău de lucru.</p>
+          <h1 className="text-2xl font-extrabold">{mode === "register" ? "Cont nou" : "Autentificare"}</h1>
+          <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>{mode === "register" ? "Contul devine activ după aprobarea administratorului." : "Accesează spațiul tău de lucru."}</p>
+          {mode === "register" && <div className="den-field mb-4"><label>Nume complet</label><input data-testid="register-name" className="den-input" value={name} onChange={(e) => setName(e.target.value)} required /></div>}
 
           <div className="den-field mb-4">
             <label>Email</label>
@@ -55,8 +62,10 @@ export default function Login() {
           {err && <div data-testid="login-error" className="text-[13px] mb-4 rounded-lg px-3 py-2" style={{ background: "#fff0f0", color: "#b33333" }}>{err}</div>}
 
           <Btn type="submit" data-testid="login-submit" className="w-full justify-center" disabled={loading}>
-            {loading ? "Se verifică..." : "Intră în cont"}
+            {loading ? "Se verifică..." : mode === "register" ? "Trimite cererea de cont" : "Intră în cont"}
           </Btn>
+          <button type="button" className="text-xs font-bold mt-4 w-full" style={{ color: "var(--blue)" }} onClick={() => { setMode(mode === "login" ? "register" : "login"); setErr(""); }} data-testid="toggle-register">
+            {mode === "login" ? "Nu ai cont? Înregistrează-te (instalator / personal)" : "Am deja cont — autentificare"}</button>
         </form>
       </div>
     </div>

@@ -117,9 +117,10 @@ class TestDossierSld:
         assert r.status_code == 200 and r.content[:4] == b"%PDF"
         t = text(r.content).lower()
         assert "cablu" in t or "cabluri" in t
-        for k in ("schema", "fisa_tehnica"):
+        # iter10: fisa_tehnica now has a Word export (200); schema stays PDF-only (400)
+        for k, code in (("schema", 400), ("fisa_tehnica", 200)):
             r = s.get(f"{API}/dossier/{rid}/file/{k}", params={"auth": s.token, "fmt": "docx"}, timeout=30)
-            assert r.status_code == 400, (k, r.status_code)
+            assert r.status_code == code, (k, r.status_code)
 
     def test_03_finalize_blocked_and_export_ciorna(self, s, rid):
         r = s.post(f"{API}/dossier/{rid}/finalize", timeout=30)

@@ -14,6 +14,7 @@ import EquipmentCatalog from "@/pages/EquipmentCatalog";
 import BaseSettings from "@/pages/BaseSettings";
 import SignPage from "@/pages/SignPage";
 import RemoteSigning from "@/pages/RemoteSigning";
+import Users from "@/pages/Users";
 import "@/App.css";
 
 function Protected({ children }) {
@@ -49,6 +50,7 @@ function AppRoutes() {
         <Route path="/distribuitori" element={<Operators />} />
         <Route path="/documente" element={<Documents />} />
         <Route path="/setari" element={<Settings />} />
+        <Route path="/utilizatori" element={<Users />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

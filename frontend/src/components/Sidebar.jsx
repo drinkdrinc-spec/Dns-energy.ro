@@ -37,6 +37,7 @@ const NAV = [
   { label: "Administrare", items: [
     { to: "/documente", icon: "Files", text: "Documente", testid: "nav-documents" },
     { to: "/setari", icon: "Settings", text: "Setări", testid: "nav-settings" },
+    { to: "/utilizatori", icon: "ShieldCheck", text: "Utilizatori și roluri", testid: "nav-users", admin: true },
   ]},
 ];
 
@@ -67,7 +68,7 @@ export function Sidebar({ open, onClose }) {
           {NAV.map((grp) => (
             <div key={grp.label}>
               <div className="font-bold uppercase" style={{ color: "#7f91ae", fontSize: 10, letterSpacing: 1.5, padding: "20px 12px 8px" }}>{grp.label}</div>
-              {grp.items.map((it) => {
+              {grp.items.filter((it) => !it.admin || (user?.role || "admin") === "admin").map((it) => {
                 const Icon = ICONS[it.icon];
                 return (
                   <NavLink
