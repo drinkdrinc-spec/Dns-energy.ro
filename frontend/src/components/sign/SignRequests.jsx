@@ -18,7 +18,7 @@ function LinkBox({ r, token, onSent }) {
       <div className="break-all font-mono mb-2" data-testid="sign-link-url">{url}</div>
       <div className="flex flex-wrap gap-2">
         <button className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} onClick={() => { navigator.clipboard?.writeText(url); toast.success("Link copiat"); sent("copiat"); }} data-testid="sign-copy"><Copy size={13} /> Copiază</button>
-        <a className="inline-flex items-center gap-1 font-bold" style={{ color: "#15803d" }} href={`https://wa.me/${(r.signer_phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer" onClick={() => sent("WhatsApp")} data-testid="sign-whatsapp"><MessageCircle size={13} /> WhatsApp</a>
+        <a className="inline-flex items-center gap-1 font-bold" style={{ color: "#15803d" }} href={`https://wa.me/${(r.signer_phone || "").replace(/\D/g, "").replace(/^0(?=7)/, "40")}?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer" onClick={() => sent("WhatsApp")} data-testid="sign-whatsapp"><MessageCircle size={13} /> WhatsApp</a>
         <a className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} href={`sms:${r.signer_phone || ""}?&body=${encodeURIComponent(text)}`} onClick={() => sent("SMS")} data-testid="sign-sms"><Smartphone size={13} /> SMS</a>
         <a className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} href={`mailto:${r.signer_email}?subject=${encodeURIComponent("Document de semnat — " + r.doc_title)}&body=${encodeURIComponent(text)}`} onClick={() => sent("e-mail")} data-testid="sign-mailto"><Mail size={13} /> E-mail</a>
       </div>
@@ -44,7 +44,7 @@ function Req({ r, token, reload, setToken }) {
         </div>
         <span className="text-[11px] font-bold rounded-full px-2.5 py-1" style={{ background: bg, color: fg }} data-testid={`sign-status-${r.id}`}>{r.status}{r.revoked ? " (revocat)" : ""}</span>
       </div>
-      {token && !closed && <LinkBox r={r} token={token} onSent={reload} />}
+      {token && !closed && r.status !== "Expirat" && !r.revoked && <LinkBox r={r} token={token} onSent={reload} />}
       <div className="flex flex-wrap gap-3 mt-2 text-xs">
         {!closed && <button className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} onClick={() => act("new-link", { expires_days: 7 })} data-testid={`sign-newlink-${r.id}`}><RefreshCw size={13} /> {token ? "Link nou" : "Generează link nou / retrimite"}</button>}
         {!closed && r.status !== "Expirat" && <button className="inline-flex items-center gap-1 font-bold" style={{ color: "#9b2c2c" }} onClick={() => window.confirm("Revoci linkul?") && act("revoke")} data-testid={`sign-revoke-${r.id}`}><Ban size={13} /> Revocă</button>}

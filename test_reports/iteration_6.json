@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 6: tested the Remote Signing module ('Semnare la distanță') end to end on the backend and frontend, plus the client operator select and regressions. Backend: the new tests/test_remote_signing.py has 11 tests and all pass. They cover create (one item per position x signer, only the token hash is stored, opis status becomes 'necesită semnătură'), 400 validation, 404 for an unknown position, listing by dossier_id and client_name, /sent -> 'Link trimis', the public info call -> 'Deschis', document PDF and page PNGs (the document's SHA-256 matches the stored one), the 404 for an out-of-range page, a real OTP email to delivered@resend.dev (provider answered 202) with a 429 on the immediate resend (45s cooldown), a wrong code -> 400 'Cod incorect' with history 'Cod greșit', and a successful sign using an OTP planted in Mongo. Signing makes the token return 404, and the signed PDF has the original pages plus one evidence page per signer; the last page is 'FIȘĂ DE EVIDENȚĂ A SEMNĂRII ELECTRONICE'. In a group of 2 signers the file is attached to the opis position (status 'atașat') and the 'Semnat electronic' document is created only after both have signed. Refuse -> 'Refuzat', token invalid, and new-link is blocked. New-link -> old token 404, history kept. An expires_at in the past -> 'Expirat', pages 0, OTP 410. Revoke -> 'Expirat', revoked true, token 404. Calls without auth -> 401/403. The previous regression suite passes (50 passed, 1 skipped). Frontend: the prosumator Semnături section creates a link (sign-link-url, copy/WhatsApp/SMS/mailto); copy changes the status to 'Link trimis'. The public page at 390x844 renders the page images; the submit button stays disabled until name, 6-digit code, signature and intent are all present; signing ends at sign-done and a reload shows sign-error. The OTP button works and the cooldown message appears. Refuse works. An expired link shows sign-closed. /semnare lists all 4 statuses with 'PDF semnat' download (200), new-link, revoke and history. The client edit form shows the Semnături list, and the operator select shows the official names and keeps the legacy value 'DEER — Transilvania Nord'. 2 real OTP emails were sent in total. All TEST data was cleaned up, including the old 'TESTSIGN Ion' request; ZOLTAN opis is back to {} and the sign_requests collection is empty.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/sign/requests", "issue": "A non-numeric expires_days such as 'abc' gives a 500, because float() is called unguarded (the same applies to /new-link). expires_days=0 silently becomes 7 because of `or 7`, and 0.5 is accepted, although the spec says 1-90. Validate as an integer in 1..90 and return 400."},
+      {"endpoint": "POST /api/public/sign/{token}/sign", "issue": "There is no atomic guard. Two concurrent sign calls with the same valid OTP could both pass, because the check happens before update_one. Use find_one_and_update with a filter on status in SIGN_ACTIVE and token_hash."},
+      {"endpoint": "POST /api/sign/requests/{rid}/new-link", "issue": "Neither otp_sends nor otp_last is reset. After 5 sends, a new link can never get an OTP (it returns 429 for good)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SignRequests Req/LinkBox", "issue": "After a link is revoked (status Expirat/revoked), the LinkBox with the old URL and its Copy/WhatsApp/SMS/E-mail buttons stays visible, because the token is still in the tokens state and `closed` only covers Semnat/Refuzat. The operator could send a dead link. Hide the LinkBox when status is Expirat or revoked, or remove the token on revoke.", "selector": "[data-testid=sign-link-{id}]", "priority": "MEDIUM"},
+      {"component": "SignPage document images", "issue": "The images use loading='lazy' and have no reserved height, so the layout shifts as pages load. The sign-pad moved about 70px mid-test and strokes landed outside the pad. A real user starting to sign before the pages finish loading could hit the same problem. Add an aspect-ratio (for example 210/297) or a min-height to the images.", "selector": "[data-testid=sign-document] img", "priority": "LOW"},
+      {"component": "SignPage closed state", "issue": "A link that has already been signed or refused shows 'Link invalid sau revocat' (404, because token_hash is nulled) instead of a friendlier 'already signed' message. sign-closed only ever appears for expired links.", "selector": "[data-testid=sign-error]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "WhatsApp link", "issue": "wa.me uses the raw phone digits, for example 0722111222. WhatsApp needs the international format (40722111222), so local Romanian numbers starting with 0 will not open the right chat.", "affected_selectors": ["[data-testid=sign-whatsapp]"]}
+    ],
+    "design_issues": [
+      {"screen": "Public sign page (mobile)", "issues": ["Page images are rendered at 110 dpi and scaled to about 340px wide, so the text is very small on a phone. Consider a tap-to-zoom option or a higher dpi."]},
+      {"screen": "modules.js power/BMP module", "issues": ["The second operator select (around line 284) still uses the old short names ('DEER — Transilvania Nord', 'Rețele Electrice România'). These do not match the new official list used in the client form."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_remote_signing.py", "/app/test_reports/pytest/pytest_sign.xml"],
+  "action_items": [
+    "Validate expires_days as an integer in 1..90 and return 400 instead of 500 for bad input (in both create and new-link).",
+    "Hide the LinkBox after a link is revoked or expired in SignRequests.jsx.",
+    "Make the sign update atomic (find_one_and_update with a status/token filter).",
+    "Reset otp_sends and otp_last when a new link is generated.",
+    "Normalise the WhatsApp phone number to international format (0xxxxxxxxx -> 40xxxxxxxxx).",
+    "Reserve the image aspect-ratio on SignPage to avoid layout shift."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 1018 lines. Move the Semnare la distanță section into its own module (sign.py).",
+    "pub_sign_info opens the whole PDF with pymupdf just to count pages, and the page endpoint re-renders on every request. Cache the page count or the rendered PNGs.",
+    "sign_file with kind != 'signed' returns the original PDF; this is fine, but kind is not validated.",
+    "Expiry comparison uses ISO strings. It works because the format is always +00:00, but it is fragile."
+  ],
+  "updated_files": ["/app/backend/tests/test_remote_signing.py"],
+  "success_rate": {"backend": "100% (11/11 new + 50/50 regression)", "frontend": "~90% (all flows work; revoked-link box bug)"},
+  "test_credentials": "drinkdrinc@gmail.com / DEnergy2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None left behind. TEST sign_requests, 'Semnat electronic' documents and opis keys (afm, pif, reglaj, imputernicire, schema, priza, notificare) on ZOLTAN were removed. The old TESTSIGN Ion request was deleted, so the token in /app/memory/.signtok is now invalid.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=<url> python -m pytest tests/test_remote_signing.py -n 0. It sends 1 real OTP to delivered@resend.dev, plants OTPs directly in Mongo, and cleans up in a fixture teardown. On the public sign page, wait for the images to load before drawing on sign-pad (layout shift)."
+}

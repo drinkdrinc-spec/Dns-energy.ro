@@ -46,7 +46,7 @@ export default function SignPage() {
   if (err) return <Shell><p className="text-center font-bold" data-testid="sign-error">{err}</p></Shell>;
   if (!info) return <Shell><p className="text-center">Se încarcă…</p></Shell>;
   if (done) return <Shell><div className="text-center" data-testid="sign-done"><h2 className="text-xl font-extrabold mb-2">{done}</h2><p className="text-sm">Linkul nu mai poate fi folosit. Poți închide această pagină.</p></div></Shell>;
-  if (!info.pages) return <Shell><p className="text-center font-bold" data-testid="sign-closed">Acest link nu mai este activ (stare: {info.status}).</p></Shell>;
+  if (!info.pages) return <Shell><p className="text-center font-bold" data-testid="sign-closed">{info.status === "Semnat" ? `Documentul a fost deja semnat${info.signed_at ? ` la ${new Date(info.signed_at).toLocaleString("ro-RO")}` : ""}.` : info.status === "Refuzat" ? "Semnarea acestui document a fost refuzată." : "Acest link a expirat. Cere emitentului un link nou."}</p></Shell>;
   const ok = f.declared_name.trim() && f.intent && f.otp.length === 6 && f.signature;
   return (
     <Shell>
@@ -56,7 +56,7 @@ export default function SignPage() {
         <p className="text-sm" style={{ color: "#5a6b85" }}>Pentru: <b>{info.signer_name}</b> ({info.role}) · dosar {info.client_name} · valabil până la {new Date(info.expires_at).toLocaleString("ro-RO")}</p>
       </div>
       <div className="rounded-xl border bg-[#eef1f5] p-2 space-y-2 max-h-[70vh] overflow-y-auto" data-testid="sign-document">
-        {[...Array(info.pages).keys()].map((i) => <img key={i} src={`${API}/${token}/page/${i}`} alt={`Pagina ${i + 1}`} className="w-full bg-white shadow-sm" loading="lazy" />)}
+        {[...Array(info.pages).keys()].map((i) => <a key={i} href={`${API}/${token}/page/${i}`} target="_blank" rel="noopener noreferrer"><img src={`${API}/${token}/page/${i}`} alt={`Pagina ${i + 1}`} className="w-full bg-white shadow-sm" style={{ aspectRatio: "210 / 297" }} loading="lazy" /></a>)}
       </div>
       <a href={`${API}/${token}/document`} target="_blank" rel="noopener noreferrer" className="text-xs underline mt-1 inline-block" style={{ color: "#2878f0" }} data-testid="sign-download-original">Descarcă documentul (PDF)</a>
       <div className="mt-6 rounded-xl border bg-white p-4 space-y-4" style={{ borderColor: "#dbe3ee" }}>

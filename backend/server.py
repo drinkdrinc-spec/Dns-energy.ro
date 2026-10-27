@@ -708,6 +708,17 @@ def client_meta(request: Request) -> dict:
 def hist(action: str, meta: dict = None, detail: str = "") -> dict:
     return {"at": now_iso(), "action": action, "detail": detail, **(meta or {})}
 
+def parse_days(v) -> int:
+    try:
+        d = int(v if v not in (None, "") else 7)
+        if str(v).strip() not in ("", "None") and float(v) != d:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Valabilitatea trebuie să fie un număr întreg de zile (1–90)")
+    if not 1 <= d <= 90:
+        raise HTTPException(status_code=400, detail="Valabilitatea trebuie să fie între 1 și 90 de zile")
+    return d
+
 def new_token(days: float):
     t = secrets.token_urlsafe(32)
     return t, sha(t.encode()), (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
@@ -716,9 +727,9 @@ def new_token(days: float):
 async def sign_create(request: Request, user: dict = Depends(get_current_user)):
     b = await request.json()
     did, keys, signers = b.get("dossier_id"), b.get("pos_keys") or [], b.get("signers") or []
-    days = float(b.get("expires_days") or 7)
-    if not keys or not signers or not (0 < days <= 90):
-        raise HTTPException(status_code=400, detail="Alege documentele, semnatarii și o valabilitate între 1 și 90 de zile")
+    days = parse_days(b.get("expires_days"))
+    if not keys or not signers:
+        raise HTTPException(status_code=400, detail="Alege documentele și semnatarii")
     for s in signers:
         if not (s.get("name") or "").strip() or "@" not in (s.get("email") or ""):
             raise HTTPException(status_code=400, detail="Fiecare semnatar are nevoie de nume și e-mail valid (pentru codul de verificare)")
@@ -781,10 +792,10 @@ async def sign_new_link(rid: str, request: Request, user: dict = Depends(get_cur
     r = await sign_own(user, rid)
     if r["status"] in ("Semnat", "Refuzat"):
         raise HTTPException(status_code=400, detail="Documentul a fost deja semnat sau refuzat — creează o cerere nouă")
-    days = float((await request.json()).get("expires_days") or 7)
+    days = parse_days((await request.json()).get("expires_days"))
     t, th, exp = new_token(days)
     await db.sign_requests.update_one({"id": rid}, {"$set": {"token_hash": th, "expires_at": exp, "status": "De trimis", "revoked": False, "otp_hash": None,
-                                                              "otp_attempts": 0}, "$push": {"history": hist("Link nou generat", None, f"linkul anterior invalidat; valabil până la {exp[:16]} UTC; de {user.get('email')}")}})
+                                                              "otp_attempts": 0, "otp_sends": 0, "otp_last": None}, "$push": {"history": hist("Link nou generat", None, f"linkul anterior invalidat; valabil până la {exp[:16]} UTC; de {user.get('email')}")}})
     return {**sign_public({**r, "status": "De trimis", "expires_at": exp}), "token": t}
 
 @api_router.post("/sign/requests/{rid}/revoke")
@@ -856,7 +867,7 @@ async def pub_sign_page(token: str, n: int):
     d = pymupdf.open(stream=data, filetype="pdf")
     if n < 0 or n >= d.page_count:
         raise HTTPException(status_code=404, detail="Pagină inexistentă")
-    return Response(content=d[n].get_pixmap(dpi=110).tobytes("png"), media_type="image/png")
+    return Response(content=d[n].get_pixmap(dpi=150).tobytes("png"), media_type="image/png")
 
 @api_router.post("/public/sign/{token}/otp")
 async def pub_sign_otp(token: str, request: Request):
@@ -962,11 +973,15 @@ async def pub_sign(token: str, request: Request):
     if len(png) < 800 or len(png) > 2_000_000:
         raise HTTPException(status_code=400, detail="Semnătura nu este validă")
     meta, at = client_meta(request), now_iso()
+    claim = await db.sign_requests.update_one({"id": r["id"], "token_hash": r["token_hash"], "status": {"$in": list(SIGN_ACTIVE)}, "otp_hash": r["otp_hash"]},
+                                              {"$set": {"status": "Semnat", "signed_at": at, "otp_hash": None}})
+    if claim.modified_count == 0:
+        raise HTTPException(status_code=409, detail="Documentul a fost deja semnat")
     s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
     ev = evidence_page(r, png, meta, declared, at, s.get("company") or "DNS HOSTESS SRL")
     evp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/evidence_{r['id']}.pdf", ev, "application/pdf")
     sigp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/signature_{r['id']}.png", png, "image/png")
-    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Semnat", "signed_at": at, "declared_name": declared, "token_hash": None,
+    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"declared_name": declared,
         "evidence_path": evp["path"], "signature_path": sigp["path"], "sign_meta": meta, "otp_hash": None},
         "$push": {"history": hist("Semnat", meta, f"identitate declarată: {declared}; cod e-mail verificat; intenție confirmată")}})
     await rebuild_group(r["owner"], r["group_id"])
@@ -978,7 +993,7 @@ async def pub_refuse(token: str, request: Request):
     if sign_status(r) not in SIGN_ACTIVE:
         raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
     reason = ((await request.json()).get("reason") or "").strip()[:500]
-    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Refuzat", "refused_reason": reason, "token_hash": None},
+    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Refuzat", "refused_reason": reason},
                                                         "$push": {"history": hist("Refuzat", client_meta(request), reason)}})
     return {"ok": True}
 
