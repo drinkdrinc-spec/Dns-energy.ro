@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, Link } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
 import { Menu } from "lucide-react";
@@ -16,9 +17,22 @@ export default function Layout() {
           <span className="font-extrabold tracking-wide">D-ENERGY</span>
         </header>
         <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto">
+          <PlanBanner />
           <Outlet />
         </main>
       </div>
+    </div>
+  );
+}
+
+function PlanBanner() {
+  const { user } = useAuth();
+  const p = user?.plan;
+  if (!p || p.exempt || p.active) return null;
+  return (
+    <div className="mb-5 rounded-xl px-4 py-3 text-sm flex flex-wrap items-center gap-3" style={{ background: "#fff8e6", color: "#8a5a00" }} data-testid="plan-banner">
+      <b>Abonament: {p.status}.</b> {p.policy === "blocked" ? "Accesul la module este blocat" : "Puteți consulta datele, dar nu puteți crea sau modifica dosare"} — datele sunt păstrate în siguranță.
+      {user.account_type !== "team" && <Link to="/abonament" className="font-bold underline" data-testid="plan-banner-link">Activează abonamentul</Link>}
     </div>
   );
 }

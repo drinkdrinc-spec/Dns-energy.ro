@@ -19,18 +19,14 @@ export function AuthProvider({ children }) {
     localStorage.setItem("den_token", data.access_token);
     setUser(data.user);
   };
-  const register = async (email, password, name) => {
-    const { data } = await api.post("/auth/register", { email, password, name });
-    localStorage.setItem("den_token", data.access_token);
-    setUser(data.user);
-  };
+  const refresh = () => api.get("/auth/me").then((r) => setUser(r.data)).catch(() => {});
   const logout = () => {
     localStorage.removeItem("den_token");
     setUser(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout }}>
+    <AuthContext.Provider value={{ user, login, refresh, logout }}>
       {children}
     </AuthContext.Provider>
   );

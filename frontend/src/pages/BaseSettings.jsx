@@ -52,7 +52,7 @@ function Company() {
         {(s.other_docs || []).map((f, i) => <div key={f.storage_path} className="text-xs ml-4 flex gap-2"><a className="underline" style={{ color: "var(--blue)" }} href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer">{f.original_filename}</a>
           <button onClick={() => save({ ...s, other_docs: s.other_docs.filter((_, j) => j !== i) })}><Trash2 size={12} style={{ color: "#b33333" }} /></button></div>)}
       </div>
-      <p className="text-[11px] mt-3" style={{ color: "var(--muted)" }}>Ștampila și semnăturile NU se aplică automat în documente; documentele generate au spații pentru semnătura olografă sau pentru semnare la distanță.</p>
+      <p className="text-[11px] mt-3" style={{ color: "var(--muted)" }}>Ștampila (imagine PNG/JPG) și semnătura grafică a persoanei selectate ca executant/semnatar se aplică automat la generarea documentelor, doar dacă persoana are autorizație valabilă și verificată și a autorizat folosirea semnăturii. Lipsurile și documentele expirate sunt semnalate ca avertisment în dosar.</p>
       <div className="mt-4"><Btn onClick={() => save()} data-testid="co-save">Salvează profilul firmei</Btn></div>
     </div>
   );

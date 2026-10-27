@@ -1,0 +1,55 @@
+{
+  "summary": "Phase A (accounts, roles, data separation, audit) tested on backend and frontend. New suite tests/test_iter11_accounts_roles.py: 18 of 25 pass. Working: register returns pending=true with no token (role limitat, tenant=admin, bcrypt $2b$); duplicate register gives 400; pending login gives 403 'Contul așteaptă aprobarea administratorului'; admin GET/PUT /admin/users approves and sets roles (invalid role 400, main admin 404); /auth/me returns role and status; 5 wrong passwords then 429, still 429 with the correct password; /admin/* gives 403 for non-admin. Installer list excludes admin dossiers; installer import and client creation set created_by/created_by_email, and the records are visible to the admin. Installer gets 404 on GET/PUT data, dossier, sld, sld pdf/report, export, file/opis, docs and sizing for the admin dossier. Admin assigned_to grants access and clearing it revokes access. Non-admin assigned_to is stripped; non-admin DELETE on prosumator/clients gives 403. limitat gets 403 on POST/PUT data. Non-admin gets 403 on settings, staff/instruments writes and test-dossier POST/DELETE. sld approve gives 403 for instalator and passes the role check for inginer. Suspend/disable make the existing token 403 on /auth/me and the PDF endpoints. The audit log records create, modify, user changes and registration. FAILED, real security gaps: (1) POST /dossier/{id}/reopen has no check_access or role check, so an installer reopened the admin's dossier (200) and limitat can reopen; (2) /stats/dashboard is not scoped, so the installer sees tenant-wide counts and the admin's recent DIU (confirmed in the UI); (3) GET /audit is not scoped, so the installer reads every user's audit entries; (4) GET /files/{path} only decodes the JWT, with no status, scope or ownership check, so the installer downloaded an admin document and a DISABLED user's token still downloads files; (5) PUT /sld/{id}/source (and other write endpoints after line 470) have no guard(), so limitat can write; (6) POST /import/prosumator links any existing tenant client with the same name, so the installer's dossier gets the admin client's CNP, phone and so on. Frontend: register toggle and pending toast work, admin nav-users opens /utilizatori with the table (role select, staff select, approve, suspend, disable), approve via the UI works, assign-box with the user checkbox shows in the admin prosumator form, and the installer has no nav-users and no assign-box. Regression (deselecting email-sending iter10 TestB and iter9 test_09/10/11): 125 passed, 6 failed. Five of those are outdated tests broken by the new flow (register no longer returns access_token; created_by is now the uid, not the email) or caused by a deselected dependency. test_30_delete_only_test is flaky under -n 2 because other workers change the client count, and passes serially.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/dossier/{id}/reopen", "issue": "No check_access or role check; the query uses owner=tenant only. The installer reopened the admin's dossier (200), limitat can reopen, and the snapshot is removed.", "priority": "HIGH"},
+      {"endpoint": "GET /api/files/{path}", "issue": "Only decodes the JWT, with no user status, ownership or scope check. The installer downloaded an admin document (200), and a disabled or suspended user's token still downloads files.", "priority": "HIGH"},
+      {"endpoint": "GET /api/stats/dashboard", "issue": "Not scoped with scope_q. The installer sees tenant-wide client, DIU and mono counts and the admin's recent DIU records (full documents), so client data leaks.", "priority": "HIGH"},
+      {"endpoint": "GET /api/audit", "issue": "Not scoped. A non-admin reads the whole tenant's audit log (users, item ids, fields). Restrict it to admin, or to items accessible through scope_q.", "priority": "HIGH"},
+      {"endpoint": "POST /api/import/prosumator", "issue": "Client lookup is {owner, name} only. An installer importing an existing tenant client's name links the dossier to that admin client, exposing CNP/phone/address through the dossier and its PDFs. Scope the lookup (scope_q) or create a new client. The duplicate-POD 409 also checks across the tenant, which leaks existence.", "priority": "MEDIUM"},
+      {"endpoint": "PUT /api/sld/{id}/source, POST /sld/{id}/apply, PUT /dossier/{id}/item/{key}, POST /sign/requests, POST /prosumator/{id}/attach-catalog, POST /sld/{id}/request-approval, /sign/requests/{rid}/new-link|revoke|sent", "issue": "No guard(write=True) or EDIT_ROLES check after line 470. limitat (read-only) got 200 on PUT /sld/{id}/source for an assigned dossier.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "PUT /api/data/{module}/{id}", "issue": "created_by_email is not popped, so a non-admin can overwrite it and falsify provenance (created_by is protected)."},
+      {"endpoint": "POST /api/auth/login", "issue": "The brute-force identifier uses the client-supplied X-Forwarded-For, so changing that header bypasses the lockout."},
+      {"endpoint": "POST /api/dossier/{id}/finalize, /sld/{id}/unapprove", "issue": "Updates use {'id'} or owner only after check_access. Fine for now, but reopen lacks even that."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Users page for non-admin (direct /utilizatori)", "issue": "A non-admin gets a blank page with 2 duplicate 403 toasts; there is no redirect or route guard.", "selector": "/utilizatori", "priority": "LOW"},
+      {"component": "ModulePage list (prosumator/clients)", "issue": "Delete buttons still show for non-admins (backend returns 403). Hide them for non-admin, and hide add/edit for limitat.", "selector": "[data-testid^='delete-']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Installer dashboard", "issue": "Shows the admin's client/DIU counts and admin recent dossiers because /stats/dashboard is unscoped.", "affected_selectors": ["Panou principal cards", "Dosare recente"]}
+    ],
+    "design_issues": [
+      {"screen": "Users.jsx", "issues": ["The 'main admin' detection relies on u.tenant, which pub_user never returns. It works only because the admin is sorted first. Return a tenant/is_main flag from the API."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter11_accounts_roles.py", "/app/test_reports/pytest/iter11_results.xml", "/app/test_reports/pytest/iter11_regression.xml"],
+  "action_items": [
+    "Add check_access plus require(admin/inginer/electrician) to POST /dossier/{id}/reopen",
+    "Secure GET /files/{path}: use user_from_token (status check) and verify the path belongs to an accessible record (or at least the tenant prefix plus scope for non-admin)",
+    "Scope /stats/dashboard with scope_q(user, module)",
+    "Restrict GET /audit to admin, or filter it to item_ids accessible to the user",
+    "Add guard('prosumator', user, write=True) to all write endpoints beyond the generic CRUD: sld apply/source/approve/unapprove/request-approval/send-sign, dossier item/finalize/reopen, sign requests create/new-link/revoke/sent, attach-catalog",
+    "In import_prosumator, scope the client lookup by name to the user's accessible clients (scope_q)",
+    "Pop created_by_email in update_item",
+    "Update outdated regression tests that expect register to return access_token (test_iter10 test_12, test_prosumator_docs test_other_user_cannot_access, test_cef_catalog test_seed_once_fresh_user: approve via admin or insert an active user directly) and test_dossier_opis test_staff_instruments_signers (created_by is now the uid; check created_by_email)",
+    "Frontend: route guard for /utilizatori for non-admin; hide delete buttons for non-admin and write actions for limitat"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1474 lines; split auth/users, CRUD, sld, dossier and sign into routers",
+    "Tenant scoping is applied inconsistently: many endpoints after line 470 query {'owner': user['id']} directly (tenant id) and do not use scope_q or guard. Centralize this in one dependency.",
+    "Users created before Phase A (test_cef_*, test_pros_* in the DB) have no role or tenant and default to role 'admin' of their own tenant. That is intended, but the setdefault('role','admin') default is risky for any user record that lacks role.",
+    "CORS_ORIGINS='*'; the auth is Bearer-based, so this is acceptable, but cookies are not used (no httpOnly cookie set on login)"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter11_accounts_roles.py"],
+  "success_rate": {"backend": "72% (18/25 new tests); regression 125/131", "frontend": "100% of requested Phase A UI flows (2 minor UX issues)"},
+  "test_credentials": "Admin drinkdrinc@gmail.com / DEnergy2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None left behind. Test users (test_phasea_*), their records, audit entries and login_attempts were deleted. The 3 pending users created by the outdated regression tests were deleted. The is_test dossier briefly got assigned_to and that was unset; installer reopen of the is_test dossier unset its snapshot (TEST data only).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: export REACT_APP_BACKEND_URL=...; cd /app/backend; pytest tests/test_iter11_accounts_roles.py -n 0. It registers 5 TAG users, approves them via the admin API, uses the is_test admin dossier as 'adm_pros', and cleans up in the module fixture through direct Mongo. Expected-to-fail tests until fixed: test_14, test_17, test_18, test_19, test_19b, test_23, and test_30 (file download part only). Full regression: deselect iter10 TestB and iter9 test_09/10/11 (real e-mails); run iter10 TestC serially (it is flaky under -n 2)."
+}

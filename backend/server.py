@@ -62,14 +62,77 @@ async def get_current_user(request: Request) -> dict:
         user.pop("_id", None)
         if user.get("status", "active") != "active":
             raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
-        user["uid"] = user["id"]
-        user["id"] = user.get("tenant") or user["id"]
-        user.setdefault("role", "admin")
-        return user
+        return await finish_user(user)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Sesiune expirată")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token invalid")
+
+PLATFORM = {"id": None}
+ALL_FEATURES = {"prosumator": "Dosare de prosumator", "diu": "Dosar instalație de utilizare (DI-U)", "mono": "Scheme monofilare (modul)",
+                "panels": "Tablouri electrice", "anti": "Antiinsularizare", "pram": "Buletine PRAM", "equipment": "Echipamente",
+                "power": "Spor de putere / BMP", "works": "Gestionarea lucrărilor", "projects": "Simulare proiect", "sign_remote": "Semnare la distanță",
+                "ai_extract": "Import automat din documente (AI)"}
+MODULE_FEATURE = {"clients": "prosumator", "prosumator": "prosumator", "documents": "prosumator", "catalog": "prosumator", "staff": "prosumator",
+                  "instruments": "prosumator", "diu": "diu", "mono": "mono", "panels": "panels", "anti": "anti", "pram": "pram",
+                  "equipment": "equipment", "power": "power", "works": "works", "projects": "projects"}
+DEFAULT_PLANS = [
+    {"code": "start", "name": "START", "price": 250.0, "features": ["prosumator"], "max_inverters": 1, "order": 1,
+     "description": "Dosare de prosumator simple, maximum un invertor per dosar."},
+    {"code": "pro", "name": "PRO", "price": 500.0, "features": ["prosumator", "diu"], "max_inverters": 0, "order": 2,
+     "description": "Toate funcțiile START + dosare de prosumator fără limită de invertoare + modulul DI-U."},
+    {"code": "full", "name": "FULL", "price": 1000.0, "features": ["*"], "max_inverters": 0, "order": 3,
+     "description": "Acces complet la toate modulele și funcțiile platformei, inclusiv cele adăugate ulterior."}]
+
+async def billing_cfg() -> dict:
+    return await db.billing_config.find_one({"id": "main"}, {"_id": 0}) or {"vat_rate": 21.0, "expired_policy": "read_only"}
+
+async def plan_info(user: dict) -> dict:
+    if user["id"] == PLATFORM["id"]:
+        return {"code": "full", "name": "FULL", "exempt": True, "active": True, "status": "echipa platformei", "features": ["*"], "max_inverters": 0, "policy": "full"}
+    sub = await db.subscriptions.find_one({"tenant": user["id"]}, {"_id": 0}) or {}
+    plan = await db.plans.find_one({"code": sub.get("plan")}, {"_id": 0}) if sub.get("plan") else None
+    today = datetime.now(timezone.utc).date().isoformat()
+    status = sub.get("status") or "fără abonament"
+    if status == "activ" and (sub.get("valid_until") or "") < today:
+        status = "expirat"
+    active = bool(plan) and status == "activ"
+    cfg = await billing_cfg()
+    return {"code": plan["code"] if plan else None, "name": plan["name"] if plan else "Fără abonament", "exempt": False, "active": active,
+            "status": status, "valid_until": sub.get("valid_until"), "features": (plan or {}).get("features", []) if active else [],
+            "max_inverters": int((plan or {}).get("max_inverters") or 0), "policy": cfg.get("expired_policy", "read_only")}
+
+async def finish_user(user: dict) -> dict:
+    user["uid"] = user["id"]
+    user["id"] = user.get("tenant") or user["id"]
+    user.setdefault("role", "admin")
+    user["plan"] = await plan_info(user)
+    return user
+
+def has_feature(user: dict, feat: Optional[str]) -> bool:
+    p = user.get("plan") or {}
+    return p.get("exempt") or not feat or "*" in p.get("features", []) or feat in p.get("features", [])
+
+def need(user: dict, feat: Optional[str], write: bool = False):
+    p = user.get("plan") or {}
+    if p.get("exempt"):
+        return
+    if not p.get("active"):
+        if write or p.get("policy") == "blocked":
+            raise HTTPException(status_code=402, detail=f"Abonamentul nu este activ ({p.get('status')}). Datele dvs. sunt păstrate; " +
+                                ("le puteți consulta, dar " if p.get("policy") != "blocked" else "") + "pentru a crea sau modifica dosare activați un abonament din pagina „Abonament”.")
+        return
+    if not has_feature(user, feat):
+        raise HTTPException(status_code=402, detail=f"Modulul „{ALL_FEATURES.get(feat, feat)}” nu este inclus în abonamentul {p.get('name')}. Treceți la un abonament superior din pagina „Abonament”.")
+
+def inv_count(d: dict) -> int:
+    return len((d.get("cef") or {}).get("inverters") or []) or (1 if d.get("inverter") else 0)
+
+def check_inverters(user: dict, d: dict):
+    mx = (user.get("plan") or {}).get("max_inverters") or 0
+    if not (user.get("plan") or {}).get("exempt") and mx and inv_count(d) > mx:
+        raise HTTPException(status_code=402, detail=f"Abonamentul {user['plan']['name']} permite maximum {mx} invertor per dosar (dosarul are {inv_count(d)}). "
+                            "Dosarul nu poate fi salvat sau finalizat — treceți la abonamentul PRO sau FULL pentru dosare cu mai multe invertoare.")
 
 # ---------------- Object storage ----------------
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
@@ -120,6 +183,7 @@ class RegisterReq(BaseModel):
     email: EmailStr
     password: str
     name: Optional[str] = None
+    billing: Optional[dict] = None
 
 class LoginReq(BaseModel):
     email: EmailStr
@@ -133,7 +197,8 @@ EDIT_ROLES = ("admin", "inginer", "electrician", "instalator")
 
 def pub_user(u: dict) -> dict:
     return {"id": u.get("uid") or u["id"], "email": u["email"], "name": u.get("name"), "role": u.get("role", "admin"), "status": u.get("status", "active"),
-            "phone": u.get("phone"), "function": u.get("function"), "staff_id": u.get("staff_id")}
+            "phone": u.get("phone"), "function": u.get("function"), "staff_id": u.get("staff_id"), "account_type": u.get("account_type") or ("team" if u.get("tenant") else "owner"),
+            "plan": u.get("plan"), "platform": bool(PLATFORM["id"]) and (u.get("uid") or u["id"]) == PLATFORM["id"]}
 
 @api_router.post("/auth/register")
 async def register(body: RegisterReq, request: Request):
@@ -143,12 +208,15 @@ async def register(body: RegisterReq, request: Request):
     if len(body.password or "") < 8:
         raise HTTPException(status_code=400, detail="Parola trebuie să aibă minimum 8 caractere")
     admin = await db.users.find_one({"email": os.environ["ADMIN_EMAIL"].lower()}) or await db.users.find_one({"role": "admin", "tenant": {"$in": [None, ""]}}, sort=[("created_at", 1)])
+    import billing_routes as BR
+    prof = BR.validate_profile(body.billing or {}, email) if admin else None
     uid = str(uuid.uuid4())
     doc = {"id": uid, "email": email, "password_hash": hash_password(body.password), "name": body.name or email.split("@")[0],
-           "role": "limitat" if admin else "admin", "status": "pending" if admin else "active", "tenant": admin["id"] if admin else None,
+           "role": "admin", "status": "pending" if admin else "active", "tenant": None, "account_type": "subscriber" if admin else "owner",
            "created_at": datetime.now(timezone.utc).isoformat()}
     await db.users.insert_one(doc)
     if admin:
+        await BR.save_profile(uid, prof, email, {})
         await db.audit.insert_one({"owner": admin["id"], "user": email, "action": "înregistrare cont (în așteptare)", "module": "users", "item_id": uid, "fields": [], "at": doc["created_at"]})
         return {"pending": True, "message": STATUS_MSG["pending"]}
     return {"access_token": create_access_token(uid, email), "user": pub_user(doc)}
@@ -156,7 +224,7 @@ async def register(body: RegisterReq, request: Request):
 @api_router.post("/auth/login")
 async def login(body: LoginReq, request: Request):
     email = body.email.lower()
-    ident = f"{(request.headers.get('x-forwarded-for') or (request.client.host if request.client else '')).split(',')[0].strip()}:{email}"
+    ident = f"login:{email}"
     att = await db.login_attempts.find_one({"identifier": ident})
     if att and att.get("count", 0) >= 5 and att.get("until", "") > datetime.now(timezone.utc).isoformat():
         raise HTTPException(status_code=429, detail="Prea multe încercări eșuate. Încercați din nou peste 15 minute.")
@@ -167,7 +235,8 @@ async def login(body: LoginReq, request: Request):
     await db.login_attempts.delete_many({"identifier": ident})
     if user.get("status", "active") != "active":
         raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
-    return {"access_token": create_access_token(user["id"], email), "user": pub_user(user)}
+    tok = create_access_token(user["id"], email)
+    return {"access_token": tok, "user": pub_user(await finish_user(user))}
 
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
@@ -189,6 +258,7 @@ def scope_q(user: dict, module: str) -> dict:
     return q
 
 async def check_access(user: dict, module: str, item_id: str) -> dict:
+    need(user, MODULE_FEATURE.get(module))
     rec = await db[module].find_one({**scope_q(user, module), "id": item_id}, {"_id": 0})
     if not rec:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă sau fără drept de acces")
@@ -264,6 +334,8 @@ async def create_item(module: str, request: Request, user: dict = Depends(get_cu
     data["created_at"] = datetime.now(timezone.utc).isoformat()
     data["updated_at"] = data["created_at"]
     guard(module, user, write=True)
+    if module == "prosumator":
+        check_inverters(user, data)
     data["created_by"] = user["uid"]
     data["created_by_email"] = user.get("email")
     if not is_admin(user):
@@ -287,9 +359,9 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     if module not in MODULES:
         raise HTTPException(status_code=404, detail="Modul inexistent")
     guard(module, user, write=True)
-    await check_access(user, module, item_id)
+    cur = await check_access(user, module, item_id)
     data = await request.json()
-    data.pop("_id", None); data.pop("id", None); data.pop("owner", None); data.pop("created_at", None); data.pop("created_by", None)
+    data.pop("_id", None); data.pop("id", None); data.pop("owner", None); data.pop("created_at", None); data.pop("created_by", None); data.pop("created_by_email", None)
     data["updated_by"] = user.get("email")
     if not is_admin(user):
         data.pop("assigned_to", None)
@@ -297,8 +369,9 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     if module == "prosumator":
         data = derive_cef(data)
         data.pop("opis", None); data.pop("snapshot", None); data.pop("snapshot_history", None); data.pop("sld", None)
+        check_inverters(user, {**cur, **data})
         if data.get("client_name"):
-            c = await db.clients.find_one({"owner": user["id"], "name": data["client_name"]}, {"id": 1})
+            c = await db.clients.find_one({**scope_q(user, "clients"), "name": data["client_name"]}, {"id": 1})
             if c:
                 data["client_id"] = c["id"]
     res = await db[module].update_one({"id": item_id, "owner": user["id"]}, {"$set": data})
@@ -333,10 +406,10 @@ async def delete_item(module: str, item_id: str, user: dict = Depends(get_curren
 # ---------------- Dashboard ----------------
 @api_router.get("/stats/dashboard")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
-    owner = {"owner": user["id"]}
-    clients = await db.clients.count_documents(owner)
+    owner = scope_q(user, "diu")
+    clients = await db.clients.count_documents(scope_q(user, "clients"))
     diu = await db.diu.count_documents(owner)
-    mono = await db.mono.count_documents(owner)
+    mono = await db.mono.count_documents(scope_q(user, "mono"))
     pending = await db.diu.count_documents({**owner, "status": {"$in": ["În lucru", "Documente de completat", "În verificare"]}})
     recent = await db.diu.find(owner).sort("created_at", -1).to_list(5)
     return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
@@ -346,6 +419,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
 PRIVATE = ("staff", "instruments")
 
 def guard(module: str, user: dict, write: bool = False):
+    need(user, MODULE_FEATURE.get(module), write)
     role = user.get("role", "admin")
     if module in PRIVATE and write and role != "admin":
         raise HTTPException(status_code=403, detail="Doar administratorul poate modifica personalul și aparatele de măsură")
@@ -364,6 +438,10 @@ async def audit(user: dict, action: str, module: str, item_id: str, fields: list
 @api_router.get("/audit")
 async def audit_log(module: Optional[str] = None, item_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     q = {"owner": user["id"]}
+    if not is_admin(user):
+        if not item_id:
+            raise HTTPException(status_code=403, detail="Jurnalul complet este disponibil doar administratorului")
+        await check_access(user, module or "prosumator", item_id)
     if module:
         q["module"] = module
     if item_id:
@@ -391,6 +469,7 @@ async def save_settings(request: Request, user: dict = Depends(get_current_user)
 # ---------------- File upload / download ----------------
 @api_router.post("/upload")
 async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    need(user, None, True)
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
     path = f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}"
     data = await file.read()
@@ -409,10 +488,20 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
         token = auth
     if not token:
         raise HTTPException(status_code=401, detail="Neautentificat")
-    try:
-        jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Token invalid")
+    user = await user_from_token(None, token)
+    if f"/{user['id']}/" not in path:
+        raise HTTPException(status_code=404, detail="Fișier inexistent")
+    if not is_admin(user):
+        import json as _j
+        ok = False
+        for m in ("prosumator", "clients", "documents", "diu"):
+            async for d in db[m].find(scope_q(user, m), {"_id": 0}):
+                if path in _j.dumps(d, default=str):
+                    ok = True; break
+            if ok:
+                break
+        if not ok and not await db.staff.find_one({"owner": user["id"], "id": user.get("staff_id")}) :
+            raise HTTPException(status_code=404, detail="Fișier inexistent sau fără drept de acces")
     data, content_type = get_object(path)
     return Response(content=data, media_type=content_type)
 
@@ -433,13 +522,12 @@ async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> 
         raise HTTPException(status_code=401, detail="Utilizator inexistent")
     if user.get("status", "active") != "active":
         raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
-    user["uid"] = user["id"]
-    user["id"] = user.get("tenant") or user["id"]
-    user.setdefault("role", "admin")
-    return user
+    return await finish_user(user)
 
 @api_router.post("/ai/extract")
 async def ai_extract(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    need(user, "ai_extract", True)
     data = await file.read()
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "pdf"
     ct = file.content_type or MIME_TYPES.get(ext, "application/pdf")
@@ -468,8 +556,9 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     name = (d.get("client_name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Lipsește numele beneficiarului")
-    client = await db.clients.find_one({"owner": user["id"], "name": name}, {"_id": 0})
-    if d.get("pod") and await db.prosumator.find_one({"owner": user["id"], "client_name": name, "pod": d["pod"]}):
+    check_inverters(user, d)
+    client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
+    if d.get("pod") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "client_name": name, "pod": d["pod"]}):
         raise HTTPException(status_code=409, detail="Există deja un dosar pentru acest client și acest POD")
     if not client:
         client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""), "email": d.get("email", ""),
@@ -635,6 +724,7 @@ async def sld_report(item_id: str, authorization: str = Header(None), auth: str 
 
 @api_router.post("/sld/{item_id}/apply")
 async def sld_apply(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
     rec = await check_access(user, "prosumator", item_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
@@ -646,6 +736,7 @@ async def sld_apply(item_id: str, request: Request, user: dict = Depends(get_cur
 
 @api_router.put("/sld/{item_id}/source")
 async def sld_source(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
     body = await request.json()
     rec = await check_access(user, "prosumator", item_id)
     if not rec:
@@ -668,6 +759,7 @@ async def sld_source(item_id: str, request: Request, user: dict = Depends(get_cu
 @api_router.post("/sld/{item_id}/approve")
 async def sld_approve(item_id: str, request: Request, user: dict = Depends(get_current_user)):
     require(user, "admin", "inginer")
+    need(user, "prosumator", True)
     role = (await request.json()).get("role")
     if role not in SLD_ROLES:
         raise HTTPException(status_code=400, detail="Rol invalid")
@@ -767,6 +859,7 @@ async def request_approval(user: dict, item_id: str, origin: str, auto: bool):
 
 @api_router.post("/sld/{item_id}/request-approval")
 async def sld_request_approval(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
     b = await request.json() if (await request.body()) else {}
     entry = await request_approval(user, item_id, b.get("origin") or request.headers.get("origin") or "", False)
     if not entry["recipients"]:
@@ -775,6 +868,7 @@ async def sld_request_approval(item_id: str, request: Request, user: dict = Depe
 
 @api_router.post("/sld/{item_id}/send-sign")
 async def sld_send_sign(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True); need(user, "sign_remote", True)
     b = await request.json()
     role = b.get("role")
     if role not in SLD_ROLES:
@@ -810,6 +904,7 @@ async def sld_send_sign(item_id: str, request: Request, user: dict = Depends(get
 @api_router.post("/sld/{item_id}/unapprove")
 async def sld_unapprove(item_id: str, user: dict = Depends(get_current_user)):
     require(user, "admin", "inginer")
+    need(user, "prosumator", True)
     await check_access(user, "prosumator", item_id)
     await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"sld.approval": "", "sld.approvals": ""}})
     await audit(user, "schemă — aprobare retrasă", "prosumator", item_id, [])
@@ -847,6 +942,7 @@ async def pros_catalog_files(item_id: str, user: dict = Depends(get_current_user
 
 @api_router.post("/prosumator/{item_id}/attach-catalog")
 async def attach_catalog(item_id: str, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
     rec = await check_access(user, "prosumator", item_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
@@ -937,6 +1033,10 @@ async def effective_settings(owner: str, rec: dict, base: dict):
             continue
         key = {"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]
         s[key] = p.get("name")
+        if (p.get("signature") or {}).get("storage_path") and p.get("signature_authorized"):
+            s.setdefault("_sigs", {})[p.get("name")] = p["signature"]["storage_path"]
+        elif role == "executant":
+            warns.append(f"{label}: semnătura grafică a lui {p.get('name')} lipsește sau nu este autorizată — documentele rămân cu spațiu pentru semnătură olografă.")
         auth = next((a for a in p.get("auths") or [] if a.get("verified") and doc_status(a.get("expires", ""), bool(a.get("file"))) != "expirat"), {})
         s[key + "_auth"] = f"{auth.get('type', '')} nr. {auth.get('number', '')}".strip()
     iid = rec.get("instrument_id")
@@ -950,14 +1050,18 @@ async def effective_settings(owner: str, rec: dict, base: dict):
             s["meter_device"], s["meter_serial"], s["meter_valid"] = i.get("maker_model"), i.get("serial"), i.get("expires")
     if base.get("anre_valid") and doc_status(base["anre_valid"], True) == "expirat":
         warns.append("Atestatul ANRE al firmei este expirat.")
+    if (base.get("stamp") or {}).get("storage_path") and (base["stamp"].get("content_type") or "").startswith("image/"):
+        s["_stamp_path"] = base["stamp"]["storage_path"]
+    elif sg.get("executant"):
+        warns.append("Ștampila firmei (imagine) nu este încărcată în Setări de bază — nu se aplică automat pe documente.")
     return s, warns
 
 @api_router.post("/dossier/{item_id}/finalize")
 async def dossier_finalize(item_id: str, user: dict = Depends(get_current_user)):
     require(user, "admin", "inginer", "electrician")
+    need(user, "prosumator", True)
     rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    check_inverters(user, rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     s, _ = await effective_settings(user["id"], {**rec, "snapshot": None}, base)
     if SZ.state(rec, await get_client(user["id"], rec), s)["status"] != "approved":
@@ -970,6 +1074,9 @@ async def dossier_finalize(item_id: str, user: dict = Depends(get_current_user))
 
 @api_router.post("/dossier/{item_id}/reopen")
 async def dossier_reopen(item_id: str, user: dict = Depends(get_current_user)):
+    require(user, "admin", "inginer", "electrician")
+    need(user, "prosumator", True)
+    await check_access(user, "prosumator", item_id)
     res = await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"snapshot": ""}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
@@ -983,6 +1090,7 @@ async def dossier_info(item_id: str, user: dict = Depends(get_current_user)):
 
 @api_router.put("/dossier/{item_id}/item/{key}")
 async def dossier_item(item_id: str, key: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
     body = await request.json()
     rec = await check_access(user, "prosumator", item_id)
     if rec is None:
@@ -1099,6 +1207,7 @@ def new_token(days: float):
 
 @api_router.post("/sign/requests")
 async def sign_create(request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True); need(user, "sign_remote", True)
     b = await request.json()
     did, keys, signers = b.get("dossier_id"), b.get("pos_keys") or [], b.get("signers") or []
     days = parse_days(b.get("expires_days"))
@@ -1145,6 +1254,7 @@ async def create_sign_requests(user, did, keys, signers, days):
 
 @api_router.get("/sign/requests")
 async def sign_list(dossier_id: Optional[str] = None, client_name: Optional[str] = None, user: dict = Depends(get_current_user)):
+    need(user, "sign_remote")
     q = {"owner": user["id"]}
     if not is_admin(user):
         q["dossier_id"] = {"$in": [x["id"] for x in await db.prosumator.find(scope_q(user, "prosumator"), {"id": 1}).to_list(5000)]}
@@ -1165,6 +1275,7 @@ async def sign_own(user, rid):
 
 @api_router.post("/sign/requests/{rid}/sent")
 async def sign_mark_sent(rid: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True); need(user, "sign_remote", True)
     r = await sign_own(user, rid)
     ch = ((await request.json()).get("channel") or "copiat")[:30]
     upd = {"$push": {"history": hist("Link trimis", None, f"canal: {ch}; de {user.get('email')}")}}
@@ -1175,6 +1286,7 @@ async def sign_mark_sent(rid: str, request: Request, user: dict = Depends(get_cu
 
 @api_router.post("/sign/requests/{rid}/new-link")
 async def sign_new_link(rid: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True); need(user, "sign_remote", True)
     r = await sign_own(user, rid)
     if r["status"] in ("Semnat", "Refuzat"):
         raise HTTPException(status_code=400, detail="Documentul a fost deja semnat sau refuzat — creează o cerere nouă")
@@ -1186,6 +1298,7 @@ async def sign_new_link(rid: str, request: Request, user: dict = Depends(get_cur
 
 @api_router.post("/sign/requests/{rid}/revoke")
 async def sign_revoke(rid: str, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True); need(user, "sign_remote", True)
     r = await sign_own(user, rid)
     if r["status"] in ("Semnat", "Refuzat"):
         raise HTTPException(status_code=400, detail="Cererea este deja închisă")
@@ -1453,6 +1566,12 @@ async def startup():
         logger.info("Admin seeded")
     elif not verify_password(admin_password, existing["password_hash"]):
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+    PLATFORM["id"] = (await db.users.find_one({"email": admin_email}))["id"]
+    await db.users.update_one({"id": PLATFORM["id"]}, {"$set": {"role": "admin", "status": "active", "tenant": None}})
+    for pl in DEFAULT_PLANS:
+        await db.plans.update_one({"code": pl["code"]}, {"$setOnInsert": pl}, upsert=True)
+    await db.billing_config.update_one({"id": "main"}, {"$setOnInsert": {"id": "main", "vat_rate": 21.0, "expired_policy": "read_only", "currency": "RON"}}, upsert=True)
+    docgen.IMG_LOADER = lambda p: get_object(p)[0]
     try:
         init_storage()
         logger.info("Storage initialized")
@@ -1463,6 +1582,7 @@ async def startup():
 async def shutdown():
     client.close()
 
+import billing_routes  # noqa: E402
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

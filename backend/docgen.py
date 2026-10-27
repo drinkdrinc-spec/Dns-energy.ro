@@ -9,7 +9,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
 from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame, NextPageTemplate, Paragraph, Spacer, Table,
-                                TableStyle, PageBreak, KeepTogether)
+                                TableStyle, PageBreak, KeepTogether, Image)
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import cef as CEF
@@ -655,13 +655,50 @@ def split_sig(lines):
     return lines[:i], lines[i:]
 
 
-def pdf_sign(left, right):
+IMG_LOADER = None
+_IMG_CACHE = {}
+
+
+def _img(path, w, h):
+    try:
+        if path not in _IMG_CACHE:
+            _IMG_CACHE[path] = IMG_LOADER(path)
+        return Image(io.BytesIO(_IMG_CACHE[path]), width=w, height=h, kind="proportional")
+    except Exception:
+        return None
+
+
+def sig_images(lines, s):
+    txt = " ".join(lines)
+    imgs = []
+    if not IMG_LOADER:
+        return imgs
+    for nm, p in (s.get("_sigs") or {}).items():
+        if nm and escape(nm) in txt:
+            i = _img(p, 34 * mm, 14 * mm)
+            if i:
+                imgs.append(i)
+            break
+    company = escape(str(s.get("company") or ""))
+    if s.get("_stamp_path") and "ștampil" in txt and company and company in txt:
+        i = _img(s["_stamp_path"], 24 * mm, 24 * mm)
+        if i:
+            imgs.append(i)
+    return imgs
+
+
+def pdf_sign(left, right, s=None):
     def col(lines):
         if not lines:
             return ""
         top, bot = split_sig(lines)
-        out = "<br/>".join(top) + "<br/><br/><br/>" + f"<font size=8 color='#555555'>________________________________<br/>{'<br/>'.join(bot)}</font>"
-        return Paragraph(out, S["sig"])
+        imgs = sig_images(lines, s or {})
+        foot = f"<font size=8 color='#555555'>________________________________<br/>{'<br/>'.join(bot)}</font>"
+        if not imgs:
+            return Paragraph("<br/>".join(top) + "<br/><br/><br/>" + foot, S["sig"])
+        row = Table([imgs], colWidths=[37 * mm] * len(imgs))
+        row.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+        return [Paragraph("<br/>".join(top), S["sig"]), row, Paragraph(foot, S["sig"])]
     t = Table([[col(left), col(right)]], colWidths=[87 * mm, 87 * mm])
     t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     return KeepTogether([Spacer(1, 14), t, Spacer(1, 8)])
@@ -682,7 +719,7 @@ def to_flow(blocks, ctx):
         elif k == "table":
             out += [pdf_table(b[1], b[2], b[3], b[4] if len(b) > 4 else None), Spacer(1, 6)]
         elif k == "sign":
-            out.append(pdf_sign(b[1], b[2]))
+            out.append(pdf_sign(b[1], b[2], ctx.s))
         elif k == "pagebreak":
             out.append(PageBreak())
     return out

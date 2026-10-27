@@ -14,6 +14,7 @@ import { SignRequests } from "@/components/sign/SignRequests";
 import { SldPanel } from "@/components/sld/SldPanel";
 import { TestDossierButtons } from "@/components/sld/TestDossier";
 import { AssignBox } from "@/components/AssignBox";
+import { useAuth } from "@/context/AuthContext";
 
 function Field({ f, value, onChange, refOptions }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -38,6 +39,9 @@ export default function ModulePage({ moduleKey }) {
   const params = useParams();
   const key = moduleKey || params.module;
   const cfg = MODULES[key];
+  const { user } = useAuth();
+  const role = user?.role || "admin";
+  const canDelete = role === "admin" || (role !== "limitat" && !["prosumator", "clients"].includes(key));
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(null); // null=hidden, {} = open
   const [editId, setEditId] = useState(null);
@@ -168,7 +172,7 @@ export default function ModulePage({ moduleKey }) {
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       <button onClick={() => openEdit(it)} data-testid={`edit-${it.id}`} className="p-1.5 rounded hover:bg-[#eef4ff]" title="Editează"><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
-                      <button onClick={() => remove(it.id)} data-testid={`delete-${it.id}`} className="p-1.5 rounded hover:bg-[#fff0f0] ml-1" title="Șterge"><Trash2 size={15} style={{ color: "#b33333" }} /></button>
+                      {canDelete && <button onClick={() => remove(it.id)} data-testid={`delete-${it.id}`} className="p-1.5 rounded hover:bg-[#fff0f0] ml-1" title="Șterge"><Trash2 size={15} style={{ color: "#b33333" }} /></button>}
                     </td>
                   </tr>
                 ))}

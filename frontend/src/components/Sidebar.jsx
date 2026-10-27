@@ -3,10 +3,11 @@ import { BrandMark } from "@/components/BrandMark";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert,
-  FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine,
+  FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt,
 } from "lucide-react";
+import { can, ROUTE_FEATURE } from "@/lib/plan";
 
-const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine };
+const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt };
 
 const NAV = [
   { label: "Principal", items: [
@@ -38,6 +39,8 @@ const NAV = [
     { to: "/documente", icon: "Files", text: "Documente", testid: "nav-documents" },
     { to: "/setari", icon: "Settings", text: "Setări", testid: "nav-settings" },
     { to: "/utilizatori", icon: "ShieldCheck", text: "Utilizatori și roluri", testid: "nav-users", admin: true },
+    { to: "/abonament", icon: "CreditCard", text: "Abonament și facturare", testid: "nav-subscription", owner: true },
+    { to: "/abonamente-admin", icon: "Receipt", text: "Utilizatori și abonamente", testid: "nav-admin-billing", platform: true },
   ]},
 ];
 
@@ -68,7 +71,9 @@ export function Sidebar({ open, onClose }) {
           {NAV.map((grp) => (
             <div key={grp.label}>
               <div className="font-bold uppercase" style={{ color: "#7f91ae", fontSize: 10, letterSpacing: 1.5, padding: "20px 12px 8px" }}>{grp.label}</div>
-              {grp.items.filter((it) => !it.admin || (user?.role || "admin") === "admin").map((it) => {
+              {grp.items.filter((it) => (!it.admin || (user?.role || "admin") === "admin") && (!it.platform || user?.platform)
+                && (!it.owner || (!user?.plan?.exempt && user?.account_type !== "team"))).map((it) => {
+                const locked = !can(user, ROUTE_FEATURE[it.to]);
                 const Icon = ICONS[it.icon];
                 return (
                   <NavLink
@@ -82,6 +87,7 @@ export function Sidebar({ open, onClose }) {
                   >
                     <Icon size={17} />
                     <span>{it.text}</span>
+                    {locked && <Lock size={12} className="ml-auto opacity-70" data-testid={`${it.testid}-locked`} />}
                   </NavLink>
                 );
               })}
@@ -95,6 +101,7 @@ export function Sidebar({ open, onClose }) {
             <div className="min-w-0">
               <div className="text-[12px] font-semibold truncate">{user?.name}</div>
               <div className="text-[10px] truncate" style={{ color: "#8191aa" }}>{user?.email}</div>
+              <div className="text-[10px] font-bold" style={{ color: "var(--cyan)" }} data-testid="sidebar-plan">Abonament: {user?.plan?.exempt ? "FULL (platformă)" : `${user?.plan?.name} · ${user?.plan?.status}`}</div>
             </div>
           </div>
           <button

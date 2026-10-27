@@ -1,0 +1,9 @@
+crons:
+  - name: billing-reminders
+    description: "Trimite reamintiri de expirare a abonamentului cu 7 zile și 1 zi înainte"
+    cron: "0 7 * * *"
+    timezone: "Europe/Bucharest"
+    endpoint: "{{BASE_URL}}/api/cron/billing-reminders"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

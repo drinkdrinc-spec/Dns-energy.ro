@@ -15,6 +15,10 @@ import BaseSettings from "@/pages/BaseSettings";
 import SignPage from "@/pages/SignPage";
 import RemoteSigning from "@/pages/RemoteSigning";
 import Users from "@/pages/Users";
+import Subscription from "@/pages/Subscription";
+import AdminBilling from "@/pages/AdminBilling";
+import { Gate } from "@/components/UpgradeGate";
+import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
 
 function Protected({ children }) {
@@ -31,26 +35,28 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/semneaza/:token" element={<SignPage />} />
       <Route element={<Protected><Layout /></Protected>}>
-        <Route path="/semnare" element={<RemoteSigning />} />
+        <Route path="/semnare" element={<Gate feat={ROUTE_FEATURE["/semnare"]}><RemoteSigning /></Gate>} />
         <Route path="/" element={<Dashboard />} />
-        <Route path="/clienti" element={<ModulePage moduleKey="clients" />} />
-        <Route path="/prosumator" element={<ModulePage moduleKey="prosumator" />} />
-        <Route path="/diu" element={<ModulePage moduleKey="diu" />} />
-        <Route path="/lucrari" element={<ModulePage moduleKey="works" />} />
-        <Route path="/mono" element={<ModulePage moduleKey="mono" />} />
-        <Route path="/tablouri" element={<ModulePage moduleKey="panels" />} />
-        <Route path="/antiinsularizare" element={<ModulePage moduleKey="anti" />} />
-        <Route path="/pram" element={<ModulePage moduleKey="pram" />} />
-        <Route path="/echipamente" element={<ModulePage moduleKey="equipment" />} />
-        <Route path="/spor-putere" element={<ModulePage moduleKey="power" />} />
-        <Route path="/catalog" element={<Catalog />} />
-        <Route path="/catalog-echipamente" element={<EquipmentCatalog />} />
-        <Route path="/setari-baza" element={<BaseSettings />} />
-        <Route path="/simulare" element={<Simulare />} />
-        <Route path="/distribuitori" element={<Operators />} />
-        <Route path="/documente" element={<Documents />} />
+        <Route path="/clienti" element={<Gate feat={ROUTE_FEATURE["/clienti"]}><ModulePage moduleKey="clients" /></Gate>} />
+        <Route path="/prosumator" element={<Gate feat={ROUTE_FEATURE["/prosumator"]}><ModulePage moduleKey="prosumator" /></Gate>} />
+        <Route path="/diu" element={<Gate feat={ROUTE_FEATURE["/diu"]}><ModulePage moduleKey="diu" /></Gate>} />
+        <Route path="/lucrari" element={<Gate feat={ROUTE_FEATURE["/lucrari"]}><ModulePage moduleKey="works" /></Gate>} />
+        <Route path="/mono" element={<Gate feat={ROUTE_FEATURE["/mono"]}><ModulePage moduleKey="mono" /></Gate>} />
+        <Route path="/tablouri" element={<Gate feat={ROUTE_FEATURE["/tablouri"]}><ModulePage moduleKey="panels" /></Gate>} />
+        <Route path="/antiinsularizare" element={<Gate feat={ROUTE_FEATURE["/antiinsularizare"]}><ModulePage moduleKey="anti" /></Gate>} />
+        <Route path="/pram" element={<Gate feat={ROUTE_FEATURE["/pram"]}><ModulePage moduleKey="pram" /></Gate>} />
+        <Route path="/echipamente" element={<Gate feat={ROUTE_FEATURE["/echipamente"]}><ModulePage moduleKey="equipment" /></Gate>} />
+        <Route path="/spor-putere" element={<Gate feat={ROUTE_FEATURE["/spor-putere"]}><ModulePage moduleKey="power" /></Gate>} />
+        <Route path="/catalog" element={<Gate feat={ROUTE_FEATURE["/catalog"]}><Catalog /></Gate>} />
+        <Route path="/catalog-echipamente" element={<Gate feat={ROUTE_FEATURE["/catalog-echipamente"]}><EquipmentCatalog /></Gate>} />
+        <Route path="/setari-baza" element={<Gate feat={ROUTE_FEATURE["/setari-baza"]}><BaseSettings /></Gate>} />
+        <Route path="/simulare" element={<Gate feat={ROUTE_FEATURE["/simulare"]}><Simulare /></Gate>} />
+        <Route path="/distribuitori" element={<Gate feat={ROUTE_FEATURE["/distribuitori"]}><Operators /></Gate>} />
+        <Route path="/documente" element={<Gate feat={ROUTE_FEATURE["/documente"]}><Documents /></Gate>} />
         <Route path="/setari" element={<Settings />} />
         <Route path="/utilizatori" element={<Users />} />
+        <Route path="/abonament" element={<Subscription />} />
+        <Route path="/abonamente-admin" element={<AdminBilling />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
