@@ -1,0 +1,43 @@
+{
+  "summary": "Tested the approved SLD in the dossier (positions 2 'schema' and 3 'fisa_tehnica'), finalize gating, the CIORNĂ export, approval history, the designer-set earth-resistance limit and remote signing of the approved schema. Backend: the new test_dossier_sld_iter9.py passes 12/12. Full regression: 100 passed, 1 intentional skip. Earlier, 7 regression tests were failing only because they were outdated (index shift from the new fisa_tehnica position, finalize now gated, docs/all no longer includes the old schema); I updated them. I found and fixed 1 backend bug and 2 frontend bugs. Results: positions 2 and 3 list 'Schema monofilară nu este aprobată...' while in draft. file/schema is 2 pages, landscape. fisa_tehnica returns a PDF. fmt=docx returns 400 for both. finalize returns 400 with the CIORNĂ message before approval and 200 after. The export is watermarked CIORNĂ (filename _CIORNA). After approval, file/schema and the export use sld.history[].file; I proved this by pointing the history file at a marker PDF. approve pushes history (revision, file, source) with current=true. A cef change makes the status stale and the entry current=false. Re-approval gives revision 1 and the old entry stays with current=false. Earthing: a missing limit is reported as missing; 5 Ω ≤ 10 Ω and 4.5 Ω ≤ 10 Ω are conform (no 4 Ω rule); 12 Ω > 10 Ω is an error, ready=false and approve returns 400. send-sign: 400 if not approved; 400 'Completați e-mailul...' if the staff has no email. On success it creates a schema request with status 'Link trimis', the correct sld_hash and a real email (Emergent email API returned 202). POST /sign/requests for schema returns 400 when not approved. Signing via the public OTP flow attaches the signed PDF with sld_hash. After a cef change, that upload is ignored and the 'Versiunea semnată anterior...' message appears (this works only after my opis.py fix). UI: staff-email and staff-phone save and persist. grid-ground-limit is present. SldPanel shows the history rows (current or previous version) and the send-sign buttons. The send-sign toasts work. Send-sign buttons are hidden when the approval is stale. GeneratedDocs has no schema entries.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/dossier/{id} (opis.py build_positions L132)", "issue": "FIXED by testing agent. When the signed schema's sld_hash no longer matched (cef changed), p.upload was set to None, but the local `o` still contained 'upload'. So auto_status was still 'atașat' and missing was cleared to []: the stale signed schema still counted as complete. Fix: strip both 'status' and 'upload' from o.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "opis status for schema", "issue": "create_sign_requests stores opis.schema.status='necesită semnătură'. If the approval becomes stale before signing (no upload yet), this manual status stays, so the select shows 'necesită semnătură' while missing says 'anulată'. Consider clearing opis.schema/fisa_tehnica status when the fingerprint changes, or ignoring a manual status while the SLD is not approved."},
+      {"endpoint": "GET /api/docs/schema_cef/{id}, /api/docs/types", "issue": "The legacy old-schema endpoint still renders, and /docs/types still lists 'schema' and 'schema_cef'. The UI no longer exposes them; consider removing them for consistency."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DossierOpis", "issue": "FIXED: the Word (docx) icon was shown for positions 2 and 3 (schema/fisa_tehnica) and opened a raw 400 JSON. It is now hidden for these keys.", "selector": "[data-testid=opis-docx-2], [data-testid=opis-docx-3]", "priority": "MEDIUM"},
+      {"component": "DossierOpis.lock", "issue": "FIXED: clicking Finalizează while the SLD was not approved caused an unhandled promise rejection (Emergent error overlay) and no message. Added try/catch with toast.error(detail); the CIORNĂ message now shows.", "selector": "[data-testid=opis-finalize]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "SldPanel", "issues": ["The send-sign button for a staff member without an email is enabled and labelled '(fără e-mail)'; clicking it only shows an error toast. Consider disabling it with a tooltip."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_dossier_sld_iter9.py", "/app/backend/tests/seed_sld_ui9.py", "/app/test_reports/pytest/pytest_iter9.xml"],
+  "action_items": [
+    "Review and keep the opis.py L132 fix (strip 'upload' from o when the signed schema hash mismatches).",
+    "Optionally reset the opis schema/fisa_tehnica manual status when the approval goes stale.",
+    "Optionally disable sld-send-sign-{role} when people[role].email is empty.",
+    "Optionally remove the legacy schema/schema_cef doc types."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1214 lines; consider splitting sld, sign and dossier routes into modules.",
+    "fingerprint() ignores rec-level grounding_limit (only cef.grid is hashed through cef, and top-level 'g' is grounding_ohm only). A limit stored at rec level would not invalidate the approval.",
+    "position_pdf falls back to a live render if an approved status has no matching history file (e.g. approvals that predate history); acceptable, but the version is then not frozen.",
+    "sld_send_sign uses the client-provided origin for the link without validation; consider deriving it from config or an allowlist."
+  ],
+  "updated_files": ["/app/backend/opis.py", "/app/frontend/src/components/dossier/DossierOpis.jsx", "/app/backend/tests/test_dossier_opis.py", "/app/backend/tests/test_cef_catalog.py", "/app/backend/tests/test_dossier_sld_iter9.py", "/app/backend/tests/seed_sld_ui9.py"],
+  "success_rate": {"backend": "100% (after fix)", "frontend": "100% (after 2 fixes)"},
+  "test_credentials": "drinkdrinc@gmail.com / DEnergy2026!",
+  "seed_data_creation": "TEST_ staff, client and prosumator records (pytest fixture and seed_sld_ui9.py) were cleaned up, along with their sign_requests. Verified 0 left.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: export REACT_APP_BACKEND_URL=...; pytest tests/ (pytest.ini runs xdist -n 2; use -n0 for a single file). OTP signing in tests: set otp_hash=sha256('{id}:123456') in Mongo, then POST /public/sign/{token}/sign. seed_sld_ui9.py seed|clean creates an approved record whose designer email is the admin email.",
+  "rca of the issue": "opis.build_positions: the invalidation branch nulled p['upload'] but rebuilt `o` without only 'status'. The later checks `o.get('upload')` (auto status) and `if o.get('upload'): p['missing']=[]` still saw the stale upload. Reproduction: approve, send-sign, sign, change cef, GET /dossier: position 2 showed atașat with missing=[]. Mitigation: exclude 'upload' from o."
+}

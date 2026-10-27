@@ -82,7 +82,7 @@ export function SldPanel({ id, form, setVal }) {
             <div className="mt-3 pt-2 border-t" style={{ borderColor: "var(--line)" }}>
               <div className="text-[11px] font-bold mb-1">Semnare la distanță (link + cod pe e-mailul din Personal)</div>
               {["designer", "verifier"].map((r) => d.people[r] && (
-                <Btn key={r} variant="secondary" className="mr-2 mb-1" disabled={busy || !d.people[r].eligible} onClick={() => sendSign(r)} data-testid={`sld-send-sign-${r}`}>
+                <Btn key={r} variant="secondary" className="mr-2 mb-1" disabled={busy || !d.people[r].eligible || !d.people[r].email} title={d.people[r].email ? "" : "Completați e-mailul în Setări de bază → Personal"} onClick={() => sendSign(r)} data-testid={`sld-send-sign-${r}`}>
                   <Send size={13} /> Trimite la {r === "designer" ? "proiectant" : "verificator"}{d.people[r].email ? "" : " (fără e-mail)"}
                 </Btn>
               ))}

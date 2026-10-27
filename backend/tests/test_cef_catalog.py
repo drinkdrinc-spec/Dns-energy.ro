@@ -206,7 +206,7 @@ class TestProsCef:
         a = PdfReader(io.BytesIO(s.get(f"{API}/docs/all/{pid}?auth={token}").content))
         land = sum(1 for pg in a.pages if float(pg.mediabox.width) > float(pg.mediabox.height))
         print("all pages", len(a.pages), "landscape", land)
-        assert land == 2
+        assert land == 0  # iter9: old schema removed from legacy docs/all
         a2 = PdfReader(io.BytesIO(s.get(f"{API}/docs/all/{pid}?auth={token}&attach=1").content))
         print("attach pages", len(a2.pages))
         assert len(a2.pages) == len(a.pages) + 3

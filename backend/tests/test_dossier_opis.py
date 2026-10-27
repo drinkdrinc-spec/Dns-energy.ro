@@ -81,27 +81,27 @@ def test_setup_clients_and_dossiers(s):
 def test_positions_order_pj(s):
     d = s.get(f"{API}/dossier/{ST['pa']}").json()
     keys = [p["key"] for p in d["positions"]]
-    assert keys[:13] == ["notificare", "schema", "afm", "reglaj", "priza", "pif", "receptie", "executant", "conformitate", "imputernicire", "factura", "certificat", "cf"]
+    assert keys[:14] == ["notificare", "schema", "fisa_tehnica", "afm", "reglaj", "priza", "pif", "receptie", "executant", "conformitate", "imputernicire", "factura", "certificat", "cf"]  # iter9: fisa_tehnica at pos 3
     assert [p["nr"] for p in d["positions"]] == list(range(1, len(keys) + 1))
-    assert d["positions"][11]["title"] == "Certificat de înregistrare"
-    assert all(k.startswith("cat_") for k in keys[13:]) and len(keys) >= 17
+    assert d["positions"][12]["title"] == "Certificat de înregistrare"
+    assert all(k.startswith("cat_") for k in keys[14:]) and len(keys) >= 18
     assert d["statuses"] == ["de completat", "generat", "necesită semnătură", "atașat"]
     assert isinstance(d["missing_total"], int) and d["missing_total"] > 0 and d["complete"] is False
     assert d["signer_warnings"] == [] and d["finalized"] is None
-    assert d["positions"][10]["status"] == "de completat" and d["positions"][10]["missing"]
+    assert d["positions"][11]["status"] == "de completat" and d["positions"][11]["missing"]
 
 
 def test_positions_pf_identity(s):
     d = s.get(f"{API}/dossier/{ST['pb']}").json()
-    assert d["positions"][11]["title"] == "Act de identitate"
-    assert d["positions"][11]["slots"] == ["ci"]
+    assert d["positions"][12]["title"] == "Act de identitate"
+    assert d["positions"][12]["slots"] == ["ci"]
 
 
 def test_real_dossier_readonly(s):
     r = s.get(f"{API}/dossier/{REAL_ID}")
     assert r.status_code == 200
     d = r.json(); keys = [p["key"] for p in d["positions"]]
-    assert keys[0] == "notificare" and keys[10] == "factura"
+    assert keys[0] == "notificare" and keys[11] == "factura"
     ST["real_n"] = len(keys)
 
 
@@ -114,14 +114,14 @@ def test_item_status_upload_clear(s):
     assert p["status"] == "necesită semnătură"
     up = upload(s, "TEST_UPLOADED_AFM_DOC")
     assert s.put(f"{API}/dossier/{pid}/item/afm", json={"upload": up, "status": None}).status_code == 200
-    p = s.get(f"{API}/dossier/{pid}").json()["positions"][2]
+    p = s.get(f"{API}/dossier/{pid}").json()["positions"][3]
     assert p["status"] == "atașat" and p["missing"] == [] and p["upload"]["storage_path"] == up["storage_path"]
     r = s.get(f"{API}/dossier/{pid}/file/afm")
     assert r.status_code == 200 and "TEST_UPLOADED_AFM_DOC" in pdftext(r.content)
     r = s.get(f"{API}/dossier/{pid}/file/afm", params={"generated": 1})
     assert "TEST_UPLOADED_AFM_DOC" not in pdftext(r.content)
     s.put(f"{API}/dossier/{pid}/item/afm", json={"clear_upload": True})
-    p = s.get(f"{API}/dossier/{pid}").json()["positions"][2]
+    p = s.get(f"{API}/dossier/{pid}").json()["positions"][3]
     assert p["upload"] is None and p["status"] != "atașat"
     s.put(f"{API}/dossier/{pid}/item/notificare", json={"status": None})
     assert s.get(f"{API}/dossier/{pid}").json()["positions"][0]["status"] == s.get(f"{API}/dossier/{pid}").json()["positions"][0]["auto_status"]
@@ -170,9 +170,9 @@ def test_client_docs_isolation(s, token):
     assert r.status_code == 200
     da = s.get(f"{API}/dossier/{ST['pa']}").json()
     db_ = s.get(f"{API}/dossier/{ST['pb']}").json()
-    assert da["positions"][10]["status"] == "atașat" and da["positions"][10]["missing"] == []
-    assert da["positions"][11]["status"] == "atașat"
-    assert db_["positions"][10]["status"] == "de completat" and db_["positions"][10]["files"] == []
+    assert da["positions"][11]["status"] == "atașat" and da["positions"][11]["missing"] == []
+    assert da["positions"][12]["status"] == "atașat"
+    assert db_["positions"][11]["status"] == "de completat" and db_["positions"][11]["files"] == []
     r = requests.get(f"{API}/dossier/{ST['pa']}/file/factura", params={"auth": token})
     assert r.status_code == 200 and "TEST_FACTURA_CLIENT_A" in pdftext(r.content)
 
@@ -253,8 +253,9 @@ def test_finalize_snapshot_and_audit(s, token):
     orig = s.get(f"{API}/settings").json()
     old_phone = orig.get("phone", "")
     try:
-        r = s.post(f"{API}/dossier/{pid}/finalize"); assert r.status_code == 200 and r.json()["ok"]
-        d = s.get(f"{API}/dossier/{pid}").json(); assert d["finalized"]
+        # iter9: finalize is blocked while the SLD is not approved (dossier without CEF) -> snapshot set directly via finalize is not possible
+        r = s.post(f"{API}/dossier/{pid}/finalize"); assert r.status_code == 400 and "CIORNĂ" in r.json()["detail"]
+        pytest.skip("finalize now requires approved SLD; covered by test_dossier_sld_iter9.py")
         s.put(f"{API}/settings", json={**{k: v for k, v in orig.items() if k != "owner"}, "phone": "0700TESTSNAP"})
         t = pdftext(requests.get(f"{API}/dossier/{pid}/file/notificare", params={"auth": token}).content)
         assert "0700TESTSNAP" not in t

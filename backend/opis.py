@@ -129,6 +129,8 @@ async def build_positions(db, owner, rec, client, settings):
             p["upload"] = None
             if o.get("upload", {}).get("sld_hash"):
                 p["missing"].append("Versiunea semnată anterior nu mai corespunde configurației — necesită verificare și semnare nouă")
+            o = {k: v for k, v in o.items() if k not in ("status", "upload")}
+        elif p["key"] in ("schema", "fisa_tehnica") and st_sld["status"] != "approved":
             o = {k: v for k, v in o.items() if k != "status"}
         gen_missing = p["missing"] or (p["source"] == "generat" and common)
         auto = "atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else ("de completat" if gen_missing else "generat")
