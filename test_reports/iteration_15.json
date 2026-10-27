@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only verification of ATR tracking UI (AtrTracking), FormAlert and operator-contacts panel. All requested flows PASS: is_test ATR record created via API -> atr-tracking panel visible with status 'ciornă'; register -> 'înregistrat' + atr-due-check (10 working days: 10.01->23.01 correct); complete -> 'dosar complet' + atr-due-issue (15.01+30=14.02); issued with separate atr_date -> 'aviz emis', header shows Nr. înregistrare + ATR no/date, events listed (4 events); terms editor check_days 10->12 saved, summary text updated. Send with incomplete dossier (test@distributie-energie.ro, confirm accepted) -> error toast listing 5 missing docs; non-official domain (x@gmail.com) -> domain error toast. No email sent. form-alert-atr shown in DEER ATR record when 'ATR consum' official_form set to 'versiune nouă detectată' (restored to 'valid'). /formulare-oficiale: admin sees operator-contacts with contact-deer/delgaz/rer/oltenia; invalid-domain contact rejected with toast; active subscriber does NOT see operator-contacts (forms-list visible). All test data cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AtrTracking TermsEditor", "issue": "useState initialised once at mount (details renders TermsEditor immediately); after register/complete in same session, 'Termen verificare'/'Termen aviz' date inputs stay empty (and check_days etc. also stale vs t.terms). Backend ignores empty values so no data loss, but user sees blank current dates. Add useEffect to resync v from t/terms, or key TermsEditor by t.check_due+t.issue_due.", "selector": "[data-testid='atr-terms-check_due'], [data-testid='atr-terms-issue_due']", "priority": "LOW"},
+      {"component": "AtrTracking send-to", "issue": "operator contacts are empty by default, so atr-send-to is empty and atr-send-btn disabled until admin configures /formulare-oficiale contacts or user types an address. Consider a hint text when no default address is configured.", "selector": "[data-testid='atr-send-btn']", "priority": "LOW"},
+      {"component": "FormsRegistry operator-contacts", "issue": "After invalid-domain address rejected, input keeps invalid value (defaultValue, uncontrolled) — looks saved though it isn't. Revert to last saved value on error.", "selector": "[data-testid='contact-deer']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/iter16_setup.py"],
+  "action_items": [
+    "LOW: resync TermsEditor state when track changes (dates/terms fields stale)",
+    "LOW: revert operator contact input on save error",
+    "LOW: hint when no default operator address configured"
+  ],
+  "critical_code_review_comments": [
+    "AtrTracking operator->key mapping duplicated in frontend (includes('delgaz')...) vs backend ATR.op_key; fallback to 'deer' for unknown operators may prefill a wrong distributor address — consider returning default 'to' from /atr/{id}/track.",
+    "Sandbox browser clock is Oct 2026, so due badges show 'depășit' — not a bug."
+  ],
+  "updated_files": ["/app/backend/tests/iter16_setup.py"],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Temporary is_test ATR record and subscriber sub_iter16@example.com — both deleted (ATR via API, user via mongo since no DELETE /admin/subscribers endpoint). official_forms 615156a6... restored to 'valid'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use /app/backend/tests/iter16_setup.py setup|cleanup to create is_test ATR + active subscriber. ATR opened via [data-testid=edit-{id}] at /cerere-atr. Backend clears check_due on complete and issue_due on issued (by design). 'dates' action ignores empty values."
+}

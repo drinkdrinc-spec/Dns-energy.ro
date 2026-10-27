@@ -38,14 +38,14 @@ const OPS = ["DEER", "Delgaz Grid", "Rețele Electrice România", "Distribuție 
 function Contacts() {
   const [rows, setRows] = useState([]);
   useEffect(() => { api.get("/operator-contacts").then((r) => setRows(r.data)); }, []);
-  const save = async (op, email) => { try { await api.put(`/operator-contacts/${op}`, { email }); toast.success("Adresă salvată"); } catch (e) { err(e); } };
+  const save = async (op, email, el) => { try { await api.put(`/operator-contacts/${op}`, { email }); setRows((r) => r.map((c) => (c.op === op ? { ...c, email } : c))); toast.success("Adresă salvată"); } catch (e) { err(e); el.value = rows.find((c) => c.op === op)?.email || ""; } };
   return (
     <div className="den-panel mb-5" data-testid="operator-contacts">
       <b className="text-sm">Adrese de e-mail pentru depunerea cererilor ATR</b>
       <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>Doar adrese de pe domeniul oficial al fiecărui operator. Utilizatorii le pot modifica la fiecare trimitere (tot pe domeniul oficial).</p>
       {rows.map((c) => <div key={c.op} className="flex flex-wrap gap-2 items-end py-1">
         <div className="den-field flex-1 min-w-[260px]"><label>{c.name} ({c.domains.join(", ")})</label>
-          <input className="den-input" defaultValue={c.email} onBlur={(e) => e.target.value !== c.email && save(c.op, e.target.value)} data-testid={`contact-${c.op}`} /></div></div>)}
+          <input className="den-input" defaultValue={c.email} onBlur={(e) => e.target.value !== c.email && save(c.op, e.target.value, e.target)} data-testid={`contact-${c.op}`} /></div></div>)}
     </div>
   );
 }

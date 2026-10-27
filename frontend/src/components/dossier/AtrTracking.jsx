@@ -49,6 +49,7 @@ export function AtrTracking({ id, operator }) {
         <Btn type="button" onClick={send} disabled={busy || !to} data-testid="atr-send-btn"><Send size={14} />{busy ? "Se trimite…" : t.sent_at ? "Retrimite dosarul" : "Trimite dosarul la distribuitor"}</Btn>
       </div>
       {t.sent_at && <div className="text-[11px] mt-1" style={{ color: "var(--muted)" }} data-testid="atr-sent-info">Trimis la {t.sent_to} pe {new Date(t.sent_at).toLocaleString("ro-RO")} (link de descărcare valabil până la {fmt(t.token_exp)}).</div>}
+      {!to && <div className="text-[11px] mt-1" style={{ color: "#8a5a00" }} data-testid="atr-send-hint">Nu există o adresă implicită pentru acest operator — scrieți adresa oficială a distribuitorului (administratorul o poate seta în Registrul formularelor oficiale).</div>}
       <div className="grid sm:grid-cols-2 gap-3 mt-4">
         <Due label="Termen verificare documentație" d={t.check_due} warn={terms.remind_days} testid="atr-due-check" /><Due label="Termen emitere aviz" d={t.issue_due} warn={terms.remind_days} testid="atr-due-issue" />
       </div>
@@ -65,7 +66,7 @@ export function AtrTracking({ id, operator }) {
         <Btn type="button" onClick={() => act({ action: "issued", date: f.atr_date, atr_no: f.atr_no }, "Aviz înregistrat")} data-testid="atr-issued-btn">Aviz emis</Btn>
       </div>
       <details className="mt-3 text-xs"><summary className="cursor-pointer font-bold" data-testid="atr-terms-toggle">Termene standard: verificare {terms.check_days} zile lucrătoare · aviz {terms.issue_days} zile · reamintire cu {terms.remind_days} zile înainte</summary>
-        <TermsEditor terms={terms} t={t} act={act} /></details>
+        <TermsEditor key={`${t.check_due}-${t.issue_due}-${terms.check_days}-${terms.issue_days}-${terms.remind_days}`} terms={terms} t={t} act={act} /></details>
       <div className="mt-3 text-[11px] space-y-0.5" data-testid="atr-events">{(t.events || []).slice().reverse().map((e, i) => <div key={i}><b>{new Date(e.at).toLocaleString("ro-RO")}</b> · {e.text}</div>)}</div>
     </div>
   );
