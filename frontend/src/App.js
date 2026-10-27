@@ -12,6 +12,8 @@ import Simulare from "@/pages/Simulare";
 import Settings from "@/pages/Settings";
 import EquipmentCatalog from "@/pages/EquipmentCatalog";
 import BaseSettings from "@/pages/BaseSettings";
+import SignPage from "@/pages/SignPage";
+import RemoteSigning from "@/pages/RemoteSigning";
 import "@/App.css";
 
 function Protected({ children }) {
@@ -26,7 +28,9 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/semneaza/:token" element={<SignPage />} />
       <Route element={<Protected><Layout /></Protected>}>
+        <Route path="/semnare" element={<RemoteSigning />} />
         <Route path="/" element={<Dashboard />} />
         <Route path="/clienti" element={<ModulePage moduleKey="clients" />} />
         <Route path="/prosumator" element={<ModulePage moduleKey="prosumator" />} />

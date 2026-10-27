@@ -10,6 +10,7 @@ import { CefEditor } from "@/components/cef/CefEditor";
 import { DossierOpis } from "@/components/dossier/DossierOpis";
 import { DossierExtras } from "@/components/dossier/DossierExtras";
 import { ClientDocs } from "@/components/dossier/ClientDocs";
+import { SignRequests } from "@/components/sign/SignRequests";
 
 function Field({ f, value, onChange, refOptions }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -20,7 +21,7 @@ function Field({ f, value, onChange, refOptions }) {
       {f.type === "textarea" ? (
         <textarea {...common} rows={3} />
       ) : f.type === "select" ? (
-        <select {...common}><option value="">Alege...</option>{f.options.map((o) => <option key={o} value={o}>{o}</option>)}</select>
+        <select {...common}><option value="">Alege...</option>{value && !f.options.includes(value) && <option value={value}>{value}</option>}{f.options.map((o) => <option key={o} value={o}>{o}</option>)}</select>
       ) : f.type === "ref" ? (
         <select {...common}><option value="">Alege...</option>{value && !(refOptions[f.ref] || []).some((o) => o.label === value) && <option value={value}>{value} (nou)</option>}{(refOptions[f.ref] || []).map((o) => <option key={o.id} value={o.label}>{o.label}</option>)}</select>
       ) : (
@@ -122,8 +123,10 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />}
           {key === "prosumator" && <DossierExtras form={form} setVal={setVal} />}
           {key === "prosumator" && editId && <DossierOpis id={editId} />}
+          {key === "prosumator" && editId && <SignRequests dossierId={editId} />}
           {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} />}
           {key === "clients" && editId && <ClientDocs client={form} onChange={(docs) => setVal("docs", docs)} />}
+          {key === "clients" && editId && <SignRequests clientName={form.name} />}
 
           <div className="flex gap-2 mt-6 den-noprint">
             <Btn onClick={save} data-testid="save-btn">Salvează</Btn>

@@ -673,6 +673,315 @@ async def dossier_export(item_id: str, authorization: str = Header(None), auth: 
     name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
 
+# ---------------- Semnare la distanță (semnătură electronică simplă) ----------------
+import hashlib
+import re
+import secrets
+import base64
+from html import escape as hesc
+from mailer import send_email, EMAIL_FROM_NAME
+from reportlab.pdfgen import canvas as rlc
+from reportlab.lib.pagesizes import A4 as RA4
+from reportlab.lib.utils import ImageReader
+
+SIGN_ACTIVE = ("De trimis", "Link trimis", "Deschis")
+sha = lambda b: hashlib.sha256(b).hexdigest()
+now_iso = lambda: datetime.now(timezone.utc).isoformat()
+
+def sign_status(r: dict) -> str:
+    if r["status"] in SIGN_ACTIVE and r.get("expires_at") and r["expires_at"] < now_iso():
+        return "Expirat"
+    return r["status"]
+
+def sign_public(r: dict) -> dict:
+    out = {k: r.get(k) for k in ("id", "group_id", "dossier_id", "client_name", "pos_key", "doc_title", "signer_name", "signer_email",
+                                 "signer_phone", "role", "expires_at", "created_at", "signed_at", "refused_reason", "doc_sha256", "signed_sha256", "revoked")}
+    out["status"] = sign_status(r)
+    out["history"] = r.get("history", [])
+    out["has_signed_file"] = bool(r.get("signed_file"))
+    return out
+
+def client_meta(request: Request) -> dict:
+    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "")).split(",")[0].strip()
+    return {"ip": ip, "ua": request.headers.get("user-agent", "")[:300]}
+
+def hist(action: str, meta: dict = None, detail: str = "") -> dict:
+    return {"at": now_iso(), "action": action, "detail": detail, **(meta or {})}
+
+def new_token(days: float):
+    t = secrets.token_urlsafe(32)
+    return t, sha(t.encode()), (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+
+@api_router.post("/sign/requests")
+async def sign_create(request: Request, user: dict = Depends(get_current_user)):
+    b = await request.json()
+    did, keys, signers = b.get("dossier_id"), b.get("pos_keys") or [], b.get("signers") or []
+    days = float(b.get("expires_days") or 7)
+    if not keys or not signers or not (0 < days <= 90):
+        raise HTTPException(status_code=400, detail="Alege documentele, semnatarii și o valabilitate între 1 și 90 de zile")
+    for s in signers:
+        if not (s.get("name") or "").strip() or "@" not in (s.get("email") or ""):
+            raise HTTPException(status_code=400, detail="Fiecare semnatar are nevoie de nume și e-mail valid (pentru codul de verificare)")
+    rec, client, settings, info = await dossier_ctx(user["id"], did)
+    pos = {p["key"]: p for p in info["positions"]}
+    out = []
+    for k in keys:
+        if k not in pos:
+            raise HTTPException(status_code=404, detail=f"Poziție inexistentă: {k}")
+        parts = await OPIS.position_pdf(pos[k], rec, client, settings, info["titles"], get_object, force_generated=True)
+        if not parts:
+            raise HTTPException(status_code=400, detail=f"Documentul „{pos[k]['title']}” nu poate fi generat")
+        w = PdfWriter()
+        for part in parts:
+            for pg in PdfReader(io.BytesIO(part)).pages:
+                w.add_page(pg)
+        o = io.BytesIO(); w.write(o); pdf = o.getvalue()
+        gid = str(uuid.uuid4())
+        stored = put_object(f"{APP_NAME}/sign/{user['id']}/{gid}/original.pdf", pdf, "application/pdf")
+        for s in signers:
+            t, th, exp = new_token(days)
+            r = _new(user, {"group_id": gid, "dossier_id": did, "client_name": client.get("name") or rec.get("client_name"), "pos_key": k,
+                            "doc_title": pos[k]["title"], "doc_path": stored["path"], "doc_sha256": sha(pdf), "signer_name": s["name"].strip(),
+                            "signer_email": s["email"].strip(), "signer_phone": (s.get("phone") or "").strip(), "role": (s.get("role") or "Beneficiar").strip(),
+                            "status": "De trimis", "token_hash": th, "expires_at": exp, "otp_sends": 0, "otp_attempts": 0,
+                            "history": [hist("Cerere creată", None, f"de {user.get('email')}; link valabil până la {exp[:16]} UTC")]})
+            await db.sign_requests.insert_one(dict(r))
+            out.append({**sign_public(r), "token": t})
+        await db.prosumator.update_one({"id": did, "owner": user["id"]}, {"$set": {f"opis.{k}.status": "necesită semnătură"}})
+    await audit(user, "cerere semnare", "prosumator", did, keys)
+    return out
+
+@api_router.get("/sign/requests")
+async def sign_list(dossier_id: Optional[str] = None, client_name: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {"owner": user["id"]}
+    if dossier_id:
+        q["dossier_id"] = dossier_id
+    if client_name:
+        q["client_name"] = client_name
+    return [sign_public(r) for r in await db.sign_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)]
+
+async def sign_own(user, rid):
+    r = await db.sign_requests.find_one({"id": rid, "owner": user["id"]}, {"_id": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Cerere inexistentă")
+    return r
+
+@api_router.post("/sign/requests/{rid}/sent")
+async def sign_mark_sent(rid: str, request: Request, user: dict = Depends(get_current_user)):
+    r = await sign_own(user, rid)
+    ch = ((await request.json()).get("channel") or "copiat")[:30]
+    upd = {"$push": {"history": hist("Link trimis", None, f"canal: {ch}; de {user.get('email')}")}}
+    if sign_status(r) == "De trimis":
+        upd["$set"] = {"status": "Link trimis"}
+    await db.sign_requests.update_one({"id": rid}, upd)
+    return {"ok": True}
+
+@api_router.post("/sign/requests/{rid}/new-link")
+async def sign_new_link(rid: str, request: Request, user: dict = Depends(get_current_user)):
+    r = await sign_own(user, rid)
+    if r["status"] in ("Semnat", "Refuzat"):
+        raise HTTPException(status_code=400, detail="Documentul a fost deja semnat sau refuzat — creează o cerere nouă")
+    days = float((await request.json()).get("expires_days") or 7)
+    t, th, exp = new_token(days)
+    await db.sign_requests.update_one({"id": rid}, {"$set": {"token_hash": th, "expires_at": exp, "status": "De trimis", "revoked": False, "otp_hash": None,
+                                                              "otp_attempts": 0}, "$push": {"history": hist("Link nou generat", None, f"linkul anterior invalidat; valabil până la {exp[:16]} UTC; de {user.get('email')}")}})
+    return {**sign_public({**r, "status": "De trimis", "expires_at": exp}), "token": t}
+
+@api_router.post("/sign/requests/{rid}/revoke")
+async def sign_revoke(rid: str, user: dict = Depends(get_current_user)):
+    r = await sign_own(user, rid)
+    if r["status"] in ("Semnat", "Refuzat"):
+        raise HTTPException(status_code=400, detail="Cererea este deja închisă")
+    await db.sign_requests.update_one({"id": rid}, {"$set": {"status": "Expirat", "revoked": True, "token_hash": None},
+                                                    "$push": {"history": hist("Link revocat", None, f"de {user.get('email')}")}})
+    return {"ok": True}
+
+@api_router.get("/sign/requests/{rid}/file")
+async def sign_file(rid: str, kind: str = "signed", authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    r = await sign_own(user, rid)
+    path = r.get("signed_file", {}).get("storage_path") if kind == "signed" else r["doc_path"]
+    if not path:
+        raise HTTPException(status_code=404, detail="Documentul semnat nu există încă")
+    data, _ = get_object(path)
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{kind}_{r["pos_key"]}.pdf"'})
+
+async def sign_by_token(token: str) -> dict:
+    r = await db.sign_requests.find_one({"token_hash": sha(token.encode())}, {"_id": 0}) if token else None
+    if not r:
+        raise HTTPException(status_code=404, detail="Link invalid sau revocat")
+    return r
+
+def mask(e: str) -> str:
+    u, _, d = e.partition("@")
+    return (u[:2] + "***@" + d) if d else "***"
+
+@api_router.get("/public/sign/{token}")
+async def pub_sign_info(token: str, request: Request):
+    r = await sign_by_token(token)
+    st = sign_status(r)
+    if st == "Expirat" and r["status"] != "Expirat":
+        await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Expirat"}, "$push": {"history": hist("Link expirat", client_meta(request))}})
+    elif st in SIGN_ACTIVE:
+        upd = {"$push": {"history": hist("Document deschis", client_meta(request))}}
+        if st != "Deschis":
+            upd["$set"] = {"status": "Deschis", "opened_at": now_iso()}
+        await db.sign_requests.update_one({"id": r["id"]}, upd)
+        st = "Deschis"
+    s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
+    pages = 0
+    if st in SIGN_ACTIVE:
+        import pymupdf
+        data, _ = get_object(r["doc_path"])
+        pages = pymupdf.open(stream=data, filetype="pdf").page_count
+    return {"status": st, "pages": pages, "doc_title": r["doc_title"], "signer_name": r["signer_name"], "role": r["role"], "client_name": r["client_name"],
+            "company": s.get("company") or "DNS HOSTESS SRL", "email_masked": mask(r["signer_email"]), "expires_at": r["expires_at"],
+            "doc_sha256": r["doc_sha256"], "signed_at": r.get("signed_at")}
+
+@api_router.get("/public/sign/{token}/document")
+async def pub_sign_doc(token: str):
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    data, _ = get_object(r["doc_path"])
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": 'inline; filename="document.pdf"'})
+
+@api_router.get("/public/sign/{token}/page/{n}")
+async def pub_sign_page(token: str, n: int):
+    import pymupdf
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    data, _ = get_object(r["doc_path"])
+    d = pymupdf.open(stream=data, filetype="pdf")
+    if n < 0 or n >= d.page_count:
+        raise HTTPException(status_code=404, detail="Pagină inexistentă")
+    return Response(content=d[n].get_pixmap(dpi=110).tobytes("png"), media_type="image/png")
+
+@api_router.post("/public/sign/{token}/otp")
+async def pub_sign_otp(token: str, request: Request):
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    if r.get("otp_sends", 0) >= 5:
+        raise HTTPException(status_code=429, detail="Ai cerut prea multe coduri. Contactează emitentul documentului.")
+    if r.get("otp_last") and r["otp_last"] > (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat():
+        raise HTTPException(status_code=429, detail="Așteaptă 45 de secunde înainte de un cod nou")
+    code = f"{secrets.randbelow(1000000):06d}"
+    html = (f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0b1f3a">'
+            f'<p>Bună ziua, {hesc(r["signer_name"])},</p><p>Codul pentru semnarea documentului <b>{hesc(r["doc_title"])}</b> este:</p>'
+            f'<p style="font-size:28px;font-weight:bold;letter-spacing:6px">{code}</p>'
+            f'<p>Codul este valabil 10 minute. Introdu-l doar pe pagina de semnare deschisă din linkul primit. Dacă nu ai cerut acest cod, ignoră mesajul.</p>'
+            f'<p style="font-size:12px;color:#888">Trimis de {hesc(EMAIL_FROM_NAME)}. Nu îți vom cere niciodată parole sau date de card prin e-mail.</p></td></tr></table>')
+    await send_email(to=r["signer_email"], subject=f"Cod de semnare — {r['doc_title'][:60]}", html=html)
+    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"otp_hash": sha(f"{r['id']}:{code}".encode()), "otp_exp": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+                                                                 "otp_last": now_iso(), "otp_attempts": 0}, "$inc": {"otp_sends": 1},
+                                                        "$push": {"history": hist("Cod de verificare trimis", client_meta(request), f"către {mask(r['signer_email'])}")}})
+    return {"ok": True, "email_masked": mask(r["signer_email"])}
+
+def evidence_page(r: dict, sig_png: bytes, meta: dict, declared: str, signed_at: str, owner_company: str) -> bytes:
+    buf = io.BytesIO()
+    c = rlc.Canvas(buf, pagesize=RA4)
+    W, H = RA4
+    y = H - 60
+    c.setFont("LSB", 14); c.drawString(50, y, "FIȘĂ DE EVIDENȚĂ A SEMNĂRII ELECTRONICE")
+    y -= 18; c.setFont("LS", 9); c.drawString(50, y, "Tip semnătură: semnătură electronică SIMPLĂ (Reg. UE 910/2014 eIDAS, art. 3 pct. 10). Nu este semnătură avansată sau calificată.")
+    rows = [("Document", r["doc_title"]), ("Emitent", owner_company), ("Beneficiar / dosar", r.get("client_name") or ""),
+            ("Semnatar (identitate declarată)", declared), ("Rol", r["role"]), ("E-mail verificat prin cod unic", r["signer_email"]),
+            ("Data și ora semnării (UTC, server)", signed_at), ("Adresă IP", meta["ip"]), ("Browser / dispozitiv", meta["ua"][:110]),
+            ("SHA-256 document semnat (original)", r["doc_sha256"]), ("ID cerere", r["id"]),
+            ("Declarație", "Am citit integral documentul și îmi exprim explicit intenția de a-l semna electronic.")]
+    y -= 26
+    for k, v in rows:
+        c.setFont("LSB", 8.5); c.drawString(50, y, k)
+        c.setFont("LS", 8.5)
+        txt = str(v)
+        while txt:
+            part = txt[:85]; txt = txt[85:]
+            c.drawString(230, y, part); y -= 12
+        y -= 4
+    y -= 10; c.setFont("LSB", 9); c.drawString(50, y, "Semnătura olografă trasată pe ecran:")
+    img = ImageReader(io.BytesIO(sig_png))
+    iw, ih = img.getSize(); s = min(260 / iw, 110 / ih)
+    c.drawImage(img, 50, y - 10 - ih * s, iw * s, ih * s, mask="auto")
+    c.rect(48, y - 12 - ih * s, iw * s + 4, ih * s + 4)
+    c.setFont("LS", 7); c.drawString(50, 40, "Istoricul complet al acțiunilor (deschideri, coduri trimise, semnare) este păstrat în aplicația emitentului.")
+    c.save()
+    return buf.getvalue()
+
+def stamp_pages(pdf: bytes, text: str) -> bytes:
+    w = PdfWriter()
+    for page in PdfReader(io.BytesIO(pdf)).pages:
+        pw, ph = float(page.mediabox.width), float(page.mediabox.height)
+        b = io.BytesIO(); c = rlc.Canvas(b, pagesize=(pw, ph)); c.setFont("LS", 6.5); c.setFillGray(0.35)
+        c.drawString(20, 10, text[:180]); c.save()
+        page.merge_page(PdfReader(io.BytesIO(b.getvalue())).pages[0]); w.add_page(page)
+    o = io.BytesIO(); w.write(o); return o.getvalue()
+
+async def rebuild_group(owner: str, gid: str):
+    reqs = await db.sign_requests.find({"owner": owner, "group_id": gid}, {"_id": 0}).sort("created_at", 1).to_list(50)
+    signed = [x for x in reqs if x["status"] == "Semnat" and x.get("evidence_path")]
+    base, _ = get_object(reqs[0]["doc_path"])
+    w = PdfWriter()
+    for pg in PdfReader(io.BytesIO(stamp_pages(base, "Semnat electronic (semnătură simplă) de: " + ", ".join(f"{x['signer_name']} {x['signed_at'][:16]} UTC" for x in signed) + f" · SHA-256 original {reqs[0]['doc_sha256'][:16]}…"))).pages:
+        w.add_page(pg)
+    for x in signed:
+        ev, _ = get_object(x["evidence_path"])
+        for pg in PdfReader(io.BytesIO(ev)).pages:
+            w.add_page(pg)
+    o = io.BytesIO(); w.write(o); final = o.getvalue()
+    st = put_object(f"{APP_NAME}/sign/{owner}/{gid}/signed_{len(signed)}.pdf", final, "application/pdf")
+    f = {"storage_path": st["path"], "original_filename": f"{reqs[0]['pos_key']}_semnat.pdf", "content_type": "application/pdf", "size": len(final)}
+    await db.sign_requests.update_many({"owner": owner, "group_id": gid}, {"$set": {"signed_file": f, "signed_sha256": sha(final)}})
+    if len(signed) == len(reqs):
+        await db.prosumator.update_one({"id": reqs[0]["dossier_id"], "owner": owner},
+                                       {"$set": {f"opis.{reqs[0]['pos_key']}.upload": f, f"opis.{reqs[0]['pos_key']}.status": "atașat"}})
+        await db.documents.insert_one({"id": str(uuid.uuid4()), "owner": owner, "created_at": now_iso(), "updated_at": now_iso(),
+                                       "client_name": reqs[0].get("client_name"), "kind": "Semnat electronic", "doc_type": f"{reqs[0]['doc_title']} — semnat", **f})
+
+@api_router.post("/public/sign/{token}/sign")
+async def pub_sign(token: str, request: Request):
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    b = await request.json()
+    declared = (b.get("declared_name") or "").strip()
+    if not b.get("intent") or not declared:
+        raise HTTPException(status_code=400, detail="Confirmă intenția de semnare și scrie numele complet")
+    if not r.get("otp_hash") or (r.get("otp_exp") or "") < now_iso():
+        raise HTTPException(status_code=400, detail="Cere un cod de verificare pe e-mail")
+    if r.get("otp_attempts", 0) >= 5:
+        raise HTTPException(status_code=429, detail="Prea multe încercări. Cere un cod nou.")
+    if sha(f"{r['id']}:{str(b.get('otp') or '').strip()}".encode()) != r["otp_hash"]:
+        await db.sign_requests.update_one({"id": r["id"]}, {"$inc": {"otp_attempts": 1}, "$push": {"history": hist("Cod greșit", client_meta(request))}})
+        raise HTTPException(status_code=400, detail="Cod incorect")
+    m = re.match(r"^data:image/png;base64,(.+)$", b.get("signature") or "")
+    if not m:
+        raise HTTPException(status_code=400, detail="Desenează semnătura")
+    png = base64.b64decode(m.group(1))
+    if len(png) < 800 or len(png) > 2_000_000:
+        raise HTTPException(status_code=400, detail="Semnătura nu este validă")
+    meta, at = client_meta(request), now_iso()
+    s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
+    ev = evidence_page(r, png, meta, declared, at, s.get("company") or "DNS HOSTESS SRL")
+    evp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/evidence_{r['id']}.pdf", ev, "application/pdf")
+    sigp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/signature_{r['id']}.png", png, "image/png")
+    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Semnat", "signed_at": at, "declared_name": declared, "token_hash": None,
+        "evidence_path": evp["path"], "signature_path": sigp["path"], "sign_meta": meta, "otp_hash": None},
+        "$push": {"history": hist("Semnat", meta, f"identitate declarată: {declared}; cod e-mail verificat; intenție confirmată")}})
+    await rebuild_group(r["owner"], r["group_id"])
+    return {"ok": True, "signed_at": at}
+
+@api_router.post("/public/sign/{token}/refuse")
+async def pub_refuse(token: str, request: Request):
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    reason = ((await request.json()).get("reason") or "").strip()[:500]
+    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Refuzat", "refused_reason": reason, "token_hash": None},
+                                                        "$push": {"history": hist("Refuzat", client_meta(request), reason)}})
+    return {"ok": True}
+
 # ---------------- Startup ----------------
 @app.on_event("startup")
 async def startup():

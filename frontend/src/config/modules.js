@@ -38,7 +38,7 @@ export const MODULES = {
       { name: "cadastral_nr", label: "Nr. cadastral", type: "text" },
       { name: "cf_nr", label: "Nr. carte funciară", type: "text" },
       { name: "supplier", label: "Furnizor de energie", type: "text" },
-      { name: "operator", label: "Operator de distribuție (denumire completă, ex. Distribuție Energie Electrică Romania Sucursala Transilvania Nord)", type: "text", full: true },
+      { name: "operator", label: "Operator de distribuție", type: "select", options: ["Distribuție Energie Electrică Romania Sucursala Transilvania Nord", "Distribuție Energie Electrică Romania Sucursala Transilvania Sud", "Distribuție Energie Electrică Romania Sucursala Muntenia Nord", "Delgaz Grid S.A.", "Distribuție Energie Oltenia S.A.", "Rețele Electrice Muntenia S.A.", "Rețele Electrice Banat S.A.", "Rețele Electrice Dobrogea S.A."], full: true },
     ],
   },
   prosumator: {
