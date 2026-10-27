@@ -54,3 +54,12 @@ Web app "D-ENERGY" for DNS HOSTESS S.R.L. (Romanian UI, responsive) to manage el
 - ETAPA 2 DONE (iteration 23, 17/17): tarife START 500 / PRO 900 / FULL 1250 lei + TVA (migrare la startup, flag billing_config.tariffs_2026_06), perioadă implicită 1 lună, payment_mode „transfer” (OP) — /billing/checkout emite proformă + detalii transfer, activare doar după confirmare admin (/admin/invoices/{id}/payment). operator_routes.py: atestat ANRE firmă (/atestat-anre), admin „Operatori și atestate ANRE” (/operatori-anre) aprobare/respingere/expirat cu observații; plan_info blochează funcțiile până la atestat aprobat; conturile existente înainte de attest_cutoff păstrează accesul cât timp attest_block_existing=false (comutator admin). IBAN/banca pentru OP trebuie completate în Setările contului platformei (încă lipsă!).
 - DONE: semnare online contract (POST /api/contracts/{id}/sign, module 'contracts', 7 zile, semnat → contract.signed + status Semnat, /signed-pdf); ofertă din dosar prosumator (POST /api/offers/from-dossier).
 - ETAPA 3 DONE (iteration 24 + fixes): anre_routes.py/anre_doc.py — Dosare ANRE premium 3.200 lei + TVA (OP, confirmare admin /admin/anre/{id}/payment), tipuri nou/B→C1A/B→C2A/modificare/vizare/altele, opis după Ord. ANRE 134/2021 art. 14 alin.(1) a–h, documente generate (cerere, organigramă, dotări Anexa 5, personal Anexa 7, decl. Anexa 9/10) marcate „de verificat cu formularul oficial anre.ro”, upload client cu stări, verificare finală + raport, ZIP structurat, statusuri Depus/Soluționat doar cu dovezi, asistent AI per dosar. NOTĂ: formularele oficiale ANRE nu au fost descărcate — documentele sunt după structura anexelor; de înlocuit cu modelele oficiale când sunt furnizate.
+
+## Iterația 25 (iunie 2026)
+- Formulare oficiale ANRE: admin încarcă modele (.docx cu {{marcaje}} sau PDF cu câmpuri) pentru cerere, organigramă, Anexele 5/7/9/10; dosarele folosesc modelul oficial, altfel cel standard. Rânduri de tabel repetate {{p.*}}/{{e.*}}. (anre_templates.py, AnreTemplates.jsx)
+- Proformă automată 3.200 lei + TVA la comanda Dosar ANRE (seria DEN-PF-AAAA-NNNN), trimisă pe e-mail cu datele OP, PDF în aplicație; plata confirmată sincronizează dosarul și proforma (fără abonament).
+- Memento vizare ANRE: firma completează data vizării, adminul o confirmă; cron zilnic anre-visa trimite e-mail o singură dată cu 60 de zile înainte.
+- Testat: iteration_25 (100% backend + frontend).
+## Backlog
+- P1: IBAN/banca platformei necompletate în Setări (apar „—” pe proformă/e-mail)
+- P2: SmartBill (amânat)

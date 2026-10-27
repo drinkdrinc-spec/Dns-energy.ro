@@ -1,0 +1,40 @@
+{
+  "summary": "Tested iteration 25 features end-to-end: auto proforma at Dosar ANRE order (DEN-PF-YYYY-NNNN, 3200 + 21% VAT = 3872, service:true, PDF with service line), two-way payment sync between dossier and invoice (no subscription change), official ANRE template admin (list/upload/delete/file, 403 for subscriber, 400 for invalid/unknown key), docx filling of {{firma}}/{{cui}} plus a repeated {{p.*}} table row (one row per staff, numbered 1..N), PDF fallback when no template, ZIP package containing personal.docx, operator visa_date save/reset/admin confirm, and the anre-visa cron (401 without secret, one reminder only, run-id duplicate detection, no reminder for dates more than 60 days out). Backend: 15/15 pytest pass. Frontend: admin templates panel upload/help/delete, admin operator visa column confirm, subscriber unpaid dossier view (transfer + proforma PDF link returns 200) and OperatorAttest visa input with status change all work.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/anre/{did}/payment", "issue": "Marks the dossier 'plătit' even when its invoice is cancelled/refunded, and cancelling the invoice later does not revert the dossier."},
+      {"endpoint": "POST /api/admin/anre/templates/{key}", "issue": "Field detection (fields/matched) only scans body paragraphs and top-level table cells. fill_docx also fills headers/footers and nested tables, so the 'câmpuri recunoscute' count can be too low."},
+      {"endpoint": "anre_templates._para", "issue": "The whole paragraph text is collapsed into the first run, so mixed formatting is lost after filling (e.g. a bold label followed by a normal value). This can visibly change official ANRE forms."},
+      {"endpoint": "POST /api/anre/dossiers", "issue": "The proforma is created before the dossier is inserted, which could leave an orphan invoice if the insert fails. Low risk."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/operatori-anre (AdminOperators)", "issues": ["Table headers have no spacing between them: 'DocumentVizare periodică' and 'VerificatStatus și observații' run together."]},
+      {"screen": "AnreEditor unpaid panel", "issues": ["Amounts are shown unformatted ('3200 lei + TVA (3872 lei)', 'Suma: 3872 lei'), while the PDF uses '3 200,00 RON'. Use Romanian number formatting."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter25_anre_templates_proforma_visa.py", "/app/backend/tests/iter25_ui_setup.py", "/app/test_reports/pytest/pytest_iter25.xml"],
+  "action_items": [
+    "Optional: keep the dossier and invoice in sync when an invoice is cancelled or refunded, and refuse anre_pay when the invoice is cancelled.",
+    "Optional: preserve run formatting when filling docx placeholders (replace only inside runs when the placeholder is not split across runs).",
+    "Optional: include headers/footers and nested tables in template field detection.",
+    "Fix header spacing in the AdminOperators table and format lei amounts in AnreEditor."
+  ],
+  "critical_code_review_comments": [
+    "billing_routes.py is 762 lines (over the 700-line guideline); consider splitting out the proforma/service invoice and SmartBill logic.",
+    "Placeholders use double braces {{key}}, not single braces {key} as the review request says. The UI help text shows {{firma}}, so admins are told correctly.",
+    "If the visa reminder email fails, nothing is recorded and it is retried the next day. This is correct for idempotency, but there is no admin-visible failure log.",
+    "Emails to @example.com are blocked by managed email (422 undeliverable_recipient). Tests use delivered@resend.dev for the visa reminder."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter25_anre_templates_proforma_visa.py", "/app/backend/tests/iter25_ui_setup.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Admin drinkdrinc@gmail.com / DEnergy2026!; subscribers sub_iter25*_<rid>@example.com / Test2026!x (cleaned up)",
+  "seed_data_creation": "Temporary subscribers, dossiers, invoices, operators and reminders were created and cleaned up. No anre_templates remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with '-n 0': pytest.ini enables xdist, and these tests share state and must run in order. Use contact_email delivered@resend.dev for any email-dependent assertions, because example.com is rejected with 422. Container date is 2026-10-27. Platform IBAN is empty (expected)."
+}
