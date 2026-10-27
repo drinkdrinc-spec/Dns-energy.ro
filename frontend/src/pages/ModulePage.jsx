@@ -20,6 +20,7 @@ import { AtrDossier } from "@/components/dossier/AtrDossier";
 import { PifPanel } from "@/components/dossier/PifPanel";
 import { AiDossierCheck } from "@/components/ai/AiDossierCheck";
 import { AiDraft } from "@/components/ai/AiDraft";
+import { DiuDossier } from "@/components/dossier/DiuDossier";
 import { can } from "@/lib/plan";
 
 function Field({ f, value, onChange, refOptions, ai }) {
@@ -148,6 +149,7 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && editId && <PifPanel id={editId} />}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
+          {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} />}
           {key === "prosumator" && editId && <AiDossierCheck id={editId} />}
           {key === "prosumator" && editId && <SignRequests dossierId={editId} />}
           {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} />}

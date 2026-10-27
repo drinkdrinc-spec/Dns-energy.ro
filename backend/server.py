@@ -1741,6 +1741,7 @@ import atr_routes  # noqa: E402
 import sld_edit_routes  # noqa: E402
 import modules_routes  # noqa: E402
 import ai_routes  # noqa: E402
+import diu_routes  # noqa: E402
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

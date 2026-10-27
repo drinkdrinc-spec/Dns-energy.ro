@@ -1,4 +1,5 @@
 import json
+import re
 import os
 import uuid
 from datetime import datetime, timezone
@@ -112,21 +113,25 @@ KEYS = ("client_name", "address", "county", "pod", "operator", "power", "apparen
         "panels", "panel_count", "panel_w", "battery", "grounding_ohm", "grounding_limit", "atr", "afm", "pif_date", "receptie_date", "doc_date", "status")
 
 
+async def dossier_summary(user: dict, item_id: str) -> dict:
+    rec, client, settings, info = await S.dossier_ctx(user, item_id)
+    chk = CEF.check(rec.get("cef") or {})
+    return {"date_dosar": {k: rec.get(k) for k in KEYS if rec.get(k) not in (None, "")},
+            "client": {k: client.get(k) for k in ("name", "kind", "address", "county", "phone", "email") if client.get(k)},
+            "executant": {k: settings.get(k) for k in ("company", "cui", "anre_attest", "anre_valid", "rep") if settings.get(k)},
+            "configurare_cef": {"totaluri": chk.get("totals"), "erori": chk.get("errors"), "avertizari": chk.get("warnings"),
+                                "invertoare": [{"model": i.get("brand_model"), "kw": i.get("ac_kw") or i.get("kw"), "stringuri": len(i.get("strings") or [])}
+                                               for i in (rec.get("cef") or {}).get("inverters") or []]},
+            "pif_masuratori_completat": bool((rec.get("pif") or {}).get("date")),
+            "opis": [{"nr": p["nr"], "document": p["title"], "status": p["status"], "lipsa": p["missing"]} for p in info["positions"]],
+            "date_comune_lipsa": info["common_missing"]}
+
+
 @api.post("/ai/dossier/{item_id}/check")
 async def ai_dossier_check(item_id: str, user: dict = Depends(get_current_user)):
     ai_need(user)
     S.guard("prosumator", user)
-    rec, client, settings, info = await S.dossier_ctx(user, item_id)
-    chk = CEF.check(rec.get("cef") or {})
-    ctx = {"date_dosar": {k: rec.get(k) for k in KEYS if rec.get(k) not in (None, "")},
-           "client": {k: client.get(k) for k in ("name", "kind", "address", "county", "phone", "email") if client.get(k)},
-           "executant": {k: settings.get(k) for k in ("company", "cui", "anre_attest", "anre_valid", "rep") if settings.get(k)},
-           "configurare_cef": {"totaluri": chk.get("totals"), "erori": chk.get("errors"), "avertizari": chk.get("warnings"),
-                               "invertoare": [{"model": i.get("brand_model"), "kw": i.get("ac_kw") or i.get("kw"), "stringuri": len(i.get("strings") or [])}
-                                              for i in (rec.get("cef") or {}).get("inverters") or []]},
-           "pif_masuratori_completat": bool((rec.get("pif") or {}).get("date")),
-           "opis": [{"nr": p["nr"], "document": p["title"], "status": p["status"], "lipsa": p["missing"]} for p in info["positions"]],
-           "date_comune_lipsa": info["common_missing"]}
+    ctx = await dossier_summary(user, item_id)
     prompt = ("Verifică dosarul de prosumator de mai jos înainte de trimiterea către operatorul de distribuție. Structurează răspunsul în: "
               "1) Verdict scurt (Gata de trimis / Necesită completări / Probleme tehnice); 2) Date și documente lipsă (concret, pe poziții din opis); "
               "3) Neconcordanțe tehnice (puteri invertor vs. putere evacuată vs. kVA, monofazat/trifazat, priză de pământ vs. valoare admisă, compatibilități CEF); "
@@ -153,3 +158,75 @@ async def ai_draft(request: Request, user: dict = Depends(get_current_user)):
               f"Instrucțiuni utilizator: {str(b.get('instructions') or '—')[:800]}\nText existent: {str(b.get('current') or '—')[:2000]}\n"
               f"Date din formular (JSON): {json.dumps(form, ensure_ascii=False)[:8000]}")
     return sse(new_chat("Ești redactor tehnic pentru D-ENERGY. " + RULES), prompt)
+
+
+# ---------------- Verificare automată la finalizare (listă de bifat) ----------------
+SEV = ("critic", "important", "minor")
+
+
+async def collect(chat: LlmChat, text: str) -> str:
+    out = ""
+    async for ev in chat.stream_message(UserMessage(text=text)):
+        if isinstance(ev, TextDelta):
+            out += ev.content
+        elif isinstance(ev, StreamDone):
+            break
+    return out
+
+
+@api.post("/ai/dossier/{item_id}/precheck")
+async def ai_precheck(item_id: str, user: dict = Depends(get_current_user)):
+    ai_need(user)
+    S.guard("prosumator", user, write=True)
+    ctx = await dossier_summary(user, item_id)
+    prompt = ("Verifică dosarul de prosumator înainte de FINALIZARE. Răspunde DOAR cu JSON valid: "
+              '{"items":[{"text":"acțiune concretă de verificat sau completat","severity":"critic|important|minor"}]}. '
+              "Maximum 15 puncte, fiecare scurt (max 160 caractere), fără puncte pentru date corecte. Dacă dosarul e complet și coerent, items = [].\n\nDOSAR (JSON):\n"
+              + json.dumps(ctx, ensure_ascii=False, default=str)[:14000])
+    try:
+        out = await collect(new_chat("Ești verificator de dosare de prosumator pentru D-ENERGY. " + RULES), prompt)
+        m = re.search(r"\{.*\}", out, re.S)
+        raw = (json.loads(m.group(0)) if m else {}).get("items") or []
+    except Exception as e:
+        logger.error(f"AI precheck failed: {e}")
+        raise HTTPException(status_code=502, detail="Verificarea AI nu a putut fi efectuată acum. Poți finaliza dosarul și fără ea.")
+    items = [{"text": str(i.get("text"))[:300], "severity": i.get("severity") if i.get("severity") in SEV else "important"}
+             for i in raw if isinstance(i, dict) and i.get("text")][:15]
+    pc = {"at": now(), "by": user.get("email"), "items": items, "checked": []}
+    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {"ai_precheck": pc}})
+    return pc
+
+
+@api.post("/ai/dossier/{item_id}/precheck/ack")
+async def ai_precheck_ack(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    S.guard("prosumator", user, write=True)
+    rec = await S.check_access(user, "prosumator", item_id)
+    pc = rec.get("ai_precheck") or {}
+    n = len(pc.get("items") or [])
+    checked = sorted({int(i) for i in (await request.json()).get("checked") or [] if str(i).isdigit() and int(i) < n})
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"ai_precheck.checked": checked, "ai_precheck.ack_at": now()}})
+    await S.audit(user, "verificare AI la finalizare", "prosumator", item_id, [f"{len(checked)}/{n} puncte bifate"])
+    return {"checked": checked, "unchecked": n - len(checked)}
+
+
+# ---------------- Mesaj AI către client (linkuri de semnare) ----------------
+CHANNELS = {"whatsapp": "WhatsApp (scurt, prietenos, fără subiect)", "sms": "SMS (foarte scurt)", "email": "e-mail (prima linie „Subiect: ...”, apoi mesajul)"}
+
+
+@api.post("/ai/sign-message")
+async def ai_sign_message(request: Request, user: dict = Depends(get_current_user)):
+    ai_need(user)
+    S.guard("prosumator", user, write=True)
+    b = await request.json()
+    links = [x for x in b.get("links") or [] if isinstance(x, dict) and str(x.get("url") or "").startswith("http")][:20]
+    if not links or not b.get("dossier_id"):
+        raise HTTPException(status_code=400, detail="Nu există linkuri active de trimis")
+    ch = b.get("channel") if b.get("channel") in CHANNELS else "whatsapp"
+    rec, client, s, _ = await S.dossier_ctx(user, b["dossier_id"])
+    lst = "\n".join(f"- {str(x.get('title'))[:120]}: {x['url']}" for x in links)
+    prompt = (f"Scrie UN SINGUR mesaj pentru canalul {CHANNELS[ch]} către clientul {client.get('name') or rec.get('client_name') or ''}, "
+              f"din partea firmei {s.get('company') or 'DNS HOSTESS SRL'} (contact: {s.get('phone') or ''} {s.get('email') or ''}). "
+              "Mesajul cere semnarea electronică a documentelor dosarului de prosumator. Include TOATE linkurile de mai jos, fiecare pe rândul lui, copiate EXACT, caracter cu caracter. "
+              "Explică pe scurt pașii: deschide linkul, citește documentul, cere codul primit pe e-mail, semnează pe ecran. Menționează că fiecare link este valabil 7 zile "
+              "și că este o semnătură electronică simplă. Răspunde doar cu textul mesajului.\n\nDocumente și linkuri:\n" + lst)
+    return sse(new_chat("Ești asistentul de comunicare cu clienții al firmei. " + RULES), prompt)

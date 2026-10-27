@@ -3,6 +3,9 @@ import { api, API } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Copy, Link2, Ban, RefreshCw, FileDown, ChevronDown, Plus, MessageCircle, Mail, Smartphone } from "lucide-react";
 import { toast } from "sonner";
+import { AiClientMessage } from "@/components/ai/AiClientMessage";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/plan";
 
 const BADGE = { "De trimis": ["#f1f5f9", "#334155"], "Link trimis": ["#eef4ff", "#1d4ed8"], Deschis: ["#fff8e6", "#8a5a00"], Semnat: ["#ecfdf3", "#166534"],
   Refuzat: ["#fff0f0", "#9b2c2c"], Expirat: ["#f3f4f6", "#6b7280"] };
@@ -99,6 +102,8 @@ export function SignRequests({ dossierId, clientName }) {
   const q = dossierId ? `?dossier_id=${dossierId}` : clientName ? `?client_name=${encodeURIComponent(clientName)}` : "";
   const load = () => api.get(`/sign/requests${q}`).then((r) => setList(r.data)).catch(() => {});
   useEffect(() => { load(); }, [q]); // eslint-disable-line
+  const { user } = useAuth();
+  const active = list.filter((r) => tokens[r.id] && !["Semnat", "Refuzat", "Expirat"].includes(r.status) && !r.revoked).map((r) => ({ r, token: tokens[r.id] }));
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="sign-section">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
@@ -106,6 +111,7 @@ export function SignRequests({ dossierId, clientName }) {
         {dossierId && <Btn variant="secondary" onClick={() => setShow(!show)} data-testid="sign-new-toggle"><Plus size={14} /> Cerere de semnare</Btn>}
       </div>
       {show && dossierId && <CreateForm dossierId={dossierId} onCreated={(rs) => { setTokens({ ...tokens, ...Object.fromEntries(rs.map((r) => [r.id, r.token])) }); setShow(false); load(); }} />}
+      {dossierId && can(user, "ai_gpt") && active.length > 0 && <AiClientMessage dossierId={dossierId} items={active} linkOf={linkOf} onSent={load} />}
       <div className="space-y-2">{list.length ? list.map((r) => <Req key={r.id} r={r} token={tokens[r.id]} reload={load} setToken={(id, t) => setTokens({ ...tokens, [id]: t })} />)
         : <p className="text-xs" style={{ color: "var(--muted)" }}>Nicio cerere de semnare.</p>}</div>
     </div>

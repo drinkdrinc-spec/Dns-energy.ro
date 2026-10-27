@@ -4,6 +4,9 @@ import { Btn } from "@/components/Layout";
 import { Eye, FileDown, FileType2, Upload, X, AlertTriangle, Lock, Unlock } from "lucide-react";
 import { toast } from "sonner";
 import { uploadFile } from "./ClientDocs";
+import { AiPrecheck } from "@/components/ai/AiPrecheck";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/plan";
 
 const tok = () => localStorage.getItem("den_token");
 const STATUS_STYLE = { "de completat": ["#fff0f0", "#9b2c2c"], generat: ["#eef4ff", "#1d4ed8"], "necesită semnătură": ["#fff8e6", "#8a5a00"], "atașat": ["#ecfdf3", "#166534"] };
@@ -45,15 +48,19 @@ export function DossierOpis({ id }) {
   const [d, setD] = useState(null);
   const [pv, setPv] = useState(null);
   const [showReport, setShowReport] = useState(false);
+  const [pre, setPre] = useState(false);
+  const { user } = useAuth();
   const load = () => api.get(`/dossier/${id}`).then((r) => setD(r.data)).catch(() => {});
   useEffect(() => { load(); }, [id]); // eslint-disable-line
   if (!d) return null;
-  const lock = async () => {
+  const doLock = async () => {
     try { await api.post(`/dossier/${id}/${d.finalized ? "reopen" : "finalize"}`); toast.success(d.finalized ? "Dosar redeschis" : "Dosar finalizat — datele din setări sunt înghețate"); load(); }
-    catch (e) { toast.error(e.response?.data?.detail || "Operațiunea a eșuat"); }
+    catch (e) { toast.error(e.response?.data?.detail || "Operațiunea a eșuat"); throw e; }
   };
+  const lock = () => (!d.finalized && can(user, "ai_gpt") ? setPre(true) : doLock().catch(() => {}));
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="dossier-opis">
+      <AiPrecheck id={id} open={pre} onClose={() => setPre(false)} onFinalize={doLock} />
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <div>
           <h3 className="font-bold">Opis dosar prosumator ({d.positions.length} poziții)</h3>
