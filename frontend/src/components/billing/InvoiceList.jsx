@@ -22,9 +22,13 @@ export function InvoiceList({ items, actions }) {
             <td className="py-2 font-semibold">{i.number}</td><td>{i.created_at?.slice(0, 10)}</td>
             <td>{i.plan_name} × {i.months}{i.period_to && <div className="text-[11px]" style={{ color: "var(--muted)" }}>{i.period_from} → {i.period_to}</div>}</td>
             <td>{lei(i.net)}</td><td>{i.vat_rate}% · {lei(i.vat)}</td><td className="font-bold">{lei(i.total)}</td>
-            <td><StatusPill s={i.status} testid={`invoice-status-${i.number}`} /></td>
+            <td><StatusPill s={i.status} testid={`invoice-status-${i.number}`} />
+              {i.credit > 0 && <div className="text-[10px]" style={{ color: "#166534" }}>credit −{lei(i.credit)}</div>}
+              {i.fiscal && <div className="text-[10px]" style={{ color: i.fiscal.status === "emisă" ? "#166534" : "#8a5a00" }} data-testid={`invoice-fiscal-status-${i.number}`} title={i.fiscal.error || i.fiscal.efactura || ""}>
+                Factură fiscală: {i.fiscal.status}{i.fiscal.number ? ` ${i.fiscal.series} ${i.fiscal.number}` : ""}</div>}</td>
             <td className="text-xs whitespace-nowrap space-x-2">
-              <a href={pdfUrl(i.id)} target="_blank" rel="noopener noreferrer" className="font-bold" style={{ color: "var(--blue)" }} data-testid={`invoice-pdf-${i.number}`}>PDF</a>
+              <a href={pdfUrl(i.id)} target="_blank" rel="noopener noreferrer" className="font-bold" style={{ color: "var(--blue)" }} data-testid={`invoice-pdf-${i.number}`}>Proformă PDF</a>
+              {i.fiscal?.status === "emisă" && <a href={`${API}/billing/invoices/${i.id}/fiscal-pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" className="font-bold" style={{ color: "#166534" }} data-testid={`invoice-fiscal-pdf-${i.number}`}>Factură PDF</a>}
               {actions?.(i)}
             </td>
           </tr>))}</tbody>

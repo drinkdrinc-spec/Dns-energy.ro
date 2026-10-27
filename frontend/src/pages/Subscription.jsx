@@ -43,11 +43,11 @@ export default function Subscription() {
   const [busy, setBusy] = useState(false);
   const load = () => api.get("/billing/me").then((r) => { setMe(r.data); setProf(r.data.profile || {}); setSel((s) => s || r.data.plan.code || "pro"); }).catch(err);
   useEffect(() => { load(); api.get("/billing/plans").then((r) => setCat(r.data)); if (sp.get("anulat")) toast.info("Plata a fost anulată — puteți genera oricând un link nou."); }, []); // eslint-disable-line
+  const [q, setQ] = useState(null);
+  useEffect(() => { if (sel) api.get(`/billing/quote?plan=${sel}&months=${months}`).then((r) => setQ(r.data)).catch((e) => setQ({ error: formatApiErrorDetail(e.response?.data?.detail) })); }, [sel, months, me?.plan?.code, me?.plan?.valid_until]);
   if (!me || !cat) return null;
   const p = me.plan;
   const plan = cat.plans.find((x) => x.code === sel);
-  const net = plan ? Math.round(plan.net * months * 100) / 100 : 0;
-  const vat = Math.round(net * cat.vat_rate) / 100;
   const saveProf = async () => { try { const { data } = await api.put("/billing/profile", prof); setProf(data); toast.success("Datele de facturare au fost salvate"); load(); } catch (e) { err(e); } };
   const pay = async () => {
     if (!me.profile?.client_type) { toast.error("Completați și salvați întâi datele de facturare"); return; }
@@ -71,9 +71,12 @@ export default function Subscription() {
       <div className="den-panel mt-5 mb-6 flex flex-wrap items-end gap-6" data-testid="checkout-box">
         <div className="den-field"><label>Perioadă</label><select className="den-input" value={months} onChange={(e) => setMonths(+e.target.value)} data-testid="checkout-months">
           {[1, 3, 6, 12].map((m) => <option key={m} value={m}>{m} {m === 1 ? "lună" : "luni"}</option>)}</select></div>
-        <div className="text-sm space-y-0.5" data-testid="checkout-summary"><div>Bază de impozitare: <b>{lei(net)}</b></div><div>TVA {cat.vat_rate}%: <b>{lei(vat)}</b></div>
-          <div className="text-lg font-extrabold">Total de plată: {lei(net + vat)}</div></div>
-        <Btn onClick={pay} disabled={busy || !plan} data-testid="pay-btn"><CreditCard size={15} />{busy ? "Se generează linkul…" : "Plătește abonamentul"}</Btn>
+        <div className="text-sm space-y-0.5" data-testid="checkout-summary">
+          {q?.error ? <div className="font-semibold" style={{ color: "#9b2c2c" }} data-testid="checkout-error">{q.error}</div> : q && <>
+            {q.credit > 0 && <><div>Preț abonament: {lei(q.gross)}</div><div style={{ color: "#166534" }} data-testid="checkout-credit">Credit din abonamentul actual: −{lei(q.credit)} <span className="text-[11px]">({q.credit_note})</span></div></>}
+            <div>Bază de impozitare: <b data-testid="checkout-net">{lei(q.net)}</b></div><div>TVA {q.vat_rate}%: <b data-testid="checkout-vat">{lei(q.vat)}</b></div>
+            <div className="text-lg font-extrabold" data-testid="checkout-total">Total de plată: {lei(q.total)}</div></>}</div>
+        <Btn onClick={pay} disabled={busy || !plan || q?.error} data-testid="pay-btn"><CreditCard size={15} />{busy ? "Se generează linkul…" : "Plătește abonamentul"}</Btn>
         <p className="text-[11px] flex items-center gap-1 w-full" style={{ color: "var(--muted)" }}><ShieldCheck size={13} />Plata se face pe pagina securizată Stripe (mod test: card 4242 4242 4242 4242). D-ENERGY nu stochează datele cardului; abonamentul se activează doar după confirmarea verificată a plății.</p>
       </div>
       <h2 className="text-base md:text-lg font-extrabold mb-3">Proforme și plăți</h2>

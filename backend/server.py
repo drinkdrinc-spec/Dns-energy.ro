@@ -1156,6 +1156,64 @@ async def dossier_export(item_id: str, authorization: str = Header(None), auth: 
     name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
 
+SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "schema", "fisa_tehnica")
+
+@api_router.get("/dossier/{item_id}/simple")
+async def dossier_simple(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, settings, info = await dossier_ctx(user, item_id)
+    pos = [p for p in info["positions"] if p["key"] in SIMPLE_KEYS or p.get("source") == "catalog"]
+    sub = {**info, "positions": pos, "titles": [p["title"] for p in pos],
+           "complete": not any(p.get("missing") for p in pos) and not any(p.get("status") == "de completat" for p in pos)}
+    pdf = await OPIS.export_bundle(sub, rec, client, settings, get_object, logger)
+    name = f"DOSAR_PROSUMATOR_SIMPLU_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not sub['complete'] else ''}.pdf"
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
+
+import power_doc as PWR
+
+@api_router.get("/power/{item_id}/pdf")
+async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "power", item_id)
+    client = await get_client(user["id"], rec)
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros, auto = None, {}
+    if rec.get("pros_id"):
+        pros, pclient, ps, info = await dossier_ctx(user, rec["pros_id"])
+        client = client or pclient
+        base = ps
+        bykey = {p["key"]: p for p in info["positions"]}
+        auto = {"h": [bykey.get("receptie")], "i": [bykey.get("priza")], "k": [bykey.get("schema")],
+                "j": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
+    att = rec.get("attachments") or {}
+    attached = {k for k, v in att.items() if v} | {k for k, v in auto.items() if any(v)}
+    parts = [PWR.render_anexa1(rec, client, base, pros or {}, attached)]
+    if full:
+        for k, _ in PWR.DOCS:
+            for f in att.get(k) or []:
+                try:
+                    data, ct = get_object(f["storage_path"])
+                    parts.append(OPIS.file_pdf(data, ct))
+                except Exception as e:
+                    logger.error(f"power attach {k}: {e}")
+            if not att.get(k):
+                for p in auto.get(k) or []:
+                    try:
+                        if p:
+                            parts += await OPIS.position_pdf(p, pros, client, base, info["titles"], get_object)
+                    except Exception as e:
+                        logger.error(f"power auto {k}: {e}")
+    w = PdfWriter()
+    for b in parts:
+        try:
+            for pg in PdfReader(io.BytesIO(b)).pages:
+                w.add_page(pg)
+        except Exception as e:
+            logger.error(f"power merge: {e}")
+    o = io.BytesIO(); w.write(o)
+    name = f"{'DOSAR_SPOR_PUTERE' if full else 'ANEXA1_DEER'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}.pdf"
+    return Response(content=o.getvalue(), media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
+
 # ---------------- Semnare la distanță (semnătură electronică simplă) ----------------
 import hashlib
 import re

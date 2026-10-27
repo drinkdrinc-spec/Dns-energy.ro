@@ -39,10 +39,32 @@ def add_months(d: date, n: int) -> date:
     y, m = d.year + m // 12, m % 12 + 1
     return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
 
-def quote(plan: dict, months: int, vat_rate: float) -> dict:
-    net = money(Decimal(str(plan["price"])) * months)
+def quote(plan: dict, months: int, vat_rate: float, credit: float = 0.0) -> dict:
+    gross = money(Decimal(str(plan["price"])) * months)
+    credit = min(money(credit), gross)
+    net = money(Decimal(str(gross)) - Decimal(str(credit)))
     vat = money(Decimal(str(net)) * Decimal(str(vat_rate)) / 100)
-    return {"unit": money(plan["price"]), "months": months, "net": net, "vat_rate": vat_rate, "vat": vat, "total": money(Decimal(str(net)) + Decimal(str(vat)))}
+    return {"unit": money(plan["price"]), "months": months, "gross": gross, "credit": credit, "net": net, "vat_rate": vat_rate, "vat": vat,
+            "total": money(Decimal(str(net)) + Decimal(str(vat)))}
+
+async def upgrade_credit(tenant: str, new_plan: dict) -> dict:
+    """Unused value of the current paid plan (net, from its last paid proforma) when moving to a more expensive plan."""
+    sub = await db.subscriptions.find_one({"tenant": tenant}, {"_id": 0}) or {}
+    t = today()
+    if sub.get("status") != "activ" or (sub.get("valid_until") or "") < t.isoformat() or sub.get("plan") == new_plan["code"]:
+        return {"credit": 0.0}
+    cur = await db.plans.find_one({"code": sub.get("plan")}, {"_id": 0}) or {}
+    if float(cur.get("price") or 0) > float(new_plan["price"]):
+        raise HTTPException(status_code=400, detail=f"Trecerea la un abonament inferior este posibilă după expirarea abonamentului actual ({sub['valid_until']}).")
+    inv = await db.invoices.find_one({"tenant": tenant, "status": PAID, "plan": sub.get("plan"), "period_to": sub.get("valid_until")}, {"_id": 0})
+    if not inv or not inv.get("period_from"):
+        return {"credit": 0.0, "note": "Abonamentul actual a fost atribuit manual — fără credit automat."}
+    total_days = (date.fromisoformat(inv["period_to"]) - date.fromisoformat(inv["period_from"])).days + 1
+    left = (date.fromisoformat(sub["valid_until"]) - max(t, date.fromisoformat(inv["period_from"]))).days + 1
+    left = max(0, min(left, total_days))
+    credit = money(Decimal(str(inv["net"])) * left / total_days) if total_days else 0.0
+    return {"credit": credit, "days": left, "from_plan": cur.get("name"), "from_invoice": inv["number"],
+            "note": f"Credit pentru {left} zile neconsumate din {cur.get('name')} ({inv['number']})"}
 
 def is_platform(user: dict) -> bool:
     return user["uid"] == S.PLATFORM["id"]
@@ -126,7 +148,9 @@ async def new_invoice(tenant: str, email: str, plan: dict, months: int, by: str,
     if not prof:
         raise HTTPException(status_code=400, detail="Completați întâi datele de facturare")
     cfg = await S.billing_cfg()
-    q = quote(plan, months, float(cfg.get("vat_rate", 21)) if vat_rate is None else float(vat_rate))
+    cr = await upgrade_credit(tenant, plan)
+    q = quote(plan, months, float(cfg.get("vat_rate", 21)) if vat_rate is None else float(vat_rate), cr.get("credit", 0))
+    q["credit_note"] = cr.get("note", "") if q["credit"] else ""
     issuer = await db.settings.find_one({"owner": S.PLATFORM["id"]}, {"_id": 0, "company": 1, "cui": 1, "regcom": 1, "address": 1, "phone": 1, "email": 1, "iban": 1, "bank": 1}) or {}
     inv = {"id": str(uuid.uuid4()), "number": await next_number(), "tenant": tenant, "user_email": email, "plan": plan["code"], "plan_name": plan["name"],
            **q, "currency": "RON", "status": PENDING, "client": {k: v for k, v in prof.items() if k not in ("_id", "tenant")},
@@ -154,7 +178,95 @@ async def activate(inv_id: str, by: str, how: str) -> bool:
     asyncio.create_task(mail(inv["user_email"], f"Plată confirmată — abonament {inv['plan_name']}",
         f"<p>Bună ziua,</p><p>Plata pentru proforma <b>{hesc(inv['number'])}</b> ({inv['total']:.2f} RON, din care TVA {inv['vat']:.2f} RON) a fost confirmată.</p>"
         f"<p>Abonamentul <b>{hesc(inv['plan_name'])}</b> este activ până la <b>{until.strftime('%d.%m.%Y')}</b>.</p><p>Echipa D-ENERGY</p>"))
+    if inv["total"] >= 2:
+        asyncio.create_task(issue_fiscal(inv_id))
     return True
+
+# ---------------- SmartBill (factură fiscală + RO e-Factura prin SmartBill Cloud) ----------------
+SB_BASE = "https://ws.smartbill.ro/SBORO/api"
+
+def sb_cfg():
+    c = {k: (os.environ.get(f"SMARTBILL_{k}") or "").strip() for k in ("USERNAME", "TOKEN", "CIF", "SERIES")}
+    return c if all(c.values()) else None
+
+def sb_payload(inv: dict, c: dict) -> dict:
+    cl = inv.get("client") or {}
+    pj = cl.get("client_type") == "pj"
+    unit = money(Decimal(str(inv["net"])) / int(inv["months"]))
+    name = f"Abonament D-ENERGY {inv['plan_name']} ({inv.get('period_from')} - {inv.get('period_to')})"
+    if inv.get("credit"):
+        name += f"; credit {inv['credit']:.2f} lei din abonamentul anterior"
+    pay = inv.get("payments") or [{}]
+    return {"companyVatCode": c["CIF"], "seriesName": c["SERIES"], "isDraft": False, "issueDate": today().isoformat(), "dueDate": today().isoformat(),
+            "currency": "RON", "language": "RO", "mentions": f"Proformă {inv['number']}",
+            "client": {"name": cl.get("company_name") if pj else cl.get("full_name"), "vatCode": (cl.get("cui") if pj else cl.get("cnp")) or "",
+                       "regCom": cl.get("regcom", "") if pj else "", "address": cl.get("hq_address") if pj else cl.get("address"), "city": cl.get("locality"),
+                       "county": cl.get("county"), "country": cl.get("country") or "Romania", "email": cl.get("billing_email"),
+                       "isTaxPayer": bool(cl.get("vat_payer")), "saveToDb": False},
+            "products": [{"name": name[:250], "code": f"DEN-{inv['plan'].upper()}", "isDiscount": False, "measuringUnitName": "luna", "currency": "RON",
+                          "quantity": int(inv["months"]), "price": unit, "isTaxIncluded": False, "taxName": "Normala", "taxPercentage": float(inv["vat_rate"]),
+                          "isService": True, "saveToDb": False}],
+            "payment": {"value": inv["total"], "type": "Card" if "Stripe" in str(pay[-1].get("method")) else "Ordin plata", "isCash": False}}
+
+async def issue_fiscal(inv_id: str) -> dict:
+    c = sb_cfg()
+    if not c:
+        await db.invoices.update_one({"id": inv_id, "fiscal.status": {"$ne": "emisă"}}, {"$set": {"fiscal": {"status": "neconfigurat", "at": now(),
+                                     "error": "Contul SmartBill nu este conectat — factura fiscală se emite manual."}}})
+        return {"status": "neconfigurat"}
+    inv = await db.invoices.find_one_and_update({"id": inv_id, "status": PAID, "fiscal.status": {"$nin": ["emisă", "în curs"]}},
+                                                {"$set": {"fiscal.status": "în curs", "fiscal.at": now()}}, return_document=True)
+    if not inv:
+        return (await db.invoices.find_one({"id": inv_id}, {"_id": 0, "fiscal": 1}) or {}).get("fiscal") or {}
+    import httpx
+    try:
+        async with httpx.AsyncClient(auth=(c["USERNAME"], c["TOKEN"]), timeout=40) as h:
+            r = await h.post(f"{SB_BASE}/invoice", json=sb_payload(inv, c), headers={"Accept": "application/json"})
+        d = r.json() if r.content else {}
+        if r.status_code >= 400 or d.get("errorText"):
+            raise ValueError(d.get("errorText") or f"HTTP {r.status_code}")
+        fis = {"status": "emisă", "series": d.get("series"), "number": d.get("number"), "at": now(), "provider": "SmartBill",
+               "efactura": "Transmisă automat în SPV de SmartBill (dacă trimiterea automată e-Factura este activă în SmartBill) — statusul ANAF se verifică în SmartBill Cloud."}
+        await db.invoices.update_one({"id": inv_id}, {"$set": {"fiscal": fis, "fiscal_ref": f"{d.get('series')} {d.get('number')}"}})
+        await log(inv["tenant"], "factură fiscală emisă", "SmartBill", f"{inv['number']} → {d.get('series')} {d.get('number')}")
+        return fis
+    except Exception as e:
+        logger.error(f"smartbill invoice {inv['number']}: {e}")
+        fis = {"status": "eroare", "at": now(), "error": str(e)[:300]}
+        await db.invoices.update_one({"id": inv_id}, {"$set": {"fiscal": fis}})
+        return fis
+
+@api.post("/admin/invoices/{inv_id}/smartbill")
+async def admin_smartbill(inv_id: str, user: dict = Depends(get_current_user)):
+    platform_only(user)
+    if not await db.invoices.find_one({"id": inv_id, "status": PAID}):
+        raise HTTPException(status_code=400, detail="Factura fiscală se emite doar pentru proforme plătite")
+    return await issue_fiscal(inv_id)
+
+@api.get("/billing/invoices/{inv_id}/fiscal-pdf")
+async def fiscal_pdf(inv_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await S.user_from_token(authorization, auth)
+    if not is_platform(user):
+        owner_only(user)
+    inv = await db.invoices.find_one({"id": inv_id} if is_platform(user) else {"id": inv_id, "tenant": user["id"]}, {"_id": 0})
+    c = sb_cfg()
+    f = (inv or {}).get("fiscal") or {}
+    if not inv or f.get("status") != "emisă" or not c:
+        raise HTTPException(status_code=404, detail="Factura fiscală nu este disponibilă")
+    import httpx
+    async with httpx.AsyncClient(auth=(c["USERNAME"], c["TOKEN"]), timeout=40) as h:
+        r = await h.get(f"{SB_BASE}/invoice/pdf", params={"cif": c["CIF"], "seriesname": f["series"], "number": f["number"]}, headers={"Accept": "application/octet-stream"})
+    if r.status_code >= 400 or not r.content.startswith(b"%PDF"):
+        raise HTTPException(status_code=502, detail="SmartBill nu a returnat PDF-ul facturii")
+    return Response(content=r.content, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="factura_{f["series"]}{f["number"]}.pdf"'})
+
+@api.get("/billing/quote")
+async def billing_quote(plan: str, months: int = 1, user: dict = Depends(get_current_user)):
+    owner_only(user)
+    p = await get_plan(plan)
+    cr = await upgrade_credit(user["id"], p)
+    q = quote(p, max(1, min(months, 12)), float((await S.billing_cfg()).get("vat_rate", 21)), cr.get("credit", 0))
+    return {**q, "credit_note": cr.get("note", ""), "smartbill": bool(sb_cfg())}
 
 async def mail(to: str, subject: str, html: str):
     try:
@@ -204,6 +316,10 @@ async def billing_checkout(request: Request, user: dict = Depends(get_current_us
         raise HTTPException(status_code=400, detail="Adresa aplicației lipsește")
     plan = await get_plan(b.get("plan"))
     inv = await new_invoice(user["id"], user.get("email"), plan, months, user.get("email"))
+    if inv["total"] < 2:
+        await db.invoices.update_one({"id": inv["id"]}, {"$push": {"payments": {"at": now(), "amount": inv["total"], "method": "credit abonament anterior", "reference": inv["number"], "by": "sistem"}}})
+        await activate(inv["id"], "sistem", "acoperit integral din creditul abonamentului anterior")
+        return {"checkout_url": f"{origin}/abonament?credit=1", "session_id": None, "invoice": pub_inv(inv)}
     try:
         sess = stripe.checkout.Session.create(
             mode="payment", currency="ron", customer_email=inv["client"].get("billing_email") or user.get("email"),
