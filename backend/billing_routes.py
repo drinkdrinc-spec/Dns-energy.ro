@@ -294,7 +294,8 @@ def pub_inv(i: dict) -> dict:
 async def billing_plans(user: dict = Depends(get_current_user)):
     cfg = await S.billing_cfg()
     return {"plans": [{**p, **quote(p, 1, float(cfg.get("vat_rate", 21)))} for p in await plans() if p.get("active") is not False],
-            "features": S.ALL_FEATURES, "vat_rate": cfg.get("vat_rate", 21), "currency": "RON", "online_payment": bool(stripe.api_key)}
+            "features": S.ALL_FEATURES, "vat_rate": cfg.get("vat_rate", 21), "currency": "RON", "online_payment": bool(stripe.api_key) and cfg.get("payment_mode", "transfer") != "transfer",
+            "payment_mode": cfg.get("payment_mode", "transfer"), "default_months": cfg.get("default_months", 1)}
 
 @api.get("/billing/me")
 async def billing_me(user: dict = Depends(get_current_user)):
@@ -316,6 +317,18 @@ async def billing_checkout(request: Request, user: dict = Depends(get_current_us
     owner_only(user)
     if user["plan"].get("exempt"):
         raise HTTPException(status_code=400, detail="Contul platformei nu necesită abonament")
+    cfg = await S.billing_cfg()
+    if cfg.get("payment_mode", "transfer") == "transfer":
+        b = await request.json()
+        months = int(b.get("months") or cfg.get("default_months") or 1)
+        if months not in (1, 3, 6, 12):
+            raise HTTPException(status_code=400, detail="Perioadă invalidă (1, 3, 6 sau 12 luni)")
+        plan = await get_plan(b.get("plan"))
+        inv = await new_invoice(user["id"], user.get("email"), plan, months, user.get("email"), source="transfer")
+        iss = await db.settings.find_one({"owner": S.PLATFORM["id"]}, {"_id": 0, "company": 1, "iban": 1, "bank": 1, "cui": 1}) or {}
+        await db.invoices.update_one({"id": inv["id"]}, {"$set": {"payment_method": "transfer bancar (OP)"}})
+        return {"checkout_url": None, "invoice": pub_inv(inv), "transfer": {"beneficiary": iss.get("company"), "cui": iss.get("cui"), "iban": iss.get("iban"), "bank": iss.get("bank"),
+                "amount": inv["total"], "reference": inv["number"], "note": "Accesul se activează după ce administratorul confirmă încasarea în cont (OP)."}}
     if not stripe.api_key:
         raise HTTPException(status_code=503, detail="Plata online nu este configurată — contactați administratorul")
     b = await request.json()
@@ -654,6 +667,14 @@ async def admin_billing_cfg(request: Request, user: dict = Depends(get_current_u
         if b["expired_policy"] not in ("read_only", "blocked"):
             raise HTTPException(status_code=400, detail="Politică invalidă")
         upd["expired_policy"] = b["expired_policy"]
+    if "payment_mode" in b:
+        if b["payment_mode"] not in ("transfer", "stripe"):
+            raise HTTPException(status_code=400, detail="Mod de plată invalid")
+        upd["payment_mode"] = b["payment_mode"]
+    if "default_months" in b:
+        if int(b["default_months"]) not in (1, 3, 6, 12):
+            raise HTTPException(status_code=400, detail="Perioadă invalidă")
+        upd["default_months"] = int(b["default_months"])
     await db.billing_config.update_one({"id": "main"}, {"$set": upd}, upsert=True)
     await log("platform", "configurare facturare", user.get("email"), str(upd))
     return await S.billing_cfg()

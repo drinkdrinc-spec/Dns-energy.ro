@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { FileDown } from "lucide-react";
 import { api, API } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
+import { ContractSign, SignedLink } from "@/components/offers/ContractSign";
 
 const ST = ["Generat", "Trimis la semnare", "Semnat", "În execuție", "Finalizat", "Reziliat"];
 const money = (v, c) => `${(v || 0).toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c === "EUR" ? "€" : "lei"}`;
@@ -35,6 +36,7 @@ function Template() {
 export default function Contracts() {
   const [list, setList] = useState([]);
   const [tpl, setTpl] = useState(false);
+  const [sign, setSign] = useState(null);
   const load = () => api.get("/contracts").then((r) => setList(r.data));
   useEffect(() => { load(); }, []);
   const status = async (id, st) => { try { await api.post(`/contracts/${id}/status`, { status: st }); toast.success("Status actualizat"); load(); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
@@ -51,12 +53,15 @@ export default function Contracts() {
               <td className="text-xs">nr. {c.offer_number} v{c.offer_version}{c.offer_changed && <div style={{ color: "#8a5a00" }}>oferta modificată ulterior</div>}</td>
               <td>{money(c.net, c.currency)}</td><td className="text-xs">{c.payment_mode === "avans" ? "cu avans" : "integrală"}</td>
               <td><select className="den-input !py-1 !text-xs" value={c.status} onChange={(e) => status(c.id, e.target.value)} data-testid={`contract-status-${c.number}`}>{ST.map((s) => <option key={s}>{s}</option>)}</select></td>
-              <td><a href={`${API}/contracts/${c.id}/pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" data-testid={`contract-pdf-${c.number}`}><FileDown size={16} style={{ color: "var(--blue)" }} /></a></td>
+              <td className="flex items-center gap-2 py-2"><a href={`${API}/contracts/${c.id}/pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" data-testid={`contract-pdf-${c.number}`}><FileDown size={16} style={{ color: "var(--blue)" }} /></a>
+                <SignedLink c={c} />
+                <button className="text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => setSign(c)} data-testid={`contract-sign-${c.number}`}>Semnare online</button></td>
             </tr>))}
             {!list.length && <tr><td colSpan={8} className="py-6 text-center text-sm" style={{ color: "var(--muted)" }}>Niciun contract încă — acceptă o ofertă și apasă „Generează contract”.</td></tr>}</tbody>
         </table>
       </div>
       {tpl && <Template />}
+      {sign && <ContractSign c={sign} open={!!sign} onClose={() => setSign(null)} onDone={load} />}
     </div>
   );
 }

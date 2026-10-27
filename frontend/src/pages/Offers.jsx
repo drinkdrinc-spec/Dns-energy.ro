@@ -27,11 +27,18 @@ export default function Offers() {
   const load = () => api.get("/offers").then((r) => setList(r.data));
   useEffect(() => { if (!open) load(); }, [open]);
   const create = async () => { const { data } = await api.post("/offers", { items: [] }); setOpen(data.id); };
+  const [pros, setPros] = useState(null);
+  const fromDossier = async (pid) => { try { const { data } = await api.post("/offers/from-dossier", { pros_id: pid }); toast.success(`Ofertă nr. ${data.number} creată din dosar — completează prețurile`); setOpen(data.id); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   if (open) return <OfferEditor id={open} onBack={() => setOpen(null)} onOpen={setOpen} />;
   return (
     <div data-testid="offers-page">
       <PageHeader eyebrow="Comercial" title="Oferte de preț" sub="Creează, duplică și exportă oferte; după acceptare generezi contractul cu anexele." action={<Btn onClick={create} data-testid="offer-new"><Plus size={14} /> Ofertă nouă</Btn>} />
       <div className="den-panel mb-3"><Numbering /></div>
+      <div className="den-panel mb-3 flex flex-wrap items-end gap-2" data-testid="offer-from-dossier">
+        <div className="den-field min-w-[280px]"><label>Ofertă din dosarul de prosumator (preia clientul și echipamentele)</label>
+          <select className="den-input" defaultValue="" onFocus={() => !pros && api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => setPros([]))} onChange={(e) => e.target.value && fromDossier(e.target.value)} data-testid="offer-from-dossier-select">
+            <option value="">Alege dosarul...</option>{(pros || []).map((p) => <option key={p.id} value={p.id}>{p.client_name || "fără nume"} — {p.address || p.id.slice(0, 6)}</option>)}</select></div>
+      </div>
       <div className="den-panel overflow-x-auto">
         <table className="w-full text-sm" data-testid="offers-table">
           <thead><tr className="text-left text-xs" style={{ color: "var(--muted)" }}><th className="py-2">Nr.</th><th>Beneficiar</th><th>Data emiterii</th><th>Valoare (fără TVA)</th><th>Total cu TVA</th><th>Status</th><th>Contract</th></tr></thead>

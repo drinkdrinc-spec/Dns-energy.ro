@@ -457,7 +457,7 @@ async def contracts_list(user: dict = Depends(get_current_user)):
     out = []
     for c in await db.contracts.find({"owner": user["id"]}, {"_id": 0, "articles": 0, "revisions": 0}).sort("number", -1).to_list(2000):
         o = await db.offers.find_one({"id": c["offer_id"]}, {"version": 1})
-        out.append({**{k: c.get(k) for k in ("id", "number", "date", "status", "offer_id", "offer_number", "offer_version")}, "beneficiary": (c["offer"].get("beneficiary") or {}).get("name"),
+        out.append({**{k: c.get(k) for k in ("id", "number", "date", "status", "offer_id", "offer_number", "offer_version", "signed")}, "beneficiary": (c["offer"].get("beneficiary") or {}).get("name"),
                     "net": c["totals"]["net"], "gross": c["totals"]["gross"], "currency": c["totals"]["currency"], "payment_mode": c["payment_calc"]["mode"],
                     "offer_changed": bool(o) and o.get("version") != c.get("offer_version")})
     return out
@@ -497,3 +497,88 @@ async def _idx():
 
 
 _ = (timedelta, ReturnDocument)
+
+
+# ---------------- Ofertă din dosarul de prosumator ----------------
+@api.post("/offers/from-dossier")
+async def offer_from_dossier(request: Request, user: dict = Depends(get_current_user)):
+    import cef as CEF
+    need(user, True)
+    S.need(user, "prosumator")
+    pid = (await request.json()).get("pros_id")
+    p = await db.prosumator.find_one({**S.scope_q(user, "prosumator"), "id": pid}, {"_id": 0}) if pid else None
+    if not p:
+        raise HTTPException(status_code=404, detail="Dosar de prosumator inexistent")
+    p = CEF.from_legacy(p)
+    cl = await S.get_client(user["id"], p)
+    split = lambda s: (str(s or "").split(" ", 1) + [""])[:2]
+    items, panels = [], {}
+    for inv in (p.get("cef") or {}).get("inverters") or []:
+        cnt = sum(int(OD.num(s.get("panels"))) for s in inv.get("strings") or [])
+        if cnt:
+            k = (inv.get("panel_model") or "Panou fotovoltaic", inv.get("panel_w"))
+            panels[k] = panels.get(k, 0) + cnt
+    for (model, w), cnt in panels.items():
+        mf, md = split(model)
+        items.append({"category": "panouri", "kind": "echipament", "name": "Panouri fotovoltaice", "manufacturer": mf, "model": md, "power": f"{w} W" if w else "", "qty": cnt, "unit": "buc", "unit_price": 0})
+    for inv in (p.get("cef") or {}).get("inverters") or []:
+        mf, md = split(inv.get("brand_model"))
+        items.append({"category": "invertor", "kind": "echipament", "name": "Invertor", "manufacturer": mf, "model": md, "power": f"{inv.get('ac_kw')} kW" if inv.get("ac_kw") else "", "qty": 1, "unit": "buc", "unit_price": 0})
+        b = inv.get("battery") or {}
+        if b.get("model") or b.get("brand_model") or b.get("kwh"):
+            mf, md = split(b.get("model") or b.get("brand_model"))
+            items.append({"category": "baterii", "kind": "echipament", "name": "Baterie", "manufacturer": mf, "model": md, "capacity": f"{b.get('kwh')} kWh" if b.get("kwh") else "",
+                          "qty": int(OD.num(b.get("count"), 1)) or 1, "unit": "buc", "unit_price": 0})
+    items += [{"category": c, "kind": "serviciu", "name": n, "qty": 1, "unit": "buc", "unit_price": 0} for c, n in
+              (("montaj", "Montaj"), ("probe", "Probe, măsurători și punere în funcțiune"), ("dosar", "Dosar de prosumator / racordare"))]
+    kw = sum(OD.num(i.get("ac_kw")) for i in (p.get("cef") or {}).get("inverters") or [])
+    ben = {"kind": "PJ" if cl.get("kind") in ("PJ", "firma", "juridica") else "PF", "name": cl.get("name") or p.get("client_name"), "cui_cnp": cl.get("cui") or cl.get("cnp"),
+           "reg_com": cl.get("regcom"), "address": cl.get("address") or p.get("address"), "install_address": p.get("address"), "phone": cl.get("phone"), "email": cl.get("email")}
+    o = {"id": str(uuid.uuid4()), "owner": user["id"], "number": await next_number(user["id"], "offer"), "status": "Ciornă", "version": 1, "created_at": now(), "updated_at": now(),
+         "created_by": user.get("email"), "date": datetime.now(timezone.utc).date().isoformat(), "vat_rate": 21, "currency": "RON", "validity_days": 30, "show_line_prices": True,
+         "title": f"Achiziție sistem fotovoltaic {kw:g} kW" if kw else "Achiziție sistem fotovoltaic", "beneficiary": {k: v for k, v in ben.items() if v},
+         "items": items, "pros_id": pid, "client_id": cl.get("id")}
+    await db.offers.insert_one(dict(o))
+    await S.audit(user, "ofertă din dosar", "offers", o["id"], [f"nr. {o['number']}", pid])
+    return clean(o)
+
+
+# ---------------- Semnare online contract ----------------
+@api.post("/contracts/{cid}/sign")
+async def contract_sign(cid: str, request: Request, user: dict = Depends(get_current_user)):
+    need(user, True)
+    S.need(user, "sign_remote", True)
+    c = await own("contracts", user, cid)
+    sg = (await request.json()).get("signer") or {}
+    if not (sg.get("name") or "").strip() or "@" not in (sg.get("email") or ""):
+        raise HTTPException(status_code=400, detail="Clientul are nevoie de nume și e-mail valid (pentru codul de verificare)")
+    pdf = OD.contract_pdf(c, await settings(user))
+    gid = str(uuid.uuid4())
+    st = S.put_object(f"{S.APP_NAME}/sign/{user['id']}/{gid}/original.pdf", pdf, "application/pdf")
+    t, th, exp = S.new_token(S.parse_days(7))
+    req = S._new(user, {"module": "contracts", "group_id": gid, "dossier_id": cid, "client_name": (c["offer"].get("beneficiary") or {}).get("name"), "pos_key": "contract",
+                        "doc_title": f"Contract nr. {c['number']} / {D_ro(c['date'])}", "doc_path": st["path"], "doc_sha256": S.sha(pdf), "signer_name": sg["name"].strip(),
+                        "signer_email": sg["email"].strip(), "signer_phone": (sg.get("phone") or "").strip(), "role": "Beneficiar", "status": "De trimis", "token_hash": th,
+                        "expires_at": exp, "otp_sends": 0, "otp_attempts": 0, "is_test": False, "history": [S.hist("Cerere creată", None, f"de {user.get('email')}; link valabil până la {exp[:16]} UTC")]})
+    await db.sign_requests.insert_one(dict(req))
+    await db.contracts.update_one({"id": cid}, {"$set": {"status": "Trimis la semnare", "updated_at": now()}, "$push": {"history": {"at": now(), "by": user.get("email"), "event": "trimis la semnare online"}}})
+    await S.audit(user, "cerere semnare contract", "contracts", cid, [sg["email"]])
+    return {**S.sign_public(req), "token": t}
+
+
+@api.get("/contracts/{cid}/sign-requests")
+async def contract_sign_list(cid: str, user: dict = Depends(get_current_user)):
+    need(user)
+    await own("contracts", user, cid)
+    return [S.sign_public(r) for r in await db.sign_requests.find({"owner": user["id"], "module": "contracts", "dossier_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(50)]
+
+
+@api.get("/contracts/{cid}/signed-pdf")
+async def contract_signed_pdf(cid: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await S.user_from_token(authorization, auth)
+    need(user)
+    c = await own("contracts", user, cid)
+    if not c.get("signed"):
+        raise HTTPException(status_code=404, detail="Contractul nu este semnat încă")
+    data, _ = S.get_object(c["signed"]["storage_path"])
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": S.disp("inline", f"Contract_nr_{c['number']}_semnat.pdf")})

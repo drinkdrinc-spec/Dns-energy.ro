@@ -22,6 +22,8 @@ import PlatformModules from "@/pages/PlatformModules";
 import AiAssistant from "@/pages/AiAssistant";
 import Offers from "@/pages/Offers";
 import Contracts from "@/pages/Contracts";
+import OperatorAttest from "@/pages/OperatorAttest";
+import AdminOperators from "@/pages/AdminOperators";
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -67,6 +69,8 @@ function AppRoutes() {
         <Route path="/module-platforma" element={<PlatformModules />} />
         <Route path="/asistent-ai" element={<Gate feat="ai_gpt"><AiAssistant /></Gate>} />
         <Route path="/oferte" element={<Gate feat="oferte"><Offers /></Gate>} />
+        <Route path="/atestat-anre" element={<OperatorAttest />} />
+        <Route path="/operatori-anre" element={<AdminOperators />} />
         <Route path="/contracte" element={<Gate feat="oferte"><Contracts /></Gate>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

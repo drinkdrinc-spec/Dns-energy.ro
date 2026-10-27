@@ -41,6 +41,7 @@ export default function Subscription() {
   const [sel, setSel] = useState("");
   const [months, setMonths] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [tr, setTr] = useState(null);
   const load = () => api.get("/billing/me").then((r) => { setMe(r.data); setProf(r.data.profile || {}); setSel((s) => s || r.data.plan.code || "pro"); }).catch(err);
   useEffect(() => { load(); api.get("/billing/plans").then((r) => setCat(r.data)); if (sp.get("anulat")) toast.info("Plata a fost anulată — puteți genera oricând un link nou."); }, []); // eslint-disable-line
   const [q, setQ] = useState(null);
@@ -52,7 +53,11 @@ export default function Subscription() {
   const pay = async () => {
     if (!me.profile?.client_type) { toast.error("Completați și salvați întâi datele de facturare"); return; }
     setBusy(true);
-    try { const { data } = await api.post("/billing/checkout", { plan: sel, months, origin_url: window.location.origin }); window.location.href = data.checkout_url; }
+    try {
+      const { data } = await api.post("/billing/checkout", { plan: sel, months, origin_url: window.location.origin });
+      if (data.checkout_url) { window.location.href = data.checkout_url; return; }
+      setTr({ ...data.transfer, number: data.invoice?.number, id: data.invoice?.id }); setBusy(false); load();
+    }
     catch (e) { err(e); setBusy(false); }
   };
   return (
@@ -77,8 +82,14 @@ export default function Subscription() {
               : q.credit_note && <div className="text-[11px]" style={{ color: "var(--muted)" }} data-testid="checkout-credit-note">{q.credit_note}</div>}
             <div>Bază de impozitare: <b data-testid="checkout-net">{lei(q.net)}</b></div><div>TVA {q.vat_rate}%: <b data-testid="checkout-vat">{lei(q.vat)}</b></div>
             <div className="text-lg font-extrabold" data-testid="checkout-total">Total de plată: {lei(q.total)}</div></>}</div>
-        <Btn onClick={pay} disabled={busy || !plan || q?.error} data-testid="pay-btn"><CreditCard size={15} />{busy ? "Se generează linkul…" : "Plătește abonamentul"}</Btn>
-        <p className="text-[11px] flex items-center gap-1 w-full" style={{ color: "var(--muted)" }}><ShieldCheck size={13} />Plata se face pe pagina securizată Stripe (mod test: card 4242 4242 4242 4242). D-ENERGY nu stochează datele cardului; abonamentul se activează doar după confirmarea verificată a plății.</p>
+        <Btn onClick={pay} disabled={busy || !plan || q?.error} data-testid="pay-btn"><CreditCard size={15} />{busy ? "Se generează…" : cat.payment_mode === "transfer" ? "Emite proforma pentru plată prin OP" : "Plătește abonamentul"}</Btn>
+        <p className="text-[11px] flex items-center gap-1 w-full" style={{ color: "var(--muted)" }}><ShieldCheck size={13} />{cat.payment_mode === "transfer"
+          ? "Plata se face prin transfer bancar (OP) pe baza proformei. Abonamentul se activează doar după ce administratorul confirmă încasarea în cont."
+          : "Plata se face pe pagina securizată Stripe. D-ENERGY nu stochează datele cardului; abonamentul se activează doar după confirmarea verificată a plății."}</p>
+        {tr && <div className="w-full rounded-lg border p-3 text-sm" style={{ borderColor: "var(--line)", background: "#f7fbff" }} data-testid="transfer-details">
+          <b>Proforma {tr.number} — plată prin transfer bancar</b><br />Beneficiar: {tr.beneficiary || "—"} (CUI {tr.cui || "—"}) · IBAN: <b>{tr.iban || "de completat în setările platformei"}</b> {tr.bank || ""}<br />
+          Sumă: <b>{lei(tr.amount)}</b> · Detalii plată: <b>{tr.reference}</b><br /><span className="text-xs">{tr.note}</span><br />
+          <a className="font-bold" style={{ color: "var(--blue)" }} href={`${process.env.REACT_APP_BACKEND_URL}/api/billing/invoices/${tr.id}/pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" data-testid="transfer-invoice-pdf">Descarcă proforma (link individual de plată)</a></div>}
       </div>
       <h2 className="text-base md:text-lg font-extrabold mb-3">Proforme și plăți</h2>
       <div className="den-panel mb-6"><InvoiceList items={me.invoices} actions={(i) => i.status === "în așteptarea plății" && i.pay_url ? <a href={i.pay_url} className="font-bold" style={{ color: "#166534" }} data-testid={`invoice-pay-${i.number}`}>Plătește</a> : null} /></div>

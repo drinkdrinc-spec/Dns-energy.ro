@@ -98,7 +98,17 @@ async def plan_info(user: dict) -> dict:
         status = "expirat"
     active = bool(plan) and status == "activ"
     cfg = await billing_cfg()
+    op = await db.operators.find_one({"tenant": user["id"]}, {"_id": 0, "status": 1, "attest_valid": 1}) or {}
+    ost = op.get("status") or "lipsă"
+    if ost == "aprobat" and op.get("attest_valid") and op["attest_valid"] < today:
+        ost = "expirat"
+    owner = user if user.get("uid", user["id"]) == user["id"] else (await db.users.find_one({"id": user["id"]}, {"created_at": 1}) or {})
+    legacy = not cfg.get("attest_block_existing") and (owner.get("created_at") or "") < (cfg.get("attest_cutoff") or "") and ost in ("lipsă", "în așteptare")
+    attest_ok = ost == "aprobat" or legacy
+    if active and not attest_ok:
+        active, status = False, f"atestat ANRE {ost if ost != 'lipsă' else 'netrimis'} — acces blocat până la aprobare"
     return {"code": plan["code"] if plan else None, "name": plan["name"] if plan else "Fără abonament", "exempt": False, "active": active,
+            "attest": ost, "attest_legacy": legacy,
             "status": status, "valid_until": sub.get("valid_until"), "features": (plan or {}).get("features", []) if active else [],
             "max_inverters": int((plan or {}).get("max_inverters") or 0), "policy": cfg.get("expired_policy", "read_only")}
 
@@ -1418,7 +1428,10 @@ async def sign_own(user, rid):
     if not r:
         raise HTTPException(status_code=404, detail="Cerere inexistentă")
     if not is_admin(user):
-        await check_access(user, r.get("module") or "prosumator", r["dossier_id"])
+        if (r.get("module") or "prosumator") == "contracts":
+            need(user, "oferte")
+        else:
+            await check_access(user, r.get("module") or "prosumator", r["dossier_id"])
     return r
 
 @api_router.post("/sign/requests/{rid}/sent")
@@ -1602,6 +1615,9 @@ async def rebuild_group(owner: str, gid: str):
         did, mod = reqs[0]["dossier_id"], reqs[0].get("module") or "prosumator"
         if mod == "diu":
             await db.diu.update_one({"id": did, "owner": owner}, {"$set": {f"signed.{reqs[0]['pos_key']}": {**f, "signed_at": signed[-1]["signed_at"]}}})
+        elif mod == "contracts":
+            await db.contracts.update_one({"id": did, "owner": owner}, {"$set": {"signed": {**f, "signed_at": signed[-1]["signed_at"]}, "status": "Semnat"},
+                                                                        "$push": {"history": {"at": now_iso(), "by": "semnătură electronică client", "event": "contract semnat de beneficiar"}}})
         else:
             await db.prosumator.update_one({"id": did, "owner": owner},
                                            {"$set": {f"opis.{reqs[0]['pos_key']}.upload": f, f"opis.{reqs[0]['pos_key']}.status": "atașat"}})
@@ -1751,6 +1767,7 @@ import modules_routes  # noqa: E402
 import ai_routes  # noqa: E402
 import diu_routes  # noqa: E402
 import offers_routes  # noqa: E402
+import operator_routes  # noqa: E402
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
