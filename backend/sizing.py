@@ -255,7 +255,10 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         idn = n(grid.get("rcd_ma")) / 1000
         if "TT" in str(grid.get("earthing") or "") and idn:
             o.it(G, "Priză de pământ — condiție TT", f"{R:g} Ω ≤ {50 / idn:.0f} Ω", "calculat", "RA · IΔn ≤ 50 V (HD 60364-4-41)", R * idn <= 50)
-        o.it(G, "Priză de pământ — valoare măsurată", g(R, " Ω"), "introdus", "Buletin de măsurare", R <= 4, "≤ 4 Ω (de confirmat de proiectant)")
+        lim = n(grid.get("grounding_limit") or rec.get("grounding_limit"))
+        o.need("cef.grid.grounding_limit", "Valoare admisă priză de pământ (Ω) — stabilită de proiectant pentru această instalație", lim, G)
+        o.it(G, "Priză de pământ — valoare măsurată vs. admisă", f"{R:g} Ω ≤ {lim:g} Ω" if lim else g(R, " Ω"), "introdus", "Buletin de măsurare vs. valoarea admisă",
+             (R <= lim) if lim else None, "valoarea admisă se stabilește de proiectant (I7-2011, schema TN/TT, IPT, cerințe OD/producător) — fără prag universal")
     else:
         o.it(G, "Priză de pământ", None, "de confirmat", note="se completează DOAR cu valoarea măsurată (buletin PRAM) — aplicația nu estimează rezultate de măsurare")
     if gr["anti"]:
@@ -312,3 +315,22 @@ def fingerprint(rec: dict, client: dict | None) -> str:
     payload = {"cef": cef, "client": keys, "source": sld.get("source"), "upload": (sld.get("upload") or {}).get("storage_path"),
                "g": rec.get("grounding_ohm")}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def state(rec: dict, client: dict | None, s: dict) -> dict:
+    sld = rec.get("sld") or {}
+    fp = fingerprint(rec, client)
+    aps = sld.get("approvals") or ({sld["approval"]["role"]: sld["approval"]} if sld.get("approval") else {})
+    valid = {r: a for r, a in aps.items() if a.get("hash") == fp}
+    ap = max(valid.values(), key=lambda a: a.get("at") or "") if valid else (max(aps.values(), key=lambda a: a.get("at") or "") if aps else None)
+    status = "draft" if not aps else ("approved" if valid else "stale")
+    return {**(ap or {}), "status": status, "fingerprint": fp, "approvals": {r: {**a, "valid": r in valid} for r, a in aps.items()},
+            "designer": f"{s.get('designer_name')} ({s.get('designer_name_auth')})" if s.get("designer_name") else None,
+            "verifier": f"{s.get('verifier')} ({s.get('verifier_auth')})" if s.get("verifier") else None}
+
+
+def approved_file(rec: dict, fp: str):
+    for h in reversed((rec.get("sld") or {}).get("history") or []):
+        if h.get("hash") == fp and h.get("file"):
+            return h["file"]
+    return None

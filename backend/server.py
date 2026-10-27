@@ -416,7 +416,7 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
     if doc_type == "all":
         has_cef = bool(((rec or {}).get("cef") or {}).get("inverters"))
-        keys = [k for k in docgen.DOCS if k != ("schema" if has_cef else "schema_cef")]
+        keys = [k for k in docgen.DOCS if k not in ("schema", "schema_cef")]
     else:
         keys = [doc_type]
     if any(k not in docgen.DOCS for k in keys):
@@ -473,15 +473,7 @@ async def sld_ctx(owner: str, item_id: str):
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     s, warns = await effective_settings(owner, rec, base)
     res = SZ.compute(rec, client)
-    sld = rec.get("sld") or {}
-    fp = SZ.fingerprint(rec, client)
-    aps = sld.get("approvals") or ({sld["approval"]["role"]: sld["approval"]} if sld.get("approval") else {})
-    valid = {r: a for r, a in aps.items() if a.get("hash") == fp}
-    ap = max(valid.values(), key=lambda a: a.get("at") or "") if valid else (max(aps.values(), key=lambda a: a.get("at") or "") if aps else None)
-    status = "draft" if not aps else ("approved" if valid else "stale")
-    state = {**(ap or {}), "status": status, "approvals": {r: {**a, "valid": r in valid} for r, a in aps.items()},
-             "designer": f"{s.get('designer_name')} ({s.get('designer_name_auth')})" if s.get("designer_name") else None,
-             "verifier": f"{s.get('verifier')} ({s.get('verifier_auth')})" if s.get("verifier") else None}
+    state = SZ.state(rec, client, s)
     return rec, client, s, res, state, warns
 
 @api_router.get("/sld/demo/pdf")
@@ -500,11 +492,12 @@ async def sld_status(item_id: str, user: dict = Depends(get_current_user)):
     for role in SLD_ROLES:
         sid = signers.get(role)
         p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
-        people[role] = {"name": p.get("name"), "eligible": staff_eligible(p)} if p else None
+        people[role] = {"name": p.get("name"), "eligible": staff_eligible(p), "email": p.get("email")} if p else None
     return {"items": res["items"], "missing": res["missing"], "errors": res["errors"], "warnings": res["warnings"], "cables": res["cables"],
             "ready": res["ready"], "format": res["format"], "totals": res["base"]["totals"], "approval": state, "settings_warnings": warns,
             "source": sld.get("source") or "generated", "upload": sld.get("upload"), "revision": sld.get("revision") or 0,
-            "auto_filled": (rec.get("cef") or {}).get("auto_filled") or [], "people": people}
+            "auto_filled": (rec.get("cef") or {}).get("auto_filled") or [], "people": people,
+            "history": [{k: v for k, v in h.items() if k != "hash"} | {"current": h.get("hash") == state["fingerprint"]} for h in reversed(sld.get("history") or [])]}
 
 @api_router.get("/sld/{item_id}/pdf")
 async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("auto")):
@@ -579,8 +572,48 @@ async def sld_approve(item_id: str, request: Request, user: dict = Depends(get_c
     aps[role] = sld["approval"]
     sld["approvals"] = aps
     await db.prosumator.update_one({"id": item_id}, {"$set": {"sld": sld}})
+    rec2, client2, s2, res2, st2, _ = await sld_ctx(user["id"], item_id)
+    if src == "uploaded":
+        f = sld["upload"]
+    else:
+        pdf = SLD.render(rec2, client2, s2, res2, st2)
+        stored = put_object(f"{APP_NAME}/sld/{user['id']}/{item_id}/rev{rev}_{uuid.uuid4().hex[:8]}.pdf", pdf, "application/pdf")
+        f = {"storage_path": stored["path"], "original_filename": f"schema_rev{rev}.pdf", "content_type": "application/pdf", "size": len(pdf)}
+    entry = {"revision": rev, "at": sld["approval"]["at"], "role": role, "role_label": SLD_ROLES[role], "name": p.get("name"),
+             "auth": sld["approval"]["auth"], "hash": sld["approval"]["hash"], "source": src, "file": f, "by": user.get("email")}
+    await db.prosumator.update_one({"id": item_id}, {"$push": {"sld.history": entry}})
     await audit(user, "schemă aprobată", "prosumator", item_id, [role, p.get("name")])
     return sld["approval"]
+
+@api_router.post("/sld/{item_id}/send-sign")
+async def sld_send_sign(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    b = await request.json()
+    role = b.get("role")
+    if role not in SLD_ROLES:
+        raise HTTPException(status_code=400, detail="Rol invalid")
+    rec, client, s, res, state, _ = await sld_ctx(user["id"], item_id)
+    if state["status"] != "approved":
+        raise HTTPException(status_code=400, detail="Schema trebuie aprobată înainte de semnare")
+    sid = (rec.get("signers") or {}).get(role)
+    p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
+    if not p or not staff_eligible(p):
+        raise HTTPException(status_code=400, detail=f"{SLD_ROLES[role]}: persoană neselectată sau fără autorizație valabilă și verificată")
+    if "@" not in (p.get("email") or ""):
+        raise HTTPException(status_code=400, detail=f"Completați e-mailul pentru {p.get('name')} în Setări de bază → Personal")
+    keys = [k for k in (b.get("pos_keys") or ["schema"]) if k in ("schema", "fisa_tehnica")] or ["schema"]
+    reqs = await create_sign_requests(user, item_id, keys, [{"name": p["name"], "email": p["email"], "phone": p.get("phone") or "", "role": SLD_ROLES[role]}], parse_days(b.get("expires_days")))
+    origin = (b.get("origin") or "").rstrip("/")
+    for r in reqs:
+        link = f"{origin}/semneaza/{r['token']}"
+        html = (f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0b1f3a">'
+                f'<p>Bună ziua, {hesc(p["name"])},</p><p>Vă rugăm să verificați și să semnați documentul <b>{hesc(r["doc_title"])}</b> '
+                f'pentru beneficiarul {hesc(str(r.get("client_name") or ""))}, în calitate de {hesc(SLD_ROLES[role].lower())}.</p>'
+                f'<p><a href="{hesc(link)}" style="background:#2878f0;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Deschide documentul</a></p>'
+                f'<p>La semnare veți primi un cod unic pe această adresă de e-mail. Linkul este personal și expiră la {r["expires_at"][:10]}.</p></td></tr></table>')
+        await send_email(to=p["email"], subject=f"Semnare {r['doc_title'][:60]}", html=html)
+        await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Link trimis"}, "$push": {"history": hist("Link trimis", None, f"e-mail automat către {mask(p['email'])}; de {user.get('email')}")}})
+    await audit(user, "schemă trimisă la semnare", "prosumator", item_id, [role, p.get("name")])
+    return [{**sign_public({**{k: v for k, v in r.items() if k != "token"}, "history": [], "status": "Link trimis"}), "token": r["token"]} for r in reqs]
 
 @api_router.post("/sld/{item_id}/unapprove")
 async def sld_unapprove(item_id: str, user: dict = Depends(get_current_user)):
@@ -730,6 +763,8 @@ async def dossier_finalize(item_id: str, user: dict = Depends(get_current_user))
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     s, _ = await effective_settings(user["id"], {**rec, "snapshot": None}, base)
+    if SZ.state(rec, await get_client(user["id"], rec), s)["status"] != "approved":
+        raise HTTPException(status_code=400, detail="Dosarul nu poate fi finalizat: schema monofilară nu este verificată și aprobată de proiectant / verificator. Exportul rămâne disponibil ca CIORNĂ.")
     snap = {"settings": {k: v for k, v in s.items() if k not in ("owner", "_id")}, "signers": rec.get("signers") or {},
             "at": datetime.now(timezone.utc).isoformat(), "by": user.get("email")}
     await db.prosumator.update_one({"id": item_id}, {"$set": {"snapshot": snap}, "$push": {"snapshot_history": snap}})
@@ -782,6 +817,8 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         raise HTTPException(status_code=404, detail="Poziție inexistentă")
     name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
     if fmt == "docx":
+        if key in ("schema", "fisa_tehnica"):
+            raise HTTPException(status_code=400, detail="Schema și fișa tehnică se exportă doar în PDF (vectorial)")
         if p["source"] != "generat":
             raise HTTPException(status_code=400, detail="Export Word doar pentru documentele generate")
         docx = docgen.render_docx(p["docs"], rec, settings, client, info["titles"])
@@ -867,9 +904,15 @@ async def sign_create(request: Request, user: dict = Depends(get_current_user)):
     for s in signers:
         if not (s.get("name") or "").strip() or "@" not in (s.get("email") or ""):
             raise HTTPException(status_code=400, detail="Fiecare semnatar are nevoie de nume și e-mail valid (pentru codul de verificare)")
+    return await create_sign_requests(user, did, keys, signers, days)
+
+async def create_sign_requests(user, did, keys, signers, days):
     rec, client, settings, info = await dossier_ctx(user["id"], did)
     pos = {p["key"]: p for p in info["positions"]}
     out = []
+    st_sld = SZ.state(rec, client, settings)
+    if any(k in ("schema", "fisa_tehnica") for k in keys) and st_sld["status"] != "approved":
+        raise HTTPException(status_code=400, detail="Schema monofilară / fișa tehnică pot fi trimise la semnare doar după aprobarea tehnică")
     for k in keys:
         if k not in pos:
             raise HTTPException(status_code=404, detail=f"Poziție inexistentă: {k}")
@@ -889,6 +932,7 @@ async def sign_create(request: Request, user: dict = Depends(get_current_user)):
                             "doc_title": pos[k]["title"], "doc_path": stored["path"], "doc_sha256": sha(pdf), "signer_name": s["name"].strip(),
                             "signer_email": s["email"].strip(), "signer_phone": (s.get("phone") or "").strip(), "role": (s.get("role") or "Beneficiar").strip(),
                             "status": "De trimis", "token_hash": th, "expires_at": exp, "otp_sends": 0, "otp_attempts": 0,
+                            "sld_hash": st_sld["fingerprint"] if k in ("schema", "fisa_tehnica") else None,
                             "history": [hist("Cerere creată", None, f"de {user.get('email')}; link valabil până la {exp[:16]} UTC")]})
             await db.sign_requests.insert_one(dict(r))
             out.append({**sign_public(r), "token": t})
@@ -1077,6 +1121,8 @@ async def rebuild_group(owner: str, gid: str):
     o = io.BytesIO(); w.write(o); final = o.getvalue()
     st = put_object(f"{APP_NAME}/sign/{owner}/{gid}/signed_{len(signed)}.pdf", final, "application/pdf")
     f = {"storage_path": st["path"], "original_filename": f"{reqs[0]['pos_key']}_semnat.pdf", "content_type": "application/pdf", "size": len(final)}
+    if reqs[0].get("sld_hash"):
+        f["sld_hash"] = reqs[0]["sld_hash"]
     await db.sign_requests.update_many({"owner": owner, "group_id": gid}, {"$set": {"signed_file": f, "signed_sha256": sha(final)}})
     if len(signed) == len(reqs):
         await db.prosumator.update_one({"id": reqs[0]["dossier_id"], "owner": owner},

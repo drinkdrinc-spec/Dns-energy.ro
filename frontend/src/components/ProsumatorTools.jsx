@@ -10,7 +10,6 @@ const DOCS = [
   ["declaratie_conformitate", "Declarație de conformitate"], ["pv_receptie", "PV recepție lucrări"],
   ["pv_pif", "PV punere în funcțiune"], ["buletin_priza", "Buletin priză de pământ"],
   ["buletin_reglaj", "Buletin reglaj invertor"], ["declaratie_autenticitate", "Declarație autenticitate"],
-  ["schema", "Schema monofilară (simplificată)"], ["schema_cef", "Schema monofilară CEF (multi-invertor)"],
 ];
 
 const docUrl = (type, id) => `${API}/docs/${type}/${id}?auth=${localStorage.getItem("den_token")}`;

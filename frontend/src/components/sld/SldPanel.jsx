@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { FileDown, Wand2, RefreshCw, ShieldCheck, Upload, X, Eye } from "lucide-react";
+import { FileDown, Wand2, RefreshCw, ShieldCheck, Upload, X, Eye, Send } from "lucide-react";
 import { api, API, fileUrl } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { uploadFile } from "@/components/dossier/ClientDocs";
@@ -26,6 +26,7 @@ export function SldPanel({ id, form, setVal }) {
   const open = (path) => run(async () => { await persist(); window.open(`${API}${path}${path.includes("?") ? "&" : "?"}auth=${tok()}`, "_blank"); await load(); });
   const approve = (role) => run(async () => { await persist(); await api.post(`/sld/${id}/approve`, { role }); await load(); toast.success("Schema a fost aprobată"); });
   const unapprove = () => run(async () => { await api.post(`/sld/${id}/unapprove`); await load(); });
+  const sendSign = (role) => run(async () => { await api.post(`/sld/${id}/send-sign`, { role, origin: window.location.origin, pos_keys: ["schema"] }); toast.success("Link de semnare trimis pe e-mail"); });
   const source = (body) => run(async () => { await api.put(`/sld/${id}/source`, body); await load(); });
 
   if (!d) return null;
@@ -77,8 +78,32 @@ export function SldPanel({ id, form, setVal }) {
           })}
           {d.source === "generated" && !d.ready && <p className="text-[11px] mt-1" style={{ color: "#9b2c2c" }}>Aprobarea este blocată până la completarea datelor lipsă și rezolvarea erorilor.</p>}
           {d.approval.status !== "draft" && <button className="text-xs mt-1 underline" style={{ color: "#b33333" }} onClick={unapprove} data-testid="sld-unapprove">Retrage aprobarea</button>}
+          {d.approval.status === "approved" && (
+            <div className="mt-3 pt-2 border-t" style={{ borderColor: "var(--line)" }}>
+              <div className="text-[11px] font-bold mb-1">Semnare la distanță (link + cod pe e-mailul din Personal)</div>
+              {["designer", "verifier"].map((r) => d.people[r] && (
+                <Btn key={r} variant="secondary" className="mr-2 mb-1" disabled={busy || !d.people[r].eligible} onClick={() => sendSign(r)} data-testid={`sld-send-sign-${r}`}>
+                  <Send size={13} /> Trimite la {r === "designer" ? "proiectant" : "verificator"}{d.people[r].email ? "" : " (fără e-mail)"}
+                </Btn>
+              ))}
+              <p className="text-[11px]" style={{ color: "var(--muted)" }}>Starea semnării apare în secțiunea „Semnături” de mai jos; PDF-ul semnat intră automat în opis.</p>
+            </div>
+          )}
         </div>
       </div>
+      {d.history?.length > 0 && (
+        <div className="mt-4" data-testid="sld-history">
+          <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--blue)" }}>Istoric versiuni aprobate</div>
+          {d.history.map((h, i) => (
+            <div key={i} className="text-xs flex flex-wrap gap-2 py-1 border-t" style={{ borderColor: "var(--line)" }} data-testid={`sld-history-${i}`}>
+              <b>rev. {h.revision}</b><span>{String(h.at).slice(0, 16).replace("T", " ")} UTC</span><span>{h.role_label}: {h.name}</span>
+              <span>{h.source === "uploaded" ? "schemă încărcată" : "schemă generată"}</span>
+              <span className="font-bold" style={{ color: h.current ? "#1e7a46" : "var(--muted)" }}>{h.current ? "versiunea în vigoare" : "versiune anterioară"}</span>
+              {h.file && <a className="underline" style={{ color: "var(--blue)" }} href={fileUrl(h.file.storage_path)} target="_blank" rel="noopener noreferrer" data-testid={`sld-history-file-${i}`}>PDF</a>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

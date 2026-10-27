@@ -3,6 +3,8 @@ from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib import colors
 import docgen
+import sizing as SZ
+import sld as SLD
 
 STATUSES = ["de completat", "generat", "necesită semnătură", "atașat"]
 CLIENT_SLOTS = {"factura": "Factură furnizor de energie", "certificat": "Certificat de înregistrare", "constatator": "Certificat constatator",
@@ -21,7 +23,8 @@ EL = {"company": "Denumire executant", "cui": "CUI executant", "regcom": "Reg. C
       "warranty_months": "Garanție lucrări (luni)", "meter_device": "Aparat de măsură", "meter_serial": "Serie aparat de măsură", "meter_valid": "Valabilitate metrologică"}
 
 GEN = [("notificare", "Anexa 2 — Notificare (Ord. ANRE 19/2022)", ["notificare"], ["apparent_kva", "power", "doc_date", "internal_pi", "internal_pmax"], []),
-       ("schema", "Schemă monofilară", ["schema_cef"], [], []),
+       ("schema", "Schemă monofilară", ["sld"], [], []),
+       ("fisa_tehnica", "Fișă tehnică instalație — echipamente, cabluri și protecții", ["fisa_tehnica"], [], []),
        ("afm", "Declarație accesare fonduri (AFM)", ["declaratie_afm"], ["afm", "doc_date"], []),
        ("reglaj", "Buletin reglaj", ["buletin_reglaj"], ["doc_date"], []),
        ("priza", "Buletin de verificare și măsurare priză de pământ", ["buletin_priza"],
@@ -68,12 +71,20 @@ async def build_positions(db, owner, rec, client, settings):
         m += [EL.get(k, k) for k in ekeys if settings.get(k) in (None, "")]
         return list(dict.fromkeys(m))
 
+    res_sld = SZ.compute(rec, client)
+    st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
         m = missing(keys, ekeys)
         if key == "notificare" and not docgen.inverters(ctx):
             m.append("Invertoare / panouri (configurare CEF)")
-        if key == "schema" and not (rec.get("cef") or {}).get("inverters"):
-            m.append("Configurare CEF (invertoare, stringuri)")
+        if key in ("schema", "fisa_tehnica"):
+            if not (rec.get("cef") or {}).get("inverters"):
+                m.append("Configurare CEF (invertoare, stringuri)")
+            if res_sld["missing"] or res_sld["errors"]:
+                m.append(f"Dimensionare tehnică incompletă: {len(res_sld['missing'])} date lipsă, {len(res_sld['errors'])} erori (secțiunea Schemă monofilară)")
+            m.append({"stale": "Aprobarea schemei a fost anulată — configurația s-a modificat; necesită o nouă verificare",
+                      "draft": "Schema monofilară nu este aprobată de proiectant / verificator"}.get(st_sld["status"], "")) if st_sld["status"] != "approved" else None
+            m[:] = [x for x in m if x]
         if key == "reglaj":
             rg = rec.get("reglaj") or {}
             if any(not (rg.get(k) or {}).get("val") for k, _ in docgen.REGLAJ):
@@ -114,6 +125,11 @@ async def build_positions(db, owner, rec, client, settings):
         p["nr"] = i + 1
         o = opis.get(p["key"]) or {}
         p["upload"] = o.get("upload")
+        if p["key"] in ("schema", "fisa_tehnica") and p["upload"] and (p["upload"].get("sld_hash") != st_sld["fingerprint"] or st_sld["status"] != "approved"):
+            p["upload"] = None
+            if o.get("upload", {}).get("sld_hash"):
+                p["missing"].append("Versiunea semnată anterior nu mai corespunde configurației — necesită verificare și semnare nouă")
+            o = {k: v for k, v in o.items() if k != "status"}
         gen_missing = p["missing"] or (p["source"] == "generat" and common)
         auto = "atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else ("de completat" if gen_missing else "generat")
         p["auto_status"] = auto
@@ -154,6 +170,19 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
     if p.get("upload") and not force_generated:
         data, ct = get_object(p["upload"]["storage_path"])
         return [file_pdf(data, p["upload"].get("content_type") or ct)]
+    if p.get("key") in ("schema", "fisa_tehnica"):
+        res = SZ.compute(rec, client)
+        st = SZ.state(rec, client, settings)
+        if p["key"] == "fisa_tehnica":
+            return [SLD.tech_sheet(rec, client, settings, res, st)]
+        sld = rec.get("sld") or {}
+        if st["status"] == "approved" and sld.get("source") == "uploaded" and sld.get("upload"):
+            data, ct = get_object(sld["upload"]["storage_path"])
+            return [file_pdf(data, sld["upload"].get("content_type") or ct)]
+        f = SZ.approved_file(rec, st["fingerprint"]) if st["status"] == "approved" else None
+        if f:
+            return [get_object(f["storage_path"])[0]]
+        return [SLD.render(rec, client, settings, res, st)]
     if p["source"] == "generat":
         return [docgen.render(p["docs"], rec, settings, client, titles)]
     out = []

@@ -17,7 +17,8 @@ export function GridCard({ grid, set, catalog, res }) {
         <F label="Întreruptor general TG" value={grid.tg_breaker} onChange={s("tg_breaker")} testid="grid-tg" />
         <F label="SPD AC" value={grid.spd_ac} onChange={s("spd_ac")} options={["tip 1+2", "tip 2", "tip 1"]} testid="grid-spd" />
         <F label="Diferențial general" value={grid.rcd} onChange={s("rcd")} testid="grid-rcd" />
-        <F label="Rezistență priză pământ (Ω)" type="number" value={grid.grounding_ohm} onChange={s("grounding_ohm")} testid="grid-ground" />
+        <F label="Rezistență priză pământ — măsurată (Ω)" type="number" value={grid.grounding_ohm} onChange={s("grounding_ohm")} testid="grid-ground" />
+        <F label="Valoare admisă priză (Ω) — stabilită de proiectant" type="number" value={grid.grounding_limit} onChange={s("grounding_limit")} testid="grid-ground-limit" />
         <F label="Temperatură minimă calcul (°C)" type="number" value={grid.tmin} onChange={s("tmin")} testid="grid-tmin" />
         <F label="Sistem legare la pământ" value={grid.earthing} onChange={s("earthing")} options={["TN-C-S", "TN-S", "TT"]} testid="grid-earthing" />
         <F label="Ik la punctul de racord (kA, din ATR/OD)" type="number" value={grid.ik_ka} onChange={s("ik_ka")} testid="grid-ik" />

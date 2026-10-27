@@ -7,7 +7,7 @@ DEMO_REC = {
         "grid": {"supply": "Trifazat", "bransament_kw": 20, "bmp_a": 40, "earthing": "TN-C-S", "ik_ka": 6, "tg_breaker_a": 32,
                  "column_cable": "CYAbY 5×10 mm² Cu", "column_section": 10, "column_length": 25, "column_material": "Cu", "column_install": "D",
                  "meter": "Smart meter trifazat (exemplu)", "sm_ct_ratio": "", "spd_ac": "tip 1+2", "rcd_ma": 300,
-                 "grounding_ohm": 3.2, "bond_section": 6, "tmin": -10},
+                 "grounding_ohm": 3.2, "grounding_limit": 4, "bond_section": 6, "tmin": -10},
         "inverters": [{
             "brand_model": "Invertor hibrid 10 kW (exemplu)", "type": "Hibrid", "phases": "Trifazat", "p_nom_kw": 10, "p_max_kw": 11, "p_limit_kw": 10,
             "vdc_max": 1000, "mppt_min": 160, "mppt_max": 850, "mppt_count": 2, "imax_mppt": 20,

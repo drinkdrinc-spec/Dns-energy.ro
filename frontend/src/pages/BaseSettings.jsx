@@ -108,6 +108,8 @@ const staffRender = (f, setF) => {
     <div className="grid sm:grid-cols-2 gap-3">
       <In label="Nume și prenume" value={f.name} onChange={s("name")} testid="staff-name" />
       <In label="Funcție / calificare" value={f.qualification} onChange={s("qualification")} testid="staff-qual" />
+      <In label="E-mail (pentru semnare la distanță)" value={f.email} onChange={s("email")} testid="staff-email" />
+      <In label="Telefon" value={f.phone} onChange={s("phone")} testid="staff-phone" />
     </div>
     <div className="mt-3 space-y-3">
       {auths.map((a, i) => (

@@ -624,3 +624,101 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     c.showPage()
     c.save()
     return buf.getvalue()
+
+
+def protections(rec, res):
+    cef = rec.get("cef") or {}
+    grid = cef.get("grid") or {}
+    base = res["base"]
+    tri = base["grid"]["tri"]
+    out = []
+    for i, inv in enumerate(cef.get("inverters") or []):
+        r = base["inverters"][i]
+        ac, dc, bt = inv.get("ac") or {}, inv.get("dc") or {}, inv.get("battery") or {}
+        if r["strings"]:
+            out.append((f"-Q{i + 1}.D", "Separator de sarcină DC (DC-PV2)", dc.get("switch"), f"-TDC{i + 1}"))
+            out.append((f"-FA{i + 1}.DC", "Descărcător SPD DC tip 2", gv(n(dc.get("spd_ucpv")), " V Ucpv"), f"-TDC{i + 1}"))
+            if r["proposals"]["dc"]["fuse"]:
+                out.append((f"-F{i + 1}.S", "Siguranțe gPV pe stringuri", gv(n(dc.get("fuse_a")), " A gPV"), f"-TDC{i + 1}"))
+        out.append((f"-Q{i + 1}.1", "Întreruptor automat AC invertor", (f"C{gv(n(ac.get('breaker_a')))} A {r['proposals']['ac']['poles']}" + (f", Icu {gv(n(ac.get('icu_ka')))} kA" if n(ac.get("icu_ka")) else "")) if n(ac.get("breaker_a")) else None, "-TFV"))
+        out.append((f"-F{i + 1}.1", "Dispozitiv diferențial (DDR)", (f"{inv.get('rcd_type')} {gv(n(inv.get('rcd_ma')), ' mA') or ''}".strip()) if inv.get("rcd_type") else None, "-TFV"))
+        if inv.get("battery_mode") == "own":
+            out.append((f"-F{i + 1}.B", "Protecție DC baterie", gv(n(bt.get("fuse_a")), " A DC"), f"-G{i + 1}"))
+        if (inv.get("backup") or {}).get("enabled"):
+            out.append((f"-Q{i + 1}.EPS", "Întreruptor circuit backup / EPS", inv["backup"].get("breaker"), f"-TB{i + 1}"))
+    out.append(("-Q0.TG", "Întreruptor general TG", gv(n(grid.get("tg_breaker_a")), " A " + ("4P" if tri else "2P")), "-TG"))
+    out.append(("-FA AC", "Descărcător SPD AC", grid.get("spd_ac"), "-TG"))
+    if base["grid"]["anti"]:
+        out.append(("-K1/-K2", "Element decuplare + releu protecție interfață", " / ".join(x for x in [grid.get("anti_breaker"), grid.get("anti_relay")] if x) or None, "-TAI"))
+    out.append(("-Q0", "Întreruptor BMP (OD)", gv(n(grid.get("bmp_a")), " A " + ("4P" if tri else "2P")), "-BMP"))
+    return out
+
+
+def tech_sheet(rec, client, settings, res, approval) -> bytes:
+    from reportlab.platypus import SimpleDocTemplate, Spacer
+    from reportlab.lib.pagesizes import A4 as P4
+    St = docgen.S
+    cef = rec.get("cef") or {}
+    grid = cef.get("grid") or {}
+    base = res["base"]
+    t = base["totals"]
+    get = lambda k: client.get(k) or rec.get(k)
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=P4, leftMargin=16 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title="Fișă tehnică instalație")
+    Pp = lambda x, st="p": Paragraph(x, St[st])
+    C_ = lambda x, b=False: Paragraph(escape(str(x)) if x not in (None, "") else "<font color='#c0392b'>[lipsă]</font>", CELLB if b else CELL)
+    def tbl(rows, ws):
+        tb = Table([[C_(h, True) for h in rows[0]]] + [[C_(c) for c in r] for r in rows[1:]], colWidths=[w * mm for w in ws], repeatRows=1)
+        tb.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f7")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        return tb
+    loc = ", ".join(str(x) for x in [get("address"), get("locality"), ("jud. " + str(get("county"))) if get("county") else None] if x)
+    st = approval.get("status")
+    out = [Pp(f"<b>{escape(settings.get('company') or 'DNS HOSTESS S.R.L.')}</b>", "small"), Spacer(1, 4),
+           Pp("FIȘĂ TEHNICĂ A INSTALAȚIEI DE PRODUCERE — ECHIPAMENTE, CABLURI ȘI PROTECȚII", "h"),
+           Pp("Valorile provin din aceeași configurație ca schema monofilară și raportul de calcul (sursă unică de date)." +
+              {"approved": " <b>Configurație verificată și aprobată.</b>", "stale": " <font color='#b03a2e'><b>Aprobarea a fost anulată — configurația s-a modificat.</b></font>"}.get(st, " <font color='#b03a2e'><b>CIORNĂ — configurație neaprobată.</b></font>"), "small"),
+           Pp("1. Date generale", "b"),
+           tbl([["Câmp", "Valoare"], ["Beneficiar", get("name")], ["Loc de producere / consum", loc or None], ["POD", get("pod")],
+                ["Operator de distribuție", get("operator")], ["Număr proiect", get("project_no")],
+                ["Branșament", f"{grid.get('supply')}, putere aprobată {gv(n(grid.get('bransament_kw')), ' kW') or '[lipsă]'}" if grid.get("supply") else None],
+                ["Putere instalată DC", gv(t["kwp"], " kWp")], ["Putere invertoare AC (nominal / maxim)", f"{t['inverters_kw']:g} / {t['inverters_kw_max']:g} kW" if t["inverters_kw"] else None],
+                ["Putere maximă evacuată", gv(t["export_kw"], " kW")], ["Capacitate stocare", gv(t["storage_kwh"], " kWh") or "fără stocare"],
+                ["Sistem de legare la pământ", grid.get("earthing")], ["Ik la punctul de racord", gv(n(grid.get("ik_ka")), " kA")],
+                ["Priză de pământ (măsurat / admis)", f"{gv(n(grid.get('grounding_ohm') or rec.get('grounding_ohm')), ' Ω') or '[nemăsurat]'} / {gv(n(grid.get('grounding_limit') or rec.get('grounding_limit')), ' Ω') or '[nestabilit]'}"]], [70, 112]),
+           Pp("2. Lista echipamentelor", "b")]
+    eq = [["Cod", "Echipament", "Marcă / model", "Caracteristici", "Cant."]]
+    for i, inv in enumerate(cef.get("inverters") or []):
+        r = base["inverters"][i]
+        eq.append([f"-U{i + 1}", f"Invertor {inv.get('type') or ''}".strip(), inv.get("brand_model"),
+                   f"Pn {gv(n(inv.get('p_nom_kw')), ' kW') or '—'} · Pmax {gv(n(inv.get('p_max_kw')), ' kW') or '—'} · {'3F' if r['tri'] else '1F'} · Udc max {gv(n(inv.get('vdc_max')), ' V') or '—'} · MPPT {gv(n(inv.get('mppt_min'))) or '—'}–{gv(n(inv.get('mppt_max')), ' V') or '—'} × {gv(n(inv.get('mppt_count'))) or '—'}", "1"])
+        if r["strings"]:
+            eq.append([f"-PV{i + 1}", "Module fotovoltaice", inv.get("panel_model"),
+                       f"{gv(n(inv.get('panel_w')), ' W') or '—'} · Voc {gv(n(inv.get('panel_voc')), ' V') or '—'} · Isc {gv(n(inv.get('panel_isc')), ' A') or '—'} · stringuri: " + " + ".join(f"{s['panels']} (MPPT{s['mppt']})" for s in r["strings"]),
+                       str(sum(s["panels"] for s in r["strings"]))])
+        if inv.get("battery_mode") == "own":
+            bt = inv.get("battery") or {}
+            eq.append([f"-G{i + 1}", "Baterie", bt.get("model"), f"{gv(r['battery_kwh'], ' kWh') or '—'} · {gv(n(bt.get('voltage')), ' V') or '—'} · cuplare {bt.get('coupling') or 'DC'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'}", str(int(n(bt.get("modules"), 1)) or 1)])
+    for k, b in enumerate(cef.get("shared_batteries") or []):
+        eq.append([f"-GC{k + 1}", "Baterie comună", b.get("model"), f"{gv(n(b.get('kwh')), ' kWh/modul') or '—'} · Imax {gv(n(b.get('i_max')), ' A') or '—'}", str(int(n(b.get("modules"), 1)) or 1)])
+    if grid.get("meter"):
+        eq.append(["-P2", "Smart meter", grid.get("meter"), f"TC {grid.get('sm_ct_ratio')}" if grid.get("sm_ct_ratio") else "conectare directă", "1"])
+    eq.append(["-P1", "Contor bidirecțional OD", "proprietate OD", f"măsură prin TC {grid.get('ct_ratio')}" if grid.get("ct_ratio") else "măsură directă", "1"])
+    out.append(tbl(eq, [16, 34, 46, 72, 14]))
+    out.append(Pp("3. Lista cablurilor", "b"))
+    cb = [["Cod", "Traseu", "Tip", "Conductoare", "Secțiune", "L (m)", "Ib / Iz (A)", "ΔU %"]]
+    for x in res["cables"]:
+        cb.append([x["id"], f"{x['from']} → {x['to']}", x.get("type"), x.get("cores"), f"{gv(x.get('section'))} mm² {x.get('material') or ''}" + (f", PE {gv(x.get('pe'))}" if x.get("pe") else ""),
+                   gv(x.get("length")), f"{gv(x.get('ib')) or '—'} / {gv(x.get('iz')) or '—'}", gv(x.get("du")) or "0"])
+    out.append(tbl(cb, [14, 36, 24, 28, 30, 14, 22, 14]))
+    out.append(Pp("4. Aparate de protecție", "b"))
+    out.append(tbl([["Cod", "Aparat", "Valori nominale", "Amplasare"]] + [list(p) for p in protections(rec, res)], [22, 70, 60, 30]))
+    if res["missing"] or res["errors"]:
+        out.append(Pp("5. Date lipsă / neconformități", "b"))
+        for m in res["missing"]:
+            out.append(Pp(f"<font color='#b03a2e'>LIPSĂ: {escape(m['label'])}</font>", "li"))
+        for e in res["errors"]:
+            out.append(Pp(f"<font color='#b03a2e'>EROARE: {escape(e)}</font>", "li"))
+    aps = [a for a in (approval.get("approvals") or {}).values() if a.get("valid")]
+    out += [Spacer(1, 8), Pp("Verificat și aprobat: " + ("; ".join(f"{escape(a['name'])} ({escape(a['role_label'])}, {escape(a.get('auth') or '')}), {a['at'][:10]}" for a in aps) if aps else "<font color='#b03a2e'>neaprobat</font>"), "small")]
+    doc.build(out)
+    return buf.getvalue()
