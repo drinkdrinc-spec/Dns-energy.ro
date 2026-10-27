@@ -3,10 +3,10 @@ import { BrandMark } from "@/components/BrandMark";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert,
-  FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase,
+  FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck,
 } from "lucide-react";
 
-const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase };
+const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck };
 
 const NAV = [
   { label: "Principal", items: [
@@ -24,6 +24,7 @@ const NAV = [
     { to: "/antiinsularizare", icon: "ShieldAlert", text: "Antiinsularizare", testid: "nav-anti" },
     { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
     { to: "/echipamente", icon: "Cpu", text: "Echipamente", testid: "nav-equipment" },
+    { to: "/setari-baza", icon: "ShieldCheck", text: "Setări de bază", testid: "nav-base-settings" },
     { to: "/catalog-echipamente", icon: "Cpu", text: "Catalog echipamente", testid: "nav-equipment-catalog" },
     { to: "/catalog", icon: "BookOpen", text: "Catalog tehnic (linkuri)", testid: "nav-catalog" },
   ]},

@@ -7,8 +7,12 @@ import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { AiImportButton, GeneratedDocs } from "@/components/ProsumatorTools";
 import { CefEditor } from "@/components/cef/CefEditor";
+import { DossierOpis } from "@/components/dossier/DossierOpis";
+import { DossierExtras } from "@/components/dossier/DossierExtras";
+import { ClientDocs } from "@/components/dossier/ClientDocs";
 
 function Field({ f, value, onChange, refOptions }) {
+  if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
   const common = { className: "den-input", value: value ?? "", onChange: (e) => onChange(f.name, e.target.value), placeholder: f.placeholder || "", "data-testid": `field-${f.name}` };
   return (
     <div className={`den-field ${f.full ? "sm:col-span-2" : ""}`}>
@@ -95,7 +99,7 @@ export default function ModulePage({ moduleKey }) {
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
           <div className="grid sm:grid-cols-2 gap-4">
-            {cfg.fields.map((f) => <Field key={f.name} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} />)}
+            {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} />)}
           </div>
 
           {cfg.checklist && (
@@ -116,7 +120,10 @@ export default function ModulePage({ moduleKey }) {
           )}
 
           {key === "prosumator" && <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />}
+          {key === "prosumator" && <DossierExtras form={form} setVal={setVal} />}
+          {key === "prosumator" && editId && <DossierOpis id={editId} />}
           {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} />}
+          {key === "clients" && editId && <ClientDocs client={form} onChange={(docs) => setVal("docs", docs)} />}
 
           <div className="flex gap-2 mt-6 den-noprint">
             <Btn onClick={save} data-testid="save-btn">Salvează</Btn>

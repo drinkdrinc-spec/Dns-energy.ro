@@ -1,0 +1,1052 @@
+
+===== PAGE 15 =====
+Anexa nr. 2
+NOTIFICARE
+privind racordarea la un loc de consum existent a unei instalaţii
+de producere a energiei electrice
+Utilizatorul PUBLISERV SRL, cu domiciliul/sediul în ION BOGDAN NR 148 ORADEA BIHOR, telefon/telefon
+mobil/fax 0741540265, e-mail —, cod de înregistrare fiscală/CNP 16306414, contul ................, deschis la banca
+................, reprezentat prin împuternicit/reprezentant al operatorului economic atestat DNS HOSTESS SRL, CUI
+38848769, J2018000325050, DRINC EUGEN, cu domiciliul/sediul în STR 1 NR 85, CHERIU, BIHOR, 417362, telefon
++40741540265, e-mail dnshostess@outlook.com, nr./dată act autorizare 23982, emis de ANRE,
+notific prin prezenta racordarea la locul de consum existent situat în ION BOGDAN NR 14B ORADEA BIHOR,
+ORADEA, jud. Bihor, nr. CF —, nr. cadastral —, având codul unic de identificare 594040200002886219 (înscris
+pe factura de energie electrică), a unei instalaţii de producere a energiei electrice cu putere maximă simultană
+ce poate fi evacuată în reţeaua de distribuţie de 15,48 kW 17 kVA.
+Prin prezenta notificare solicit:
+înlocuirea contorului existent la locul de consum cu un contor de măsurare a energiei electrice în ambele
+sensuri;
+punerea sub tensiune pentru perioada de probe a instalaţiei de producere a energiei electrice.
+Date tehnice şi energetice aferente instalaţiei de producere a energiei electrice:
+Generatoare asincrone şi sincrone:
+Nr.
+crt.
+Nr. UG
+Tip
+UG
+(As,
+S)
+Tip
+UG
+(T,
+H,
+E)
+U
+(V)
+Un
+UG
+(V)
+Pn
+UG
+(kW)
+Sn
+UG
+(kVA)
+Pi
+total
+(kW)
+Pmax
+produsă
+de UG
+(kW)
+Pmin
+produsă
+de UG
+(kW)
+Qmax
+(kVAr)
+Qmin
+(kVAr)
+Sevac
+(kVA)
+Observaţii
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+TOTAL:
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Mijloace de compensare a energiei reactive:
+[ X ] NU     [  ] DA
+Nr. crt.
+Tip echipament de compensare
+Qn (kVAr)
+Qmin (kVAr)
+Qmax (kVAr)
+Nr. trepte***
+Observaţii
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+***) Se completează dacă tipul de echipament de compensare utilizat are reglaj în trepte.
+Module generatoare de tip fotovoltaic:
+Nr.
+crt.
+Nr.
+panouri
+Tip
+panou
+Pi panou
+(c.c.) (kW)
+Pi total
+panouri (c.c.)
+(kW)
+Pmax debitat de
+panouri (c.c.) (kW)
+Pi total panouri pe 1
+invertor (c.c.) (kW)
+Observaţii
+1
+24
+Aiko
+645
+0.645
+15.48
+15.48
+15.48
+TOTAL:
+15.48
+15.48
+Invertoare:
+Nr.
+crt.
+Nr.
+invertoare
+Tipul
+invertoarelor
+Un
+invertor
+Pi invertor
+(c.a.) (kW)
+Pmax invertor
+evacuată în
+Pmax centrală
+formată din module
+Observaţii
+
+===== PAGE 16 =====
+(c.a.) (V)
+reţea (c.a.) (kW)
+generatoare (c.a.)
+(kW)
+1
+1
+SOLIS S6-
+EH3P(15-20)K-H
+400
+20.00
+20.00
+TOTAL:
+20.00
+20.00
+15.48
+NOTĂ:
+U.G. = unitate generatoare; panou = panou fotovoltaic; As - asincron; S - sincron; T - termo; H - hidro; E - eolian;
+Qn - putere reactivă nominală; Qmax = putere reactivă maximă; Qmin = putere reactivă minimă;
+c.c. = curent continuu; c.a. = curent alternativ;
+Pn = putere activă nominală; Pi = putere activă instalată; Pmax = putere activă maximă; Pmin = putere activă minimă; Sn = putere
+aparentă nominală;
+Un = tensiune nominală la borne; U = tensiunea în punctul de racordare; Sevac = puterea aparentă aprobată pentru evacuare în reţea.
+Serviciile interne ale instalaţiei de producere:
+Pi servicii interne
+0,01 kW
+Puterea maximă simultan absorbită servicii interne
+0,01 kW
+Anexez prezentei următoarele documente:
+a) copia actului de identitate, a certificatului de înregistrare la registrul comerţului sau a altor autorizaţii legale de funcţionare
+emise de autorităţile competente, după caz;
+b) certificatul constatator (doar în cazul prosumatorului persoană juridică), în copie, emis de oficiul registrului comerţului, cu
+informaţii complete care să reflecte situaţia la zi a solicitantului, prin care se dovedeşte că persoana juridică nu desfăşoară ca
+activitate principală producerea de energie electrică;
+c) procesul-verbal care confirmă recepţia la terminarea lucrărilor aferente instalaţiei de producere a energiei electrice şi
+instalaţiei de stocare, după caz, întocmit de executantul lucrării;
+d) buletinul de încercare a prizei la pământ;
+e) certificatele de conformitate şi fişele tehnice ale invertoarelor şi unităţilor generatoare cu datele şi funcţiile
+corespunzătoare, emise de fabricant, în copie, şi, după caz, fişele tehnice emise de fabricant, în copie, ale instalaţiei de
+stocare;
+f) schema electrică monofilară a instalaţiei de producere a energiei electrice şi modul de racordare a acesteia în instalaţia de
+utilizare existentă, cu precizarea protecţiilor prevăzute şi reglajelor acestora.
+În sprijinul solicitării mele, transmit următoarele informaţii privind:
+a) deţinerea de sisteme de stocare a energiei electrice produse din surse regenerabile:
+[ X ] NU DEŢIN.     [  ] DEŢIN
+b) echipamentele de măsurare a energiei electrice montate în instalaţiile de utilizare, altele decât cele
+aparţinând operatorilor de distribuţie, şi caracteristicile acestora, respectiv: serie contor, tip contor, date
+tehnice:
+[  ] NU     [ X ] DA
+Nr. crt.
+Serie contor
+Tip contor
+Date tehnice
+1
+Astro
+Astro Eastron SDM 630 CT V2
+3×230/400 V
+Declar pe propria răspundere că datele şi informaţiile cuprinse în prezenta notificare sunt autentice şi că
+documentele anexate, în copie, sunt conforme cu originalul.
+Data
+06.10.2026
+Solicitant/Împuternicit,
+PUBLISERV SRL
+
+===== PAGE 17 =====
+numele, prenumele şi semnătura
+
+===== PAGE 20 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+Număr înregistrare evidențe împuternicit: ............. / .....................
+ÎMPUTERNICIRE
+Subsemnatul/-a/subscrisa PUBLISERV SRL, domiciliat/-ă/sediul social în ION BOGDAN NR 148 ORADEA BIHOR,
+număr telefon mobil/fix* 0741540265, număr fax ........................., adresă de poștă electronică (e-mail)* —, act
+de identitate cu seria și numărul/înregistrată la Registrul Comerțului sub numărul: J2004000598057, având
+CNP/CUI: 16306414, reprezentată prin domnul/-a BUTCOVAN-CABAU CRISTIAN ADRIAN, în calitate de
+administrator, prin prezenta
+ÎMPUTERNICEȘTE
+pe subscrisa DNS HOSTESS SRL, reprezentată legal prin domnul/-a DRINC EUGEN, în calitate de reprezentant,
+cu sediul social în STR 1 NR 85, CHERIU, BIHOR, 417362, număr telefon mobil: +40741540265, număr fax
+........................., adresă de poștă electronică dnshostess@outlook.com, înregistrată la Registrul Comerțului sub
+numărul: J2018000325050, având CUI: 38848769, pentru a mă reprezenta în relația cu Societatea: Distribuție
+Energie Electrică Romania Sucursala Transilvania Nord.
+În exercitarea prezentei, împuternicitul poate depune și ridica orice documente, poate efectua plăți,
+putând semna în numele și pe seama mea/noastră, semnătura sa fi ndu-mi pe deplin opozabilă, pentru
+formalități privind:
+accesul meu/nostru la rețeaua de distribuție a energiei electrice la nivelul Județului Bihor;
+obținerea avizului de amplasament.
+Semnătură reprezentat,
+PUBLISERV SRL
+semnătura
+(ștampilă societate)
+Semnătură reprezentant (împuternicit),
+DNS HOSTESS SRL
+DRINC EUGEN
+semnătura
+(ștampilă societate)
+(*) câmp obligatoriu de completat; în cazul necompletării fără documente justificative atașate, cererea va fi considerată neconformă.
+re-energy.ro · wattever.re-energy.ro — software specializat proiecte electrice
+
+===== PAGE 21 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+DECLARAȚIE
+Către DEER
+Subsemnatul, PUBLISERV SRL, cu domiciliul/sediul în ION BOGDAN NR 148 ORADEA BIHOR, identificat cu
+CNP/CUI 16306414, declar pe proprie răspundere următoarele:
+Pentru instalarea unui sistem fotovoltaic la ION BOGDAN NR 14B ORADEA BIHOR, ORADEA, jud. Bihor, NU
+accesez programul privind instalarea sistemelor fotovoltaice pentru producerea energiei electrice în vederea
+acoperirii necesarului de consum și livrării surplusului în rețeaua națională, derulat prin Administrația Fondului
+pentru Mediu.
+Data
+06.10.2026
+Nume și prenume,
+PUBLISERV SRL
+semnătura
+
+===== PAGE 22 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+DECLARAȚIA EXECUTANTULUI
+conform art. 54 alin. (1) din Ordinul ANRE nr. 59/2013 · Nr. 19 din 06.10.2026
+DNS HOSTESS SRL, cu sediul în STR 1 NR 85, CHERIU, BIHOR, 417362, înregistrată la Oficiul Național al
+Registrului Comerțului sub nr. J2018000325050, cod unic de înregistrare 38848769, telefon +40741540265, e-
+mail dnshostess@outlook.com, deținătoare a atestatului ANRE 23982, reprezentată prin DRINC EUGEN,
+confirmăm prin prezenta declarație, pentru obiectivul cu cod loc de consum / POD — / 594040200002886219,
+situat în ION BOGDAN NR 14B ORADEA BIHOR, ORADEA, jud. Bihor, având ca beneficiar PUBLISERV SRL, cu
+domiciliul/sediul în ION BOGDAN NR 148 ORADEA BIHOR, următoarele:
+respectarea cerințelor din Avizul Tehnic de Racordare nr. ______________ / ____________ emis de Distribuție
+Energie Electrică România S.A. (DEER) pentru obiectivul mai sus menționat (dacă este cazul);
+realizarea instalaţiei de utilizare în baza proiectului tehnic verificat în condițiile legii, cu respectarea
+normelor tehnice în vigoare la data executării acesteia, inclusiv a prevederilor Normativului pentru
+proiectarea, execuţia şi exploatarea instalaţiilor electrice aferente clădirilor, indicativ I7-2011, aprobat prin
+Ordinul ministrului dezvoltării regionale şi turismului nr. 2.741/2011, şi cu îndeplinirea condiţiilor care
+permit punerea ei sub tensiune.
+Prezenta declarație a fost întocmită pe propria răspundere, cunoscând prevederile art. 326 din Codul Penal privind falsul în declarații.
+Executant,
+DNS HOSTESS SRL
+DRINC EUGEN
+semnătura și ștampila
+re-energy.ro · wattever.re-energy.ro — software specializat proiecte electrice
+
+===== PAGE 23 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+DECLARAȚIA DE CONFORMITATE privind calitatea lucrărilor
+în conformitate cu art. 5 din HGR 1022/2002 · 06.10.2026
+DNS HOSTESS SRL, cu sediul în STR 1 NR 85, CHERIU, BIHOR, 417362, telefon +40741540265, email
+dnshostess@outlook.com, înregistrată la Oficiul Național al Registrului Comerțului sub nr. J2018000325050, cod
+unic de înregistrare 38848769, atestat ANRE 23982, asigurăm, garantăm și declarăm pe propria răspundere,
+conform prevederilor art. 5 din Hotărârea Guvernului nr. 1022/2002 privind regimul produselor și serviciilor
+care pot pune în pericol viața, sănătatea, securitatea muncii și protecția mediului, că produsul/serviciul:
+„INSTALAȚIE DE UTILIZARE CENTRALĂ FOTOVOLTAICĂ", montat la imobilul aparținând PUBLISERV SRL, din
+ION BOGDAN NR 14B ORADEA BIHOR, ORADEA, jud. Bihor, cod loc consum / POD: — / 594040200002886219, la
+care se referă această declarație, nu pune în pericol viața, sănătatea, securitatea muncii, nu produce un impact
+negativ asupra mediului și este în conformitate cu:
+LEGEA nr. 319 din 14 iulie 2006 a securității și sănătății în muncă;
+FT 34/1983 „Executarea și repararea instalațiilor interioare din locuințe";
+Normativul I7/2011 și Ghidul GP 052/2000;
+Ordinul 163/2007, pentru aprobarea „Normelor generale de prevenire și stingere a incendiilor";
+HGR nr. 537/2007, privind stabilirea și sancționarea contravențiilor la normele de prevenire și stingere a
+incendiilor;
+Legea 307/12 iulie 2006 privind apărarea împotriva incendiilor;
+Legea calității în construcții „Legea 10/1995", publicată în Monitorul Oficial nr. 12/1995;
+HGR 1022/2002 privind certificarea de conformitate.
+AGENTUL ECONOMIC DECLARĂ ȘI GARANTEAZĂ că:
+Instalațiile au fost executate în baza proiectului tehnic verificat în condiţiile legii, cu respectarea normelor
+tehnice în vigoare la data executării, inclusiv a prevederilor Normativului I7-2011, aprobat prin Ordinul
+ministrului dezvoltării regionale şi turismului nr. 2.741/2011, şi cu îndeplinirea condiţiilor care permit
+punerea ei sub tensiune;
+Lucrările au fost verificate de responsabilul tehnic cu execuția, atestat în condițiile legii;
+Sunt respectate condițiile de amplasare, distanțele și gabaritele prescrise față de alte instalații, construcții și
+sol;
+Sunt respectate condițiile de protecție împotriva electrocutării conform reglementărilor legale, precum și
+cele indicate de producătorul aparatajului instalat;
+Echipamentele, aparatajul și materialele utilizate sunt noi, de bună calitate și procurate pe cale legală,
+actele și documentația tehnică însoțitoare emisă de furnizor fi nd depuse la dosarul instalației;
+Societatea își asumă răspunderea pentru lucrările ascunse în pământ sau în construcție, acestea fi nd
+realizate conform normativelor aplicabile, cu respectarea cantităților și calității materialelor încorporate;
+Societatea își asumă răspunderea privind respectarea măsurilor de prevenire și stingere a incendiilor
+pentru instalația executată — instalația respectă prevederile Ord. nr. 163/2007;
+Sunt îndeplinite toate condițiile tehnice și de instruire a beneficiarului pentru punerea în funcțiune a
+instalației executate;
+Perioada de garanție a lucrărilor executate este de 24 de luni de la punerea în funcțiune, perioadă în care
+executantul se obligă să remedieze fără plată orice defecțiune datorată nerespectării clauzelor și
+specificațiilor contractuale sau a prevederilor reglementărilor tehnice aplicabile.
+
+===== PAGE 24 =====
+Executant,
+DNS HOSTESS SRL
+DRINC EUGEN
+semnătura și ștampila
+Beneficiar,
+PUBLISERV SRL
+semnătura
+re-energy.ro · wattever.re-energy.ro — software specializat proiecte electrice
+
+===== PAGE 25 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+PROCES-VERBAL DE RECEPȚIE LA TERMINAREA LUCRĂRILOR
+privind lucrarea de realizare a centralei electrice fotovoltaice
+1. Părțile
+Beneficiar (investitor): PUBLISERV SRL, loc de consum ION BOGDAN NR 14B ORADEA BIHOR, ORADEA, jud.
+Bihor, telefon 0741540265, cod identificare loc consum —, POD 594040200002886219
+Executant: DNS HOSTESS SRL, cu sediul în STR 1 NR 85, CHERIU, BIHOR, 417362, CUI 38848769, nr. înreg.
+Registrul Comerțului J2018000325050, e-mail dnshostess@outlook.com, autorizată ANRE conform atestat
+23982, reprezentată prin DRINC EUGEN.
+2. Obiectul recepției — centrala fotovoltaică compusă din:
+Echipament
+Cantitate
+Model / detalii
+Invertor
+1 buc
+SOLIS S6-EH3P(15-20)K-H
+Panouri fotovoltaice
+24 buc
+Aiko 645
+Smart meter
+1 buc
+Astro Eastron SDM 630 CT V2
+Kit panou electric (BMP)
+1 buc
+exterior, IP65 — siguranțe fuzibile / descărcător, întrerupător automat,
+separator modular
+Kit structură montaj + materiale
+electrice mărunte
+1 set
+cabluri, conductori, conectori, copex etc.
+3. Comisia de recepție
+Comisia de recepție și-a desfășurat activitatea la data de 06.10.2026, fi nd formată din: PUBLISERV SRL
+(beneficiar) și DRINC EUGEN (executant). Alte persoane participante: nu este cazul.
+4. Constatările comisiei
+Documentația scrisă și desenată necesară a fi prezentată este prezentă și corespunzătoare.
+Cantitățile de lucrări au fost executate conform complexității instalației electrice fotovoltaice.
+Lucrările cuprinse au fost corespunzătoare și justificate.
+5. Hotărârea comisiei
+Comisia de recepție, în urma constatărilor făcute, propune: ADMITEREA RECEPȚIEI.
+Motivare: execuția instalației s-a realizat conform normelor tehnice în vigoare; calitatea echipamentelor și a
+subansamblelor este garantată pentru o funcționare sigură, la parametrii tehnici nominali, conform
+specificației tehnice a beneficiarului.
+Recomandare: beneficiarul să respecte instrucțiunile de exploatare și întreținere ale echipamentelor și
+componentelor constituente ale sistemului fotovoltaic.
+Executant,
+DNS HOSTESS SRL
+Beneficiar,
+PUBLISERV SRL
+
+===== PAGE 26 =====
+DRINC EUGEN
+semnătura și ștampila
+semnătura
+re-energy.ro · wattever.re-energy.ro — software specializat proiecte electrice
+
+===== PAGE 27 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+ANEXĂ — SERII ECHIPAMENTE
+Echipament
+Serie
+Invertor SOLIS S6-EH3P(15-20)K-H
+24× panou Aiko 645
+Am predat — Executant,
+DNS HOSTESS SRL
+DRINC EUGEN
+semnătura și ștampila
+Am primit — Beneficiar,
+PUBLISERV SRL
+semnătura
+re-energy.ro · wattever.re-energy.ro — software specializat proiecte electrice
+
+===== PAGE 28 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+PROCES-VERBAL DE PUNERE ÎN FUNCȚIUNE FINALĂ
+a sistemului de producere a energiei electrice — Centrala electrică fotovoltaică CEF 15,48 kW
+Denumire beneficiar
+PUBLISERV SRL
+Loc de consum
+ION BOGDAN NR 14B ORADEA BIHOR, ORADEA, jud. Bihor
+POD
+594040200002886219
+Tip cerere AFM
+NU
+Echipamente centrală fotovoltaică
+Model invertor utilizat (acreditat de Operatorul de Distribuție): SOLIS S6-EH3P(15-20)K-H
+Număr + model panouri fotovoltaice: 24 × Aiko 645 × 645 W
+Sistem stocare: NU
+Existența blocului de măsură și utilizare sigilabil, dimensionat conform puterii instalate în centrala
+fotovoltaică, între invertor și tabloul electric al clientului: BMPM/BMPT 40 A, cu întrerupător de sarcină 40 A
+Existența protecției suplimentare privind montarea releului de antiinsularizare la CEF cu P>30 kWp (cf. ORD.
+ANRE 132/2020 art. 1 pct. 6, art. 2a): NU
+I. Date generale
+Denumire instalator: DNS HOSTESS SRL, 38848769, J2018000325050, email: dnshostess@outlook.com, telefon:
++40741540265, contact: DRINC EUGEN, ANRE: 23982
+Comisia de recepție convocată la data de 06.10.2026.
+II. Constatări
+În calitate de instalator autorizat ANRE, atestăm că această lucrare corespunde din punct de vedere tehnic și
+electric, cu respectarea cerințelor din Ordinele ANRE 59/2013, 228/2018, 132/2020, 15/2022, 19/2022, 133/2022,
+4/2023, a condițiilor tehnice în vigoare care permit punerea sub tensiune, inclusiv a celor de protecție a muncii
+și PSI, normelor, prescripțiilor și normativelor în vigoare, respectiv a normativului I7, în vigoare cu actualizările
+aferente, punându-se astfel sub tensiune în perioada de probă finală.
+a) În urma examinării documentației prezentate, a rezultatelor probelor tehnologice și a cercetării pe teren a
+lucrărilor executate s-a constatat: respectarea ORD ANRE 15/2022, ORD ANRE 19/2022, ORD ANRE 133/2022,
+ORD ANRE 132/2020. INSTALAȚIA FOTOVOLTAICĂ POATE FI PUSĂ SUB TENSIUNE de către Operatorul de
+Distribuție / instalatorul sistemului fotovoltaic și respectă normativul I7.
+b) Au fost efectuate probele și s-au verificat condițiile tehnice de racordare la rețelele electrice de interes public
+pentru prosumatorul cu injecție de putere activă în rețea, în conformitate cu Ordinul ANRE nr. 228/2018 cu
+modificările și completările ulterioare, și s-au constatat următoarele:
+reconectarea instalațiilor de producere la rețeaua electrică s-a realizat după un interval de 15 minute de la reapariția tensiunii
+în rețea;
+s-a verificat nefuncționarea centralei în regim insularizat, prin dotarea cu protecții care întrerup injecția puterii active în rețea
+la apariția unui asemenea regim;
+s-a realizat protecția instalației de producere, a invertoarelor componente și a instalațiilor auxiliare, împotriva defectelor din
+instalațiile proprii sau împotriva impactului rețelei electrice asupra acestora;
+prosumatorul asigură în punctul de racordare/delimitare calitatea energiei electrice în conformitate cu standardele în vigoare;
+se respectă Standardul de Performanță privind evacuarea surplusului de energie electrică în rețeaua electrică de JT/MT
+aferentă Operatorului de Distribuție;
+
+===== PAGE 29 =====
+se respectă ORD. ANRE 15/2022, actualizat prin ORD. ANRE 19/2022, privind montarea unui bloc de măsură și protecție
+sigilabil în instalația de utilizare, dimensionat conform puterii instalate, racordat între invertorul fotovoltaic și tabloul electric
+general al beneficiarului;
+se respectă ORD. ANRE 132/2020 privind implementarea reglajelor de interfață asupra invertorului, astfel încât la debitarea
+surplusului nivelul tensiunii în punctul de delimitare se încadrează în Standardul de Performanță.
+În conformitate cu cele menționate anterior, declarăm pe propria răspundere faptul că Operatorul de
+Distribuție poate instala în cadrul blocului de măsură și protecție montat în instalația de utilizare contorul de
+energie electrică ce va înregistra cantitatea de energie electrică produsă de centrala fotovoltaică (cf. art. 45 alin.
+1 lit. a1 din Legea nr. 123/2012).
+c) Alte constatări: prosumatorul are obligația să exploateze și să întrețină instalațiile proprii în conformitate cu
+prescripțiile în vigoare, fi nd răspunzător de orice modificare neautorizată ulterioară adusă instalației de
+producere fără înștiințarea Operatorului de Distribuție Regional.
+III. Concluzii
+1. Pe baza constatărilor și concluziilor consemnate mai sus, comisia de recepție hotărăște: ADMITE PUNEREA
+ÎN FUNCȚIUNE A CENTRALEI FOTOVOLTAICE.
+2. Modificarea sistemului fotovoltaic, a protecțiilor și reglajelor de interfață, în mod diferit față de ORD. ANRE
+132/2020, înainte, în cadrul perioadei de probă sau după punerea în funcțiune finală, îi permite Operatorului
+de Distribuție deconectarea sistemului fotovoltaic de la rețea până la remedierea neconformităților.
+3. Beneficiarul se angajează să informeze Operatorul de Distribuție pentru orice modificare survenită în
+instalația de utilizare a grupului generator, după punerea în funcțiune a acestuia în perioada de probă / după
+emiterea Certificatului de Racordare tip Prosumator.
+4. Prezentul proces-verbal a fost încheiat azi 06.10.2026, în două exemplare originale.
+5. Cunoscând prevederile art. 326 din Codul Penal cu privire la falsul în declarații, declarăm (atât beneficiarul,
+cât și instalatorul sistemului fotovoltaic) pe propria răspundere faptul că documentele depuse la Dosarul de
+Prosumator corespund realității, iar cele prezentate în format electronic sunt conforme cu originalul.
+NOTĂ: după emiterea Certificatului de Racordare tip Prosumator, beneficiarul se angajează să informeze furnizorul de energie electrică în vederea
+întocmirii Contractului de Furnizare tip Prosumator.
+Instalator/Executant,
+DNS HOSTESS SRL
+DRINC EUGEN
+semnătura și ștampila
+Beneficiar,
+PUBLISERV SRL
+semnătura
+Observații OD: ________________________________________________________________
+
+===== PAGE 30 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+BULETIN DE VERIFICARE ȘI MĂSURARE INSTALAȚII DE LEGARE LA PĂMÂNT
+NR. 134 din 06.10.2026
+Client: PUBLISERV SRL · Adresa: ION BOGDAN NR 14B ORADEA BIHOR, ORADEA, jud. Bihor
+Obiectivul: VERIFICARE PRIZĂ DE PĂMÂNT — LOCUINȚĂ · Data verificărilor/măsurătorilor: 06.10.2026
+Verificarea/măsurarea instalațiilor de legare la pământ
+p.p. nr. 1
+Starea solului
+umiditate medie
+Valoarea coeficientului Ѱ (funcție de starea solului: 1,5 / 1,3 / 1,1)
+1.30
+Valoarea rezistenței de dispersie măsurată (Ω)
+2.89
+Valoarea rezistenței de dispersie calculată în funcție de starea solului (Ω)
+3.76
+Concluzii — corespunde (da/nu)
+DA
+Aparat de măsură folosit: Multifuncțional TA862A · seria 2403001764 · buletin metrologic valabil până la
+12.12.2028
+Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la 06.10.2027.
+Verificat,
+DNS HOSTESS SRL
+DRINC EUGEN
+semnătura și ștampila
+Beneficiar,
+PUBLISERV SRL
+semnătura
+re-energy.ro · wattever.re-energy.ro — software specializat proiecte electrice
+
+===== PAGE 31 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+BULETIN REGLAJ
+Denumire beneficiar: PUBLISERV SRL
+Loc de consum centrală fotovoltaică: ION BOGDAN NR 14B ORADEA BIHOR, ORADEA, jud. Bihor
+CEF: 15,48 kW · POD: 594040200002886219
+Noi, firma DNS HOSTESS SRL, cu sediul în STR 1 NR 85, CHERIU, BIHOR, 417362, declarăm că invertorul:
+Model invertor utilizat: SOLIS S6-EH3P(15-20)K-H · Putere: 20.00 kW
+a fost programat conform valorilor de protecție prezentate mai jos în tabelul reglajelor, cu funcțiile de protecție
+active și implementate în unitatea de producție fotovoltaică executată la adresa mai sus menționată, conform
+Ordinului ANRE nr. 132/2020.
+PROTECȚIE
+Valoare setată
+Timp (sec)
+Funcția protecție tensiune maximală treapta I
+1,15 Un
+0,5
+Funcția protecție tensiune minimală treapta II
+0,85 Un
+3,2
+Funcția de protecție de frecvență treapta I
+52 Hz
+0,5
+Funcția de protecție de frecvență treapta II
+47,5 Hz
+0,5
+Funcția de protecție maximă de tensiune (valoare mediată la 10 minute)
+253 V
+603
+Pornire inițială și repornire invertor după întrerupere tensiune RED
+—
+900
+Funcție HVRT
+264,5 V
+Activată
+Funcție LVRT
+184,5 V
+Activată
+Statism la variația frecvenței
+5 %
+—
+Subsemnatul PUBLISERV SRL, în calitate de beneficiar, mă oblig să nu modific setările de protecție mai sus
+menționate și să nu permit accesul persoanelor neautorizate în instalația CEF executată, în scopul modificării
+parametrilor de funcționare implementați în invertor la punerea în funcțiune.
+Instalator,
+DNS HOSTESS SRL
+DRINC EUGEN
+semnătura și ștampila
+Beneficiar,
+PUBLISERV SRL
+semnătura
+Data: 06.10.2026
+re-energy.ro · wattever.re-energy.ro — software specializat proiecte electrice
+
+===== PAGE 32 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+DECLARAȚIE AUTENTICITATE DATE ŞI CONFORMITATE CU ORIGINALUL
+pentru locul de consum situat în ION BOGDAN NR 14B ORADEA BIHOR, ORADEA, jud. Bihor
+Subsemnatul PUBLISERV SRL, domiciliat în ION BOGDAN NR 148 ORADEA BIHOR, CNP/CUI: 16306414, confirm
+autenticitatea datelor cuprinse în cererea de racordare pentru locul de consum arătat mai sus şi declar pe
+propria răspundere că documentele anexate sunt conforme cu originalul.
+Nr.
+crt.
+Documente anexate cererii
+1
+Anexa 2 — Notificare (Ord. ANRE 19/2022)
+2
+Schemă monofilară
+3
+Declarație accesare fonduri (AFM)
+4
+Buletin reglaj
+5
+Buletin de verificare și măsurare priză de pământ
+6
+Proces-verbal de punere în funcțiune
+7
+Proces-verbal de recepție la terminarea lucrărilor
+8
+Declarația executantului (Ord. ANRE 59/2013)
+9
+Declarație de conformitate (HGR 1022/2002)
+10
+Împuternicire
+11
+Factură furnizor de energie
+12
+Certificat de înregistrare
+13
+Extras de carte funciară
+14
+Fișă tehnică invertor — SOLIS S6-EH3P(15-20)K-H
+15
+Declarație de conformitate invertor — SOLIS S6-EH3P(15-20)K-H
+16
+Fișă tehnică panou — Aiko 645
+17
+Declarație de conformitate panou — Aiko 645
+Data
+06.10.2026
+Beneficiar,
+PUBLISERV SRL
+semnătura
+re-energy.ro · wattever.re-energy.ro — software specializat proiecte electrice
+
+===== PAGE 33 =====
+DNS HOSTESS SRL
+I N S T A L A Ț I I F O T O V O L T A I C E
+SCHEMĂ MONOFILARĂ
+CEF 15,48 kWp · trifazat multi-fir (3L+N) · SOLIS S6-EH3P(15-20)K-H hibrid · TEG din REȚEA (fără back-up)
+GRID · FĂRĂ BATERIE
+AC REȚEA
+BACK-UP · TEG
+DC FOTOVOLTAIC
+BATERIE
+COMUNICAȚII
+mono = 2 fire · trifazat = 4 fire
+1 BMP · TEG pe rețea = semnătura GRID
+SPD = șunt spre pământ — nu întrerupe conductorul
+FUNCȚII DE PROTECȚIE INTERFAȚĂ (ORDIN ANRE 228/2018)
+Parametru
+Prag
+t (s)
+Protecție maximală de tensiune de fază — Tr. 1
+1,15 Un · 264,5 V
+0,5
+Protecție maximală de tensiune de fază — Tr. 2 (10 min)
+1,10 Un · 253 V
+603
+Protecție minimală de tensiune de fază
+0,85 Un · 195,5 V
+3,2
+Protecție maximală de frecvență
+52 Hz
+0,5
+Protecție minimală de frecvență
+47,5 Hz
+0,5
+Reconectare după reapariția tensiunii în rețeaua OD
+—
+900
+Funcție HVRT
+264,5 V
+0,1
+Funcție LVRT
+184,5 V
+0,1
+Statism la variația frecvenței
+5 %
+—
+Funcția de protecție anti-insularizare
+activată
+—
+CARTUȘ PLANȘĂ
+Denumire planșă
+CEF 15,48 kWp — Schemă monofilară
+Nr. proiect / planșă
+19 · E-19 · rev. 1
+Prestator
+DNS HOSTESS SRL
+Beneficiar
+PUBLISERV SRL
+Adresă CEF
+ION BOGDAN NR 14B ORADEA BIHOR,
+ORADEA, jud. Bihor
+Proiectat
+DRINC EUGEN
+Desenat
+DRINC EUGEN
+Verificator
+STOITA MARCEL
+Data
+06.10.2026
+POD
+594040200002886219
+Alimentare TEG
+Rețea (fără back-up)
+generat cu R E - E N E R G Y
+— re-energy.ro · wattever.re-energy.ro · software specializat proiecte electrice
+A
+A
+B
+B
+C
+C
+D
+D
+E
+E
+F
+F
+G
+G
+1
+1
+2
+2
+3
+3
+4
+4
+E-19 · rev. 1 · DNS HOSTESS SRL
+L1
+L1
+L2
+L2
+L3
+L3
+N
+N
+Rețea de distribuție
+3×400/230 V · 50 Hz
+—
+kWh
+CONTOR 3P
+BMP EXISTENT · branșament —
+Disjunctor general
+4P · —
+SPD AC · 4P · Tip 2
+Up 1,5 kV
+siguranțe separatoare
+kWh
+SMART METER
+ASTRO EASTRON SDM 630 CT V2
+40 A
+BMP
+cutie măsură + protecție
+RVK 5x10 mm² Cu
+doar conductor
+alimentare TEG din rețea (fără back-up)
+TABLOU ELECTRIC GENERAL
+consumatorii casei
+L1
+L2
+L3
+N
+PE
+priză de pământ · Rd ≤ 4 Ω
+General · 4P 32A 4P dif. 30 mA
+Id 30 mA
+Iluminat · C10 1P+N 30mA
+Prize 1 · C16 1P+N 30mA
+Prize 2 · C16 1P+N 30mA
+Forță (cuptor/plită) · C20 1P+N 30mA
+NOTE DE EXECUȚIE
+1. SPD-urile se montează în derivație (șunt) —
+nu întrerup conductorul activ.
+2. Contorul de producție are siguranțe separatoare
+în amonte; BMP → invertor: doar conductor.
+3. Instalația NU are back-up — la pană invertorul
+se deconectează (anti-insularizare).
+4. Carcasa invertorului și ramele modulelor se
+leagă la priza de pământ · Rd ≤ 4 Ω, PRAM.
+5. Contorul de branșament rămâne resigilabil;
+BMP-ul existent nu se modifică.
+SPD CC · SPD 2P · 600 V
+···
+STRING 1 — 12 module în serie
+SPD CC · SPD 2P · 600 V
+···
+STRING 2 — 12 module în serie
+separator DC · 2× fuzibil 16 A
+cablu solar H1Z2Z2-K 6 mm²
+Aiko 645
+Voc 48,03 V · Isc 15,83 A · 645 Wp
+24 module · 2 stringuri (12+12) · 15,48 kWp
+rame module legate la PE · Rd ≤ 4 Ω
+cablu solar H1Z2Z2-K 6 mm²
+RS485 · smart meter ↔ invertor
+SOLIS
+S6-EH3P(15-20)K-H
+hibrid trifazat · 20 kW
+AC GRID
+PV1
+PV2
+PE
+
+===== PAGE 42 =====
+Nr. înregistrare OD …………………………………/…………………………………
+aferent cererii de punere sub tensiune nr. …………………………………
+POD 594040200002886219
+PROCES VERBAL
+de efectuare a testelor și verificărilor de punere în funcțiune a instalației de utilizare și producere
+situată în ION BOGDAN NR 14B ORADEA BIHOR, ORADEA, jud. Bihor
+încheiat azi 06.10.2026 cu ocazia efectuării testelor și verificărilor de punere în funcțiune a instalației de
+utilizare/producere 15,48 kW
+Datele tehnice ale instalației de producere:
+1. Seria invertorului: …………………………………
+tipul invertorului: SOLIS S6-EH3P(15-20)K-H
+2. Montajul CEF 15,48 kW este în conformitate cu ATR …………………………………
+3. Tipul / seria contorului montat de prosumator pe partea de producere este …………………………………
+4. Sistemul [ Nu ] are sistem de stocare
+În perioada ………………………………… — ………………………………… au fost efectuate testele și s-au verificat
+condițiile tehnice de racordare la RED pentru prosumatorul cu injecție de putere activă în rețea, în
+conformitate cu Ord. ANRE 228/2018 cu modificările și completările ulterioare.
+S-au constatat următoarele:
+1. Reconectarea instalațiilor de producere a energiei electrice aparținând prosumatorului, la rețeaua
+electrică s-a realizat după 15 minute de la reapariția tensiunii în rețea;
+2. S-a verificat nefuncționarea centralei în regim insularizat, aceasta realizându-se prin dotarea cu
+protecții/protecții integrate a echipamentului care să întrerupă injecția puterii active în rețea a
+prosumatorului la apariția unui asemenea regim;
+3. S-a realizat protecția instalației de producere a energiei electrice, a invertorului/invertoarelor
+componente și a instalațiilor auxiliare, (după caz a sistemului de stocare a energiei) și a instalației
+electrice aferente locului de consum împotriva defectelor din instalațiile proprii și împotriva impactului
+rețelei electrice asupra acestora, la acționarea protecțiilor de declanșare a prosumatorului ori la
+incidente în rețea (supratensiuni tranzitorii, acționări ale protecțiilor în rețea, scurtcircuite cu și fără
+punere la pământ), cât și în cazul apariției unor condiții tehnice excepționale/anormale de funcționare;
+4. Prosumatorul cu injecție de putere activă în rețea asigură în punctul de racordare/delimitare (după
+caz), calitatea energiei electrice în conformitate cu standardele în vigoare.
+Subsemnatul DRINC EUGEN, reprezentant al firmei executante DNS HOSTESS SRL (atestat ANRE 23982,
+cu valabilitate până la 12.12.2030), declar că instalația de producere a fost realizată cu respectarea
+normativelor, reglementărilor, prescripțiilor și legislației în vigoare și se poate pune în funcțiune.
+Atât Executantul cât și Prosumatorul au obligația ca, până la încheierea contractului de
+vânzare-cumpărare între Prosumator și Furnizorul de energie electrică, SĂ NU INJECTEZE
+ENERGIE ELECTRICĂ în rețeaua operatorului de distribuție. De asemenea, Prosumatorul și
+Executantul (cu drepturi de parametrizare a invertorului) își asumă responsabilitatea pentru
+menținerea în funcțiune a tuturor protecțiilor, respectiv menținerea parametrilor testați
+aferenți unității de producție (inclusiv a invertorului).
+
+===== PAGE 43 =====
+Prosumator,
+PUBLISERV SRL
+semnătura
+Reprezentant firmă executantă
+care a verificat și efectuat testele,
+DRINC EUGEN
+semnătura și ștampila
+Observații OD privind instalația de utilizare de la locul de consum și producere
+OD a sigilat: [  ] contorul pe partea de producere, din instalația prosumatorului
+[  ] contorul pe sistemul de stocare
+[  ] contorul în punctul de delimitare
+Observații (dacă este cazul)
+………………………………………………………………………………………………………
+………………………………………………………………………………………………………
+Data …………………………………
+Reprezentant OD,
+…………………………………
+
+===== PAGE 44 =====
+DNS HOSTESS SRL
+38848769 · J2018000325050
+Atestat ANRE 23982
++40741540265
+dnshostess@outlook.com
+STR 1 NR 85, CHERIU, BIHOR, 417362
+Teste și Verificări
+aferente Normei Tehnice „Condiții tehnice de racordare la rețelele electrice de interes public pentru
+prosumatorii cu injecție de putere activă în rețea" — Ordin ANRE nr. 228/2018 cu modificările și
+completările ulterioare —
+anexă la procesul verbal de efectuare a probelor de punere în funcțiune a instalației de utilizare și
+producere — de categorie A — (PGM)
+Tip Test
+Categoria A
+Corespunde
+DA/NU
+Observații*
+Răspunsul la variațiile de
+frecvență — f > 50,2 Hz (RFA-CR)
+Certificat de tip/rezultate teste efectuate de
+laboratoare recunoscute
+DA
+Răspunsul la variațiile de
+frecvență — f < 49,8 Hz (RFA-SC)
+Certificat de tip/rezultate teste efectuate de
+laboratoare recunoscute
+DA
+Răspunsul la variațiile de
+frecvență — f ∈ (49,8–50,2) Hz
+Certificat de tip/rezultate teste efectuate de
+laboratoare recunoscute
+DA
+Funcționarea în domeniul de
+frecvență (47,5–51,5 Hz)
+Certificat de tip/rezultate teste efectuate de
+laboratoare recunoscute
+DA
+ROCOF — 2 Hz/s, fereastră de
+timp 500 ms
+Certificat de tip/rezultate teste efectuate de
+laboratoare recunoscute
+DA
+ROCOF — 1,5 Hz/s, fereastră de
+timp 1 s
+Certificat de tip/rezultate teste efectuate de
+laboratoare recunoscute
+DA
+ROCOF — 1,25 Hz/s, fereastră de
+timp 2 s
+Certificat de tip/rezultate teste efectuate de
+laboratoare recunoscute
+DA
+Reconectarea automată la
+revenirea parametrilor (frecvență
+și tensiune)
+Certificat de tip/rezultate teste efectuate de
+laboratoare recunoscute · Teste: după
+deconectarea prin protecții
+DA
+LVRT (FRT)
+Certificat de tip/rezultate teste efectuate de
+laboratoare recunoscute (opțional)
+DA
+Schimb de date între unitatea
+generatoare și EMS/DMS-SCADA
+Dacă e cazul
+NU
+* Acolo unde se fac teste se vor trece valorile obținute.
+Certificatul de echipament conține: domeniul de frecvență — durate, valoare frecvență; se verifică și
+protecțiile.
+Domeniul de frecvență
+Durata de funcționare
+Există (DA/NU)
+Observații
+47,5–48,5 Hz
+Minimum 30 de minute
+Da
+—
+48,5–49 Hz
+Minimum 30 de minute
+Da
+—
+49–51 Hz
+Nelimitat
+Da
+—
+
+===== PAGE 45 =====
+51,0–51,5 Hz
+30 de minute
+Da
+—
+Există
+(DA/NU)
+Observații
+ROCOF — declarație producător
+Da
+—
+Răspuns la variațiile de frecvență 50,2–51,5 Hz (statism, valoare de pornire 50,2 Hz)
+Da
+—
+Scăderea Pmax la scăderea frecvenței sub 49 Hz
+Da
+—
+Reconectare după defect (condiții, durată). Se acceptă în domeniul 47,5–50,2 Hz. Se
+testează la PIF
+Da
+—
+Domeniul de tensiune
+Da
+—
+Valorile setate protecții pentru tensiune și frecvență
+Da
+—
+Capabilitatea de trecere peste defect (diagrama LVRT), dacă este cazul
+Da
+—
+Notă
+Prezenta se anexează la Procesul Verbal nr. — din data de 06.10.2026 de efectuare a probelor de
+punere în funcțiune a instalației de utilizare și producere situată în ION BOGDAN NR 14B ORADEA
+BIHOR, ORADEA, jud. Bihor.
+Acolo unde verificarea conformității se bazează pe certificatele de echipamente ale unității generatoare,
+se vor anexa și acestea.
+Prosumator,
+PUBLISERV SRL
+semnătura
+Reprezentant firmă executantă
+care a verificat și efectuat testele,
+DRINC EUGEN
+semnătura și ștampila
+re-energy.ro · wattever.re-energy.ro — software specializat proiecte electrice

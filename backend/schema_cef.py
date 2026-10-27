@@ -171,9 +171,9 @@ def story(ctx, P, table, S):
     rec = ctx.r
     res = C.check(rec.get("cef") or {})
     t = res["totals"]
-    out = [Paragraph(f"<b>{ctx.company}</b> · Atestat ANRE nr. {ctx.attest}", S["small"]), Spacer(1, 3),
-           Paragraph(f"SCHEMA MONOFILARĂ — CEF {t['kwp']:g} kWp / {t['inverters_kw']:g} kW · {ctx.name}, {ctx.addr}", S["h"]),
-           Spacer(1, 4), CefDrawing(rec, res)]
+    out = [Paragraph(f"<b>{ctx.company}</b> · Atestat ANRE nr. {ctx.e('anre_attest')}", S["small"]), Spacer(1, 3),
+           Paragraph(f"SCHEMĂ MONOFILARĂ — CEF {t['kwp']:g} kWp / {t['inverters_kw']:g} kW · {ctx.name}, {ctx.loc}", S["h"]),
+           Spacer(1, 4), CefDrawing(dict(rec, operator=ctx.raw('operator'), pod=ctx.raw('pod'), grounding_ohm=ctx.raw('grounding_ohm')), res)]
     rows = [["INV", "Model", "Pn/Pmax/Limit (kW)", "Stringuri (panouri)", "Voc rece max / Udc max", "Isc MPPT max / Imax", "Cablu AC / Q", "Cablu DC / SPD DC", "Stocare"]]
     for i, inv in enumerate(rec.get("cef", {}).get("inverters") or []):
         r = res["inverters"][i]
@@ -194,7 +194,15 @@ def story(ctx, P, table, S):
     for w in res["warnings"]:
         tbl.append(P(f"<font color='#b9770e'><b>ATENȚIE:</b> {w}</font>"))
     tbl.append(P(res["note"], "small"))
-    tbl.append(table([["Proiectat", "Verificat", "Beneficiar", "Data", "Planșa"],
-                      [rec.get("designer") or ctx.rep, rec.get("verifier") or "", ctx.name, ctx.date, "E-01 · rev. 0"]],
-                     [60 * mm, 60 * mm, 60 * mm, 40 * mm, 46 * mm]))
+    from docgen import REGLAJ
+    rg = rec.get("reglaj") or {}
+    tbl.append(P("FUNCȚII DE PROTECȚIE INTERFAȚĂ (ORDIN ANRE 228/2018)", "b"))
+    tbl.append(table([["Parametru", "Prag", "t (s)"]] + [[lbl, str((rg.get(k) or {}).get("val") or ""), str((rg.get(k) or {}).get("t") or "")] for k, lbl in REGLAJ],
+                     [150 * mm, 70 * mm, 53 * mm]))
+    tbl.append(P("CARTUȘ PLANȘĂ", "b"))
+    tbl.append(table([["Denumire planșă", "Nr. proiect / planșă", "Prestator", "Beneficiar", "Adresă CEF", "POD"],
+                      [f"CEF {t['kwp']:g} kWp — Schemă monofilară", ctx.v("project_no"), ctx.company, ctx.name, ctx.loc, ctx.v("pod")],
+                      ["Proiectat", "Desenat", "Verificator", "Data", "Alimentare TEG", ""],
+                      [ctx.v("designer", ctx.rep), ctx.v("drawn_by", ctx.rep), ctx.e("verifier"), ctx.date, ctx.v("teg_supply"), ""]],
+                     [50 * mm, 40 * mm, 40 * mm, 45 * mm, 60 * mm, 38 * mm]))
     return out, tbl

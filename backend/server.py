@@ -153,7 +153,7 @@ async def logout(user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 # ---------------- Generic module CRUD ----------------
-MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "works", "projects", "documents", "catalog"]
+MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "works", "projects", "documents", "catalog", "staff", "instruments"]
 
 def clean(doc: dict) -> dict:
     doc.pop("_id", None)
@@ -163,6 +163,7 @@ def clean(doc: dict) -> dict:
 async def list_items(module: str, q: Optional[str] = None, user: dict = Depends(get_current_user)):
     if module not in MODULES:
         raise HTTPException(status_code=404, detail="Modul inexistent")
+    guard(module, user)
     query = {"owner": user["id"]}
     if module == "catalog":
         await seed_catalog(user["id"])
@@ -183,7 +184,10 @@ async def create_item(module: str, request: Request, user: dict = Depends(get_cu
     data["owner"] = user["id"]
     data["created_at"] = datetime.now(timezone.utc).isoformat()
     data["updated_at"] = data["created_at"]
+    guard(module, user)
+    data["created_by"] = user.get("email")
     await db[module].insert_one(dict(data))
+    await audit(user, "creare", module, data["id"], list(data.keys()))
     return clean(data)
 
 @api_router.get("/data/{module}/{item_id}")
@@ -204,9 +208,15 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     if module == "prosumator":
         data = derive_cef(data)
+        data.pop("opis", None); data.pop("snapshot", None); data.pop("snapshot_history", None)
+        if data.get("client_name"):
+            c = await db.clients.find_one({"owner": user["id"], "name": data["client_name"]}, {"id": 1})
+            if c:
+                data["client_id"] = c["id"]
     res = await db[module].update_one({"id": item_id, "owner": user["id"]}, {"$set": data})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă")
+    await audit(user, "modificare", module, item_id, list(data.keys()))
     doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
     return clean(doc)
 
@@ -214,7 +224,9 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
 async def delete_item(module: str, item_id: str, user: dict = Depends(get_current_user)):
     if module not in MODULES:
         raise HTTPException(status_code=404, detail="Modul inexistent")
+    guard(module, user)
     await db[module].delete_one({"id": item_id, "owner": user["id"]})
+    await audit(user, "ștergere", module, item_id, [])
     if module == "prosumator":
         for m in ("works", "mono", "equipment"):
             await db[m].delete_many({"owner": user["id"], "pros_ref": item_id})
@@ -233,6 +245,26 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
             "recent": [clean(r) for r in recent]}
 
 # ---------------- Settings (singleton per owner) ----------------
+PRIVATE = ("staff", "instruments")
+
+def guard(module: str, user: dict):
+    if module in PRIVATE and user.get("role", "admin") not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Acces restricționat la documentele personalului")
+
+async def audit(user: dict, action: str, module: str, item_id: str, fields: list):
+    await db.audit.insert_one({"owner": user["id"], "user": user.get("email"), "action": action, "module": module, "item_id": item_id,
+                               "fields": [f for f in fields if f not in ("updated_at", "owner", "id", "created_at")][:40],
+                               "at": datetime.now(timezone.utc).isoformat()})
+
+@api_router.get("/audit")
+async def audit_log(module: Optional[str] = None, item_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {"owner": user["id"]}
+    if module:
+        q["module"] = module
+    if item_id:
+        q["item_id"] = item_id
+    return await db.audit.find(q, {"_id": 0}).sort("at", -1).to_list(300)
+
 @api_router.get("/settings")
 async def get_settings(user: dict = Depends(get_current_user)):
     doc = await db.settings.find_one({"owner": user["id"]})
@@ -246,6 +278,7 @@ async def save_settings(request: Request, user: dict = Depends(get_current_user)
     data.pop("_id", None)
     data["owner"] = user["id"]
     await db.settings.update_one({"owner": user["id"]}, {"$set": data}, upsert=True)
+    await audit(user, "modificare", "settings", user["id"], list(data.keys()))
     doc = await db.settings.find_one({"owner": user["id"]})
     return clean(doc)
 
@@ -326,9 +359,13 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     if d.get("pod") and await db.prosumator.find_one({"owner": user["id"], "client_name": name, "pod": d["pod"]}):
         raise HTTPException(status_code=409, detail="Există deja un dosar pentru acest client și acest POD")
     if not client:
-        client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""),
-                             "email": d.get("email", ""), "address": d.get("address", "")})
+        client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""), "email": d.get("email", ""),
+                             "address": d.get("address", ""), "hq_address": d.get("hq_address", ""), "county": d.get("county", ""),
+                             "pod": d.get("pod", ""), "operator": d.get("operator", ""), "cadastral_nr": d.get("cadastral_nr", ""),
+                             "cf_nr": d.get("cf_nr", ""), "supplier": d.get("supplier", ""), "rep_name": d.get("rep_name", ""),
+                             "regcom": d.get("regcom", ""), "kind": d.get("kind", "")})
         await db.clients.insert_one(dict(client))
+    d["client_id"] = client["id"]
     if not d.get("number"):
         year = datetime.now().year
         nums = [int(x["number"].split("-")[-1]) for x in await db.prosumator.find(
@@ -385,7 +422,7 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    client = await db.clients.find_one({"owner": user["id"], "name": rec.get("client_name")}, {"_id": 0}) or {}
+    client = await get_client(user["id"], rec)
     pdf = docgen.render(keys, rec, settings, client)
     if attach:
         pdf = merge_pdfs(pdf, await catalog_files(user["id"], rec))
@@ -477,6 +514,158 @@ def merge_pdfs(base: bytes, extra: list) -> bytes:
     out = io.BytesIO()
     w.write(out)
     return out.getvalue()
+
+# ---------------- Dossier opis (model PUBLISERV) ----------------
+import opis as OPIS
+
+async def get_client(owner: str, rec: dict) -> dict:
+    c = None
+    if rec.get("client_id"):
+        c = await db.clients.find_one({"owner": owner, "id": rec["client_id"]}, {"_id": 0})
+    if not c and rec.get("client_name"):
+        c = await db.clients.find_one({"owner": owner, "name": rec["client_name"]}, {"_id": 0})
+    return c or {}
+
+async def dossier_ctx(owner: str, item_id: str):
+    rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    client = await get_client(owner, rec)
+    base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
+    settings, warns = await effective_settings(owner, rec, base)
+    info = await OPIS.build_positions(db, owner, rec, client, settings)
+    info["signer_warnings"] = warns
+    info["finalized"] = rec.get("snapshot", {}).get("at") if rec.get("snapshot") else None
+    return rec, client, settings, info
+
+def doc_status(expires: str, has_file: bool) -> str:
+    if not has_file:
+        return "lipsă"
+    if not expires:
+        return "valabil"
+    today = datetime.now(timezone.utc).date().isoformat()
+    soon = (datetime.now(timezone.utc).date() + timedelta(days=30)).isoformat()
+    return "expirat" if expires < today else ("aproape de expirare" if expires <= soon else "valabil")
+
+def staff_eligible(p: dict) -> bool:
+    return any(doc_status(a.get("expires", ""), bool(a.get("file"))) in ("valabil", "aproape de expirare") and a.get("verified")
+               for a in p.get("auths") or [])
+
+SIGN_ROLES = {"executant": "Reprezentant executant", "resp_tehnic": "Responsabil tehnic cu execuția", "electrician": "Electrician autorizat / inginer",
+              "verifier": "Verificator schemă", "measurer": "Verificator măsurători (buletin priză)", "designer": "Proiectant schemă"}
+
+async def effective_settings(owner: str, rec: dict, base: dict):
+    if rec.get("snapshot"):
+        return {**base, **rec["snapshot"]["settings"]}, []
+    s, warns = dict(base), []
+    sg = rec.get("signers") or {}
+    for role, label in SIGN_ROLES.items():
+        sid = sg.get(role)
+        if not sid:
+            continue
+        p = await db.staff.find_one({"owner": owner, "id": sid}, {"_id": 0})
+        if not p:
+            warns.append(f"{label}: persoana selectată nu mai există."); continue
+        if not staff_eligible(p):
+            warns.append(f"{label}: {p.get('name')} nu are o autorizație valabilă și verificată — nu este completat în documente.")
+            if role == "executant":
+                s["rep"] = ""
+            continue
+        key = {"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]
+        s[key] = p.get("name")
+        auth = next((a for a in p.get("auths") or [] if a.get("verified")), {})
+        s[key + "_auth"] = f"{auth.get('type', '')} nr. {auth.get('number', '')}".strip()
+    iid = rec.get("instrument_id")
+    if iid:
+        i = await db.instruments.find_one({"owner": owner, "id": iid}, {"_id": 0})
+        st = doc_status((i or {}).get("expires", ""), bool((i or {}).get("file")))
+        if not i or st in ("expirat", "lipsă"):
+            warns.append("Aparat de măsură: certificat " + ("expirat" if st == "expirat" else "lipsă") + " — datele aparatului nu sunt completate.")
+            s["meter_device"] = s["meter_serial"] = s["meter_valid"] = ""
+        else:
+            s["meter_device"], s["meter_serial"], s["meter_valid"] = i.get("maker_model"), i.get("serial"), i.get("expires")
+    if base.get("anre_valid") and doc_status(base["anre_valid"], True) == "expirat":
+        warns.append("Atestatul ANRE al firmei este expirat.")
+    return s, warns
+
+@api_router.post("/dossier/{item_id}/finalize")
+async def dossier_finalize(item_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    s, _ = await effective_settings(user["id"], {**rec, "snapshot": None}, base)
+    snap = {"settings": {k: v for k, v in s.items() if k not in ("owner", "_id")}, "signers": rec.get("signers") or {},
+            "at": datetime.now(timezone.utc).isoformat(), "by": user.get("email")}
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"snapshot": snap}, "$push": {"snapshot_history": snap}})
+    await audit(user, "finalizare", "prosumator", item_id, ["snapshot"])
+    return {"ok": True, "at": snap["at"]}
+
+@api_router.post("/dossier/{item_id}/reopen")
+async def dossier_reopen(item_id: str, user: dict = Depends(get_current_user)):
+    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"snapshot": ""}})
+    await audit(user, "redeschidere", "prosumator", item_id, ["snapshot"])
+    return {"ok": True}
+
+@api_router.get("/dossier/{item_id}")
+async def dossier_info(item_id: str, user: dict = Depends(get_current_user)):
+    rec, client, _, info = await dossier_ctx(user["id"], item_id)
+    return {**info, "client_id": client.get("id"), "client_kind": client.get("kind"), "statuses": OPIS.STATUSES}
+
+@api_router.put("/dossier/{item_id}/item/{key}")
+async def dossier_item(item_id: str, key: str, request: Request, user: dict = Depends(get_current_user)):
+    body = await request.json()
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0, "opis": 1})
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    cur = (rec.get("opis") or {}).get(key) or {}
+    if "status" in body:
+        if body["status"] and body["status"] not in OPIS.STATUSES:
+            raise HTTPException(status_code=400, detail="Stadiu invalid")
+        cur["status"] = body["status"] or None
+    if body.get("upload"):
+        cur["upload"] = body["upload"]
+    if body.get("clear_upload"):
+        cur.pop("upload", None)
+    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {f"opis.{key}": cur, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    await audit(user, "opis", "prosumator", item_id, [key] + list(body.keys()))
+    return {"ok": True}
+
+@api_router.get("/dossier/{item_id}/file/{key}")
+async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int = 0, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, settings, info = await dossier_ctx(user["id"], item_id)
+    p = next((x for x in info["positions"] if x["key"] == key), None)
+    if key == "opis":
+        p = {"source": "generat", "docs": ["declaratie_autenticitate"], "key": "opis"}
+    if not p:
+        raise HTTPException(status_code=404, detail="Poziție inexistentă")
+    name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
+    if fmt == "docx":
+        if p["source"] != "generat":
+            raise HTTPException(status_code=400, detail="Export Word doar pentru documentele generate")
+        docs = [docgen.render_docx(k, rec, settings, client, info["titles"]) for k in p["docs"]]
+        return Response(content=docs[0], media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.docx"'})
+    parts = await OPIS.position_pdf(p, rec, client, settings, info["titles"], get_object, force_generated=bool(generated))
+    if not parts:
+        raise HTTPException(status_code=404, detail="Documentul nu este încă încărcat")
+    pdf = parts[0] if len(parts) == 1 else merge_pdfs(parts[0], [])
+    if len(parts) > 1:
+        w = PdfWriter()
+        for b in parts:
+            for pg in PdfReader(io.BytesIO(b)).pages:
+                w.add_page(pg)
+        o = io.BytesIO(); w.write(o); pdf = o.getvalue()
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}.pdf"'})
+
+@api_router.get("/dossier/{item_id}/export")
+async def dossier_export(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, settings, info = await dossier_ctx(user["id"], item_id)
+    pdf = await OPIS.export_bundle(info, rec, client, settings, get_object, logger)
+    name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
 
 # ---------------- Startup ----------------
 @app.on_event("startup")
