@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { PageHeader, Btn } from "@/components/Layout";
 import { BillingForm } from "@/components/billing/BillingForm";
 import { PlanCards } from "@/components/billing/PlanCards";
-import { InvoiceList, StatusPill } from "@/components/billing/InvoiceList";
+import { InvoiceList } from "@/components/billing/InvoiceList";
 import { lei } from "@/lib/plan";
 import { CreditCard, ShieldCheck } from "lucide-react";
 
@@ -61,7 +61,7 @@ export default function Subscription() {
       {sp.get("session_id") && <PaymentWatcher sid={sp.get("session_id")} onDone={(ok) => { if (ok) { refresh(); load(); } setTimeout(() => setSp({}), 8000); }} />}
       <div className="den-panel mb-5 flex flex-wrap items-center gap-6" data-testid="current-plan">
         <div><div className="text-[11px] font-bold uppercase" style={{ color: "var(--muted)" }}>Abonament curent</div><div className="text-2xl font-extrabold" data-testid="current-plan-name">{p.name}</div></div>
-        <div><div className="text-[11px] font-bold uppercase" style={{ color: "var(--muted)" }}>Stare</div><span data-testid="current-plan-status"><StatusPill s={p.active ? "plătită" : "expirată"} /> <b className="text-sm">{p.status}</b></span></div>
+        <div><div className="text-[11px] font-bold uppercase" style={{ color: "var(--muted)" }}>Stare</div><span data-testid="current-plan-status"><span className="text-xs font-bold rounded-full px-2 py-0.5" style={p.active ? { background: "#ecfdf3", color: "#166534" } : { background: "#fff8e6", color: "#8a5a00" }}>{p.status}</span></span></div>
         <div><div className="text-[11px] font-bold uppercase" style={{ color: "var(--muted)" }}>Valabil până la</div><div className="font-bold" data-testid="current-plan-until">{p.valid_until || "—"}</div></div>
       </div>
       <h2 className="text-base md:text-lg font-extrabold mb-3">1. Date de facturare</h2>

@@ -212,7 +212,7 @@ async def billing_checkout(request: Request, user: dict = Depends(get_current_us
                                           "description": f"Proformă {inv['number']}: {inv['net']:.2f} RON + TVA {inv['vat_rate']:g}% {inv['vat']:.2f} RON"}}}],
             success_url=f"{origin}/abonament?session_id={{CHECKOUT_SESSION_ID}}", cancel_url=f"{origin}/abonament?anulat=1",
             metadata={"invoice_id": inv["id"], "invoice_number": inv["number"], "tenant": user["id"], "plan": plan["code"], "months": str(months)},
-            client_reference_id=inv["id"], expires_at=int((datetime.now(timezone.utc) + timedelta(hours=23)).timestamp()))
+            client_reference_id=inv["id"], adaptive_pricing={"enabled": False}, expires_at=int((datetime.now(timezone.utc) + timedelta(hours=23)).timestamp()))
     except stripe.error.StripeError as e:
         await db.invoices.update_one({"id": inv["id"]}, {"$set": {"status": CANCELLED, "cancel_reason": "eroare furnizor plăți"}})
         logger.error(f"stripe checkout: {e}")

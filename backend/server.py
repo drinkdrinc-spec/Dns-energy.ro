@@ -623,7 +623,8 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
         raise HTTPException(status_code=404, detail="Tip document inexistent")
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
-    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    settings, _ = await effective_settings(user["id"], rec, base)
     client = await get_client(user["id"], rec)
     pdf = docgen.render(keys, rec, settings, client)
     if attach:

@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 12: tested subscriptions START/PRO/FULL, billing profile (PF/PJ), Stripe TEST checkout, admin billing, plan enforcement (402), isolation, expiry/suspension, cron/webhook, RBAC regression from iter 11, and signature/stamp images in docgen. Backend: 22/22 pytest cases pass (new file test_iter12_billing_plans.py). Ran the full Stripe flow end to end in the browser: pay-btn -> checkout.stripe.com -> card 4242 -> back to /abonament?session_id=... -> plan START activated once. Both the signed webhook and Session.retrieve were confirmed; repeated status polls are idempotent and there is exactly 1 activation entry in history. Frontend: register PF/PJ form + GDPR, lock icons, upgrade-gate, plan cards with net/VAT/total, checkout-summary, plan-banner, admin /abonamente-admin tabs, Gestionează detail, manual plan assignment, issue proforma + manual payment and CSV export all work. Signature/stamp: on /api/dossier/{id}/file/{key} the stamp + authorized staff signature images are embedded (2 images per PDF) and signer_warnings show correctly for an expired attestation or a missing/unauthorized signature. Bug found: the old /api/docs/{type}/{id} endpoint, still used by ProsumatorTools.jsx, embeds NO stamp or signature (0 images).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/docs/{doc_type}/{item_id} (server.py ~L612-632)", "issue": "Uses raw db.settings instead of effective_settings(), so no _stamp_path/_sigs are set and no stamp/signature images are applied. Signer eligibility (expired attestation) and warnings are also skipped, so an ineligible rep name can be printed. Verified: the same dossier gives 0 images via /docs/pv_receptie and 2 images via /dossier/{id}/file/receptie. The frontend ProsumatorTools.jsx (docUrl) still calls this endpoint."},
+      {"endpoint": "POST /api/billing/checkout", "issue": "Stripe Adaptive Pricing is active on the account: the checkout page offers 'Choose currency' with USD preselected (US$65.55 incl. 4% conversion fee) instead of RON. The RON proforma and the activation check still work, but the customer may be charged in USD. Consider adaptive_pricing={'enabled': False} in Session.create for fiscal consistency."},
+      {"endpoint": "activate() in billing_routes.py", "issue": "When moving to a different plan (e.g. START active until X, then paying PRO), the new period starts today and the remaining paid days of the old plan are lost (no proration or credit). This is a business decision; document it or handle it."},
+      {"endpoint": "charge.refunded webhook", "issue": "Marks the invoice as refunded but does not suspend or shorten the subscription (only logs 'verificați manual'). Acceptable if intended."},
+      {"endpoint": "CORS", "issue": "allow_origins=['*'] (Bearer auth in localStorage, no cookies). Same as before; consider explicit origins."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SubscriberRow payment form", "issue": "When manual payment validation fails (e.g. missing justification), the payment form closes and the entered data is lost: call(...).then(() => setPay({})) runs even on error. The user has to click 'Înregistrează plată' again.", "selector": "[data-testid=payment-save]", "priority": "LOW"},
+      {"component": "SubscriberRow plan editor", "issue": "After a payment extends the subscription (valid_until 2026-11-26 -> 2026-12-26), the 'Valabil până la' input still shows the old date. If the admin then clicks 'Atribuie manual', the paid period is shortened.", "selector": "[data-testid=sub-plan-until-{email}]", "priority": "MEDIUM"},
+      {"component": "Subscription current-plan status pill", "issue": "The pill shows 'plătită' for any active plan (including manually assigned, unpaid ones) and 'expirată' for 'fără abonament'. These are invoice statuses used as plan statuses.", "selector": "[data-testid=current-plan-status]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/abonamente-admin detail", "issues": ["'Valabil până la' uses the native browser date picker (input type=date) instead of the shadcn Calendar"]},
+      {"screen": "Dashboard for user without plan", "issues": ["No lock icons in the sidebar when the plan is inactive, and the 'Dosar DI-U nou' CTA is shown although writes return 402 (the banner does explain read-only mode)"]},
+      {"screen": "/abonamente-admin users list", "issues": ["Polluted with ~30 leftover test accounts (test_cef_*, test_pros_*, sub_1793105065@example.com) from earlier main-agent runs; 6 'TEST Proiectant/Verificator' staff records remain in the platform admin's staff list"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter12_billing_plans.py", "/app/backend/tests/check_staff_signature.py", "/app/backend/tests/check_sig_images.py", "/app/backend/tests/seed_iter12_ui.py", "/app/test_reports/pytest/pytest_iter12.xml"],
+  "action_items": [
+    "Make GET /api/docs/{doc_type}/{item_id} use effective_settings (as dossier_ctx does) so stamp/signature images and signer eligibility apply. Alternatively, point ProsumatorTools.jsx to /dossier/{id}/file/{key}.",
+    "Disable Stripe Adaptive Pricing in checkout Session.create (adaptive_pricing={'enabled': False}) so customers pay in RON as on the proforma.",
+    "SubscriberRow: keep the payment form open on API error; refresh the plan/valid_until form state after a payment or assignment.",
+    "Subscription.jsx: use plan-specific labels for the current-plan pill (activ / expirat / fără abonament) instead of invoice statuses.",
+    "Clean up leftover test users (email ^test_cef_|^test_pros_|^sub_) and 'TEST Proiectant/Verificator' staff from the platform admin tenant.",
+    "Optional: replace the native date input with the shadcn Calendar; decide on proration when moving between plans."
+  ],
+  "critical_code_review_comments": [
+    "Enforcement looks solid: need()/guard() run before check_access; check_inverters runs on create, update ({**cur, **data}), import and finalize; platform admin and team members are exempt.",
+    "activate() is idempotent through find_one_and_update on the status filter; mark_paid is also guarded by payment_status != paid. The real webhook was confirmed and only one activation was recorded.",
+    "sync_session verifies amount_total and currency server-side before activation (good).",
+    "billing_checkout trusts the client-supplied origin_url for success/cancel URLs (only the https:// prefix is checked). Low risk, but consider an allowlist.",
+    "server.py is 1594 lines; consider splitting (billing is already extracted).",
+    "pytest.ini forces xdist -n 2 --dist loadscope. The iter12 tests share state, so they are written as one class to stay on one worker."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter12_billing_plans.py", "/app/backend/tests/check_staff_signature.py", "/app/backend/tests/check_sig_images.py", "/app/backend/tests/seed_iter12_ui.py"],
+  "success_rate": {"backend": "100% (22/22 pytest) + 1 minor bug in the old docs endpoint", "frontend": "~95% (all flows work; 3 minor UI issues)"},
+  "test_credentials": "Platform admin drinkdrinc@gmail.com / DEnergy2026! worked. /app/memory/test_credentials.md is OUTDATED: it still says self-registered users become role=limitat in the admin tenant. Update it to the subscriber model (register needs a billing dict; approve via PUT /api/admin/subscribers/{uid}; to_team for team members).",
+  "seed_data_creation": "All temporary test users/data (test_bill_*, test_ui12_*, TEST_SIG_*) were removed. START price restored to 250; billing_config vat 21 / read_only. Stripe TEST sandbox now contains one paid session (DEN-PF-2026-0006, 302.50 RON). Proforma counter advanced to 0007+.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend suite with `pytest tests/test_iter12_billing_plans.py` (xdist is on; the file is a single class). For UI: `python tests/seed_iter12_ui.py` creates test_ui12_start@example.com (START) and test_ui12_none@example.com (no plan), password TestPass123!; `python tests/seed_iter12_ui.py clean` removes them. The Stripe test checkout works with #cardNumber/#cardExpiry/#cardCvc/#billingName and the webhook arrives within seconds. check_staff_signature.py checks how many image objects are embedded per generated PDF (count of b'/Subtype /Image').",
+  "rca of the issue": "Missing stamp/signature on the 'Documente' quick-generation buttons: generate_doc() (server.py ~L626) builds settings with db.settings.find_one(...) and calls docgen.render() directly. Only effective_settings() adds _stamp_path and _sigs, which docgen.sig_images() needs. dossier_ctx(), used by /dossier/{id}/file/{key} and export, calls effective_settings, so those PDFs are correct. Fix: in generate_doc call `s, _ = await effective_settings(user['id'], rec, settings)` and pass s to docgen.render."
+}

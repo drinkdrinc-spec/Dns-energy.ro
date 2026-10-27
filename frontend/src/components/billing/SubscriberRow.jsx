@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import { InvoiceList } from "@/components/billing/InvoiceList";
@@ -18,7 +18,8 @@ export function SubscriberDetail({ u, plans, reload }) {
   const [inv, setInv] = useState(null);
   const [hist, setHist] = useState(null);
   const [pay, setPay] = useState({});
-  const call = async (fn, ok) => { try { await fn(); toast.success(ok); reload(); loadInv(); } catch (e) { err(e); } };
+  useEffect(() => { setPlan((p) => ({ ...p, plan: u.subscription?.plan || p.plan, valid_until: u.subscription?.valid_until || "", status: u.subscription?.status || "activ" })); }, [u.subscription?.valid_until, u.subscription?.plan, u.subscription?.status]);
+  const call = async (fn, ok) => { try { await fn(); toast.success(ok); reload(); loadInv(); return true; } catch (e) { err(e); return false; } };
   const loadInv = () => api.get(`/admin/invoices?uid=${u.id}`).then((r) => setInv(r.data));
   const t = (k) => `${k}-${u.email}`;
   return (
@@ -43,7 +44,7 @@ export function SubscriberDetail({ u, plans, reload }) {
       {pay.id && <div className="flex flex-wrap gap-2 items-end rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="payment-form">
         {[["amount", "Sumă (RON)"], ["method", "Metodă"], ["reference", "Referință OP / chitanță"], ["justification", "Justificare"]].map(([k, l]) => (
           <div key={k} className="den-field"><label>{l}</label><input className="den-input" value={pay[k]} onChange={(e) => setPay({ ...pay, [k]: e.target.value })} data-testid={`payment-${k}`} /></div>))}
-        <Btn onClick={() => call(() => api.post(`/admin/invoices/${pay.id}/payment`, pay), "Plată înregistrată").then(() => setPay({}))} data-testid="payment-save">Salvează plata</Btn>
+        <Btn onClick={() => call(() => api.post(`/admin/invoices/${pay.id}/payment`, pay), "Plată înregistrată").then((ok) => ok && setPay({}))} data-testid="payment-save">Salvează plata</Btn>
       </div>}
       {hist && <div className="space-y-1" data-testid={t("sub-history")}>{hist.map((h) => <div key={h.id}><b>{new Date(h.at).toLocaleString("ro-RO")}</b> · {h.kind} · {h.by} — {h.detail}</div>)}</div>}
     </div>
