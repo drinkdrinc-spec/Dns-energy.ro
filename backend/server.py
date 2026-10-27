@@ -202,6 +202,8 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     data = await request.json()
     data.pop("_id", None); data.pop("id", None); data.pop("owner", None); data.pop("created_at", None)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if module == "prosumator":
+        data = derive_cef(data)
     res = await db[module].update_one({"id": item_id, "owner": user["id"]}, {"$set": data})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă")
@@ -335,6 +337,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     if not d.get("status"):
         d["status"] = "În pregătire"
     files = d.get("files") or []
+    d = derive_cef(d)
     pros = _new(user, d)
     await db.prosumator.insert_one(dict(pros))
     sz = docgen.sizing(d)
@@ -396,12 +399,18 @@ from pypdf import PdfReader, PdfWriter
 import io
 
 async def seed_catalog(owner: str):
-    s = await db.settings.find_one({"owner": owner}, {"catalog_seeded": 1})
-    if s and s.get("catalog_seeded"):
-        return
-    if not await db.catalog.count_documents({"owner": owner}):
+    await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
+    res = await db.settings.update_one({"owner": owner, "catalog_seeded": {"$ne": True}}, {"$set": {"catalog_seeded": True}})
+    if res.modified_count and not await db.catalog.count_documents({"owner": owner}):
         await db.catalog.insert_many([_new({"id": owner}, {**x, "notes": CATALOG_NOTE}) for x in CATALOG_SEED])
-    await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}}, upsert=True)
+
+def derive_cef(d: dict) -> dict:
+    if (d.get("cef") or {}).get("inverters"):
+        f = CEF.flatten({k: v for k, v in d.items() if k != "power"})
+        for k in ("power", "inverter", "inverter_kw", "panel_count", "panels"):
+            if not d.get(k):
+                d[k] = f.get(k)
+    return d
 
 @api_router.post("/cef/check")
 async def cef_check(request: Request, user: dict = Depends(get_current_user)):

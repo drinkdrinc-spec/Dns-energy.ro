@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 3: tested the CEF multi-inverter feature end to end (backend checks, schema_cef PDF, catalog seed/CRUD/upload, catalog-files/attach, import fixes) and ran UI checks on the CEF editor, Catalog echipamente and the old modules. New backend suite test_cef_catalog.py: 14/14 passed. Old suite test_prosumator_docs.py: 21 passed, 1 skipped (AI not called). The only failure in the old suite came from an outdated test, which I fixed (it re-imported the same client+POD and the new 409 rule rejected it). In the UI, all requested flows work: add inverters, pick from catalog, add strings, battery own/shared, backup, apply proposals, live totals (17.63 kWp / 18 kW / 30.48 kWh / 38 panels), issue lists, grid anti checkbox, save and reopen keeps the CEF data, doc-schema_cef works, catalog-files section and idempotent attach work, catalog tabs/add/edit/upload/delete work, and all old pages load.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "data migration", "issue": "Existing equipment records of ZOLTAN ANTAL (pros_ref 3f6fd4d4...) have client_name=None, so the Echipamente 'Beneficiar' column shows '—'. Only new imports get client_name; old records were not backfilled."},
+      {"endpoint": "seed_catalog", "issue": "Check-then-insert is not atomic. Two concurrent first GET /api/data/catalog calls for a new owner could seed the catalog twice (low probability)."},
+      {"endpoint": "GET /api/docs/all (no cef)", "issue": "Old 'schema' is rendered portrait (0 landscape pages). Not a regression, just noted."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "InverterCard shared battery", "issue": "When battery mode is set to 'Baterie comună', shared_battery_id is not auto-selected even when only one shared battery exists. The error 'bateria comună selectată nu există' shows until the user picks it manually.", "selector": "[data-testid='inv-{i}-bat-shared']", "priority": "LOW"},
+      {"component": "Prosumator list", "issue": "For records configured only through the CEF editor, the 'Putere PV (kW)' column shows '—' because top-level power/inverter fields are not derived from cef on save (flatten is only used in docgen).", "selector": "[data-testid='items-table']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Catalog echipamente", "issues": ["The search input (w-[240px]) stretches to full width and wraps below the title; other module pages keep it compact on the right", "The success toast covers the 'Model nou' button in the top-right"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_cef_catalog.py", "/app/backend/tests/test_prosumator_docs.py", "/app/test_reports/pytest/pytest_cef.xml", "/app/test_reports/pytest/pytest_pros.xml"],
+  "action_items": [
+    "Backfill client_name on old equipment/works/mono records that have pros_ref (from the prosumator client_name)",
+    "Auto-select the first shared battery when battery_mode becomes 'shared' (or when only one exists)",
+    "On save, derive top-level power/inverter/panels fields from cef (e.g. use cef totals) so the list and other modules show values",
+    "Minor: fix the search input width on /catalog-echipamente; make seed_catalog atomic (e.g. upsert the settings flag first with a find_one_and_update guard)"
+  ],
+  "critical_code_review_comments": [
+    "EquipmentCatalog.save/remove and CatalogFiles.attach have no try/catch, so an API failure gives no toast and can cause an unhandled rejection",
+    "CefEditor posts /cef/check on every change after a 500 ms debounce, which is fine. Errors are swallowed silently, so the user is not told when the check fails",
+    "cef.check: iz() for single-phase uses a 1.15 approximation for 2 loaded conductors. The values are labelled indicative, which is acceptable",
+    "Leftover test data from earlier iterations is still in the DB: prosumator 'PROS-UI-1 UI Client X', a prosumator with empty number/name (id 7638ac84-...), and clients 'Test Client' and 'Test Client SRL'"
+  ],
+  "updated_files": ["/app/backend/tests/test_cef_catalog.py (new)", "/app/backend/tests/test_prosumator_docs.py (dup-import test now uses a different POD because of the new 409 rule)"],
+  "success_rate": {"backend": "100% (35/35 executed, 1 skipped AI)", "frontend": "~95% (all flows work; 2 low-priority UX issues)"},
+  "seed_data_creation": "Created and then deleted: TEST_CEF_* prosumators/clients/catalog items/documents, a temporary user test_cef_*@example.com (removed from Mongo with its catalog/settings), and UI record TEST_CEF_UI Client (PROS-2026-005). Deleted 'TEST CEF SCHEMA' prosumator and client as allowed. Temporarily uploaded a datasheet to the Solis catalog item, then reset it to null. ZOLTAN ANTAL is untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the suites serially: cd /app/backend && SKIP_AI=1 REACT_APP_BACKEND_URL=<url> pytest tests/test_cef_catalog.py tests/test_prosumator_docs.py -n0. The prosumator form field client_name is a <select> of existing clients, so create the client first. Catalog has 14 seeded items. Do not delete all catalog items for the admin, because they do not re-seed; use a fresh registered user to test seeding.",
+  "rca of the issue": "Old pytest failure: the test re-imported the same client_name+pod, and the new duplicate rule correctly returns 409. Fixed in the test."
+}

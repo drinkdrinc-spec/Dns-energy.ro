@@ -78,7 +78,7 @@ export default function EquipmentCatalog() {
       <div className="den-panel">
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <h2 className="text-lg font-bold">{cat} <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({rows.length})</span></h2>
-          <input className="den-input w-[240px]" placeholder="Caută model..." value={q} onChange={(e) => setQ(e.target.value)} data-testid="catalog-db-search" />
+          <input className="den-input" style={{ width: 240 }} placeholder="Caută model..." value={q} onChange={(e) => setQ(e.target.value)} data-testid="catalog-db-search" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="catalog-table">

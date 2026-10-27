@@ -77,7 +77,8 @@ class TestImport:
         assert len(docs) >= 1
 
     def test_import_existing_client_not_duplicated(self, s):
-        r = _import(s, supply="Monofazat", inverter_kw=5, bransament_kw=3, power=5)
+        # different POD (same client+pod now returns 409)
+        r = _import(s, supply="Monofazat", inverter_kw=5, bransament_kw=3, power=5, pod="RO005E999")
         assert r.status_code == 200
         clients = [c for c in s.get(f"{API}/data/clients").json() if c["name"] == "TEST_PROS Ion Popescu"]
         assert len(clients) == 1
