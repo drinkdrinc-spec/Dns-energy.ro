@@ -17,6 +17,7 @@ import { AssignBox } from "@/components/AssignBox";
 import { useAuth } from "@/context/AuthContext";
 import { PowerDossier, SimpleDossierBtn } from "@/components/dossier/PowerDossier";
 import { AtrDossier } from "@/components/dossier/AtrDossier";
+import { PifPanel } from "@/components/dossier/PifPanel";
 
 function Field({ f, value, onChange, refOptions }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -141,6 +142,7 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && <DossierExtras form={form} setVal={setVal} />}
           {key === "prosumator" && editId && <DossierOpis id={editId} />}
           {key === "prosumator" && editId && <SimpleDossierBtn id={editId} />}
+          {key === "prosumator" && editId && <PifPanel id={editId} />}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
           {key === "prosumator" && editId && <SignRequests dossierId={editId} />}

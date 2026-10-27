@@ -37,6 +37,11 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
         <F label="MPPT min (V)" type="number" value={inv.mppt_min} onChange={s("mppt_min")} testid={`${t}-mpptmin`} />
         <F label="MPPT max (V)" type="number" value={inv.mppt_max} onChange={s("mppt_max")} testid={`${t}-mpptmax`} />
         <F label="Nr. MPPT" type="number" value={inv.mppt_count} onChange={s("mppt_count")} testid={`${t}-mpptn`} />
+        {inv.type !== "On-grid" && <>
+          <F label="Baterie: U min invertor (V)" type="number" value={inv.bat_v_min} onChange={s("bat_v_min")} testid={`${t}-batvmin`} />
+          <F label="Baterie: U max invertor (V)" type="number" value={inv.bat_v_max} onChange={s("bat_v_max")} testid={`${t}-batvmax`} />
+          <F label="Baterie: I max încărcare/descărcare invertor (A)" type="number" value={inv.bat_i_max} onChange={s("bat_i_max")} testid={`${t}-batimax`} />
+        </>}
         <F label="Curent max/MPPT (A)" type="number" value={inv.imax_mppt} onChange={s("imax_mppt")} testid={`${t}-imax`} />
       </div>
       <div className="mt-2"><Check label="Echipament existent (extindere)" value={inv.existing} onChange={s("existing")} testid={`${t}-existing`} /></div>

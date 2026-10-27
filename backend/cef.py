@@ -104,6 +104,13 @@ def check(cef: dict) -> dict:
                 w.append(f"{tag}: nu are stringuri definite.")
         if strings and not (n(inv.get("panel_voc")) and n(inv.get("panel_vmp"))):
             w.append(f"{tag}: lipsesc Voc/Vmp ale panoului — tensiunile stringurilor nu pot fi verificate.")
+        if strings and "Invertor de baterie" in str(inv.get("kind") or inv.get("type") or ""):
+            e.append(f"{tag}: invertorul de baterie (AC) nu are intrări PV — eliminați stringurile sau schimbați tipul.")
+        if strings and mppt_count and len({s["mppt"] for s in strings}) < min(mppt_count, len(strings)):
+            w.append(f"{tag}: stringurile folosesc {len({s['mppt'] for s in strings})} din {mppt_count} MPPT — verificați repartizarea.")
+        isc_p = n(inv.get("panel_isc"))
+        if isc_p and imax and isc_p > imax:
+            e.append(f"{tag}: Isc panou {isc_p:g} A depășește curentul maxim al intrării MPPT ({imax:g} A).")
         per_mppt = {}
         for si, s in enumerate(strings):
             st = f"{tag} / string {si + 1}"
@@ -137,6 +144,16 @@ def check(cef: dict) -> dict:
             tot_kwh += b_kwh
             if inv.get("type") == "On-grid" and bat.get("coupling", "DC") == "DC":
                 e.append(f"{tag}: invertor on-grid cu baterie cuplată DC — necesită invertor hibrid sau cuplare AC.")
+            bv, vmin_, vmax_ = n(bat.get("voltage")), n(inv.get("bat_v_min")), n(inv.get("bat_v_max"))
+            if bv and vmin_ and vmax_ and not (vmin_ <= bv <= vmax_):
+                e.append(f"{tag}: tensiunea bateriei ({bv:g} V) este în afara domeniului acceptat de invertor ({vmin_:g}–{vmax_:g} V) — baterie incompatibilă (HV/LV).")
+            elif bv and not (vmin_ and vmax_) and bat.get("coupling", "DC") == "DC":
+                w.append(f"{tag}: introduceți domeniul de tensiune baterie al invertorului (fișa tehnică) pentru verificarea compatibilității bateriei.")
+            bi, ii = n(bat.get("i_max")), n(inv.get("bat_i_max"))
+            if bi and ii and bi > ii:
+                w.append(f"{tag}: bateria permite {bi:g} A, invertorul max. {ii:g} A — curentul va fi limitat de invertor (verificați dimensionarea protecției).")
+            if not (bat.get("model") or b_kwh):
+                w.append(f"{tag}: baterie asociată fără model/capacitate.")
         elif mode == "shared":
             sid = inv.get("shared_battery_id")
             if sid not in shared:

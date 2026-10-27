@@ -6,6 +6,7 @@ import { Btn } from "@/components/Layout";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { SldChecks } from "./SldChecks";
 import { SldCompare } from "./SldCompare";
+import { SldEditor } from "./SldEditor";
 
 const tok = () => localStorage.getItem("den_token");
 const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare anulată — configurație modificată", "#fff4e0", "#8a5a00"], draft: ["Ciornă — neaprobată", "#fff0f0", "#9b2c2c"] };
@@ -13,6 +14,7 @@ const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare an
 export function SldPanel({ id, form, setVal }) {
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [edit, setEdit] = useState(false);
   const ref = useRef();
   const persist = () => api.put(`/data/prosumator/${id}`, form);
   const load = () => api.get(`/sld/${id}`).then((r) => setD(r.data)).catch(() => {});
@@ -46,6 +48,8 @@ export function SldPanel({ id, form, setVal }) {
         <span className="flex-1 min-w-[240px]">Schema este desenată din datele fișei (invertor, panouri, baterie). Stringurile/MPPT nu sunt definite — preluați datele în Configuratorul CEF și completați stringurile pentru o schemă completă.</span>
         <Btn variant="secondary" onClick={() => run(async () => { await api.post(`/sld/${id}/import-legacy`); toast.success("Date preluate în configurator — reîncărcați dosarul pentru a edita stringurile"); await load(); })} disabled={busy} data-testid="sld-import-legacy">Preia în configuratorul CEF</Btn>
       </div>}
+      <button type="button" className="mt-3 text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => setEdit(!edit)} data-testid="sld-edit-toggle">{edit ? "Închide editarea manuală" : "Editare manuală a schemei (tabel + previzualizare)"}</button>
+      {edit && <SldEditor id={id} onSaved={load} />}
       <div className="flex flex-wrap gap-2 mt-4">
         <Btn variant="secondary" onClick={refresh} disabled={busy} data-testid="sld-refresh"><RefreshCw size={14} /> Salvează și verifică</Btn>
         <Btn variant="secondary" onClick={apply} disabled={busy} data-testid="sld-apply"><Wand2 size={14} /> Completează automat valorile calculate</Btn>

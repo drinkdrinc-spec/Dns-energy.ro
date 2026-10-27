@@ -1716,6 +1716,7 @@ async def shutdown():
 import billing_routes  # noqa: E402
 import forms_routes  # noqa: E402
 import atr_routes  # noqa: E402
+import sld_edit_routes  # noqa: E402
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
