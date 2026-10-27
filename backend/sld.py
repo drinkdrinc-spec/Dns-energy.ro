@@ -227,9 +227,15 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                 y = ys[k]
                 S.pv(6, y)
                 S.text(6, y + 4.9, f"-PV{i + 1}.{k + 1}", 4.8, True)
-                lbl = f"Câmp PV total (stringuri nedefinite): {s['panels']}×" if strings_raw[k].get("aggregate") else f"S{k + 1}: {s['panels']}×"
-                S.text(24, y + 1.2, lbl + f"{gv(n(inv.get('panel_w')), ' W') or '[W lipsă]'} = " + (f"{s['kwp']:g} kWp" if s['kwp'] else "[kWp lipsă]"), 4.8, w=31)
-                S.text(24, y - 3.0, f"Voc({base['tmin']:g}°C) {s['voc_cold']:.0f} V · Isc {s['isc']:g} A", 4.4, color=GREY, w=31)
+                agg = strings_raw[k].get("aggregate")
+                lbl = "Câmp PV total (stringuri nedefinite)" if agg else f"S{k + 1}:"
+                val = f"{s['panels']}×{gv(n(inv.get('panel_w')), ' W') or '[W lipsă]'} = " + (f"{s['kwp']:g} kWp" if s['kwp'] else "[kWp lipsă]")
+                if agg:
+                    S.text(24, y + 3.6, lbl, 4.4, True, w=31)
+                    S.text(24, y + 1.0, val, 4.8, w=31)
+                else:
+                    S.text(24, y + 1.2, f"{lbl} {val}", 4.8, w=31)
+                S.text(24, y - 3.0, (f"Voc({base['tmin']:g}°C) {s['voc_cold']:.0f} V" if s.get("voc_cold") else "Voc [lipsă]") + " · " + (f"Isc {s['isc']:g} A" if s.get("isc") else "Isc [lipsă]"), 4.4, color=GREY, w=31)
                 S.wire(22, y, 72, y, "dc")
                 if fuses:
                     S.fuse(62, y)

@@ -73,6 +73,7 @@ export function AtrTracking({ id, operator }) {
         <Btn type="button" variant="secondary" onClick={() => act({ action: "complete", date: f.date }, "Dosar complet — termen aviz calculat")} data-testid="atr-complete-btn">Dosar declarat complet</Btn>
         <div className="den-field"><label>Completări cerute</label>{inp("note", "text", "ce a cerut distribuitorul")}</div>
         <Btn type="button" variant="secondary" onClick={() => act({ action: "incomplete", note: f.note }, "Salvat")} data-testid="atr-incomplete-btn">Completări solicitate</Btn>
+      </div>
       <div className="flex flex-wrap gap-2 items-end mt-3 rounded-lg p-3" style={{ background: "#f6f9ff" }} data-testid="atr-aviz-box">
         <div className="den-field"><label>Nr. aviz (ATR)</label>{inp("atr_no")}</div><div className="den-field"><label>Data avizului</label>{inp("atr_date", "date")}</div>
         <input ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={uploadAviz} data-testid="atr-aviz-file" />

@@ -51,7 +51,12 @@ export default function ModulePage({ moduleKey }) {
   const [refOptions, setRefOptions] = useState({});
   const [q, setQ] = useState("");
 
-  const load = () => api.get(`/data/${key}`).then((r) => setItems(r.data)).catch(() => {});
+  const load = () => api.get(`/data/${key}`).then((r) => {
+    setItems(r.data);
+    const eid = new URLSearchParams(window.location.search).get("edit");
+    const it = eid && r.data.find((x) => x.id === eid);
+    if (it) { setForm({ ...it }); setEditId(it.id); setChecks(it.checklist || {}); window.history.replaceState(null, "", window.location.pathname); }
+  }).catch(() => {});
 
   useEffect(() => {
     setForm(null); setEditId(null); setChecks({}); setQ("");

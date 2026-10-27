@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 16: tested RO legal holidays + working-day ATR check_due, platform extra days, /atr/deadlines + dashboard panel, aviz upload (API+UI), SLD legacy (from_legacy, PDF text, import-legacy) and 3-inverter SLD. Backend 13/14 pytest pass (1 failure = real SLD label truncation bug). Frontend: all requested flows pass after fixing a JSX build error (missing </div>) in AtrTracking.jsx that broke the entire app. Found: dashboard deadline row link (?edit=id) does not open the ATR editor.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/sld/{id}/pdf (sld.py ~L229, S.text w=31)", "issue": "Aggregated legacy PV label is silently truncated by width-fit: page shows 'Câmp PV total (stringuri nedefinite): 26×' — the panel W and kWp ('475 W = 12.35 kWp') are cut off. Shorten label (e.g. 2 lines: 'Câmp PV total (nedefinit)' + '26×475 W = 12.35 kWp') or widen w. Test: test_aggregate_label_not_truncated."},
+      {"endpoint": "GET /api/sld/{id}/pdf (legacy)", "issue": "Legacy strings without panel_voc/isc print 'Voc(-10°C) 0 V · Isc 0 A' — invented zero values; should print [lipsă] like other missing fields."},
+      {"endpoint": "GET /api/calendar/holidays", "issue": "2026: A doua zi de Rusalii (Easter+50) = 1 June -> dict key collision; 'Ziua Copilului' label lost (16 unique dates, shown only as 'A doua zi de Rusalii'). Workday math correct; cosmetic: join labels on collision."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AtrTracking.jsx", "issue": "BUILD ERROR: missing closing </div> after atr-incomplete-btn row -> Vite 'Unexpected token (91:2)', whole app blank. FIXED by testing agent.", "selector": "[data-testid='atr-incomplete-btn']", "priority": "CRITICAL (fixed)"},
+      {"component": "AtrDeadlines row -> ModulePage", "issue": "Rows link to /cerere-atr?edit={id} but ModulePage never reads the 'edit' query param (no useSearchParams), so clicking a deadline row only opens the list; the ATR editor/tracking box does not open.", "selector": "[data-testid^='atr-deadline-']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AtrTracking / FormsRegistry holidays", "issues": ["Native browser date pickers (mm/dd/yyyy) used for holiday-date, atr-track-* dates instead of shadcn calendar; locale differs from ro-RO display (dd.mm.yyyy)"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter16_holidays_aviz_sld_legacy.py", "/app/backend/tests/iter16_ui_setup.py", "/app/test_reports/pytest/iter16.xml"],
+  "action_items": [
+    "MEDIUM: handle ?edit={id} in ModulePage (open record on load) so dashboard ATR deadline rows open the dossier",
+    "MEDIUM: fix truncated aggregated PV label in SLD (panel W / kWp lost) — key data for legacy diagrams",
+    "LOW: print [lipsă] instead of 0 V / 0 A for Voc/Isc when panel electrical data missing",
+    "LOW: merge holiday labels when two holidays fall on same date (1 June 2026)"
+  ],
+  "critical_code_review_comments": [
+    "update_item (PUT /data/atr) does not pop aviz_file/atr_ref — a form loaded before a new aviz upload could restore stale values on Save (verified OK in the normal flow: Save after upload kept aviz_file and atr_ref).",
+    "from_legacy: inverter_kw is treated as per-inverter (count 2 x 12 kW -> title '24 kW'); confirm classic field semantics (total vs per unit).",
+    "calendar extra days are global (single 'main' doc) — affects all tenants; intended (platform-only) but note for docs.",
+    "Multi-inverter (3 inv) PDF renders correctly: -PV1.1..-PV3.2, TDC1-3, -Q1..3.1, -F1..3.1, -W1..3.AC/DC, battery only on INV1, all brand_model names present; visual check OK."
+  ],
+  "updated_files": ["/app/frontend/src/components/dossier/AtrTracking.jsx (added missing </div>)", "/app/backend/tests/test_iter16_holidays_aviz_sld_legacy.py", "/app/backend/tests/iter16_ui_setup.py"],
+  "success_rate": {"backend": "93% (13/14)", "frontend": "90% (all requested flows pass; deadline-row deep link broken)"},
+  "seed_data_creation": "All is_test ATR/prosumator records, subscribers (test_i16_*, sub_iter16ui@example.com) deleted; calendar extra restored to []; real dossiers verified unchanged by md5 hash before/after.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: REACT_APP_BACKEND_URL=... pytest tests/test_iter16_holidays_aviz_sld_legacy.py -n 0. UI data: python tests/iter16_ui_setup.py setup|cleanup (legacy pros, 3-inv pros, 2 registered ATR). Sandbox clock is Oct 2026. ATR editor opens via [data-testid=edit-{id}] on /cerere-atr. Dossier ?edit= deep link not supported yet.",
+  "rca of the issue": "Blank app: AtrTracking.jsx line ~75 the flex row containing 'Completări solicitate' was not closed before the new atr-aviz-box div; JSX parse error at TermsEditor. Deadline link: AtrDeadlines uses Link to `/cerere-atr?edit=${id}` but ModulePage has no code reading location.search."
+}

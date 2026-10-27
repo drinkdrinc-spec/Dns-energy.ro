@@ -36,12 +36,15 @@ def orthodox_easter(y: int) -> date:
 
 def ro_holidays(y: int) -> dict:
     e = orthodox_easter(y)
-    h = {date(y, 1, 1): "Anul Nou", date(y, 1, 2): "Anul Nou", date(y, 1, 6): "Boboteaza", date(y, 1, 7): "Sf. Ioan Botezătorul",
-         date(y, 1, 24): "Unirea Principatelor Române", e - timedelta(days=2): "Vinerea Mare", e: "Paștele ortodox", e + timedelta(days=1): "A doua zi de Paște",
-         date(y, 5, 1): "Ziua Muncii", date(y, 6, 1): "Ziua Copilului", e + timedelta(days=49): "Rusaliile", e + timedelta(days=50): "A doua zi de Rusalii",
-         date(y, 8, 15): "Adormirea Maicii Domnului", date(y, 11, 30): "Sf. Andrei", date(y, 12, 1): "Ziua Națională", date(y, 12, 25): "Crăciunul",
-         date(y, 12, 26): "A doua zi de Crăciun"}
-    return {k.isoformat(): v for k, v in h.items()}
+    h = {}
+    for d, lbl in ((date(y, 1, 1), "Anul Nou"), (date(y, 1, 2), "Anul Nou"), (date(y, 1, 6), "Boboteaza"), (date(y, 1, 7), "Sf. Ioan Botezătorul"),
+                   (date(y, 1, 24), "Unirea Principatelor Române"), (e - timedelta(days=2), "Vinerea Mare"), (e, "Paștele ortodox"),
+                   (e + timedelta(days=1), "A doua zi de Paște"), (date(y, 5, 1), "Ziua Muncii"), (date(y, 6, 1), "Ziua Copilului"),
+                   (e + timedelta(days=49), "Rusaliile"), (e + timedelta(days=50), "A doua zi de Rusalii"), (date(y, 8, 15), "Adormirea Maicii Domnului"),
+                   (date(y, 11, 30), "Sf. Andrei"), (date(y, 12, 1), "Ziua Națională"), (date(y, 12, 25), "Crăciunul"), (date(y, 12, 26), "A doua zi de Crăciun")):
+        k = d.isoformat()
+        h[k] = f"{h[k]} / {lbl}" if k in h and lbl not in h[k] else lbl
+    return h
 
 
 async def extra_days() -> dict:
