@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
@@ -37,8 +38,9 @@ function Protected({ children }) {
 }
 
 function AfterLogin() {
-  const next = sessionStorage.getItem("den_next");
-  sessionStorage.removeItem("den_next");
+  // Read without side effects during render (StrictMode renders twice); clear after mount
+  const [next] = useState(() => sessionStorage.getItem("den_next"));
+  useEffect(() => { sessionStorage.removeItem("den_next"); }, []);
   return <Navigate to={next || "/"} replace />;
 }
 

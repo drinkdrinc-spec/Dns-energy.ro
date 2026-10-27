@@ -63,3 +63,6 @@ Web app "D-ENERGY" for DNS HOSTESS S.R.L. (Romanian UI, responsive) to manage el
 ## Backlog
 - P1: IBAN/banca platformei necompletate în Setări (apar „—” pe proformă/e-mail)
 - P2: SmartBill (amânat)
+## Iterația 26 (iunie 2026)
+- E-mail memento vizare: buton „Comandă dosarul de vizare” → /dosare-anre?tip=vizare (tip preselectat, comanda doar după confirmare; redirect păstrat după login).
+- Admin Operatori: panou „Vizări ANRE apropiate” (90 zile + depășite, roșu/galben/verde). GET /api/admin/operators/visas. Testat iteration_26 (100%).

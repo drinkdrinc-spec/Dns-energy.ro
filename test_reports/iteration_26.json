@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 26 tested the ANRE visa reminder link and the admin visa panel. Backend: 19/19 pytest pass (4 new iter26 + 15 iter25 regression). GET /api/admin/operators/visas includes past (-10), 30-day and 90-day visas, excludes 91 days, sorts ascending, returns correct days_left, gives 403 to subscribers and hides _id/history/doc_path. The cron reminds a confirmed 30-day visa exactly once and skips past/unconfirmed ones. The captured email HTML contains href=https://<host>/dosare-anre?tip=vizare with the 'Comandă dosarul de vizare' button, passes mailer._assert_safe_email and escapes the company name. No backend errors from run_visa. Frontend: one bug found and fixed. After login, the logged-out redirect landed on '/' instead of /dosare-anre?tip=vizare. Cause: AfterLogin read and removed sessionStorage den_next during render, and React.StrictMode renders twice, so the second render saw null. Fixed in App.js and retested: login now lands on /dosare-anre?tip=vizare with vizare selected and the banner shown. No dossier is created on open or reload, only after clicking anre-new (which created a 'Vizare periodică' dossier). The banner hides when the kind changes, and plain /dosare-anre defaults to 'nou'. The admin visa panel shows the past row red (#9b2c2c text on #fdecec background) with 'depășită cu 5 zile', 20 days amber with 'în 20 zile', 60 days green with 'în 60 zile' plus 'neconfirmată', excludes 120 days, and keeps date order. Regression: the operator visa confirm button and the templates panel still work.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "run_visa (cron/anre-visa)", "issue": "Only HTTPException is caught around send_email. mailer._assert_safe_email raises ValueError, e.g. when the Host/x-forwarded-host is numeric or internal (127.0.0.1:8001 when the cron hits the backend directly). That error would abort the whole background loop, so remaining operators get no reminder. Catch Exception, or build the base URL from a configured env value (e.g. a PUBLIC_APP_URL) instead of the request Host header. The Host header is also client-controlled."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "App.js AfterLogin", "issue": "FIXED by testing agent: den_next was consumed during render, so StrictMode's double render redirected to '/' after login. It is now read via a useState initializer and removed in useEffect.", "selector": "login-submit", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VisaPanel", "issues": ["new Date('YYYY-MM-DD') parses as UTC, so browsers west of UTC show the visa date one day earlier. Format the ISO string directly.", "'în 1 zile' / 'depășită cu 1 zile' is ungrammatical; use singular 'zi' for 1."]},
+      {"screen": "/dosare-anre?tip=vizare", "issues": ["The URL keeps ?tip=vizare after ordering. Returning from the editor shows the mail banner again; consider clearing the query string after the order.", "The banner is also shown to the platform admin."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter26_visa_panel_cron_link.py", "/app/backend/tests/iter26_email_capture.py", "/app/backend/tests/iter26_ui_setup.py", "/app/test_reports/pytest/pytest_iter26.xml"],
+  "action_items": [
+    "Review and keep the AfterLogin fix in App.js.",
+    "In run_visa, catch generic exceptions per operator, and build the email base URL from configuration rather than the Host header.",
+    "Optional: timezone-safe date display in VisaPanel and singular 'zi' wording."
+  ],
+  "critical_code_review_comments": [
+    "VisaPanel has no error/loading state: if the request fails, the panel silently stays hidden.",
+    "adm_visas loads all operators within 90 days with no limit. This is fine at current scale."
+  ],
+  "updated_files": ["/app/frontend/src/App.js", "/app/backend/tests/test_iter26_visa_panel_cron_link.py", "/app/backend/tests/iter26_email_capture.py", "/app/backend/tests/iter26_ui_setup.py"],
+  "success_rate": {"backend": "100%", "frontend": "100% after fix (1 bug fixed)"},
+  "test_credentials": "Admin drinkdrinc@gmail.com / DEnergy2026!; temporary subscribers sub_iter26*_<rid>@example.com / Test2026!x (cleaned up)",
+  "seed_data_creation": "TEST_iter26* operators were seeded directly in Mongo and removed afterwards. The UI subscriber and its vizare dossier were removed with 'python3 tests/iter26_ui_setup.py cleanup'.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0. Container date is 2026-10-27. Use delivered@resend.dev for email-dependent tests. iter26_email_capture.py patches send_email and calls run_visa directly; first check that no real confirmed operators within 60 days lack reminders, because the script would mark them as reminded."
+}
