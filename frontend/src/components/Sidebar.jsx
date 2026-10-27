@@ -14,6 +14,8 @@ const NAV = [
     { to: "/", icon: "LayoutDashboard", text: "Panou principal", testid: "nav-home" },
     { to: "/clienti", icon: "Users", text: "Clienți", testid: "nav-clients" },
     { to: "/asistent-ai", icon: "Sparkles", text: "Asistent AI", testid: "nav-ai-assistant" },
+    { to: "/oferte", icon: "Receipt", text: "Oferte de preț", testid: "nav-offers" },
+    { to: "/contracte", icon: "FileCheck2", text: "Contracte", testid: "nav-contracts" },
   ]},
   { label: "Dosare", items: [
     { to: "/prosumator", icon: "SunMedium", text: "Dosar de prosumator", testid: "nav-prosumator" },
