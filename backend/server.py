@@ -107,6 +107,8 @@ async def finish_user(user: dict) -> dict:
     user["id"] = user.get("tenant") or user["id"]
     user.setdefault("role", "admin")
     user["plan"] = await plan_info(user)
+    pm = await db.platform_modules.find_one({"id": "main"}, {"_id": 0}) or {}
+    user["plan"]["disabled"] = [] if user["id"] == PLATFORM["id"] else [f for f in pm.get("disabled", []) if f in ALL_FEATURES]
     return user
 
 def has_feature(user: dict, feat: Optional[str]) -> bool:
@@ -115,6 +117,8 @@ def has_feature(user: dict, feat: Optional[str]) -> bool:
 
 def need(user: dict, feat: Optional[str], write: bool = False):
     p = user.get("plan") or {}
+    if feat and feat in p.get("disabled", []):
+        raise HTTPException(status_code=403, detail=f"Modulul „{ALL_FEATURES.get(feat, feat)}” este indisponibil momentan (dezactivat de administratorul platformei).")
     if p.get("exempt"):
         return
     if not p.get("active"):
@@ -1111,7 +1115,8 @@ async def dossier_reopen(item_id: str, user: dict = Depends(get_current_user)):
 @api_router.get("/dossier/{item_id}")
 async def dossier_info(item_id: str, user: dict = Depends(get_current_user)):
     rec, client, _, info = await dossier_ctx(user, item_id)
-    return {**info, "client_id": client.get("id"), "client_kind": client.get("kind"), "statuses": OPIS.STATUSES}
+    return {**info, "client_id": client.get("id"), "client_kind": client.get("kind"), "statuses": OPIS.STATUSES,
+            "client": {"name": client.get("name") or rec.get("client_name") or "", "email": client.get("email") or "", "phone": client.get("phone") or ""}}
 
 @api_router.put("/dossier/{item_id}/item/{key}")
 async def dossier_item(item_id: str, key: str, request: Request, user: dict = Depends(get_current_user)):
@@ -1180,7 +1185,7 @@ async def dossier_export(item_id: str, authorization: str = Header(None), auth: 
     name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
 
-SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "schema", "fisa_tehnica")
+SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "pif_pv", "schema", "fisa_tehnica")
 
 @api_router.get("/dossier/{item_id}/simple")
 async def dossier_simple(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
@@ -1345,6 +1350,9 @@ async def sign_create(request: Request, user: dict = Depends(get_current_user)):
     days = parse_days(b.get("expires_days"))
     if not keys or not signers:
         raise HTTPException(status_code=400, detail="Alege documentele și semnatarii")
+    if len(signers) != 1:
+        raise HTTPException(status_code=400, detail="Documentele dosarului se trimit la semnare doar către client (un singur semnatar)")
+    signers = [{**signers[0], "role": "Beneficiar"}]
     for s in signers:
         if not (s.get("name") or "").strip() or "@" not in (s.get("email") or ""):
             raise HTTPException(status_code=400, detail="Fiecare semnatar are nevoie de nume și e-mail valid (pentru codul de verificare)")
@@ -1583,8 +1591,14 @@ async def rebuild_group(owner: str, gid: str):
     if len(signed) == len(reqs):
         await db.prosumator.update_one({"id": reqs[0]["dossier_id"], "owner": owner},
                                        {"$set": {f"opis.{reqs[0]['pos_key']}.upload": f, f"opis.{reqs[0]['pos_key']}.status": "atașat"}})
-        await db.documents.insert_one({"id": str(uuid.uuid4()), "owner": owner, "created_at": now_iso(), "updated_at": now_iso(),
-                                       "client_name": reqs[0].get("client_name"), "kind": "Semnat electronic", "doc_type": f"{reqs[0]['doc_title']} — semnat", **f})
+        prec = await db.prosumator.find_one({"id": reqs[0]["dossier_id"], "owner": owner}, {"_id": 0}) or {}
+        cl = await get_client(owner, prec)
+        await db.documents.insert_one({"id": str(uuid.uuid4()), "owner": owner, "created_at": now_iso(), "updated_at": now_iso(), "client_id": cl.get("id"),
+                                       "dossier_id": reqs[0]["dossier_id"], "client_name": reqs[0].get("client_name"), "kind": "Semnat electronic",
+                                       "doc_type": f"{reqs[0]['doc_title']} — semnat", **f})
+        if cl.get("id"):
+            await db.clients.update_one({"id": cl["id"], "owner": owner}, {"$push": {"docs.semnate": {**f, "original_filename": f"{reqs[0]['doc_title']} — semnat.pdf",
+                                                                                                    "signed_at": signed[-1]["signed_at"]}}})
 
 @api_router.post("/public/sign/{token}/sign")
 async def pub_sign(token: str, request: Request):
@@ -1719,6 +1733,7 @@ import billing_routes  # noqa: E402
 import forms_routes  # noqa: E402
 import atr_routes  # noqa: E402
 import sld_edit_routes  # noqa: E402
+import modules_routes  # noqa: E402
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

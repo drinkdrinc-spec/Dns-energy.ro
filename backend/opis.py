@@ -5,6 +5,7 @@ from reportlab.lib import colors
 import docgen
 import sizing as SZ
 import sld as SLD
+import pif_doc as PIFDOC
 
 STATUSES = ["de completat", "generat", "necesită semnătură", "atașat"]
 CLIENT_SLOTS = {"factura": "Factură furnizor de energie", "certificat": "Certificat de înregistrare", "constatator": "Certificat constatator",
@@ -95,6 +96,8 @@ async def build_positions(db, owner, rec, client, settings):
             if any(not (t.get(i) or {}).get("ok") for i in ids):
                 m.append("Rezultate teste și verificări (DA/NU)")
         pos.append({"key": key, "title": title, "source": "generat", "docs": docs, "missing": m, "files": []})
+        if key == "priza" and PIFDOC.filled(rec):
+            pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
 
     cdocs = client.get("docs") or {}
     for key, slots, title in [("factura", ["factura"], "Factură furnizor de energie"),
@@ -185,6 +188,8 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
         if f:
             return [get_object(f["storage_path"])[0]]
         return [SLD.render(rec, client, settings, res, st)]
+    if p.get("key") == "pif_pv":
+        return [PIFDOC.render(rec, client, settings)]
     if p["source"] == "generat":
         return [docgen.render(p["docs"], rec, settings, client, titles)]
     out = []

@@ -4,7 +4,7 @@ import { Upload, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const SLOTS = [["factura", "Factură furnizor de energie"], ["certificat", "Certificat de înregistrare (PJ)"], ["constatator", "Certificat constatator (PJ)"],
-  ["ci", "Act de identitate (PF / reprezentant)"], ["cf", "Extras de carte funciară"]];
+  ["ci", "Act de identitate (PF / reprezentant)"], ["cf", "Extras de carte funciară"], ["semnate", "Documente semnate electronic (salvate automat)"]];
 
 export const uploadFile = async (file) => {
   const fd = new FormData(); fd.append("file", file);

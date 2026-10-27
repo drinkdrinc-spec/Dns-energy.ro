@@ -5,8 +5,11 @@ export const ROUTE_FEATURE = {
   "/catalog": "prosumator", "/distribuitori": "prosumator",
 };
 
+export const isOff = (user, feat) => !!feat && (user?.plan?.disabled || []).includes(feat);
+
 export function can(user, feat) {
   const p = user?.plan;
+  if (isOff(user, feat)) return false;
   if (!p || p.exempt || !feat) return true;
   if (!p.active) return p.policy !== "blocked";
   return p.features.includes("*") || p.features.includes(feat);

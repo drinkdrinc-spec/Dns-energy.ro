@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { can } from "@/lib/plan";
+import { can, isOff } from "@/lib/plan";
 import { Btn } from "@/components/Layout";
 
 const NEED = { prosumator: "START, PRO sau FULL", diu: "PRO sau FULL" };
@@ -10,6 +10,14 @@ export function Gate({ feat, children }) {
   const { user } = useAuth();
   if (can(user, feat)) return children;
   const p = user.plan;
+  if (isOff(user, feat)) return (
+    <div className="den-panel max-w-2xl" data-testid="module-disabled-gate">
+      <div className="flex items-center gap-3"><span className="grid place-items-center w-11 h-11 rounded-xl" style={{ background: "#f3f4f6" }}><Lock size={20} style={{ color: "#6b7280" }} /></span>
+        <div><div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "#6b7280" }}>Modul blocat</div>
+          <h2 className="text-xl font-extrabold">Indisponibil momentan</h2></div></div>
+      <p className="text-sm mt-4" style={{ color: "var(--muted)" }}>Acest modul a fost dezactivat temporar de administratorul platformei. Datele existente rămân salvate în siguranță.</p>
+    </div>
+  );
   return (
     <div className="den-panel max-w-2xl" data-testid="upgrade-gate">
       <div className="flex items-center gap-3"><span className="grid place-items-center w-11 h-11 rounded-xl" style={{ background: "#eef4ff" }}><Lock size={20} style={{ color: "var(--blue)" }} /></span>

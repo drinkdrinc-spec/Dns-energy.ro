@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert,
   FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt,
 } from "lucide-react";
-import { can, ROUTE_FEATURE } from "@/lib/plan";
+import { can, isOff, ROUTE_FEATURE } from "@/lib/plan";
 
 const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt };
 
@@ -43,6 +43,7 @@ const NAV = [
     { to: "/utilizatori", icon: "ShieldCheck", text: "Utilizatori și roluri", testid: "nav-users", admin: true },
     { to: "/abonament", icon: "CreditCard", text: "Abonament și facturare", testid: "nav-subscription", owner: true },
     { to: "/abonamente-admin", icon: "Receipt", text: "Utilizatori și abonamente", testid: "nav-admin-billing", platform: true },
+    { to: "/module-platforma", icon: "LayoutGrid", text: "Module platformă", testid: "nav-platform-modules", platform: true },
   ]},
 ];
 
@@ -89,7 +90,9 @@ export function Sidebar({ open, onClose }) {
                   >
                     <Icon size={17} />
                     <span>{it.text}</span>
-                    {locked && <Lock size={12} className="ml-auto opacity-70" data-testid={`${it.testid}-locked`} />}
+                    {isOff(user, ROUTE_FEATURE[it.to])
+                      ? <span className="ml-auto text-[9px] font-bold uppercase rounded px-1.5 py-0.5 bg-white/10" data-testid={`${it.testid}-disabled`}>Indisponibil</span>
+                      : locked && <Lock size={12} className="ml-auto opacity-70" data-testid={`${it.testid}-locked`} />}
                   </NavLink>
                 );
               })}

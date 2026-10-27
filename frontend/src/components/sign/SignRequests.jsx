@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, API } from "@/lib/api";
 import { Btn } from "@/components/Layout";
-import { Copy, Link2, Ban, RefreshCw, FileDown, ChevronDown, Plus, Trash2, MessageCircle, Mail, Smartphone } from "lucide-react";
+import { Copy, Link2, Ban, RefreshCw, FileDown, ChevronDown, Plus, MessageCircle, Mail, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 
 const BADGE = { "De trimis": ["#f1f5f9", "#334155"], "Link trimis": ["#eef4ff", "#1d4ed8"], Deschis: ["#fff8e6", "#8a5a00"], Semnat: ["#ecfdf3", "#166534"],
@@ -62,7 +62,11 @@ function CreateForm({ dossierId, onCreated }) {
   const [keys, setKeys] = useState([]);
   const [signers, setSigners] = useState([{ name: "", email: "", phone: "", role: "Beneficiar" }]);
   const [days, setDays] = useState(7);
-  useEffect(() => { api.get(`/dossier/${dossierId}`).then((r) => setPositions(r.data.positions.filter((p) => p.source === "generat"))); }, [dossierId]);
+  useEffect(() => { api.get(`/dossier/${dossierId}`).then((r) => {
+    setPositions(r.data.positions.filter((p) => p.source === "generat"));
+    const c = r.data.client || {};
+    setSigners([{ name: c.name || "", email: c.email || "", phone: c.phone || "", role: "Beneficiar" }]);
+  }); }, [dossierId]);
   const upd = (i, k, v) => setSigners(signers.map((s, j) => (j === i ? { ...s, [k]: v } : s)));
   const create = async () => {
     try { const { data } = await api.post("/sign/requests", { dossier_id: dossierId, pos_keys: keys, signers, expires_days: days }); onCreated(data); setKeys([]); toast.success(`${data.length} cereri de semnare create`); }
@@ -73,17 +77,14 @@ function CreateForm({ dossierId, onCreated }) {
       <div className="text-xs font-bold mb-2">Documente de semnat</div>
       <div className="grid sm:grid-cols-2 gap-1 mb-3">{positions.map((p) => (
         <label key={p.key} className="text-xs flex gap-2 items-center"><input type="checkbox" checked={keys.includes(p.key)} onChange={(e) => setKeys(e.target.checked ? [...keys, p.key] : keys.filter((k) => k !== p.key))} data-testid={`sign-pick-${p.key}`} />{p.nr}. {p.title}</label>))}</div>
-      <div className="text-xs font-bold mb-1">Semnatari (codul de verificare se trimite pe e-mail)</div>
+      <div className="text-xs font-bold mb-1">Semnatar: clientul (codul de verificare se trimite pe e-mail). Se generează câte un link separat pentru fiecare document ales; varianta semnată se salvează automat în dosar și în fișa clientului.</div>
       {signers.map((s, i) => (
-        <div key={i} className="grid sm:grid-cols-[1fr_1fr_140px_140px_30px] gap-2 mb-2">
-          <input className="den-input" placeholder="Nume complet" value={s.name} onChange={(e) => upd(i, "name", e.target.value)} data-testid={`signer-name-${i}`} />
-          <input className="den-input" placeholder="E-mail" value={s.email} onChange={(e) => upd(i, "email", e.target.value)} data-testid={`signer-email-${i}`} />
+        <div key={i} className="grid sm:grid-cols-[1fr_1fr_160px] gap-2 mb-2">
+          <input className="den-input" placeholder="Nume complet client" value={s.name} onChange={(e) => upd(i, "name", e.target.value)} data-testid={`signer-name-${i}`} />
+          <input className="den-input" placeholder="E-mail client" value={s.email} onChange={(e) => upd(i, "email", e.target.value)} data-testid={`signer-email-${i}`} />
           <input className="den-input" placeholder="Telefon (WhatsApp/SMS)" value={s.phone} onChange={(e) => upd(i, "phone", e.target.value)} data-testid={`signer-phone-${i}`} />
-          <input className="den-input" placeholder="Rol" value={s.role} onChange={(e) => upd(i, "role", e.target.value)} data-testid={`signer-role-${i}`} />
-          <button onClick={() => setSigners(signers.filter((_, j) => j !== i))}><Trash2 size={14} style={{ color: "#b33333" }} /></button>
         </div>))}
       <div className="flex flex-wrap items-center gap-3">
-        <button className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} onClick={() => setSigners([...signers, { name: "", email: "", phone: "", role: "" }])} data-testid="signer-add"><Plus size={13} /> Semnatar</button>
         <label className="text-xs">Valabilitate link (zile, invalid oricum după semnare): <input type="number" min={1} max={90} className="den-input inline-block w-20 ml-1" value={days} onChange={(e) => setDays(Number(e.target.value))} data-testid="sign-days" /></label>
         <Btn onClick={create} disabled={!keys.length} data-testid="sign-create-btn"><Link2 size={14} /> Generează linkuri</Btn>
       </div>

@@ -18,6 +18,7 @@ import Users from "@/pages/Users";
 import Subscription from "@/pages/Subscription";
 import AdminBilling from "@/pages/AdminBilling";
 import FormsRegistry from "@/pages/FormsRegistry";
+import PlatformModules from "@/pages/PlatformModules";
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -60,6 +61,7 @@ function AppRoutes() {
         <Route path="/utilizatori" element={<Users />} />
         <Route path="/abonament" element={<Subscription />} />
         <Route path="/abonamente-admin" element={<AdminBilling />} />
+        <Route path="/module-platforma" element={<PlatformModules />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
