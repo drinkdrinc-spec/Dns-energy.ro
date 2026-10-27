@@ -1,4 +1,5 @@
 import io
+import os
 import re
 import math
 from html import escape
@@ -15,7 +16,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 import cef as CEF
 import schema_cef
 
-FD = "/usr/share/fonts/truetype/liberation/"
+FD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts") + os.sep
 pdfmetrics.registerFont(TTFont("LS", FD + "LiberationSans-Regular.ttf"))
 pdfmetrics.registerFont(TTFont("LSB", FD + "LiberationSans-Bold.ttf"))
 pdfmetrics.registerFontFamily("LS", normal="LS", bold="LSB", italic="LS", boldItalic="LSB")
