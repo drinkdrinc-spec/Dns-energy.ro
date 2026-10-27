@@ -49,7 +49,7 @@ export function SldPanel({ id, form, setVal }) {
         <Btn variant="secondary" onClick={() => run(async () => { await api.post(`/sld/${id}/import-legacy`); toast.success("Date preluate în configurator — reîncărcați dosarul pentru a edita stringurile"); await load(); })} disabled={busy} data-testid="sld-import-legacy">Preia în configuratorul CEF</Btn>
       </div>}
       <button type="button" className="mt-3 text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => setEdit(!edit)} data-testid="sld-edit-toggle">{edit ? "Închide editarea manuală" : "Editare manuală a schemei (tabel + previzualizare)"}</button>
-      {edit && <SldEditor id={id} onSaved={load} />}
+      {edit && <SldEditor id={id} onSaved={(cef) => { if (cef) setVal?.("cef", cef); load(); }} />}
       <div className="flex flex-wrap gap-2 mt-4">
         <Btn variant="secondary" onClick={refresh} disabled={busy} data-testid="sld-refresh"><RefreshCw size={14} /> Salvează și verifică</Btn>
         <Btn variant="secondary" onClick={apply} disabled={busy} data-testid="sld-apply"><Wand2 size={14} /> Completează automat valorile calculate</Btn>

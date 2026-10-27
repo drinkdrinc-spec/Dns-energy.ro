@@ -366,6 +366,8 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     data = await request.json()
     data.pop("_id", None); data.pop("id", None)
     data.pop("atr_track", None); data.pop("owner", None); data.pop("created_at", None); data.pop("created_by", None); data.pop("created_by_email", None)
+    if module == "prosumator":
+        data.pop("pif", None)
     data["updated_by"] = user.get("email")
     if not is_admin(user):
         data.pop("assigned_to", None)

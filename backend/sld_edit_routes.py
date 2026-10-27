@@ -1,4 +1,5 @@
 import io
+import math
 import re
 from datetime import datetime, timezone
 from html import escape
@@ -53,6 +54,8 @@ async def sld_values_save(item_id: str, request: Request, user: dict = Depends(g
     if not cef.get("inverters"):
         raise HTTPException(status_code=400, detail="Preluați întâi datele în configuratorul CEF (butonul din schemă)")
     vals = (await request.json()).get("values") or {}
+    if not isinstance(vals, dict):
+        raise HTTPException(status_code=400, detail="Format invalid")
     allowed = {f"cef.grid.{k}": t for k, _, t in GRID_FIELDS} | {f"cef.inverters.{i}.{k}": t for i in range(len(cef["inverters"])) for k, _, t in INV_FIELDS}
     man = set(cef.get("manual") or [])
     for path, v in list(vals.items())[:200]:
@@ -63,6 +66,10 @@ async def sld_values_save(item_id: str, request: Request, user: dict = Depends(g
                 v = float(str(v).replace(",", "."))
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Valoare numerică invalidă: {path}")
+            if not math.isfinite(v) or v < 0:
+                raise HTTPException(status_code=400, detail=f"Valoare numerică invalidă: {path}")
+        elif v not in (None, ""):
+            v = str(v)[:120]
         parts = path.split(".")[1:]
         d = cef
         for p in parts[:-1]:
@@ -73,7 +80,7 @@ async def sld_values_save(item_id: str, request: Request, user: dict = Depends(g
     cef["auto_filled"] = [p for p in cef.get("auto_filled") or [] if p not in vals]
     await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef, "updated_at": datetime.now(timezone.utc).isoformat()}})
     await S.audit(user, "update", "prosumator", item_id, [f"schemă: {p}" for p in vals])
-    return {"ok": True, "changed": len(vals)}
+    return {"ok": True, "changed": len(vals), "cef": cef}
 
 
 # ---------------- Proces-verbal PIF (teste și verificări la punerea în funcțiune) ----------------
@@ -108,6 +115,8 @@ async def pif_save(item_id: str, request: Request, user: dict = Depends(get_curr
     S.guard("prosumator", user, write=True)
     await S.check_access(user, "prosumator", item_id)
     b = await request.json()
+    if not isinstance(b, dict) or any(not isinstance(b.get(k) or {}, dict) for k in ("strings", "inv", "checks")):
+        raise HTTPException(status_code=400, detail="Format invalid")
     clean = lambda v: str(v)[:120] if v not in (None,) else ""
     pif = {"date": clean(b.get("date")), "operator": clean(b.get("operator")), "instruments": clean(b.get("instruments")), "notes": str(b.get("notes") or "")[:1000],
            "strings": {k: {f: clean(v.get(f)) for f in ("voc", "isc", "riso_p", "riso_n", "polarity")} for k, v in (b.get("strings") or {}).items() if isinstance(v, dict)},

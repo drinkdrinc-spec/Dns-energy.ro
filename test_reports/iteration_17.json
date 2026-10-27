@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 17: tested CEF compatibility checks (POST /api/cef/check + live in CefEditor), manual SLD values editing (GET/PUT /api/sld/{id}/values + SldEditor UI), and PV PIF report (GET/PUT /api/dossier/{id}/pif + PDF + PifPanel UI). Backend pytest 18/18 pass. Frontend: all requested flows work individually (battery fields shown, incompatibility error live, editor save -> toast + manual badge + iframe reload, PIF save/reload). Found 2 HIGH data-loss bugs: stale ModulePage form overwrites SLD manual edits and PIF measurements on the next form save. Also API edge cases: 'inf'/'nan' accepted as numeric -> record becomes unreadable (500); non-dict bodies -> 500.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/data/prosumator/{id} (server.py update_item ~L375)", "issue": "Does not pop 'pif' from payload. Frontend form holds the PIF loaded when the dossier was opened; after saving new PIF measurements in PifPanel, clicking main 'Salvează' (or any SldPanel persist: Salvează și verifică / Previzualizare / Aprobă) overwrites rec.pif with the stale copy -> entered measurements lost. Reproduced: saved string 0.1 Voc 490.5 via pif-save, clicked save-btn -> GET pif no longer has 0.1. Fix: data.pop('pif', None) in update_item for prosumator.", "priority": "HIGH"},
+      {"endpoint": "PUT /api/sld/{id}/values (sld_edit_routes.py L62-65)", "issue": "float('inf')/float('nan') accepted for numeric fields ('inf','nan','Infinity'). Stored in Mongo; afterwards GET /api/sld/{id}/values and GET /api/data/prosumator/{id} return 500 (non-JSON-compliant float) -> dossier cannot be opened. Fix: reject non-finite (math.isfinite) and probably negative values with 400.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "PUT /api/sld/{id}/values", "issue": "Body {values:[...]} or non-JSON body -> 500 (list has no .items()); should be 400. Text fields accept arbitrary JSON (e.g. dict {a:1} stored as SPD AC value); coerce to str[:N]. Negative numbers (-5 A) accepted."},
+      {"endpoint": "PUT /api/dossier/{id}/pif", "issue": "{strings:[...]} (list) -> 500; validate dict types. checks with invalid values silently dropped (OK)."},
+      {"endpoint": "GET /api/dossier/{id}/pif/pdf", "issue": "When grounding_measured is empty the PDF prints the fișă/CEF grid.grounding_ohm (e.g. 3.2 Ω) under 'valoare măsurată, conform buletinului PRAM'. If grid.grounding_ohm is a design/configured value this contradicts 'measurements are never invented'; confirm the source is a PRAM-measured value or label it 'din fișă'. Operator falls back to company rep name when not entered (acceptable but note)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SldEditor / ModulePage form state", "issue": "After applying manual SLD values, parent form.cef is not updated (onSaved only reloads /sld). The CEF configurator still shows old values (inv-0-ac-section stays 4 after setting 6) and the next persist (sld-refresh 'Salvează și verifică', main save-btn, preview, approve) PUTs stale cef -> manual values reverted AND removed from cef.manual. Reproduced: set spd_ac=T2, ac.section=6, saved (toast OK), clicked sld-refresh -> API shows spd_ac='tip 1+2' manual=false, section=4 manual=false; editor still displays T2/6 with 'manual' badge (UI out of sync). Fix: PUT /sld/{id}/values return updated cef and call setVal('cef', cef) in onSaved (SldPanel passes setVal).", "selector": "[data-testid='sld-values-save'], [data-testid='sld-refresh'], [data-testid='save-btn']", "priority": "HIGH"},
+      {"component": "SldEditor", "issue": "Race: edits typed immediately after opening the editor can be wiped (load() resolves a second time -> setVals({})), observed when filling a number input right after the editor appears (likely StrictMode double effect). Minor; guard load or don't reset vals if a request is stale.", "selector": "[data-testid^='sld-val-']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "PIF save then dossier save", "issue": "PIF measurements lost on next main form save (see backend critical #1).", "affected_selectors": ["[data-testid='pif-save']", "[data-testid='save-btn']"]}
+    ],
+    "design_issues": [
+      {"screen": "PifPanel", "issues": ["pif-date uses native browser date picker (mm/dd/yyyy) instead of shadcn calendar / ro-RO format"]},
+      {"screen": "InverterCard", "issues": ["testids are inv-0-batvmin/batvmax/batimax (0-based with dash), not inv{N}-batvmin as described in the request — fine, just note for tests"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter17_cef_check_sld_edit_pif.py", "/app/backend/tests/iter17_probe.py", "/app/backend/tests/iter17_nan_probe.py", "/app/backend/tests/iter17_ui_setup.py", "/app/test_reports/pytest/iter17.xml"],
+  "action_items": [
+    "HIGH: update_item — pop 'pif' for prosumator so form saves can't overwrite PIF measurements",
+    "HIGH: after PUT /sld/{id}/values, sync parent form.cef (return cef from PUT, setVal('cef', ...)) so later persists don't revert manual SLD edits / manual flags",
+    "HIGH: reject non-finite numeric values (inf/nan) in PUT /sld/{id}/values (currently breaks GET of the dossier with 500)",
+    "LOW: return 400 for non-dict 'values'/'strings'/'inv'/'checks' payloads; coerce text values to strings; reject negative ratings",
+    "LOW: PIF PDF grounding fallback — label as 'din fișă' or leave empty unless measured",
+    "LOW: SldEditor load race resetting fresh edits"
+  ],
+  "critical_code_review_comments": [
+    "cef.check: battery voltage check only when both bat_v_min and bat_v_max present; bat_i_max/i_max comparisons and model warning work as specified.",
+    "cef.check: On-grid DC-battery check uses exact 'On-grid' but from_legacy sets type 'on-grid' (lowercase) — case mismatch; InverterCard also shows battery-range fields for legacy 'on-grid'.",
+    "sld_values_save: S.guard + check_access correct (limitat -> 403 verified for SLD values and PIF PUT).",
+    "pif_save does not verify cef exists; fine. pif_rows recomputes check() per call (OK).",
+    "SLD PDF reflects edited values (25 A and 'T2' found in PDF text)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter17_cef_check_sld_edit_pif.py", "/app/backend/tests/iter17_probe.py", "/app/backend/tests/iter17_nan_probe.py", "/app/backend/tests/iter17_ui_setup.py"],
+  "success_rate": {"backend": "100% of requested pytest (18/18); 2 HIGH issues found via edge-case probes", "frontend": "85% (all requested flows pass in isolation; state-sync data loss bugs)"},
+  "seed_data_creation": "All is_test prosumators (number_note test_i17_*/TEST_iter17ui/TEST_i17probe/TEST_i17nan) and test users (test_i17_*_lim@example.com) deleted; real dossiers verified unchanged by md5 hash before/after in pytest fixture.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=https://dns-energy.preview.emergentagent.com pytest tests/test_iter17_cef_check_sld_edit_pif.py -n 0. UI record: python tests/iter17_ui_setup.py setup|cleanup (prints id; open via [data-testid=edit-{id}] on /prosumator). Number inputs in SldEditor: wait ~2s after sld-editor appears before filling. Retest: PIF survives save-btn; SLD manual edit survives sld-refresh; PUT values 'inf' -> 400.",
+  "rca of the issue": "Data loss: ModulePage keeps the whole record in `form` and every persist does PUT /data/prosumator/{id} with it. SldEditor and PifPanel write directly via their own endpoints but never update `form`, and update_item only pops opis/snapshot/sld (not pif); cef is a legitimately form-editable field so stale cef overwrites manual values. NaN: float('nan'/'inf') parses successfully; FastAPI's JSON encoder then raises on non-finite floats -> 500 on read."
+}

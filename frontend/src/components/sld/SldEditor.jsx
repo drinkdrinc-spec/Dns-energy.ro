@@ -10,11 +10,11 @@ export function SldEditor({ id, onSaved }) {
   const [ver, setVer] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const load = () => api.get(`/sld/${id}/values`).then((r) => { setD(r.data); setVals({}); });
-  useEffect(() => { load(); }, [id]); // eslint-disable-line
+  useEffect(() => { let live = true; api.get(`/sld/${id}/values`).then((r) => { if (live) setD(r.data); }); return () => { live = false; }; }, [id]);
   if (!d) return null;
   const save = async () => {
     setBusy(true);
-    try { await api.put(`/sld/${id}/values`, { values: vals }); toast.success("Valori aplicate — previzualizarea a fost regenerată"); await load(); setVer(Date.now()); onSaved?.(); }
+    try { const { data } = await api.put(`/sld/${id}/values`, { values: vals }); toast.success("Valori aplicate — previzualizarea a fost regenerată"); await load(); setVer(Date.now()); onSaved?.(data.cef); }
     catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Eroare"); }
     setBusy(false);
   };
