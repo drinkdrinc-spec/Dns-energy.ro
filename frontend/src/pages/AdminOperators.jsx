@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { FileDown } from "lucide-react";
 import { api, API } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
+import { VisaPanel } from "@/components/anre/VisaPanel";
 
 const ST = ["în așteptare", "aprobat", "respins", "expirat"];
 
@@ -40,6 +41,7 @@ export default function AdminOperators() {
       <PageHeader eyebrow="Administrare platformă" title="Operatori economici și atestate ANRE" sub="Verificare manuală: documentul încărcat nu este dovadă suficientă până la verificarea în registrul ANRE." />
       {cfg && <label className="den-panel mb-4 flex items-center gap-2 text-sm" data-testid="attest-block-existing"><input type="checkbox" checked={cfg.attest_block_existing} disabled={busyT} onChange={(e) => toggle(e.target.checked)} data-testid="attest-block-toggle" />
         Blochează imediat și conturile existente (create înainte de {cfg.attest_cutoff ? new Date(cfg.attest_cutoff).toLocaleDateString("ro-RO") : "—"}) fără atestat aprobat. Dezactivat = își păstrează accesul până la verificare.</label>}
+      <VisaPanel reloadKey={list} />
       <div className="den-panel overflow-x-auto">
         <table className="w-full text-sm"><thead><tr className="text-left text-xs" style={{ color: "var(--muted)" }}><th className="py-2">Firmă</th><th>Atestat</th><th>Document</th><th>Vizare periodică</th><th>Verificat</th><th>Status și observații</th></tr></thead>
           <tbody>{list.map((o) => <Row key={o.tenant} o={o} onDone={load} />)}

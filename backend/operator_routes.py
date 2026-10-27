@@ -148,7 +148,18 @@ async def adm_visa(tenant: str, request: Request, user: dict = Depends(get_curre
     return pub(await db.operators.find_one({"tenant": tenant}, {"_id": 0}))
 
 
-async def run_visa(run_id: str):
+@api.get("/admin/operators/visas")
+async def adm_visas(user: dict = Depends(get_current_user)):
+    platform_only(user)
+    t = date.today()
+    out = []
+    async for o in db.operators.find({"visa_date": {"$nin": [None, ""], "$lte": (t + timedelta(days=90)).isoformat()}}, {"_id": 0, "doc_path": 0, "history": 0}).sort("visa_date", 1):
+        out.append({k: o.get(k) for k in ("tenant", "company", "cui", "attest_no", "contact_name", "contact_email", "contact_phone", "visa_date", "visa_confirmed", "visa_reminded_at", "status")}
+                   | {"days_left": (date.fromisoformat(o["visa_date"]) - t).days})
+    return out
+
+
+async def run_visa(run_id: str, base: str):
     t = date.today()
     lim = (t + timedelta(days=60)).isoformat()
     async for o in db.operators.find({"visa_confirmed": True, "visa_date": {"$gte": t.isoformat(), "$lte": lim}}, {"_id": 0}):
@@ -164,7 +175,9 @@ async def run_visa(run_id: str):
                              html=f'<div style="font-family:Arial,sans-serif;color:#0b1f3a"><p>Bună ziua,</p><p>Atestatul ANRE nr. <b>{hesc(str(o.get("attest_no") or "—"))}</b> al firmei '
                                   f'<b>{hesc(str(o.get("company") or ""))}</b> are termenul de vizare periodică la <b>{vd.strftime("%d.%m.%Y")}</b> (peste {(vd - t).days} zile).</p>'
                                   "<p>Vă recomandăm să pregătiți din timp dosarul de vizare (certificat constatator recent, personal autorizat, dotări). "
-                                  "În aplicația D-ENERGY → Dosare ANRE puteți comanda serviciul de pregătire a dosarului de vizare.</p><p>Echipa D-ENERGY</p></div>")
+                                  "Puteți comanda serviciul D-ENERGY de pregătire a dosarului de vizare (3.200 lei + TVA):</p>"
+                                  f'<p><a href="{base}/dosare-anre?tip=vizare" style="display:inline-block;background:#0b1f3a;color:#ffffff;padding:12px 22px;border-radius:6px;text-decoration:none;font-weight:bold">Comandă dosarul de vizare</a></p>'
+                                  "<p style=\"font-size:12px;color:#5b6b80\">Butonul deschide aplicația cu „Vizare periodică” deja aleasă; comanda se plasează doar după confirmarea dvs.</p><p>Echipa D-ENERGY</p></div>")
         except HTTPException:
             continue
         await db.reminders.insert_one({"id": key, "at": now(), "run_id": run_id})
@@ -181,7 +194,8 @@ async def cron_visa(request: Request, background: BackgroundTasks):
     if await db.cron_runs.find_one({"id": run_id}):
         return {"status": "duplicate"}
     await db.cron_runs.insert_one({"id": run_id, "at": now(), "name": "anre-visa"})
-    background.add_task(run_visa, run_id)
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    background.add_task(run_visa, run_id, f"https://{host.split(',')[0].strip()}")
     return {"status": "accepted"}
 
 

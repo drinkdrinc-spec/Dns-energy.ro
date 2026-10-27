@@ -32,15 +32,21 @@ import "@/App.css";
 function Protected({ children }) {
   const { user } = useAuth();
   if (user === null) return <div className="min-h-screen grid place-items-center text-sm text-slate-400">Se încarcă...</div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) { if (window.location.search) sessionStorage.setItem("den_next", window.location.pathname + window.location.search); return <Navigate to="/login" replace />; }
   return children;
+}
+
+function AfterLogin() {
+  const next = sessionStorage.getItem("den_next");
+  sessionStorage.removeItem("den_next");
+  return <Navigate to={next || "/"} replace />;
 }
 
 function AppRoutes() {
   const { user } = useAuth();
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/login" element={user ? <AfterLogin /> : <Login />} />
       <Route path="/semneaza/:token" element={<SignPage />} />
       <Route element={<Protected><Layout /></Protected>}>
         <Route path="/semnare" element={<Gate feat={ROUTE_FEATURE["/semnare"]}><RemoteSigning /></Gate>} />

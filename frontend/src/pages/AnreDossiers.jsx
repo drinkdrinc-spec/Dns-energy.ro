@@ -12,7 +12,8 @@ export default function AnreDossiers() {
   const { user } = useAuth();
   const [list, setList] = useState([]);
   const [open, setOpen] = useState(null);
-  const [kind, setKind] = useState("nou");
+  const fromMail = new URLSearchParams(window.location.search).get("tip") === "vizare";
+  const [kind, setKind] = useState(fromMail ? "vizare" : "nou");
   const load = () => api.get("/anre/dossiers").then((r) => setList(r.data));
   useEffect(() => { if (!open) load(); }, [open]);
   const create = async () => { try { const { data } = await api.post("/anre/dossiers", { kind }); toast.success(`Comandă creată — proforma ${data.invoice_number} a fost trimisă pe e-mail`); setOpen(data.id); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
@@ -21,6 +22,7 @@ export default function AnreDossiers() {
     <div data-testid="anre-page">
       <PageHeader eyebrow="Serviciu premium" title="Dosare ANRE" sub="Pregătirea dosarelor de atestare / actualizare a atestatelor ANRE (Ord. ANRE 134/2021): opis, cereri și anexe precompletate, documente, verificare finală și asistent AI. Serviciu D-ENERGY: 3.200 lei + TVA; tarifele ANRE se plătesc separat. Nu garantăm aprobarea ANRE." />
       {user?.platform && <AnreTemplates />}
+      {fromMail && kind === "vizare" && <div className="den-panel mb-2 text-sm" style={{ background: "#eef4ff" }} data-testid="anre-visa-banner">Ați deschis comanda din memento-ul de vizare: tipul „Vizare periodică” este deja ales. Apăsați „Comandă dosar” pentru a confirma; proforma se emite după confirmare.</div>}
       <div className="den-panel mb-4 flex flex-wrap items-end gap-2">
         <div className="den-field"><label>Tipul solicitării</label><select className="den-input" value={kind} onChange={(e) => setKind(e.target.value)} data-testid="anre-kind">{Object.entries(TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
         <Btn onClick={create} data-testid="anre-new">Comandă dosar (3.200 lei + TVA)</Btn>
