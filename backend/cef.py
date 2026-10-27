@@ -263,3 +263,29 @@ def flatten(rec: dict) -> dict:
     if g.get("bransament_kw"):
         out["bransament_kw"] = g["bransament_kw"]
     return out
+
+
+def from_legacy(rec: dict) -> dict:
+    """Builds cef from classic dossier fields (no invented values) when cef.inverters is empty."""
+    cef = dict(rec.get("cef") or {})
+    if cef.get("inverters") or not (rec.get("inverter") or rec.get("inverter_kw") or rec.get("panel_count")):
+        return rec
+    cnt = max(1, int(n(rec.get("inverter_count"), 1) or 1))
+    pc = int(n(rec.get("panel_count"), 0) or 0)
+    tri = "mono" not in str(rec.get("supply") or "").lower()
+    bat = None
+    if rec.get("battery") or rec.get("battery_kwh"):
+        bat = {"model": rec.get("battery"), "kwh": n(rec.get("battery_kwh"), None), "voltage": n(rec.get("battery_v"), None), "ah": n(rec.get("battery_ah"), None), "modules": 1}
+    invs = []
+    for k in range(cnt):
+        share = pc // cnt + (1 if k < pc % cnt else 0)
+        invs.append({"brand_model": rec.get("inverter"), "phases": "Trifazat" if tri else "Monofazat", "p_nom_kw": n(rec.get("inverter_kw"), None),
+                     "type": "hibrid" if bat else "on-grid", "panel_model": rec.get("panels"), "panel_w": n(rec.get("panel_w"), None),
+                     "strings": [{"panels": share, "mppt": 1, "aggregate": True}] if share else [],
+                     "battery_mode": "own" if bat and k == 0 else "none", "battery": bat if k == 0 else None, "legacy": True})
+    grid = dict(cef.get("grid") or {})
+    for gk, rk in (("supply", "supply"), ("bransament_kw", "bransament_kw"), ("grounding_ohm", "grounding_ohm")):
+        if grid.get(gk) in (None, "") and rec.get(rk) not in (None, ""):
+            grid[gk] = n(rec[rk], None) if gk != "supply" else rec[rk]
+    cef.update({"inverters": invs, "grid": grid, "from_legacy": True})
+    return {**rec, "cef": cef}

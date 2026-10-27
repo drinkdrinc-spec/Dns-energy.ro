@@ -26,12 +26,95 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def add_workdays(d: date, n: int) -> date:
+def orthodox_easter(y: int) -> date:
+    a, b, c = y % 4, y % 7, y % 19
+    d = (19 * c + 15) % 30
+    e = (2 * a + 4 * b - d + 34) % 7
+    m, day = divmod(d + e + 114, 31)
+    return date(y, m, day + 1) + timedelta(days=13)
+
+
+def ro_holidays(y: int) -> dict:
+    e = orthodox_easter(y)
+    h = {date(y, 1, 1): "Anul Nou", date(y, 1, 2): "Anul Nou", date(y, 1, 6): "Boboteaza", date(y, 1, 7): "Sf. Ioan Botezătorul",
+         date(y, 1, 24): "Unirea Principatelor Române", e - timedelta(days=2): "Vinerea Mare", e: "Paștele ortodox", e + timedelta(days=1): "A doua zi de Paște",
+         date(y, 5, 1): "Ziua Muncii", date(y, 6, 1): "Ziua Copilului", e + timedelta(days=49): "Rusaliile", e + timedelta(days=50): "A doua zi de Rusalii",
+         date(y, 8, 15): "Adormirea Maicii Domnului", date(y, 11, 30): "Sf. Andrei", date(y, 12, 1): "Ziua Națională", date(y, 12, 25): "Crăciunul",
+         date(y, 12, 26): "A doua zi de Crăciun"}
+    return {k.isoformat(): v for k, v in h.items()}
+
+
+async def extra_days() -> dict:
+    c = await db.calendar_config.find_one({"id": "main"}, {"_id": 0}) or {}
+    return {x["date"]: x.get("label") or "zi liberă" for x in c.get("extra") or []}
+
+
+def add_workdays(d: date, n: int, extra: Optional[dict] = None) -> date:
+    extra = extra or {}
+    cache = {}
     while n > 0:
         d += timedelta(days=1)
-        if d.weekday() < 5:
+        hol = cache.setdefault(d.year, ro_holidays(d.year))
+        if d.weekday() < 5 and d.isoformat() not in hol and d.isoformat() not in extra:
             n -= 1
     return d
+
+
+@api.get("/calendar/holidays")
+async def holidays(year: int, user: dict = Depends(get_current_user)):
+    ex = await extra_days()
+    return {"legal": [{"date": k, "label": v} for k, v in sorted(ro_holidays(year).items())],
+            "extra": [{"date": k, "label": v} for k, v in sorted(ex.items())]}
+
+
+@api.put("/calendar/extra")
+async def holidays_extra(request: Request, user: dict = Depends(get_current_user)):
+    if user["uid"] != S.PLATFORM["id"]:
+        raise HTTPException(status_code=403, detail="Doar administratorul platformei setează zilele libere suplimentare")
+    rows = (await request.json()).get("extra") or []
+    clean = []
+    for r in rows[:100]:
+        clean.append({"date": pdate(r.get("date"), "Zi liberă").isoformat(), "label": str(r.get("label") or "zi liberă")[:80]})
+    await db.calendar_config.update_one({"id": "main"}, {"$set": {"id": "main", "extra": clean}}, upsert=True)
+    return {"extra": clean}
+
+
+ACTIVE = ["trimis", "înregistrat", "completări solicitate", "dosar complet"]
+
+
+@api.get("/atr/deadlines")
+async def atr_deadlines(user: dict = Depends(get_current_user)):
+    if not S.has_feature(user, "atr"):
+        return []
+    q = {**S.scope_q(user, "atr"), "atr_track.status": {"$in": ACTIVE}}
+    today_ = datetime.now(timezone.utc).date()
+    out = []
+    for r in await db.atr.find(q, {"_id": 0, "id": 1, "client_name": 1, "operator": 1, "atr_track": 1, "is_test": 1}).to_list(500):
+        t = r["atr_track"]
+        due, kind = (t.get("check_due"), "verificare documentație") if t.get("check_due") else (t.get("issue_due"), "emitere aviz")
+        left = (date.fromisoformat(due) - today_).days if due else None
+        out.append({"id": r["id"], "client_name": r.get("client_name"), "operator": r.get("operator"), "status": t["status"], "reg_no": t.get("reg_no"),
+                    "due": due, "due_kind": kind if due else None, "days_left": left, "remind_days": (t.get("terms") or {}).get("remind_days", 3),
+                    "sent_at": t.get("sent_at"), "is_test": bool(r.get("is_test"))})
+    return sorted(out, key=lambda x: (x["days_left"] is None, x["days_left"] if x["days_left"] is not None else 0))
+
+
+@api.post("/atr/{item_id}/aviz")
+async def atr_aviz(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    rec = await get_rec(user, item_id)
+    b = await request.json()
+    f = b.get("file") or {}
+    if not f.get("storage_path") or not str(f["storage_path"]).startswith(f"{S.APP_NAME}/uploads/{user['id']}/"):
+        raise HTTPException(status_code=400, detail="Încărcați întâi fișierul avizului")
+    atr_no = (b.get("atr_no") or "").strip()[:60]
+    if not atr_no:
+        raise HTTPException(status_code=400, detail="Introduceți numărul avizului tehnic de racordare")
+    d = pdate(b.get("date"), "Data avizului")
+    t = track(rec)
+    t.update({"status": "aviz emis", "atr_no": atr_no, "atr_date": d.isoformat(), "issue_due": None, "check_due": None})
+    f = {k: f.get(k) for k in ("storage_path", "original_filename", "content_type", "size")}
+    await db.atr.update_one({"id": item_id}, {"$set": {"aviz_file": f, "atr_ref": f"{atr_no} / {d.isoformat()}"}})
+    return {"aviz_file": f, **pub(await save_track(item_id, t, f"Aviz tehnic de racordare primit și încărcat: {atr_no} / {d.isoformat()} ({f.get('original_filename')})", user.get("email")))}
 
 
 def pdate(v: str, label: str) -> date:
@@ -158,7 +241,7 @@ def pub(t: dict) -> dict:
 @api.get("/atr/{item_id}/track")
 async def atr_track(item_id: str, user: dict = Depends(get_current_user)):
     rec = await get_rec(user, item_id, write=False)
-    return pub(track(rec))
+    return {**pub(track(rec)), "aviz_file": rec.get("aviz_file")}
 
 
 @api.post("/atr/{item_id}/track")
@@ -180,7 +263,7 @@ async def atr_track_update(item_id: str, request: Request, user: dict = Depends(
         if not reg_no:
             raise HTTPException(status_code=400, detail="Introduceți numărul de înregistrare primit de la distribuitor")
         d = pdate(b.get("reg_date"), "Data înregistrării")
-        t.update({"status": "înregistrat", "reg_no": reg_no, "reg_date": d.isoformat(), "check_due": add_workdays(d, terms["check_days"]).isoformat()})
+        t.update({"status": "înregistrat", "reg_no": reg_no, "reg_date": d.isoformat(), "check_due": add_workdays(d, terms["check_days"], await extra_days()).isoformat()})
         ev = f"Înregistrat la distribuitor: nr. {reg_no} / {d.isoformat()}; verificare documente până la {t['check_due']}"
     elif act == "incomplete":
         t.update({"status": "completări solicitate", "incomplete_note": (b.get("note") or "")[:300], "check_due": None})

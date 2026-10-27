@@ -683,9 +683,13 @@ async def sld_ctx(owner, item_id: str):
     rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    rec = CEF.from_legacy(rec)
     client = await get_client(owner, rec)
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     s, warns = await effective_settings(owner, rec, base)
+    if (rec.get("cef") or {}).get("from_legacy"):
+        warns = list(warns) + ["Schema folosește datele din fișa dosarului (invertor, panouri, baterie). Repartizarea pe stringuri/MPPT nu este definită — "
+                               "configurați stringurile în Configuratorul CEF pentru o schemă completă."]
     res = SZ.compute(rec, client)
     state = SZ.state(rec, client, s)
     return rec, client, s, res, state, warns
@@ -713,7 +717,20 @@ async def sld_status(item_id: str, user: dict = Depends(get_current_user)):
             "auto_filled": (rec.get("cef") or {}).get("auto_filled") or [], "people": people,
             "history": [{k: v for k, v in h.items() if k not in ("hash", "values")} | {"current": h.get("hash") == state["fingerprint"], "index": i, "has_values": bool(h.get("values"))}
                         for i, h in reversed(list(enumerate(sld.get("history") or [])))],
-            "approval_requests": (sld.get("approval_requests") or [])[-5:], "is_test": bool(rec.get("is_test"))}
+            "approval_requests": (sld.get("approval_requests") or [])[-5:], "is_test": bool(rec.get("is_test")),
+            "from_legacy": bool((rec.get("cef") or {}).get("from_legacy"))}
+
+@api_router.post("/sld/{item_id}/import-legacy")
+async def sld_import_legacy(item_id: str, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    rec = await check_access(user, "prosumator", item_id)
+    new = CEF.from_legacy(rec)
+    if not (new.get("cef") or {}).get("from_legacy"):
+        raise HTTPException(status_code=400, detail="Dosarul are deja o configurație CEF sau nu are date de invertor/panouri")
+    cef = {k: v for k, v in new["cef"].items() if k != "from_legacy"}
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef}})
+    await audit(user, "update", "prosumator", item_id, ["cef (preluat din fișa dosarului pentru schema monofilară)"])
+    return {"ok": True}
 
 @api_router.get("/sld/{item_id}/pdf")
 async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("auto")):
@@ -996,6 +1013,7 @@ async def dossier_ctx(owner, item_id: str):
     rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    rec = CEF.from_legacy(rec)
     client = await get_client(owner, rec)
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     settings, warns = await effective_settings(owner, rec, base)

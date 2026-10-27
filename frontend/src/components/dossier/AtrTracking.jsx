@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api, formatApiErrorDetail } from "@/lib/api";
+import { api, fileUrl, formatApiErrorDetail } from "@/lib/api";
+import { uploadFile } from "@/components/dossier/ClientDocs";
 import { Btn } from "@/components/Layout";
-import { Send, CalendarClock } from "lucide-react";
+import { Send, CalendarClock, Upload } from "lucide-react";
 
 const err = (e) => toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Eroare");
 const today = () => new Date().toISOString().slice(0, 10);
@@ -20,7 +21,17 @@ export function AtrTracking({ id, operator }) {
   const [to, setTo] = useState("");
   const [f, setF] = useState({ reg_no: "", reg_date: today(), date: today(), atr_no: "", atr_date: today(), note: "" });
   const [busy, setBusy] = useState(false);
-  const load = () => api.get(`/atr/${id}/track`).then((r) => setT(r.data)).catch(() => {});
+  const [aviz, setAviz] = useState(null);
+  const fileRef = useRef();
+  const load = () => api.get(`/atr/${id}/track`).then((r) => { setT(r.data); setAviz(r.data.aviz_file); }).catch(() => {});
+  const uploadAviz = async (e) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try { const up = await uploadFile(file); const { data } = await api.post(`/atr/${id}/aviz`, { file: up, atr_no: f.atr_no, date: f.atr_date }); setT(data); setAviz(data.aviz_file); toast.success("Aviz încărcat — cererea este marcată „aviz emis”"); }
+    catch (er) { err(er); }
+    setBusy(false);
+  };
   useEffect(() => { load(); }, [id]); // eslint-disable-line
   useEffect(() => {
     api.get("/operator-contacts").then((r) => {
@@ -62,8 +73,12 @@ export function AtrTracking({ id, operator }) {
         <Btn type="button" variant="secondary" onClick={() => act({ action: "complete", date: f.date }, "Dosar complet — termen aviz calculat")} data-testid="atr-complete-btn">Dosar declarat complet</Btn>
         <div className="den-field"><label>Completări cerute</label>{inp("note", "text", "ce a cerut distribuitorul")}</div>
         <Btn type="button" variant="secondary" onClick={() => act({ action: "incomplete", note: f.note }, "Salvat")} data-testid="atr-incomplete-btn">Completări solicitate</Btn>
+      <div className="flex flex-wrap gap-2 items-end mt-3 rounded-lg p-3" style={{ background: "#f6f9ff" }} data-testid="atr-aviz-box">
         <div className="den-field"><label>Nr. aviz (ATR)</label>{inp("atr_no")}</div><div className="den-field"><label>Data avizului</label>{inp("atr_date", "date")}</div>
-        <Btn type="button" onClick={() => act({ action: "issued", date: f.atr_date, atr_no: f.atr_no }, "Aviz înregistrat")} data-testid="atr-issued-btn">Aviz emis</Btn>
+        <input ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={uploadAviz} data-testid="atr-aviz-file" />
+        <Btn type="button" onClick={() => (f.atr_no ? fileRef.current.click() : toast.error("Introduceți întâi numărul avizului"))} disabled={busy} data-testid="atr-aviz-upload-btn"><Upload size={14} />Încarcă avizul primit (marchează „aviz emis”)</Btn>
+        <button type="button" className="text-xs font-bold" style={{ color: "var(--muted)" }} onClick={() => act({ action: "issued", date: f.atr_date, atr_no: f.atr_no }, "Aviz înregistrat")} data-testid="atr-issued-btn">doar marchează emis, fără document</button>
+        {aviz && <a href={fileUrl(aviz.storage_path)} target="_blank" rel="noopener noreferrer" className="text-xs font-bold underline w-full" style={{ color: "#166534" }} data-testid="atr-aviz-link">Aviz încărcat: {aviz.original_filename}</a>}
       </div>
       <details className="mt-3 text-xs"><summary className="cursor-pointer font-bold" data-testid="atr-terms-toggle">Termene standard: verificare {terms.check_days} zile lucrătoare · aviz {terms.issue_days} zile · reamintire cu {terms.remind_days} zile înainte</summary>
         <TermsEditor key={`${t.check_due}-${t.issue_due}-${terms.check_days}-${terms.issue_days}-${terms.remind_days}`} terms={terms} t={t} act={act} /></details>

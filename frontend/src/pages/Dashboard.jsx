@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
+import { AtrDeadlines } from "@/components/AtrDeadlines";
 import { Users, FolderOpen, GitBranch, AlertTriangle, SquareStack, Zap, ShieldAlert } from "lucide-react";
 
 const TILES = [
@@ -41,6 +42,8 @@ export default function Dashboard() {
         <Stat label="Scheme monofilare" value={s.mono} foot="Înregistrări" icon={GitBranch} />
         <Stat label="Documente de verificat" value={s.pending} foot="De completat" color="var(--amber)" icon={AlertTriangle} />
       </div>
+
+      <AtrDeadlines />
 
       <div className="den-panel mb-6">
         <div className="flex items-center justify-between mb-5">

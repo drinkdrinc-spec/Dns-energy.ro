@@ -35,6 +35,30 @@ function Row({ f, admin, reload }) {
 
 const OPS = ["DEER", "Delgaz Grid", "Rețele Electrice România", "Distribuție Energie Oltenia", "ANRE"];
 
+function Holidays() {
+  const y = new Date().getFullYear();
+  const [d, setD] = useState(null);
+  const [row, setRow] = useState({ date: "", label: "" });
+  const load = () => api.get(`/calendar/holidays?year=${y}`).then((r) => setD(r.data));
+  useEffect(() => { load(); }, []); // eslint-disable-line
+  const put = async (extra) => { try { await api.put("/calendar/extra", { extra }); toast.success("Zile libere salvate"); load(); } catch (e) { err(e); } };
+  if (!d) return null;
+  return (
+    <div className="den-panel mb-5" data-testid="holidays-panel">
+      <b className="text-sm">Sărbători legale {y} (calculate automat) și zile libere suplimentare</b>
+      <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>Folosite la calculul termenelor în zile lucrătoare (ex. verificarea dosarului ATR).</p>
+      <div className="flex flex-wrap gap-1.5 text-[11px]" data-testid="holidays-legal">{d.legal.map((h) => <span key={h.date} className="rounded-full px-2 py-0.5" style={{ background: "#eef4ff" }}>{new Date(h.date).toLocaleDateString("ro-RO")} · {h.label}</span>)}</div>
+      <div className="flex flex-wrap gap-1.5 text-[11px] mt-2" data-testid="holidays-extra">{d.extra.map((h) => <span key={h.date} className="rounded-full px-2 py-0.5 inline-flex items-center gap-1" style={{ background: "#fff8e6" }}>{new Date(h.date).toLocaleDateString("ro-RO")} · {h.label}
+        <button onClick={() => put(d.extra.filter((x) => x.date !== h.date))} data-testid={`holiday-del-${h.date}`}><Trash2 size={10} /></button></span>)}</div>
+      <div className="flex flex-wrap gap-2 items-end mt-2">
+        <div className="den-field"><label>Zi liberă suplimentară</label><input type="date" className="den-input" value={row.date} onChange={(e) => setRow({ ...row, date: e.target.value })} data-testid="holiday-date" /></div>
+        <div className="den-field"><label>Motiv</label><input className="den-input" value={row.label} onChange={(e) => setRow({ ...row, label: e.target.value })} data-testid="holiday-label" /></div>
+        <Btn onClick={() => row.date && put([...d.extra, row]).then(() => setRow({ date: "", label: "" }))} data-testid="holiday-add">Adaugă</Btn>
+      </div>
+    </div>
+  );
+}
+
 function Contacts() {
   const [rows, setRows] = useState([]);
   useEffect(() => { api.get("/operator-contacts").then((r) => setRows(r.data)); }, []);
@@ -79,6 +103,7 @@ export default function FormsRegistry() {
       <PageHeader eyebrow="Racordare" title="Registru formulare oficiale" sub="Linkurile oficiale DEER, Delgaz Grid, Rețele Electrice și Distribuție Energie Oltenia, cu verificare automată săptămânală (luni 06:00) a linkurilor și a versiunilor; administratorul primește e-mail la modificări."
         action={user?.platform && <Btn onClick={checkAll} disabled={busy} data-testid="forms-check-all"><RefreshCw size={15} />{busy ? "Se verifică…" : "Verifică acum toate"}</Btn>} />
       {user?.platform && <Contacts />}
+      {user?.platform && <Holidays />}
       {user?.platform && <AddForm reload={load} />}
       <div className="flex gap-2 flex-wrap mb-4">{["", ...ops].map((o) => <button key={o || "all"} onClick={() => setOp(o)} data-testid={`forms-filter-${o || "all"}`} className="rounded-full px-4 py-2 text-[12px] font-bold border"
         style={o === op ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>{o || "Toți operatorii"}</button>)}</div>
