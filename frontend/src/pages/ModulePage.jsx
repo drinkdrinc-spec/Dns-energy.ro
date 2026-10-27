@@ -5,6 +5,7 @@ import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
 import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
 import { toast } from "sonner";
+import { AiImportButton, GeneratedDocs } from "@/components/ProsumatorTools";
 
 function Field({ f, value, onChange, refOptions }) {
   const common = { className: "den-input", value: value ?? "", onChange: (e) => onChange(f.name, e.target.value), placeholder: f.placeholder || "", "data-testid": `field-${f.name}` };
@@ -16,7 +17,7 @@ function Field({ f, value, onChange, refOptions }) {
       ) : f.type === "select" ? (
         <select {...common}><option value="">Alege...</option>{f.options.map((o) => <option key={o} value={o}>{o}</option>)}</select>
       ) : f.type === "ref" ? (
-        <select {...common}><option value="">Alege...</option>{(refOptions[f.ref] || []).map((o) => <option key={o.id} value={o.label}>{o.label}</option>)}</select>
+        <select {...common}><option value="">Alege...</option>{value && !(refOptions[f.ref] || []).some((o) => o.label === value) && <option value={value}>{value} (nou)</option>}{(refOptions[f.ref] || []).map((o) => <option key={o.id} value={o.label}>{o.label}</option>)}</select>
       ) : (
         <input {...common} type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"} step={f.type === "number" ? "any" : undefined} />
       )}
@@ -60,6 +61,7 @@ export default function ModulePage({ moduleKey }) {
     if (cfg.checklist) payload.checklist = checks;
     try {
       if (editId) await api.put(`/data/${key}/${editId}`, payload);
+      else if (key === "prosumator") await api.post("/import/prosumator", payload);
       else await api.post(`/data/${key}`, payload);
       toast.success("Salvat cu succes");
       setForm(null); setEditId(null); setChecks({}); load();
@@ -83,7 +85,10 @@ export default function ModulePage({ moduleKey }) {
   return (
     <div>
       <PageHeader eyebrow={cfg.eyebrow} title={cfg.title} sub={cfg.sub}
-        action={<Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>} />
+        action={<div className="flex gap-2 flex-wrap">
+          {key === "prosumator" && <AiImportButton onExtracted={(d) => { setForm(d); setEditId(null); setChecks({}); }} />}
+          <Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>
+        </div>} />
 
       {form && (
         <div className="den-panel mb-6" data-testid="module-form">
@@ -108,6 +113,8 @@ export default function ModulePage({ moduleKey }) {
               </div>
             </div>
           )}
+
+          {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} />}
 
           <div className="flex gap-2 mt-6 den-noprint">
             <Btn onClick={save} data-testid="save-btn">Salvează</Btn>

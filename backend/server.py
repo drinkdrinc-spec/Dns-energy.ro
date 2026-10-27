@@ -270,6 +270,107 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
     data, content_type = get_object(path)
     return Response(content=data, media_type=content_type)
 
+# ---------------- AI extraction & document generation ----------------
+import docgen
+from ai_extract import extract_pdf
+
+async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> dict:
+    token = authorization[7:] if authorization and authorization.startswith("Bearer ") else auth
+    if not token:
+        raise HTTPException(status_code=401, detail="Neautentificat")
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token invalid")
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="Utilizator inexistent")
+    return user
+
+@api_router.post("/ai/extract")
+async def ai_extract(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    data = await file.read()
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "pdf"
+    ct = file.content_type or MIME_TYPES.get(ext, "application/pdf")
+    if ct not in ("application/pdf", "image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(status_code=400, detail="Sunt acceptate doar PDF sau imagini")
+    stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
+    try:
+        fields = await extract_pdf(data, ct)
+    except Exception as e:
+        logger.error(f"AI extract failed: {e}")
+        raise HTTPException(status_code=502, detail="Nu am putut citi documentul. Încearcă din nou.")
+    return {"data": fields, "file": {"storage_path": stored["path"], "original_filename": file.filename,
+                                      "content_type": ct, "size": len(data)}}
+
+def _new(user, extra):
+    now = datetime.now(timezone.utc).isoformat()
+    return {"id": str(uuid.uuid4()), "owner": user["id"], "created_at": now, "updated_at": now, **extra}
+
+@api_router.post("/import/prosumator")
+async def import_prosumator(request: Request, user: dict = Depends(get_current_user)):
+    d = await request.json()
+    for k in ("_id", "id", "owner", "created_at", "updated_at"):
+        d.pop(k, None)
+    name = (d.get("client_name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Lipsește numele beneficiarului")
+    client = await db.clients.find_one({"owner": user["id"], "name": name}, {"_id": 0})
+    if not client:
+        client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""),
+                             "email": d.get("email", ""), "address": d.get("address", "")})
+        await db.clients.insert_one(dict(client))
+    count = await db.prosumator.count_documents({"owner": user["id"]})
+    d.setdefault("number", f"PROS-{datetime.now().year}-{count + 1:03d}")
+    d.setdefault("status", "Depus la operator")
+    files = d.get("files") or []
+    pros = _new(user, d)
+    await db.prosumator.insert_one(dict(pros))
+    sz = docgen.sizing(d)
+    await db.works.insert_one(_new(user, {"title": f"Sistem fotovoltaic {docgen.fmt(sz['kwp'] or docgen.num(d.get('power')))} kWp — {name}",
+        "client_name": name, "type": "Sistem fotovoltaic", "status": "Finalizat" if d.get("status") == "Prosumator activ" else "În execuție",
+        "start_date": d.get("date", ""), "responsible": d.get("executant_rep", ""), "notes": f"Generat din dosar {pros['number']}"}))
+    await db.mono.insert_one(_new(user, {"code": f"SM-{pros['number']} / rev. 0", "type": "Sistem fotovoltaic", "voltage": "230/400 V AC",
+        "dc_voltage": "conform MPPT invertor", "fuses": f"BMP {sz['main']} A {sz['poles']}P C · invertor {sz['invb']} A {sz['poles']}P C · gPV 15 A DC",
+        "spd_ac": "Tip 1+2", "spd_dc": "Tip 2", "grounding": f"{d.get('grounding_ohm', '')} Ω",
+        "battery_type": "Low Voltage (LV)" if d.get("battery") else "Fără baterie", "bess_kwh": d.get("battery_kwh", ""),
+        "battery_ah": d.get("battery_ah", ""), "notes": f"Generată automat pentru {pros['number']} ({name})", "pros_ref": pros["id"]}))
+    for nm, model, rating in [("Invertor", d.get("inverter"), f"{d.get('inverter_kw', '')} kW"),
+                              ("Module fotovoltaice", d.get("panels"), f"{d.get('panel_count', '')} × {d.get('panel_w', '')} W"),
+                              ("Sistem de stocare", d.get("battery"), f"{d.get('battery_kwh', '')} kWh")]:
+        if model:
+            await db.equipment.insert_one(_new(user, {"name": nm, "model": model, "rating": rating, "serial": "", "pros_ref": pros["id"]}))
+    for f in files:
+        await db.documents.insert_one(_new(user, {"client_id": client["id"], "client_name": name, "kind": "Dosar prosumator",
+                                                  "doc_type": "Dosar prosumator (import)", **f}))
+    return clean(pros)
+
+@api_router.get("/docs/types")
+async def doc_types(user: dict = Depends(get_current_user)):
+    return [{"key": k, "label": v[0]} for k, v in docgen.DOCS.items()]
+
+@api_router.get("/docs/sizing/{item_id}")
+async def doc_sizing(item_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    return docgen.sizing(rec)
+
+@api_router.get("/docs/{doc_type}/{item_id}")
+async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    keys = list(docgen.DOCS.keys()) if doc_type == "all" else [doc_type]
+    if any(k not in docgen.DOCS for k in keys):
+        raise HTTPException(status_code=404, detail="Tip document inexistent")
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    client = await db.clients.find_one({"owner": user["id"], "name": rec.get("client_name")}, {"_id": 0}) or {}
+    pdf = docgen.render(keys, rec, settings, client)
+    fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{fname}"'})
+
 # ---------------- Startup ----------------
 @app.on_event("startup")
 async def startup():
