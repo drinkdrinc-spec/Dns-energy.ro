@@ -306,6 +306,8 @@ MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "eq
 
 def clean(doc: dict) -> dict:
     doc.pop("_id", None)
+    if isinstance(doc.get("atr_track"), dict):
+        doc["atr_track"] = {k: v for k, v in doc["atr_track"].items() if k != "token"}
     return doc
 
 @api_router.get("/data/{module}")
@@ -329,6 +331,7 @@ async def create_item(module: str, request: Request, user: dict = Depends(get_cu
         raise HTTPException(status_code=404, detail="Modul inexistent")
     data = await request.json()
     data.pop("_id", None)
+    data.pop("atr_track", None)
     data["id"] = str(uuid.uuid4())
     data["owner"] = user["id"]
     data["created_at"] = datetime.now(timezone.utc).isoformat()

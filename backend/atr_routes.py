@@ -114,7 +114,8 @@ async def atr_submit(item_id: str, request: Request, user: dict = Depends(get_cu
         miss = [t for k, t, _ in ATR.DOCS if k in ATR.required(rec) and not att.get(k)]
         raise HTTPException(status_code=400, detail="Dosarul este incomplet — atașați înainte de trimitere: " + "; ".join(miss[:6]))
     origin = (request.headers.get("origin") or "").rstrip("/")
-    if not origin.startswith("https://"):
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    if not origin.startswith("https://") or (host and origin[8:] != host):
         raise HTTPException(status_code=400, detail="Deschideți trimiterea din aplicație")
     token = secrets.token_urlsafe(24)
     exp = (datetime.now(timezone.utc) + timedelta(days=LINK_DAYS)).isoformat()

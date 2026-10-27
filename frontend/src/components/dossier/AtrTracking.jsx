@@ -8,17 +8,17 @@ const err = (e) => toast.error(formatApiErrorDetail(e.response?.data?.detail) ||
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt = (d) => (d ? new Date(d).toLocaleDateString("ro-RO") : "—");
 
-function Due({ label, d, testid }) {
+function Due({ label, d, testid, warn = 3 }) {
   if (!d) return null;
   const left = Math.ceil((new Date(d) - new Date(today())) / 86400000);
-  const c = left < 0 ? ["#fff0f0", "#9b2c2c", `depășit cu ${-left} zile`] : left <= 3 ? ["#fff8e6", "#8a5a00", `${left} zile rămase`] : ["#ecfdf3", "#166534", `${left} zile rămase`];
+  const c = left < 0 ? ["#fff0f0", "#9b2c2c", `depășit cu ${-left} zile`] : left <= warn ? ["#fff8e6", "#8a5a00", `${left} zile rămase`] : ["#ecfdf3", "#166534", `${left} zile rămase`];
   return <div className="rounded-lg px-3 py-2 text-xs" style={{ background: c[0], color: c[1] }} data-testid={testid}><b>{label}:</b> {fmt(d)} · {c[2]}</div>;
 }
 
 export function AtrTracking({ id, operator }) {
   const [t, setT] = useState(null);
   const [to, setTo] = useState("");
-  const [f, setF] = useState({ reg_no: "", reg_date: today(), date: today(), atr_no: "", note: "" });
+  const [f, setF] = useState({ reg_no: "", reg_date: today(), date: today(), atr_no: "", atr_date: today(), note: "" });
   const [busy, setBusy] = useState(false);
   const load = () => api.get(`/atr/${id}/track`).then((r) => setT(r.data)).catch(() => {});
   useEffect(() => { load(); }, [id]); // eslint-disable-line
@@ -50,7 +50,7 @@ export function AtrTracking({ id, operator }) {
       </div>
       {t.sent_at && <div className="text-[11px] mt-1" style={{ color: "var(--muted)" }} data-testid="atr-sent-info">Trimis la {t.sent_to} pe {new Date(t.sent_at).toLocaleString("ro-RO")} (link de descărcare valabil până la {fmt(t.token_exp)}).</div>}
       <div className="grid sm:grid-cols-2 gap-3 mt-4">
-        <Due label="Termen verificare documentație" d={t.check_due} testid="atr-due-check" /><Due label="Termen emitere aviz" d={t.issue_due} testid="atr-due-issue" />
+        <Due label="Termen verificare documentație" d={t.check_due} warn={terms.remind_days} testid="atr-due-check" /><Due label="Termen emitere aviz" d={t.issue_due} warn={terms.remind_days} testid="atr-due-issue" />
       </div>
       <div className="flex flex-wrap gap-2 items-end mt-3">
         <div className="den-field"><label>Nr. înregistrare primit</label>{inp("reg_no")}</div><div className="den-field"><label>Data înregistrării</label>{inp("reg_date", "date")}</div>
@@ -61,8 +61,8 @@ export function AtrTracking({ id, operator }) {
         <Btn type="button" variant="secondary" onClick={() => act({ action: "complete", date: f.date }, "Dosar complet — termen aviz calculat")} data-testid="atr-complete-btn">Dosar declarat complet</Btn>
         <div className="den-field"><label>Completări cerute</label>{inp("note", "text", "ce a cerut distribuitorul")}</div>
         <Btn type="button" variant="secondary" onClick={() => act({ action: "incomplete", note: f.note }, "Salvat")} data-testid="atr-incomplete-btn">Completări solicitate</Btn>
-        <div className="den-field"><label>Nr. aviz (ATR)</label>{inp("atr_no")}</div>
-        <Btn type="button" onClick={() => act({ action: "issued", date: f.date, atr_no: f.atr_no }, "Aviz înregistrat")} data-testid="atr-issued-btn">Aviz emis</Btn>
+        <div className="den-field"><label>Nr. aviz (ATR)</label>{inp("atr_no")}</div><div className="den-field"><label>Data avizului</label>{inp("atr_date", "date")}</div>
+        <Btn type="button" onClick={() => act({ action: "issued", date: f.atr_date, atr_no: f.atr_no }, "Aviz înregistrat")} data-testid="atr-issued-btn">Aviz emis</Btn>
       </div>
       <details className="mt-3 text-xs"><summary className="cursor-pointer font-bold" data-testid="atr-terms-toggle">Termene standard: verificare {terms.check_days} zile lucrătoare · aviz {terms.issue_days} zile · reamintire cu {terms.remind_days} zile înainte</summary>
         <TermsEditor terms={terms} t={t} act={act} /></details>
