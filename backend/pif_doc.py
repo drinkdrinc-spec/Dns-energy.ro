@@ -1,4 +1,6 @@
+import hashlib
 import io
+import json
 from html import escape
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -25,6 +27,11 @@ def pif_rows(rec: dict) -> list:
             out.append({"key": f"{i}.{k}", "inv": i + 1, "label": f"INV{i + 1} / S{k + 1} (MPPT {s['mppt']}) — {s['panels']} panouri", "voc_stc": round(s["voc_stc"]) if s.get("voc_stc") else None,
                         "isc": s.get("isc") or None, "aggregate": bool(((inv.get("strings") or [{}])[k] if k < len(inv.get("strings") or []) else {}).get("aggregate"))})
     return out
+
+
+def fingerprint(rec: dict) -> str:
+    p = {k: v for k, v in (rec.get("pif") or {}).items() if k not in ("updated_at", "updated_by")}
+    return hashlib.sha256(json.dumps(p, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def filled(rec: dict) -> bool:

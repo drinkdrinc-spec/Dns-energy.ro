@@ -72,7 +72,7 @@ PLATFORM = {"id": None}
 ALL_FEATURES = {"prosumator": "Dosare de prosumator", "diu": "Dosar instalație de utilizare (DI-U)", "mono": "Scheme monofilare (modul)",
                 "panels": "Tablouri electrice", "anti": "Antiinsularizare", "pram": "Buletine PRAM", "equipment": "Echipamente",
                 "power": "Spor de putere / BMP", "atr": "Cerere ATR (aviz tehnic de racordare)", "works": "Gestionarea lucrărilor", "projects": "Simulare proiect", "sign_remote": "Semnare la distanță",
-                "ai_extract": "Import automat din documente (AI)"}
+                "ai_extract": "Import automat din documente (AI)", "ai_gpt": "Asistent AI ChatGPT (chat, verificare dosar, redactare, import)"}
 MODULE_FEATURE = {"clients": "prosumator", "prosumator": "prosumator", "documents": "prosumator", "catalog": "prosumator", "staff": "prosumator",
                   "instruments": "prosumator", "diu": "diu", "mono": "mono", "panels": "panels", "anti": "anti", "pram": "pram",
                   "equipment": "equipment", "power": "power", "atr": "atr", "works": "works", "projects": "projects"}
@@ -108,7 +108,7 @@ async def finish_user(user: dict) -> dict:
     user.setdefault("role", "admin")
     user["plan"] = await plan_info(user)
     pm = await db.platform_modules.find_one({"id": "main"}, {"_id": 0}) or {}
-    user["plan"]["disabled"] = [] if user["id"] == PLATFORM["id"] else [f for f in pm.get("disabled", []) if f in ALL_FEATURES]
+    user["plan"]["disabled"] = [] if user["uid"] == PLATFORM["id"] else [f for f in pm.get("disabled", []) if f in ALL_FEATURES]
     return user
 
 def has_feature(user: dict, feat: Optional[str]) -> bool:
@@ -372,6 +372,8 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     data.pop("atr_track", None); data.pop("owner", None); data.pop("created_at", None); data.pop("created_by", None); data.pop("created_by_email", None)
     if module == "prosumator":
         data.pop("pif", None)
+    if module == "clients" and isinstance(data.get("docs"), dict):
+        data["docs"]["semnate"] = (cur.get("docs") or {}).get("semnate") or []
     data["updated_by"] = user.get("email")
     if not is_admin(user):
         data.pop("assigned_to", None)
@@ -517,7 +519,7 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
 
 # ---------------- AI extraction & document generation ----------------
 import docgen
-from ai_extract import extract_pdf
+from ai_extract import extract_pdf, extract_gpt
 
 async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> dict:
     token = authorization[7:] if authorization and authorization.startswith("Bearer ") else auth
@@ -544,12 +546,13 @@ async def ai_extract(file: UploadFile = File(...), user: dict = Depends(get_curr
     if ct not in ("application/pdf", "image/jpeg", "image/png", "image/webp"):
         raise HTTPException(status_code=400, detail="Sunt acceptate doar PDF sau imagini")
     stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
+    use_gpt = has_feature(user, "ai_gpt") and "ai_gpt" not in user["plan"].get("disabled", [])
     try:
-        fields = await extract_pdf(data, ct)
+        fields = await (extract_gpt if use_gpt else extract_pdf)(data, ct)
     except Exception as e:
         logger.error(f"AI extract failed: {e}")
         raise HTTPException(status_code=502, detail="Nu am putut citi documentul. Încearcă din nou.")
-    return {"data": fields, "file": {"storage_path": stored["path"], "original_filename": file.filename,
+    return {"data": fields, "engine": "ChatGPT (GPT 6 Sol)" if use_gpt else "Gemini", "file": {"storage_path": stored["path"], "original_filename": file.filename,
                                       "content_type": ct, "size": len(data)}}
 
 def _new(user, extra):
@@ -1384,7 +1387,8 @@ async def create_sign_requests(user, did, keys, signers, days):
                             "doc_title": pos[k]["title"], "doc_path": stored["path"], "doc_sha256": sha(pdf), "signer_name": s["name"].strip(),
                             "signer_email": s["email"].strip(), "signer_phone": (s.get("phone") or "").strip(), "role": (s.get("role") or "Beneficiar").strip(),
                             "status": "De trimis", "token_hash": th, "expires_at": exp, "otp_sends": 0, "otp_attempts": 0,
-                            "sld_hash": st_sld["fingerprint"] if k in ("schema", "fisa_tehnica") else None, "is_test": bool(rec.get("is_test")),
+                            "sld_hash": st_sld["fingerprint"] if k in ("schema", "fisa_tehnica") else None,
+                            "pif_hash": OPIS.PIFDOC.fingerprint(rec) if k == "pif_pv" else None, "is_test": bool(rec.get("is_test")),
                             "history": [hist("Cerere creată", None, f"de {user.get('email')}; link valabil până la {exp[:16]} UTC")]})
             await db.sign_requests.insert_one(dict(r))
             out.append({**sign_public(r), "token": t})
@@ -1587,6 +1591,8 @@ async def rebuild_group(owner: str, gid: str):
     f = {"storage_path": st["path"], "original_filename": f"{reqs[0]['pos_key']}_semnat.pdf", "content_type": "application/pdf", "size": len(final)}
     if reqs[0].get("sld_hash"):
         f["sld_hash"] = reqs[0]["sld_hash"]
+    if reqs[0].get("pif_hash"):
+        f["pif_hash"] = reqs[0]["pif_hash"]
     await db.sign_requests.update_many({"owner": owner, "group_id": gid}, {"$set": {"signed_file": f, "signed_sha256": sha(final)}})
     if len(signed) == len(reqs):
         await db.prosumator.update_one({"id": reqs[0]["dossier_id"], "owner": owner},
@@ -1734,6 +1740,7 @@ import forms_routes  # noqa: E402
 import atr_routes  # noqa: E402
 import sld_edit_routes  # noqa: E402
 import modules_routes  # noqa: E402
+import ai_routes  # noqa: E402
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

@@ -133,6 +133,10 @@ async def build_positions(db, owner, rec, client, settings):
             if o.get("upload", {}).get("sld_hash"):
                 p["missing"].append("Versiunea semnată anterior nu mai corespunde configurației — necesită verificare și semnare nouă")
             o = {k: v for k, v in o.items() if k not in ("status", "upload")}
+        elif p["key"] == "pif_pv" and (p["upload"] or {}).get("pif_hash") and p["upload"]["pif_hash"] != PIFDOC.fingerprint(rec):
+            p["upload"] = None
+            p["missing"].append("Măsurătorile PIF s-au modificat după semnare — necesită semnare nouă")
+            o = {k: v for k, v in o.items() if k not in ("status", "upload")}
         elif p["key"] in ("schema", "fisa_tehnica") and st_sld["status"] != "approved":
             o = {k: v for k, v in o.items() if k != "status"}
         gen_missing = p["missing"] or (p["source"] == "generat" and common)

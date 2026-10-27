@@ -1,9 +1,10 @@
+import base64
 import os
 import json
 import re
 import uuid
 import tempfile
-from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType, TextDelta, StreamDone
+from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType, ImageContent, TextDelta, StreamDone
 
 OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER — Muntenia Nord", "Delgaz Grid",
              "Distribuție Energie Oltenia", "Rețele Electrice România", "Alt operator"]
@@ -23,6 +24,29 @@ def _parse(text: str) -> dict:
     m = re.search(r"\{.*\}", text, re.S)
     data = json.loads(m.group(0)) if m else {}
     return {k: v for k, v in data.items() if v not in (None, "", "null")}
+
+
+def _images(content: bytes, mime: str) -> list:
+    import pymupdf
+    doc = pymupdf.open(stream=content, filetype="pdf" if "pdf" in mime else mime.split("/")[-1])
+    out = []
+    for page in list(doc)[:4]:
+        r = page.rect
+        zoom = min(1600 / max(r.width, r.height), 2.5)
+        out.append(ImageContent(image_base64=base64.b64encode(page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")).decode()))
+    return out
+
+
+async def extract_gpt(content: bytes, mime: str) -> dict:
+    chat = LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=f"extract-{uuid.uuid4()}",
+                   system_message="Extragi date structurate din documente tehnice românești. Răspunzi doar JSON.").with_model("openai", "gpt-6-sol")
+    out = ""
+    async for ev in chat.stream_message(UserMessage(text=PROMPT, file_contents=_images(content, mime))):
+        if isinstance(ev, TextDelta):
+            out += ev.content
+        elif isinstance(ev, StreamDone):
+            break
+    return _parse(out)
 
 
 async def extract_pdf(content: bytes, mime: str) -> dict:

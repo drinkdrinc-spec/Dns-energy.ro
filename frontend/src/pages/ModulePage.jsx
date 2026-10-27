@@ -18,15 +18,18 @@ import { useAuth } from "@/context/AuthContext";
 import { PowerDossier, SimpleDossierBtn } from "@/components/dossier/PowerDossier";
 import { AtrDossier } from "@/components/dossier/AtrDossier";
 import { PifPanel } from "@/components/dossier/PifPanel";
+import { AiDossierCheck } from "@/components/ai/AiDossierCheck";
+import { AiDraft } from "@/components/ai/AiDraft";
+import { can } from "@/lib/plan";
 
-function Field({ f, value, onChange, refOptions }) {
+function Field({ f, value, onChange, refOptions, ai }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
   const common = { className: "den-input", value: value ?? "", onChange: (e) => onChange(f.name, e.target.value), placeholder: f.placeholder || "", "data-testid": `field-${f.name}` };
   return (
     <div className={`den-field ${f.full ? "sm:col-span-2" : ""}`}>
       <label>{f.label}</label>
       {f.type === "textarea" ? (
-        <textarea {...common} rows={3} />
+        <><textarea {...common} rows={3} />{ai && <AiDraft module={ai.module} field={f.name} label={f.label} form={ai.form} onApply={onChange} />}</>
       ) : f.type === "select" ? (
         <select {...common}><option value="">Alege...</option>{value && !f.options.includes(value) && <option value={value}>{value}</option>}{f.options.map((o) => <option key={o} value={o}>{o}</option>)}</select>
       ) : f.type === "ref" ? (
@@ -116,7 +119,7 @@ export default function ModulePage({ moduleKey }) {
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
           <div className="grid sm:grid-cols-2 gap-4">
-            {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} />)}
+            {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
           </div>
 
           {cfg.checklist && (
@@ -145,6 +148,7 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && editId && <PifPanel id={editId} />}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
+          {key === "prosumator" && editId && <AiDossierCheck id={editId} />}
           {key === "prosumator" && editId && <SignRequests dossierId={editId} />}
           {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} />}
           {key === "clients" && editId && <ClientDocs client={form} onChange={(docs) => setVal("docs", docs)} />}

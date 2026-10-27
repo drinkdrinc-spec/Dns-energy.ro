@@ -85,7 +85,7 @@ function CreateForm({ dossierId, onCreated }) {
           <input className="den-input" placeholder="Telefon (WhatsApp/SMS)" value={s.phone} onChange={(e) => upd(i, "phone", e.target.value)} data-testid={`signer-phone-${i}`} />
         </div>))}
       <div className="flex flex-wrap items-center gap-3">
-        <label className="text-xs">Valabilitate link (zile, invalid oricum după semnare): <input type="number" min={1} max={90} className="den-input inline-block w-20 ml-1" value={days} onChange={(e) => setDays(Number(e.target.value))} data-testid="sign-days" /></label>
+        <label className="text-xs">Valabilitate link (zile, invalid oricum după semnare): <input type="number" min={1} max={90} className="den-input ml-1" style={{ width: 80, display: "inline-block" }} value={days} onChange={(e) => setDays(Number(e.target.value))} data-testid="sign-days" /></label>
         <Btn onClick={create} disabled={!keys.length} data-testid="sign-create-btn"><Link2 size={14} /> Generează linkuri</Btn>
       </div>
     </div>

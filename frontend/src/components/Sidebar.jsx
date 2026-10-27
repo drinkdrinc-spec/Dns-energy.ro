@@ -3,16 +3,17 @@ import { BrandMark } from "@/components/BrandMark";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert,
-  FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt,
+  FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt, Sparkles,
 } from "lucide-react";
 import { can, isOff, ROUTE_FEATURE } from "@/lib/plan";
 
-const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt };
+const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles };
 
 const NAV = [
   { label: "Principal", items: [
     { to: "/", icon: "LayoutDashboard", text: "Panou principal", testid: "nav-home" },
     { to: "/clienti", icon: "Users", text: "Clienți", testid: "nav-clients" },
+    { to: "/asistent-ai", icon: "Sparkles", text: "Asistent AI", testid: "nav-ai-assistant" },
   ]},
   { label: "Dosare", items: [
     { to: "/prosumator", icon: "SunMedium", text: "Dosar de prosumator", testid: "nav-prosumator" },

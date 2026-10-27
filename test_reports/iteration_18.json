@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 18: tested (1) PV PIF in the dossier/opis, (2) a separate signing link per document (client is the only signer, 7 days), (3) platform module on/off switches. Backend pytest: 17 of 18 pass. The one failure: team accounts of the platform tenant are not blocked when a module is disabled. Frontend: all requested flows work. Module page toggles and states work. A subscriber sees the 'Indisponibil' badge and the 'Indisponibil momentan' gate, and /module-platforma is denied to them. The sign form has a single client signer prefilled, days=7 and the sign-pick-pif_pv checkbox. Each document gets its own link. Signing on the public page saves the signed PDF to the dossier opis and to the client sheet slot 'Documente semnate electronic'. Platform modules were restored to all enabled (disabled: []).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "finish_user (server.py L111) / need()", "issue": "plan.disabled is set to [] when user['id'] (the TENANT id) == PLATFORM id. So every team account of the platform tenant (instalator/inginer/electrician/limitat, converted via to_team) is unaffected by disabled modules and can still use them. Reproduced: instalator team member had plan.disabled=[] while 'power' was disabled. The request says only the main admin is unaffected. Fix: compare user['uid'] == PLATFORM['id'] (as platform_admin() and /auth/me 'platform' already do). This is MEDIUM unless the exemption is intended."},
+      {"endpoint": "POST /api/public/sign/{token}/otp (TEST dossiers)", "issue": "Returns 400 'nu este configurat un e-mail de test' because settings.test_email is empty for the admin. This is expected behaviour, but signing TEST dossiers is impossible until test_email is set in Setări de bază. The test client of a TEST dossier also has an empty e-mail, so the signer-email-0 prefill is empty."},
+      {"endpoint": "PUT /api/data/clients/{id} (update_item)", "issue": "Code review, not reproduced: 'docs' is not popped. If the client sheet is open while a document is signed (rebuild_group pushes to docs.semnate), the next 'Salvează' on the client form writes the stale docs back and the signed-document entry is lost. Same pattern as the PIF data loss in iteration 17. Suggest a $push-only path for docs.semnate or a merge on save."},
+      {"endpoint": "opis pif_pv signed upload", "issue": "After the PIF is signed, later edits to the PIF measurements do not invalidate opis.pif_pv.upload. The dossier keeps the old signed version (schema/fisa_tehnica use a hash check). Consider storing a pif fingerprint, as is done with sld_hash."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dossier > Semnături > Cerere de semnare", "issues": ["sign-days input ('den-input inline-block w-20') renders full-width on its own line. den-input width overrides w-20, so the label/input layout looks off."]},
+      {"screen": "Sidebar (subscriber)", "issues": ["The 'Indisponibil' badge makes 'Spor de putere / BMP' wrap onto 2 lines (acceptable, minor)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter18_pif_dossier_sign_modules.py", "/app/backend/tests/iter18_ui_setup.py", "/app/backend/tests/iter18_sign_helper.py", "/app/test_reports/pytest/iter18.xml"],
+  "action_items": [
+    "Decide and fix: platform team members currently bypass disabled modules (finish_user uses the tenant id). Use uid if only drinkdrinc@gmail.com should be exempt.",
+    "Protect clients.docs.semnate from being overwritten by stale client-form saves (pop docs or merge in update_item for clients).",
+    "LOW: invalidate the signed pif_pv upload when PIF data changes after signing.",
+    "LOW: fix the sign-days input width."
+  ],
+  "critical_code_review_comments": [
+    "pif_doc.filled: date + (any string/inv value OR any check OR grounding_measured). Verified: date-only -> absent, values without date -> absent, a single check -> present; pif_pv sits at index(priza)+1 with sequential nr.",
+    "Simple and full export page counts increase with PIF; the opis declaration (first pages) lists 'Proces-verbal PIF'; measured value 487.3 appears in the PDF.",
+    "sign_create: exactly 1 signer is enforced (2 -> 400) and role is forced to Beneficiar; each pos_key gets its own group_id and token; expiry is 7 days by default.",
+    "rebuild_group writes opis.{key}.upload + status 'atașat', inserts into documents (client_id, dossier_id) and pushes to clients.docs.semnate. Verified via API and UI. Re-signing returns 409/410, a wrong OTP returns 400, and other documents' requests are unaffected.",
+    "modules_save validates the list type and keys (400). need() checks disabled before the plan exemption, so FULL-plan subscribers are blocked correctly (403 'indisponibil momentan')."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter18_pif_dossier_sign_modules.py", "/app/backend/tests/iter18_ui_setup.py", "/app/backend/tests/iter18_sign_helper.py"],
+  "success_rate": {"backend": "94% (17/18; the 1 failure is the team-member exemption)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Test dossiers were created via POST /api/test-dossier and deleted afterwards (by owner + is_test + created_at window), along with their sign_requests and documents. Test users sub_i18_*@example.com and sub_i18ui@example.com were deleted. Platform modules restored to disabled: [].",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=https://dns-energy.preview.emergentagent.com pytest tests/test_iter18_pif_dossier_sign_modules.py -n 0. The OTP is hashed and TEST dossiers have no test_email, so inject it with tests/iter18_sign_helper.py TOKEN (code 123456), or set otp_hash=sha256(f'{id}:{code}') directly. UI: python tests/iter18_ui_setup.py setup|cleanup (writes /tmp/i18ui.json; the subscriber is sub_i18ui@example.com / Test2026!x with a FULL plan). Python urllib calls to the public URL from inside Playwright got a 403 (ingress); use curl from bash instead. The CreateForm loads positions asynchronously, so wait for sign-pick-pif_pv before reading the signer fields.",
+  "rca of the issue": "Team-member bypass: finish_user sets user['id'] = tenant before comparing with PLATFORM['id'], so all staff of the platform tenant match and get disabled=[]. platform_admin() correctly uses uid."
+}
