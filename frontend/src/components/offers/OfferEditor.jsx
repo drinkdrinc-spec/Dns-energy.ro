@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { FileDown, Copy, Eye, FileSignature, Save, ArrowLeft } from "lucide-react";
+import { FileDown, Copy, Eye, FileSignature, Save, ArrowLeft, Trash2 } from "lucide-react";
 import { api, API } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,7 +19,7 @@ export function OfferEditor({ id, onBack, onOpen }) {
   const [prev, setPrev] = useState(false);
   const [cd, setCd] = useState(false);
   const load = () => api.get(`/offers/${id}`).then((r) => setO(r.data));
-  useEffect(() => { load(); }, [id]); // eslint-disable-line
+  useEffect(() => { let alive = true; api.get(`/offers/${id}`).then((r) => alive && setO(r.data)); return () => { alive = false; }; }, [id]);
   if (!o) return null;
   const set = (k, v) => setO({ ...o, [k]: v });
   const b = o.beneficiary || {};
@@ -46,6 +46,7 @@ export function OfferEditor({ id, onBack, onOpen }) {
         <Btn variant="secondary" onClick={async () => (await save()) && setPrev(true)} data-testid="offer-preview"><Eye size={14} /> Previzualizare</Btn>
         <a href={pdf} target="_blank" rel="noopener noreferrer" data-testid="offer-pdf"><Btn variant="secondary"><FileDown size={14} /> PDF</Btn></a>
         <Btn variant="secondary" onClick={dup} data-testid="offer-duplicate"><Copy size={14} /> Duplică</Btn>
+        {o.status === "Ciornă" && !o.contract_id && <Btn variant="secondary" onClick={async () => { if (!window.confirm(`Ștergi oferta nr. ${o.number}? Numărul rămâne rezervat.`)) return; try { await api.delete(`/offers/${id}`); toast.success("Ofertă ștearsă"); onBack(); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } }} data-testid="offer-delete"><Trash2 size={14} /> Șterge</Btn>}
         {o.status === "Acceptată" && <Btn onClick={async () => (await save()) && setCd(true)} data-testid="offer-generate-contract"><FileSignature size={14} /> Generează contract</Btn>}
       </div>
       {o.contract_outdated && <div className="den-panel text-sm" style={{ background: "#fff8e6" }} data-testid="offer-contract-outdated">Oferta a fost modificată după generarea contractului. Contractul existent NU s-a modificat — îl poți regenera din „Generează contract” (versiunea veche rămâne în istoric).</div>}

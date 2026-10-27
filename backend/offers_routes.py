@@ -130,12 +130,12 @@ async def next_number(owner: str, kind: str) -> int:
     coll = db.offers if kind == "offer" else db.contracts
     top = await coll.find({"owner": owner}, {"number": 1}).sort("number", -1).limit(1).to_list(1)
     floor = max(START[kind], (top[0]["number"] + 1) if top else 0)
-    c = await db.counters.find_one({"id": f"{kind}:{owner}"}) or {}
-    n = max(floor, c.get("next", 0))
-    while await coll.find_one({"owner": owner, "number": n}, {"_id": 1}):
-        n += 1
-    await db.counters.update_one({"id": f"{kind}:{owner}"}, {"$set": {"next": n + 1}}, upsert=True)
-    return n
+    key = f"{kind}:{owner}"
+    await db.counters.update_one({"id": key}, {"$max": {"next": floor}}, upsert=True)
+    while True:
+        n = (await db.counters.find_one_and_update({"id": key}, {"$inc": {"next": 1}}, return_document=ReturnDocument.BEFORE))["next"]
+        if not await coll.find_one({"owner": owner, "number": n}, {"_id": 1}):
+            return n
 
 
 async def own(coll, user, item_id):
@@ -236,8 +236,10 @@ async def offer_update(oid: str, request: Request, user: dict = Depends(get_curr
         return {**o, "totals": OD.calc(o)}
     if o.get("contract_id") and not body.get("confirm_contract_change"):
         raise HTTPException(status_code=409, detail="Oferta are deja un contract generat. Confirmă modificarea: contractul existent NU se modifică automat.")
-    await db.offer_versions.insert_one({"offer_id": oid, "owner": user["id"], "version": o["version"], "snapshot": o, "at": now(), "by": user.get("email")})
-    upd = {**changed, "version": o["version"] + 1, "updated_at": now()}
+    versioned = o.get("status") != "Ciornă" or o.get("contract_id")
+    if versioned:
+        await db.offer_versions.insert_one({"offer_id": oid, "owner": user["id"], "version": o["version"], "snapshot": o, "at": now(), "by": user.get("email")})
+    upd = {**changed, "version": o["version"] + (1 if versioned else 0), "updated_at": now()}
     await db.offers.update_one({"id": oid}, {"$set": upd})
     await S.audit(user, "modificare ofertă", "offers", oid, list(changed.keys()))
     return await offer_get(oid, user)
@@ -421,7 +423,7 @@ async def contract_create(oid: str, request: Request, user: dict = Depends(get_c
     if t["net"] <= 0:
         raise HTTPException(status_code=400, detail="Oferta nu are valoare — adaugă pozițiile și prețurile")
     c = {**{k: b.get(k) for k in CFIELDS}, "date": b.get("date") or datetime.now(timezone.utc).date().isoformat()}
-    if not c["payment"] or c["payment"].get("mode") not in ("integral", "avans"):
+    if not isinstance(c["payment"], dict) or c["payment"].get("mode") not in ("integral", "avans"):
         raise HTTPException(status_code=400, detail="Alege modalitatea de plată (integrală sau cu avans)")
     pay = pay_calc(c["payment"], t)
     tpl = await template(user["id"])

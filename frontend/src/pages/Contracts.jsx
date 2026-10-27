@@ -11,7 +11,7 @@ function Template() {
   const [t, setT] = useState(null);
   const [arts, setArts] = useState(null);
   const load = () => api.get("/contract-template").then((r) => { setT(r.data); setArts((r.data.pending || r.data.active).articles); });
-  useEffect(() => { load(); }, []);
+  useEffect(() => { let alive = true; api.get("/contract-template").then((r) => { if (alive) { setT(r.data); setArts((r.data.pending || r.data.active).articles); } }); return () => { alive = false; }; }, []);
   if (!t) return null;
   const act = async (fn, msg) => { try { await fn(); toast.success(msg); load(); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   return (

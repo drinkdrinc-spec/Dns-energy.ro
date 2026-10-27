@@ -1,0 +1,47 @@
+{
+  "summary": "Phase 1 testing of 'Oferte de preț' and 'Contracte'. Backend: 16/16 pytest tests pass. Covered: numbering 249→250, duplicate, no number reuse after delete, numbering PUT rules; totals (equipment/services split, % and amount discount, VAT applied once, prices_include_vat extraction, EUR→RON); offer PDF (filename Oferta_de_pret_249.pdf, 'OFERTĂ DE PREȚ NR. 249', NR REG; 401 without token); status gate; payment preview; avans > net → 400; tranches over total → 400; contracts 93/94/95 with integral, avans and tranches; 409 on repeat, regenerate keeps the number and stores a revision; edit after contract → 409, then version+1 with contract unchanged and offer_changed/contract_outdated flags; versions list; contract PDF (7–8 pages, Anexa 1 + Anexa 2); contract status; template pending/reject/approve, with the next contract using the approved version; isolation (404 for another tenant); feature gate (PRO plan → 402). Frontend flows all work: offers list, new offer, PF/PJ switch, items with category change, discount, save updates totals, preview dialog, status → Acceptată, contract dialog (integral/avans previews, advance error disables Generate, tranches) → contract 96, edit-confirm banner, duplicate, Contracts page status select and PDF link, template editor save/approve/reject, numbering panel error toast. Cleanup done: admin tenant is back to offer_next=249, contract_next=93, template v0; all TEST offers, contracts, versions, counters and templates deleted, plus the sub_ test user.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "next_number (offers_routes.py)", "issue": "Read-then-write counter is not atomic. Two concurrent creates can pick the same number; the unique index then makes the second insert fail with an unhandled 500 instead of retrying. Use find_one_and_update with $inc, or retry on DuplicateKeyError."},
+      {"endpoint": "POST /api/offers/{id}/contract", "issue": "If 'payment' is not a dict (e.g. a string), c['payment'].get raises a 500 instead of a 400."},
+      {"endpoint": "PUT /api/offers/{id}", "issue": "Every save of a draft bumps the version and writes an offer_versions snapshot. Each editor action (Save, Preview, status change) saves first, so versions grow quickly (v4 after a few UI clicks). Consider versioning only after the offer is Trimisă/Acceptată or after a contract exists."},
+      {"endpoint": "POST /api/contract-template/approve", "issue": "Approving a pending version identical to the active one still creates a new approved version. No diff check; harmless."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OfferEditor / Contracts Template", "issue": "Input typed right after the editor opens (under about 1s) is silently lost. Under React StrictMode the load() effect runs twice, and the second GET response overwrites local state. Reproduced: offer beneficiary name typed right after 'Ofertă nouă' was wiped, and a template article edit was wiped, so the saved pending version had the original text. It works when typing after the load settles. This is dev-only, but guard it anyway (ignore stale responses, or only set state when the id matches).", "selector": "[data-testid=offer-ben-name], [data-testid=tpl-text-0]", "priority": "LOW"},
+      {"component": "Offers list / OfferEditor", "issue": "There is no delete button in the UI, even though the backend allows deleting Ciornă offers. 'Ofertă nouă' creates an offer immediately, so every accidental click burns a number and leaves an empty draft in the list for good.", "selector": "[data-testid=offer-new]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Offer preview dialog", "issues": ["The DialogContent grid splits the 90vh height between the header row and the iframe row, leaving about 300px of empty space above the PDF iframe. Use flex flex-col with the iframe as flex-1.", "Escape does not close the dialog while focus is inside the PDF iframe (only the X button works)."]},
+      {"screen": "Contract PDF", "issues": ["The final signature block after art. XII can spill alone onto its own page (page 6 has only signatures). Wrap the last paragraph and the signature block in KeepTogether."]},
+      {"screen": "Offer PDF", "issues": ["The left (Ofertant) and right (Beneficiar) signature lines sit at different heights because the left side has an extra line (rep)."]},
+      {"screen": "OfferEditor / ContractDialog", "issues": ["Uses the browser's native date input (offer-date, contract-date, contract-due_date) instead of the shadcn calendar.", "The offer versions history (GET /offers/{id}/versions) is not shown anywhere in the UI."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter22_offers_contracts.py", "/app/test_reports/pytest/iter22.xml"],
+  "action_items": [
+    "Add a delete button for Ciornă offers without a contract (or create the offer only on first save) so accidental 'Ofertă nouă' clicks don't burn numbers.",
+    "Make next_number atomic or retry on DuplicateKeyError.",
+    "Return 400 for a malformed payment object in contract create/preview.",
+    "Fix the preview dialog layout (iframe should fill the height) and keep the contract signature block together with art. XII.",
+    "Optionally guard OfferEditor/Template load() against stale responses, and show the versions history in the UI."
+  ],
+  "critical_code_review_comments": [
+    "offers_routes.py: next_number/peek duplicate logic; the counter is not atomic (see minor).",
+    "contracts_list does N+1 offer lookups, and its offers.find_one has no owner filter (safe because offer_id comes from the owner's contract, but add the filter for consistency).",
+    "Deleting an offer does not delete its offer_versions entries.",
+    "pay_calc tranches: percent tranches are computed on the net amount and the remainder is added automatically. Correct, but advance_value is silently ignored when tranches exist; the UI does label this.",
+    "The offer_pdf 'Valoare' column shows qty*unit_price, which is gross when prices_include_vat=true, while the totals are net. A note is printed under the table; acceptable."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter22_offers_contracts.py"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "~95% (all flows work; dev-only early-typing race and missing delete button)"},
+  "seed_data_creation": "None left behind. All TEST offers and contracts, offer_versions, counters offer:/contract:, contract_templates and the sub_*@example.com user were deleted. Verified: GET /offers/numbering → {offer_next:249, contract_next:93}, template active v0, 0 offers.",
+  "test_credentials": "drinkdrinc@gmail.com / DEnergy2026! (platform admin)",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest tests/test_iter22_offers_contracts.py against a clean admin tenant (it asserts 249/93 at the start). Afterwards clean db.offers/contracts/offer_versions/counters(id ^offer:|^contract:)/contract_templates and the sub_ users it registers. In Playwright, wait about 2s after the editor or template mounts before typing (StrictMode double-fetch). PDFs in iframes don't render in headless mode; verify them with page.request.get instead."
+}
