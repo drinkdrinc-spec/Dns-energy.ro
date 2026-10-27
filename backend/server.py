@@ -71,11 +71,11 @@ async def get_current_user(request: Request) -> dict:
 PLATFORM = {"id": None}
 ALL_FEATURES = {"prosumator": "Dosare de prosumator", "diu": "Dosar instalație de utilizare (DI-U)", "mono": "Scheme monofilare (modul)",
                 "panels": "Tablouri electrice", "anti": "Antiinsularizare", "pram": "Buletine PRAM", "equipment": "Echipamente",
-                "power": "Spor de putere / BMP", "works": "Gestionarea lucrărilor", "projects": "Simulare proiect", "sign_remote": "Semnare la distanță",
+                "power": "Spor de putere / BMP", "atr": "Cerere ATR (aviz tehnic de racordare)", "works": "Gestionarea lucrărilor", "projects": "Simulare proiect", "sign_remote": "Semnare la distanță",
                 "ai_extract": "Import automat din documente (AI)"}
 MODULE_FEATURE = {"clients": "prosumator", "prosumator": "prosumator", "documents": "prosumator", "catalog": "prosumator", "staff": "prosumator",
                   "instruments": "prosumator", "diu": "diu", "mono": "mono", "panels": "panels", "anti": "anti", "pram": "pram",
-                  "equipment": "equipment", "power": "power", "works": "works", "projects": "projects"}
+                  "equipment": "equipment", "power": "power", "atr": "atr", "works": "works", "projects": "projects"}
 DEFAULT_PLANS = [
     {"code": "start", "name": "START", "price": 250.0, "features": ["prosumator"], "max_inverters": 1, "order": 1,
      "description": "Dosare de prosumator simple, maximum un invertor per dosar."},
@@ -249,7 +249,7 @@ def require(user: dict, *roles):
 def is_admin(user: dict) -> bool:
     return user.get("role", "admin") == "admin"
 
-SCOPED = ("clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "works", "projects", "documents")
+SCOPED = ("clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents")
 
 def scope_q(user: dict, module: str) -> dict:
     q = {"owner": user["id"]}
@@ -302,7 +302,7 @@ async def logout(user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 # ---------------- Generic module CRUD ----------------
-MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "works", "projects", "documents", "catalog", "staff", "instruments"]
+MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents", "catalog", "staff", "instruments"]
 
 def clean(doc: dict) -> dict:
     doc.pop("_id", None)
@@ -1170,6 +1170,51 @@ async def dossier_simple(item_id: str, authorization: str = Header(None), auth: 
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
 
 import power_doc as PWR
+import atr_doc as ATR
+
+@api_router.get("/atr/{item_id}/pdf")
+async def atr_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "atr", item_id)
+    client = await get_client(user["id"], rec)
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros, info = None, None
+    if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
+        pros, pclient, base, info = await dossier_ctx(user, rec["pros_id"])
+        client = client or pclient
+    att = rec.get("attachments") or {}
+    auto = {}
+    if info and ATR.is_prod(rec):
+        bykey = {p["key"]: p for p in info["positions"]}
+        auto = {"schema": [bykey.get("schema")], "fise": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
+    attached = {k for k, v in att.items() if v} | {k for k, v in auto.items() if any(v)}
+    parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
+    if full:
+        for k, _, _ in ATR.DOCS:
+            for f in att.get(k) or []:
+                try:
+                    data, ct = get_object(f["storage_path"])
+                    parts.append(OPIS.file_pdf(data, ct))
+                except Exception as e:
+                    logger.error(f"atr attach {k}: {e}")
+            if not att.get(k):
+                for p in auto.get(k) or []:
+                    try:
+                        if p:
+                            parts += await OPIS.position_pdf(p, pros, client, base, info["titles"], get_object)
+                    except Exception as e:
+                        logger.error(f"atr auto {k}: {e}")
+    w = PdfWriter()
+    for b in parts:
+        try:
+            for pg in PdfReader(io.BytesIO(b)).pages:
+                w.add_page(pg)
+        except Exception as e:
+            logger.error(f"atr merge: {e}")
+    o = io.BytesIO(); w.write(o)
+    miss = [k for k in ATR.required(rec) if k not in attached]
+    name = f"{'DOSAR_ATR' if full else 'CERERE_ATR'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and miss else ''}.pdf"
+    return Response(content=o.getvalue(), media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
 
 @api_router.get("/power/{item_id}/pdf")
 async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
@@ -1187,7 +1232,7 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
                 "j": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
     att = rec.get("attachments") or {}
     attached = {k for k, v in att.items() if v} | {k for k, v in auto.items() if any(v)}
-    parts = [PWR.render_anexa1(rec, client, base, pros or {}, attached)]
+    parts = [PWR.render_anexa1(rec, client, base, pros or {}, attached, ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")))]
     if full:
         for k, _ in PWR.DOCS:
             for f in att.get(k) or []:
@@ -1631,6 +1676,7 @@ async def startup():
         await db.plans.update_one({"code": pl["code"]}, {"$setOnInsert": pl}, upsert=True)
     await db.billing_config.update_one({"id": "main"}, {"$setOnInsert": {"id": "main", "vat_rate": 21.0, "expired_policy": "read_only", "currency": "RON"}}, upsert=True)
     docgen.IMG_LOADER = lambda p: get_object(p)[0]
+    await forms_routes.seed()
     try:
         init_storage()
         logger.info("Storage initialized")
@@ -1642,6 +1688,7 @@ async def shutdown():
     client.close()
 
 import billing_routes  # noqa: E402
+import forms_routes  # noqa: E402
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

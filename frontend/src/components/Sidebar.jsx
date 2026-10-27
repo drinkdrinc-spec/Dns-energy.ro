@@ -32,6 +32,8 @@ const NAV = [
   ]},
   { label: "Racordare", items: [
     { to: "/spor-putere", icon: "PlugZap", text: "Spor de putere / BMP", testid: "nav-power" },
+    { to: "/cerere-atr", icon: "FileCheck2", text: "Cerere ATR", testid: "nav-atr" },
+    { to: "/formulare-oficiale", icon: "BookOpen", text: "Registru formulare oficiale", testid: "nav-forms" },
     { to: "/simulare", icon: "SunMedium", text: "Simulare proiect & hartă", testid: "nav-project" },
     { to: "/distribuitori", icon: "Network", text: "Distribuitori România", testid: "nav-operators" },
   ]},

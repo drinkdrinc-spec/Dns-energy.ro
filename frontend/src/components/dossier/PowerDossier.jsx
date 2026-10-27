@@ -11,16 +11,16 @@ const DOCS = [["a", "Act de identitate / CUI / autorizații de funcționare"], [
 const AUTO = { h: "PV recepție", i: "buletin priză", j: "fișe catalog", k: "schemă aprobată" };
 const pdf = (id, full) => `${API}/power/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
 
-function Slot({ k, label, files, onChange, auto }) {
+export function Slot({ k, label, files, onChange, auto, autoLabel, testPrefix = "power" }) {
   const ref = useRef();
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs py-1.5 border-t" style={{ borderColor: "var(--line)" }} data-testid={`power-doc-${k}`}>
+    <div className="flex flex-wrap items-center gap-2 text-xs py-1.5 border-t" style={{ borderColor: "var(--line)" }} data-testid={`${testPrefix}-doc-${k}`}>
       <b className="w-5">{k})</b><span className="min-w-[220px] flex-1">{label}</span>
       {files.map((f, i) => <span key={f.storage_path} className="inline-flex items-center gap-1"><a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--blue)" }}><FileText size={11} className="inline" /> {f.original_filename}</a>
         <button type="button" onClick={() => onChange(files.filter((_, j) => j !== i))}><Trash2 size={11} style={{ color: "#b33333" }} /></button></span>)}
-      {!files.length && auto && <span style={{ color: "#166534" }}>auto din dosarul de prosumator: {AUTO[k]}</span>}
+      {!files.length && auto && <span style={{ color: "#166534" }}>auto din dosarul de prosumator: {autoLabel || AUTO[k]}</span>}
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { onChange([...files, await uploadFile(f)]); ref.current.value = ""; } }} />
-      <button type="button" className="font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} onClick={() => ref.current.click()} data-testid={`power-upload-${k}`}><Upload size={11} />Încarcă</button>
+      <button type="button" className="font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} onClick={() => ref.current.click()} data-testid={`${testPrefix}-upload-${k}`}><Upload size={11} />Încarcă</button>
     </div>
   );
 }

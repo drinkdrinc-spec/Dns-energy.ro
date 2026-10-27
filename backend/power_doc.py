@@ -25,7 +25,8 @@ def box(v):
     return "<b>[X]</b>" if v else "[  ]"
 
 
-def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> bytes:
+def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, op: str = "deer") -> bytes:
+    from atr_doc import OP_NAMES
     st = D.S
     c = client or {}
     p = CEF.flatten(pros) if pros else {}
@@ -37,7 +38,7 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set) -
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title="Anexa 1 — Cerere de racordare")
     T = lambda rows, w: D.pdf_table(rows, w, True, 7.6, 178)
-    story = [P("Anexa 1 la Ordinul ANRE nr. 69/2020 — model Distribuție Energie Electrică Romania", "small"),
+    story = [P(f"Anexa 1 la Procedura aprobată prin Ordinul ANRE nr. 69/2020 — formular pentru <b>{escape(OP_NAMES.get(op, OP_NAMES['deer']))}</b>" + (" (model Delgaz Grid — cerere de racordare prosumator)" if op == "delgaz" else ""), "small"), P("Nr. înregistrare ____________ / Data ____________", "small"),
              P("CERERE DE RACORDARE", "h"),
              P("pentru un loc de consum şi de producere care deţine instalaţii de producere a energiei electrice din surse regenerabile cu puteri electrice instalate de cel mult 27 kW pe loc de consum", "sub"),
              P(f"{box(new)} Loc de consum şi de producere nou<br/>{box(not new)} Loc de consum existent cu modificarea unor elemente de natură tehnică cu depăşirea puterii absorbite aprobate anterior"),

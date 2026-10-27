@@ -7,3 +7,11 @@ crons:
     method: POST
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     enabled: true
+  - name: forms-check
+    description: "Verifică săptămânal linkurile și versiunile formularelor oficiale ale distribuitorilor"
+    cron: "0 6 * * 1"
+    timezone: "Europe/Bucharest"
+    endpoint: "{{BASE_URL}}/api/cron/forms-check"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

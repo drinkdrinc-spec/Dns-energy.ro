@@ -17,6 +17,7 @@ import RemoteSigning from "@/pages/RemoteSigning";
 import Users from "@/pages/Users";
 import Subscription from "@/pages/Subscription";
 import AdminBilling from "@/pages/AdminBilling";
+import FormsRegistry from "@/pages/FormsRegistry";
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -47,6 +48,8 @@ function AppRoutes() {
         <Route path="/pram" element={<Gate feat={ROUTE_FEATURE["/pram"]}><ModulePage moduleKey="pram" /></Gate>} />
         <Route path="/echipamente" element={<Gate feat={ROUTE_FEATURE["/echipamente"]}><ModulePage moduleKey="equipment" /></Gate>} />
         <Route path="/spor-putere" element={<Gate feat={ROUTE_FEATURE["/spor-putere"]}><ModulePage moduleKey="power" /></Gate>} />
+        <Route path="/cerere-atr" element={<Gate feat="atr"><ModulePage moduleKey="atr" /></Gate>} />
+        <Route path="/formulare-oficiale" element={<FormsRegistry />} />
         <Route path="/catalog" element={<Gate feat={ROUTE_FEATURE["/catalog"]}><Catalog /></Gate>} />
         <Route path="/catalog-echipamente" element={<Gate feat={ROUTE_FEATURE["/catalog-echipamente"]}><EquipmentCatalog /></Gate>} />
         <Route path="/setari-baza" element={<Gate feat={ROUTE_FEATURE["/setari-baza"]}><BaseSettings /></Gate>} />

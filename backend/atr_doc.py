@@ -1,0 +1,141 @@
+import io
+from html import escape
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+import docgen as D
+import cef as CEF
+
+M = D.M
+OP_NAMES = {"deer": "Distribuție Energie Electrică Romania S.A. (DEER)", "delgaz": "Delgaz Grid S.A.", "rer": "Rețele Electrice România S.A.",
+            "oltenia": "Distribuție Energie Oltenia S.A."}
+DOCS = [("plan", "Plan de situație la scară, cu viza emitentului certificatului de urbanism (sau schiță de amplasament pentru construcție existentă)", True),
+        ("cf", "Extras de carte funciară actualizat (CF / nr. cadastral)", True),
+        ("prop", "Act de proprietate sau alt înscris care atestă dreptul de folosință asupra terenului / incintei / clădirii", True),
+        ("id", "Act de identitate / certificat de înregistrare la registrul comerțului / alte acte legale de funcționare", True),
+        ("cu", "Certificat de urbanism în termen de valabilitate (construcție nouă / extindere)", False),
+        ("ac", "Autorizație de construire (organizare de șantier / obiectiv)", False),
+        ("puz", "PUZ / PUD aprobat, dacă a fost solicitat prin certificatul de urbanism", False),
+        ("acord", "Acordul notarial al proprietarului, dacă solicitantul nu este proprietar", False),
+        ("imp", "Împuternicire pentru reprezentant / proiectant (dacă cererea se depune prin împuternicit)", False),
+        ("memoriu", "Date tehnice și energetice (memoriu explicativ)", False),
+        ("schema", "Schema electrică monofilară a instalației de producere și modul de racordare (loc de consum și producere)", "prod"),
+        ("fise", "Fișe tehnice / certificate de conformitate ale invertoarelor și unităților generatoare (loc de consum și producere)", "prod"),
+        ("atr_prev", "Copie aviz tehnic / certificat de racordare obținut anterior (spor de putere)", False)]
+TYPES = [("nou", "utilizator nou definitiv"), ("temp", "utilizator nou temporar"), ("spor", "dezvoltarea unui utilizator existent (spor de putere)"),
+         ("mod_dep", "modificarea elementelor de natură tehnică cu depășirea puterii aprobate anterior"),
+         ("mod_fara", "modificarea elementelor de natură tehnică fără depășirea puterii aprobate anterior"),
+         ("admin", "modificarea elementelor de natură administrativă fără depășirea puterii aprobate anterior")]
+
+
+def op_key(*vals) -> str:
+    t = " ".join(str(v or "") for v in vals).lower()
+    for k, w in (("delgaz", "delgaz"), ("rer", "rețele electrice"), ("rer", "retele electrice"), ("rer", "e-distribu"), ("oltenia", "oltenia"), ("deer", "deer"),
+                 ("deer", "distribuție energie electrică"), ("deer", "transilvania"), ("deer", "muntenia nord")):
+        if w in t:
+            return k
+    return "deer"
+
+
+def rtype(rec: dict) -> str:
+    v = rec.get("request_type") or "nou"
+    return next((k for k, t in TYPES if v in (k, t)), "nou")
+
+
+def is_prod(rec: dict) -> bool:
+    return "producere" in str(rec.get("kind") or "")
+
+
+def required(rec: dict) -> list:
+    prod = is_prod(rec)
+    new = rtype(rec) in ("nou", "temp")
+    out = []
+    for k, _, req in DOCS:
+        if req is True or (req == "prod" and prod) or (k == "cu" and new) or (k == "atr_prev" and not new):
+            out.append(k)
+    return out
+
+
+def box(v):
+    return "<b>[X]</b>" if v else "[  ]"
+
+
+def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> bytes:
+    st, c = D.S, client or {}
+    p = CEF.flatten(pros) if pros else {}
+    g = lambda d, k: escape(str(d.get(k))) if d.get(k) not in (None, "") else M
+    P = lambda t, k="p": Paragraph(t, st[k])
+    T = lambda rows, w: D.pdf_table(rows, w, True, 7.6, 178)
+    prod = is_prod(rec)
+    op = op_key(rec.get("operator"), (pros or {}).get("operator"), c.get("operator"))
+    rt = rtype(rec)
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title="Cerere ATR")
+    story = [P(f"Către: <b>{escape(OP_NAMES[op])}</b>" + (f" — {g(rec, 'operator')}" if rec.get("operator") else ""), "small"),
+             P("Nr. înregistrare ____________ / Data ____________", "small"),
+             P("CERERE ȘI CHESTIONAR", "h"),
+             P("pentru obținerea avizului tehnic de racordare — " + ("loc de consum și de producere (centrală fotovoltaică peste 27 kW)" if prod else "loc de consum"), "sub"),
+             P("Tip solicitare:<br/>" + "<br/>".join(f"{box(rt == k)} {t}" for k, t in TYPES)),
+             P("1. Date de identificare ale solicitantului și ale consultantului de specialitate", "b"),
+             P(f"1.1 Numele solicitantului: <b>{g(c, 'name')}</b>; adresa: județ {g(c, 'county')}, localitatea {g(c, 'locality')}, {g(c, 'address')}; telefon {g(c, 'phone')}, "
+               f"e-mail {g(c, 'email')}; nr. O.R.C. {g(c, 'regcom') if c.get('regcom') else '—'}; cod fiscal / CNP {g(c, 'idcode')}; cont {g(c, 'iban')} deschis la {g(c, 'bank')}; "
+               f"reprezentat prin {g(c, 'rep_name') if c.get('rep_name') else '—'} în calitate de {g(c, 'rep_role') if c.get('rep_role') else '—'}."),
+             P(f"1.2 Consultant de specialitate / împuternicit: <b>{g(s, 'company')}</b>, telefon {g(s, 'phone')}, e-mail {g(s, 'email')}, "
+               f"atestat ANRE nr./data {g(s, 'anre_attest')}{(' / ' + escape(str(s.get('anre_issued')))) if s.get('anre_issued') else ''}."),
+             P("2. Date generale asupra obiectivului pentru care se solicită avizul tehnic de racordare", "b"),
+             P(f"2.1 Denumirea obiectivului: {g(rec, 'object_name')}<br/>2.2 Adresa obiectivului: județ {g(c, 'county')}, localitatea {g(c, 'locality')}, "
+               f"{g(rec, 'address') if rec.get('address') else g(c, 'address')}; CF nr. {g(rec, 'cf_nr') if rec.get('cf_nr') else g(c, 'cf_nr')}, nr. cadastral "
+               f"{g(rec, 'cadastral_nr') if rec.get('cadastral_nr') else g(c, 'cadastral_nr')}"),
+             P(f"2.3 Specificul activității: {g(rec, 'activity')}; număr de schimburi {g(rec, 'shifts')}; zile lucrătoare / săptămână {g(rec, 'workdays')} (doar persoane juridice)"),
+             P(f"2.4 Modul de alimentare actual și descrierea modificărilor de natură tehnică (spor de putere): {g(rec, 'current_supply_desc') if rt not in ('nou', 'temp') else '—'}"),
+             P("3. Date energetice ale locului de consum", "b"),
+             P(f"3.1 Tipul de racord solicitat: {box(rec.get('supply') == 'Monofazat')} monofazat {box(rec.get('supply') == 'Trifazat')} trifazat"),
+             P("3.2 Lista receptoarelor (puterea și tensiunea nominală; regim cu șocuri, deformant, dezechilibrat unde este cazul):")]
+    recs = rec.get("receptors") or []
+    story.append(T([["Nr. crt.", "Denumirea receptoarelor", "Pi (kW)", "Observații (caracteristici, regim de funcționare)"]] +
+                   [[str(i + 1), escape(r.get("name") or ""), escape(str(r.get("kw") or "")), escape(r.get("notes") or "")] for i, r in enumerate(recs)] +
+                   ([["", "", "", ""]] * (0 if recs else 3)) +
+                   [["", "Total Pi (kW)", D.fmt(sum(D.num(r.get("kw")) for r in recs)) if recs else M, ""],
+                    ["", "Puterea maximă simultan absorbită", f"{g(rec, 'p_abs_kw')} kW", f"{g(rec, 'p_abs_kva')} kVA"]], [8, 42, 16, 34]))
+    story += [P(f"3.3 Puterea celui mai mare motor: {g(rec, 'motor_kw')} kW; regim de lucru {g(rec, 'motor_regime')}; mod de pornire {g(rec, 'motor_start')}"),
+              P(f"3.4 Durata maximă de restabilire a alimentării acceptată: {g(rec, 'restore_h')} ore; număr căi de alimentare solicitate: {g(rec, 'paths')}"),
+              P(f"3.5 Factorul de putere mediu: cos φ = {g(rec, 'cos_phi')}<br/>3.6 Cerințe privind grupul de măsurare: {g(rec, 'metering')}"),
+              P(f"3.7 Data estimată pentru punerea sub tensiune finală: {escape(D.ro_date(rec.get('energize_date')) or M)}; 3.8 etape: {g(rec, 'stages') if rec.get('stages') else '—'}")]
+    if prod:
+        invs = (pros.get("cef") or {}).get("inverters") or [] if pros else []
+        pv_kw = rec.get("pv_kw") or p.get("power")
+        story += [P("4. Date tehnice și energetice ale locului de producere (centrală fotovoltaică)", "b"),
+                  T([["Nr.", "Date energetice ale producătorului", "Simbol", "U.M.", "Situația existentă", "Situația finală"],
+                     ["1", "Puterea totală instalată", "Pi", "kW", escape(str(rec.get("pv_existing_kw") or "0")), escape(str(pv_kw or M))],
+                     ["2", "Puterea maximă simultan evacuată în rețea", "Pa", "kW", "", escape(str(rec.get("p_evac_kw") or p.get("power") or M))],
+                     ["", "", "Sa", "kVA", "", escape(str(rec.get("p_evac_kva") or p.get("apparent_kva") or M))],
+                     ["3", "Consumul propriu al centralei (servicii interne)", "Pi / Pa", "kW", "", f"{escape(str(p.get('internal_pi') or rec.get('internal_kw') or M))}"],
+                     ["4", "Factorul de putere", "cos φ", "", "", escape(str(rec.get("cos_phi_prod") or "1"))]], [6, 42, 10, 8, 16, 18]),
+                  Spacer(1, 3), P("Invertoare / unități generatoare:")]
+        rows = [["Nr.", "Tip invertor", "Nr. buc.", "Pn (kW c.a.)", "Panouri (nr. × Wp)", "Pi c.c. (kWp)"]]
+        for i, inv in enumerate(invs):
+            n = sum(int(D.num(x.get("panels"))) for x in inv.get("strings") or [])
+            w = D.num(inv.get("panel_w"))
+            rows.append([str(i + 1), escape(inv.get("brand_model") or ""), "1", escape(str(inv.get("p_nom_kw") or "")), f"{n} × {w:g}" if n else "", D.fmt(n * w / 1000, 2) if n and w else ""])
+        if not invs:
+            rows.append([""] * 6)
+        bat = p.get("battery") or rec.get("storage")
+        story += [T(rows, [6, 40, 10, 14, 18, 12]),
+                  P(f"Sisteme de stocare: {box(not bat)} NU {box(bat)} DA {escape(str(bat)) if bat else ''}; sursa: centrală fotovoltaică racordată prin invertoare (fără regim cu șocuri)."),
+                  P(f"Data prevăzută pentru PIF a centralei: {escape(D.ro_date(rec.get('pif_date')) or M)}")]
+    n = 5 if prod else 4
+    story += [P(f"{n}. Alte informații", "b"), P(g(rec, "other") if rec.get("other") else M),
+              P(f"{n + 1}. Documente anexate (copii)", "b")]
+    req = set(required(rec))
+    for k, t, _ in DOCS:
+        if k in req or k in attached:
+            story.append(P(f"{box(k in attached)} {t}", "li"))
+    story.append(P(f"{box(True)} Declarație pe propria răspundere privind autenticitatea datelor și conformitatea cu originalul a documentelor anexate", "li"))
+    story += [Spacer(1, 6), P("Declar pe propria răspundere că datele și informațiile cuprinse în prezenta cerere sunt autentice și că documentele anexate, în copie, sunt conforme cu originalul. "
+                               "Sunt de acord cu prelucrarea datelor cu caracter personal în scopul soluționării cererii de racordare."),
+              D.pdf_sign([f"Data: {escape(D.ro_date(rec.get('date')) or M)}"], ["Solicitant / Împuternicit,", f"<b>{g(c, 'name')}</b> / <b>{g(s, 'company')}</b>",
+                                                                                    escape(s.get("rep") or "") or M, "(numele, prenumele și semnătura)", "(ștampilă)"], s),
+              Spacer(1, 4), P(f"Model întocmit după cererea-tip a operatorului ({escape(OP_NAMES[op])}) și Regulamentul de racordare (Ord. ANRE 59/2013). "
+                              "Verificați în Registrul formularelor oficiale versiunea curentă publicată de operator.", "small")]
+    doc.build(story)
+    return buf.getvalue()
