@@ -42,8 +42,12 @@ def items(d):
         status = st.get("status") or ("generat — de verificat" if it["key"] in GEN else "lipsă")
         if it["key"] in GEN and st.get("approved"):
             status = "verificat"
-        if it["key"] == "cert_constatator" and st.get("issued") and (date.today() - date.fromisoformat(st["issued"])).days > 30:
-            status = "expirat / nevalid"
+        if it["key"] == "cert_constatator" and st.get("issued"):
+            try:
+                if (date.today() - date.fromisoformat(st["issued"])).days > 30:
+                    status = "expirat / nevalid"
+            except ValueError:
+                status = "necesită verificare manuală"
         out.append({**it, "source_label": SRC[it["source"]], "status": status, "file": st.get("name"), "issued": st.get("issued"), "notes": st.get("notes")})
     return out
 
@@ -88,7 +92,7 @@ async def anre_list(user: dict = Depends(get_current_user)):
         p = pub(d)
         op = await db.operators.find_one({"tenant": d["owner"]}, {"status": 1}) or {}
         out.append({k: p.get(k) for k in ("id", "owner", "kind", "status", "payment_status", "progress", "created_at", "final_check")} | {
-            "company": (d.get("company") or {}).get("name"), "cui": (d.get("company") or {}).get("cui"), "attest_status": op.get("status") or "netrimis",
+            "company": (d.get("company") or {}).get("name"), "cui": (d.get("company") or {}).get("cui"), "owner_email": d.get("created_by"), "attest_status": op.get("status") or "netrimis",
             "missing": sum(1 for i in p["items"] if i["status"] != "verificat")})
     return out
 
@@ -122,6 +126,11 @@ async def anre_update(did: str, request: Request, user: dict = Depends(get_curre
     paid_or_403(d, user)
     b = await request.json()
     upd = {k: b[k] for k in ("company", "staff", "equipment", "org", "target_types") if k in b}
+    if any(d.get(k) != v for k, v in upd.items()):
+        for g in GEN:
+            if (d.get("docs") or {}).get(g, {}).get("approved"):
+                upd[f"docs.{g}.approved"] = False
+                upd[f"docs.{g}.status"] = "generat — de verificat"
     if b.get("status"):
         st = b["status"]
         if st not in STATUSES:
@@ -145,6 +154,11 @@ async def anre_upload(did: str, key: str, file: UploadFile = File(...), issued: 
     paid_or_403(d, user)
     if key not in {i["key"] for i in AD.opis_items(d["kind"])} | {"decizie"}:
         raise HTTPException(status_code=400, detail="Document necunoscut pentru acest tip de dosar")
+    if issued:
+        try:
+            issued = (datetime.strptime(issued.strip(), "%d.%m.%Y").date() if "." in issued else date.fromisoformat(issued.strip())).isoformat()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data emiterii invalidă — folosiți ZZ.LL.AAAA sau AAAA-LL-ZZ")
     data, ct = await file.read(), file.content_type or ""
     if ct not in MAGIC or not data.startswith(MAGIC[ct]) or len(data) > 15 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Încărcați PDF, JPG sau PNG (max. 15 MB)")
@@ -199,7 +213,7 @@ async def anre_check(did: str, user: dict = Depends(get_current_user)):
     d = await get_d(user, did)
     paid_or_403(d, user)
     rep = check(d)
-    await db.anre_dossiers.update_one({"id": did}, {"$set": {"final_check": {"at": rep["at"], "ok": rep["ok"]}, **({"status": "Documente lipsă"} if not rep["ok"] and d["status"] in ("Ciornă", "În completare") else {})}})
+    await db.anre_dossiers.update_one({"id": did}, {"$set": {"final_check": {"at": rep["at"], "ok": rep["ok"]}, **({"status": "Documente lipsă"} if not rep["ok"] and d["status"] in ("Ciornă", "În completare") else {"status": "În verificare"} if rep["ok"] and d["status"] in ("Ciornă", "În completare", "Documente lipsă") else {})}})
     return rep
 
 
@@ -248,6 +262,7 @@ async def anre_ai(did: str, request: Request, user: dict = Depends(get_current_u
 @api.get("/anre/dossiers/{did}/ai")
 async def anre_ai_hist(did: str, user: dict = Depends(get_current_user)):
     d = await get_d(user, did)
+    paid_or_403(d, user)
     return d.get("ai") or []
 
 
@@ -258,6 +273,8 @@ async def anre_pay(did: str, request: Request, user: dict = Depends(get_current_
     b = await request.json()
     if not (b.get("reference") or "").strip():
         raise HTTPException(status_code=400, detail="Introduceți referința OP / extrasului de cont")
+    if not await db.anre_dossiers.find_one({"id": did}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
     await db.anre_dossiers.update_one({"id": did}, {"$set": {"payment_status": "plătit", "payment": {"reference": b["reference"].strip()[:80], "at": now(), "by": user.get("email")}},
                                                    "$push": {"history": {"at": now(), "by": user.get("email"), "event": f"plată confirmată: {b['reference']}"}}})
     await S.audit(user, "plată dosar ANRE confirmată", "anre", did, [b["reference"]])

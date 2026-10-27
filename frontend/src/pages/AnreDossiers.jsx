@@ -28,7 +28,7 @@ export default function AnreDossiers() {
         <thead><tr className="text-left text-xs" style={{ color: "var(--muted)" }}><th className="py-2">Firmă</th><th>Solicitare</th><th>Plată</th><th>Atestat operator</th><th>Progres</th><th>Lipsuri</th><th>Verificare finală</th><th>Status</th></tr></thead>
         <tbody>{list.map((d) => (
           <tr key={d.id} className="border-t cursor-pointer hover:bg-slate-50" style={{ borderColor: "var(--line)" }} onClick={() => setOpen(d.id)} data-testid={`anre-row-${d.id}`}>
-            <td className="py-2"><b>{d.company || "—"}</b><div className="text-xs">{d.cui}</div></td><td>{TYPES[d.kind]}</td><td>{d.payment_status}</td><td className="text-xs">{d.attest_status}</td>
+            <td className="py-2"><b>{d.company || "—"}</b><div className="text-xs">{d.cui} {d.owner_email && `· ${d.owner_email}`} · ref. {d.id.slice(0, 8)}</div></td><td>{TYPES[d.kind]}</td><td>{d.payment_status}</td><td className="text-xs">{d.attest_status}</td>
             <td>{d.progress}%</td><td>{d.missing}</td><td className="text-xs">{d.final_check ? (d.final_check.ok ? "fără blocaje" : "cu lipsuri") : "—"}</td><td>{d.status}</td></tr>))}
           {!list.length && <tr><td colSpan={8} className="py-6 text-center" style={{ color: "var(--muted)" }}>Niciun dosar ANRE.</td></tr>}</tbody></table></div>
     </div>

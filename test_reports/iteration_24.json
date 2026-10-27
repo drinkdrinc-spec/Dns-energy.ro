@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 24 tested the premium 'Dosare ANRE' service (Etapa 3) on the backend and the frontend, plus a regression run of iteration 23. Backend: tests/test_iter24_anre_dossiers.py passed 12 of 14. It covered the opis items for each request type, price 3200 + 21% VAT, 402 on every action of an unpaid dossier (platform admin exempt), payment confirmation (403 for non-platform users, 400 without a reference), tenant isolation (404) and the admin list fields. It also covered the file checks (magic bytes, unknown key, a certificate issued more than 30 days ago marked 'expirat / nevalid', small images flagged for manual verification) and the check report (incomplete and issues: extension from B without B, expired staff licence). The full flow (all items verified, check ok, ZIP with the 6 folders, 'Pregătit pentru semnare'), the 'Depus' and 'Soluționat' rules and AI streaming with saved history all passed. Iteration 23 regression: 17 of 17 passed. Code review confirmed the iteration 23 fixes (from-dossier skips empty inverters, battery qty from modules, sign blocked on Semnat, operator upload magic bytes). Frontend (Playwright): the subscriber sees the unpaid banner and no editing; the admin confirms payment from the prompt; company fields, staff and equipment rows, saving, approving the generated documents, uploads with the review select, the final check report, ZIP download, the status rules and the AI assistant all work. One critical backend bug (an invalid 'issued' date breaks the whole user list) and one UI input bug were found.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/anre/dossiers/{id}/docs/cert_constatator (issued)", "issue": "'issued' is stored without validation. The UI prompt asks for AAAA-LL-ZZ, but a Romanian user may type '12.01.2026'. items() then calls date.fromisoformat and raises ValueError, so the upload returns 500 after the file is already saved. From then on GET /anre/dossiers/{id}, GET /anre/dossiers (for the owner AND for the platform admin) and check/package all return 500. One bad date breaks the whole ANRE list. Fix: validate on upload (400 if not ISO, or parse dd.mm.yyyy), and make items() tolerant (try/except, then 'necesită verificare manuală').", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/admin/anre/{id}/payment", "issue": "Returns 200 {payment_status:'plătit'} and writes an audit entry for an id that does not exist. Check matched_count and return 404."},
+      {"endpoint": "POST /api/anre/dossiers/{id}/docs/{key}/review (generated docs)", "issue": "An approval of a generated doc ('Am verificat') stays in place after later edits to company, staff or equipment. The PDF content changes but its status stays 'verificat', so the final check passes on content nobody reviewed. Consider resetting docs.{gen}.approved when PUT changes the data these docs use."},
+      {"endpoint": "POST /api/anre/dossiers/{id}/check", "issue": "A failed check moves the status to 'Documente lipsă', but a later successful check never moves it out (it stays 'Documente lipsă' with final_check ok=true). Consider moving it to 'În verificare'."},
+      {"endpoint": "GET /api/anre/dossiers/{id}/ai", "issue": "History is not payment-gated (POST is), so it is inconsistent. Low impact."},
+      {"endpoint": "GET /api/anre/dossiers (platform admin)", "issue": "Rows do not include the owner's email or name. A new dossier from an operator with no profile shows only '—' as the company, so the admin cannot tell which subscriber to match to the OP payment."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AnreEditor target types input", "issue": "The field is controlled with value=(target_types).join(', ') and onChange split+filter(Boolean). Typing 'A1, B' key by key gives 'A1B' because the comma and space are removed immediately. A user cannot enter more than one target type by typing (only pasting works). Use a local string state, or checkboxes for the attestation types (A1, A2, B, C1A, C2A...).", "selector": "[data-testid='anre-target']", "priority": "HIGH"},
+      {"component": "AnreEditor status 'Soluționat'", "issue": "The UI has no input for 'result' and no upload slot for 'decizie' (it is not in items). The backend requires both, so 'Soluționat' can never be set from the UI.", "selector": "[data-testid='anre-status']", "priority": "MEDIUM"},
+      {"component": "AnreEditor status select (unpaid)", "issue": "The status select is shown and enabled for an unpaid subscriber; changing it gives a 402 toast. Hide or disable it while unpaid.", "selector": "[data-testid='anre-status']", "priority": "LOW"},
+      {"component": "AnreEditor confirm payment", "issue": "The anre-confirm-payment handler has no try/catch or toast (unhandled rejection on error).", "selector": "[data-testid='anre-confirm-payment']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dosare ANRE editor / Opis table", "issues": ["The Status and Acțiuni columns have no padding, so the text runs together ('verificatAnulează aprobarea', header 'Nr.Document'). Add px-2 to td/th.", "The filing date uses the native <input type=date> (mm/dd/yyyy in the screenshot); the cert_constatator issue date uses window.prompt. Use the shadcn date picker (dd.mm.yyyy) to avoid the critical bad-date bug.", "The unpaid banner shows '3200 lei' while the page text says '3.200 lei'. Format with ro-RO.", "The open editor is not in the URL; a refresh returns to the list."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter24_anre_dossiers.py", "/app/backend/tests/iter24_ui_setup.py", "/app/test_reports/pytest/pytest_iter24.xml"],
+  "action_items": [
+    "CRITICAL: validate the 'issued' date on the ANRE upload (ISO or dd.mm.yyyy, otherwise 400) and make items() robust to bad dates; currently one bad value returns 500 for the whole ANRE list (also for the platform admin)",
+    "Fix the anre-target input so several comma-separated types can be typed (or use checkboxes)",
+    "Add a 'result' input and a 'decizie' upload in the UI so 'Soluționat' can be reached",
+    "Return 404 from POST /admin/anre/{id}/payment for an unknown id",
+    "Reset the approvals of generated docs when company, staff or equipment change; move the status out of 'Documente lipsă' when the check passes",
+    "Show the owner email in the admin list; hide the status select while unpaid; wrap confirm payment in try/catch; add cell padding to the opis table"
+  ],
+  "critical_code_review_comments": [
+    "anre_routes.items(): date.fromisoformat(st['issued']) has no guard, so one bad value makes list, get, check and package return 500",
+    "anre_pay: update_one result is not checked",
+    "AnreEditor: the target_types controlled input loses separators",
+    "The ANRE upload accepts images of 40 KB or less but flags them for manual verification; this is OK. The ZIP folder mapping is correct."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter24_anre_dossiers.py", "/app/backend/tests/iter24_ui_setup.py"],
+  "success_rate": {"backend": "86% (12/14 ANRE) + 17/17 iter23 regression", "frontend": "85%"},
+  "test_credentials": "drinkdrinc@gmail.com / DEnergy2026! (platform admin); temporary subscribers sub_iter24*@example.com / Test2026!x (deleted)",
+  "seed_data_creation": "None left. All anre_dossiers and the sub_iter24* users with their tenant data were deleted. Plans (500/900/1250), vat_rate 21 and attest_block_existing=false were left unchanged.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run pytest tests/test_iter24_anre_dossiers.py. test_payment_nonexistent and test_upload_invalid_issued_date_bricks should pass after the fixes. For UI tests, run 'python tests/iter24_ui_setup.py' to create sub_iter24ui@example.com, and 'clean' to remove it. Confirm payment and the cert date use window.prompt, so handle page dialogs.",
+  "rca of the issue": "Bad 'issued' date: anre_upload saves Form 'issued' as-is, then pub(), items() and date.fromisoformat raise ValueError, giving 500. The doc is already persisted, so every later read of that dossier fails, and anre_list calls pub() for each dossier, so the full list fails too. Reproduce: POST docs/cert_constatator with issued='12.01.2026', then GET /api/anre/dossiers gives 500. Fix: validate at input and add try/except in items()."
+}

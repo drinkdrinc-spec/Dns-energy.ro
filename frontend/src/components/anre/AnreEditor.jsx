@@ -61,14 +61,17 @@ export function AnreEditor({ id, platform, onBack }) {
       <div className="flex flex-wrap items-center gap-2">
         <button className="text-sm font-bold" onClick={onBack} data-testid="anre-back">← Dosare ANRE</button>
         <h2 className="text-xl font-extrabold">{d.types[d.kind]}</h2><span className="text-xs rounded-full px-2 py-0.5 bg-slate-100" data-testid="anre-progress">{d.progress}% verificat</span>
-        <select className="den-input !py-1 !text-sm ml-auto" style={{ width: 210 }} value={d.status} onChange={(e) => save({ status: e.target.value, ...filing })} data-testid="anre-status">{d.statuses.map((s) => <option key={s}>{s}</option>)}</select>
+        <select className="den-input !py-1 !text-sm ml-auto" style={{ width: 210 }} value={d.status} disabled={!paid} onChange={(e) => save({ status: e.target.value, ...filing })} data-testid="anre-status">{d.statuses.map((s) => <option key={s}>{s}</option>)}</select>
       </div>
       {!paid && <div className="den-panel text-sm" style={{ background: "#fff8e6" }} data-testid="anre-unpaid">Serviciul costă <b>{d.price.net} lei + TVA ({d.price.total} lei)</b>. Plătiți prin OP cu mențiunea „Dosar ANRE {d.id.slice(0, 8)}”; dosarul se deblochează după confirmarea plății de către administrator. {d.price.note}.</div>}
       {platform && d.payment_status !== "plătit" && <Btn onClick={async () => { const ref = window.prompt("Referința OP / extras:"); if (ref) { await api.post(`/admin/anre/${id}/payment`, { reference: ref }); load(); } }} data-testid="anre-confirm-payment">Confirmă plata (admin)</Btn>}
       {paid && <>
         <div className="den-panel"><h3 className="font-bold mb-2">Date firmă (preluate din profil)</h3>
           <div className="grid sm:grid-cols-4 gap-2">{CO.map(([k, l]) => <div key={k} className="den-field"><label>{l}</label><input className="den-input" value={d.company?.[k] ?? ""} onChange={(e) => setD({ ...d, company: { ...d.company, [k]: e.target.value } })} data-testid={`anre-co-${k}`} /></div>)}
-            <div className="den-field"><label>Tip(uri) atestat solicitat</label><input className="den-input" value={(d.target_types || []).join(", ")} onChange={(e) => setD({ ...d, target_types: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} data-testid="anre-target" /></div></div>
+            <div className="den-field sm:col-span-4"><label>Tip(uri) atestat solicitat</label><div className="flex flex-wrap gap-2">
+              {["A1", "A2", "A3", "B", "Bi", "Bp", "C1A", "C1B", "C2A", "C2B", "D1", "D2", "E1", "E2"].map((t) => { const tt = d.target_types || []; return (
+                <label key={t} className="text-xs flex items-center gap-1 rounded border px-2 py-1" style={{ borderColor: "var(--line)" }}>
+                  <input type="checkbox" checked={tt.includes(t)} onChange={(e) => setD({ ...d, target_types: e.target.checked ? [...tt, t] : tt.filter((x) => x !== t) })} data-testid={`anre-target-${t}`} />{t}</label>); })}</div></div></div>
           <h3 className="font-bold mt-3 mb-1 text-sm">Personal (Anexa 7)</h3><Rows cols={STAFF} rows={d.staff || []} onChange={(v) => setD({ ...d, staff: v })} tid="anre-staff" />
           <h3 className="font-bold mt-3 mb-1 text-sm">Dotări (Anexa 5)</h3><Rows cols={EQ} rows={d.equipment || []} onChange={(v) => setD({ ...d, equipment: v })} tid="anre-eq" />
           <Btn className="mt-3" onClick={() => save()} data-testid="anre-save">Salvează datele</Btn></div>
@@ -89,7 +92,10 @@ export function AnreEditor({ id, platform, onBack }) {
           <a href={url("raport")} target="_blank" rel="noopener noreferrer" data-testid="anre-report-pdf"><Btn variant="secondary">Raport PDF</Btn></a>
           <Btn variant="secondary" onClick={async () => { try { const r = await fetch(`${API}/anre/dossiers/${id}/package?auth=${tok()}`); if (!r.ok) throw new Error((await r.json()).detail); const b = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Dosar_ANRE_${d.company?.cui || id.slice(0, 6)}.zip`; a.click(); } catch (e) { toast.error(e.message); } }} data-testid="anre-package">Pachet final (ZIP)</Btn>
           <input className="den-input !w-40" placeholder="Nr. înregistrare ANRE" onChange={(e) => setFiling({ ...filing, filing_no: e.target.value })} data-testid="anre-filing-no" />
-          <input className="den-input !w-40" type="date" onChange={(e) => setFiling({ ...filing, filing_date: e.target.value })} data-testid="anre-filing-date" /></div>
+          <input className="den-input !w-40" type="date" onChange={(e) => setFiling({ ...filing, filing_date: e.target.value })} data-testid="anre-filing-date" />
+          <input className="den-input !w-52" placeholder="Rezultat ANRE (pentru „Soluționat”)" onChange={(e) => setFiling({ ...filing, result: e.target.value })} data-testid="anre-result" />
+          <label className="text-xs font-bold cursor-pointer" style={{ color: "var(--blue)" }}><Upload size={12} className="inline" /> {d.docs?.decizie ? `Decizie: ${d.docs.decizie.name}` : "Încarcă decizia / atestatul ANRE"}
+            <input type="file" className="hidden" accept="application/pdf,image/jpeg,image/png" onChange={(e) => e.target.files[0] && up("decizie", e.target.files[0])} data-testid="anre-upload-decizie" /></label></div>
           {rep && <div className="mt-3 text-xs space-y-1" data-testid="anre-report">{[["Lipsă", "missing"], ["De verificat / expirate", "review"], ["Formulare incomplete", "incomplete"], ["Neconcordanțe", "issues"]].map(([l, k]) => rep[k].length > 0 && <div key={k}><b>{l}:</b> {rep[k].join("; ")}</div>)}
             {rep.ok && <b style={{ color: "#166534" }}>Fără blocaje — pachetul final poate fi generat.</b>}</div>}</div>
         <Assistant id={id} />
