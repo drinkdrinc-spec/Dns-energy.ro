@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 13: tested upgrade credit (quote/checkout/<2 lei direct activation/downgrade 400), SmartBill 'neconfigurat' flow, simple prosumator dossier PDF, Spor de putere Anexa 1 + full dossier PDFs and plan gating (backend + UI). Found and FIXED a CRITICAL regression: Stripe Checkout Session.create failed with 'adaptive_pricing[enabled] must be true when Managed Payments is enabled', so every online checkout returned 502. Fixed by also passing managed_payments={enabled:false}. After the fix: backend 31/32 passed (iter12 regression 22/22, iter13 9/10). UI flows all worked. Open items: a stale pros_id breaks the power PDF (404), and the proforma PDF does not show the credit line.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/billing/checkout", "issue": "FIXED by testing agent. Stripe rejected adaptive_pricing={enabled:false} because Managed Payments is now on by default for the account, so checkout returned 502 'Furnizorul de plăți nu a putut genera linkul'. Added managed_payments={'enabled': False}. Verified that the Stripe session is created with amount_total 30250 RON for the discounted PRO upgrade.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/power/{id}/pdf", "issue": "If pros_id points to a deleted or non-existent prosumator dossier, the whole Anexa 1 PDF returns 404 'Înregistrare inexistentă'. POST /api/data/power also accepts any pros_id without validation. The endpoint should ignore a stale link, or validate it on save."},
+      {"endpoint": "GET /api/billing/invoices/{id}/pdf (render_invoice)", "issue": "A proforma with an upgrade credit shows 'Preț unitar 500,00' and 'Valoare 250,00' with no credit or discount line and no credit_note, so the document is inconsistent. Add a 'Credit abonament anterior −250,00' row and the note."},
+      {"endpoint": "upgrade_credit / new_invoice", "issue": "The credit is frozen into the proforma when it is created and is never recomputed at payment. A pending upgrade proforma (Stripe session valid 23h; admins can record manual payment at any time) can be paid after the plan changed or expired, or after another upgrade already used the same credit."},
+      {"endpoint": "upgrade_credit", "issue": "With stacked renewals (a second paid proforma of the same plan starting in the future), the credit only covers the last proforma's period. The unused days of the current period are lost (under-credit)."},
+      {"endpoint": "POST /api/admin/invoices/{id}/smartbill", "issue": "Returns only {status:'neconfigurat'} without the 'error' text stored in invoice.fiscal, so the toast is just 'SmartBill: neconfigurat' (as specified; could be more descriptive)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/spor-putere form", "issues": ["Data cererii / energize_date use the browser's native date input instead of a shadcn calendar", "'Putere solicitată (kW)' in the main form and 'Putere solicitată (kVA)' in the Anexa 1 panel are close duplicates, which may confuse users", "Saving closes the form, so the user must reopen the record to see the PDF links"]},
+      {"screen": "/abonament", "issues": ["When the current plan was assigned manually, the credit_note ('fără credit automat') is not shown because checkout-credit only renders when credit > 0"]},
+      {"screen": "/abonamente-admin invoice list", "issues": ["Bază/TVA columns are cramped ('250,00 lei21% · 52,50 lei' with no spacing)"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter13_credit_power_simple.py", "/app/backend/tests/test_iter12_billing_plans.py", "/app/backend/tests/seed_iter13_ui.py", "/app/test_reports/pytest/pytest_iter13.xml"],
+  "action_items": [
+    "Keep the Stripe fix (managed_payments={'enabled': False}) in billing_routes.py billing_checkout",
+    "power_pdf: if dossier_ctx fails for rec.pros_id, fall back to rendering without the linked dossier (or validate pros_id on POST/PUT /data/power)",
+    "render_invoice: show the credit row and credit_note on proformas with credit > 0 (and in the CSV export)",
+    "Recompute or validate the credit at payment time (activate) or cancel stale pending upgrade proformas when the subscription changes",
+    "Optional: show credit_note on /abonament even when credit is 0; replace native date inputs with shadcn Calendar"
+  ],
+  "critical_code_review_comments": [
+    "billing_routes.py is 696 lines, at the 700-line limit; consider splitting into smartbill.py and admin_billing.py",
+    "upgrade_credit finds the source invoice by period_to == sub.valid_until; a manual valid_until edit silently removes the credit",
+    "SmartBill sb_payload uses unit = net/months with quantity months; with a credit, unit no longer matches the plan price (acceptable, but the product name is the only place the credit is shown)",
+    "Tests iter12 and iter13 both temporarily change plan prices (START 300, PRO 250.5). With xdist they run on separate workers and can race (iter12 test_06 asserts PRO=500). Run them sequentially or serialize the price-changing tests"
+  ],
+  "updated_files": ["/app/backend/billing_routes.py", "/app/backend/tests/test_iter13_credit_power_simple.py", "/app/backend/tests/seed_iter13_ui.py"],
+  "success_rate": {"backend": "97% (31/32; failing test = stale pros_id 404)", "frontend": "100% of tested flows"},
+  "test_credentials": "admin drinkdrinc@gmail.com / DEnergy2026! (from /app/memory/test_credentials.md); temporary subscribers test_i13_*@example.com and test_ui13_start@example.com / TestPass123! were created and deleted",
+  "seed_data_creation": "None left. All @example.com users, their invoices, subscriptions and dossiers, and the UI-created admin power record were deleted. Plan prices were restored (START 250, PRO 500). Existing admin TEST-PROS dossiers were reused, not created.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest tests/test_iter13_credit_power_simple.py tests/test_iter12_billing_plans.py` from /app/backend (xdist on). Watch the plan-price race between the two files. UI seed: `python tests/seed_iter13_ui.py` creates test_ui13_start@example.com (START with a PAID proforma, so credit 250 on upgrade); `clean` removes it. Power module UI: field-client_name is a <select> of clients; the power-pros select loads its options asynchronously. The admin power list has a real record 'ZOLTAN ANTAL'; do not delete it.",
+  "rca of the issue": "Stripe checkout 502: backend log 'adaptive_pricing[enabled] must be `true` when Managed Payments is enabled ... pass managed_payments[enabled]=false'. The Stripe test account turned on Managed Payments by default after iteration 12. Mitigation: pass managed_payments={'enabled': False}. Verified with a direct Stripe call and the e2e UI redirect to checkout.stripe.com showing RON 302.50 (250 + 52.50 VAT)."
+}

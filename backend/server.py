@@ -1178,7 +1178,7 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
     client = await get_client(user["id"], rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     pros, auto = None, {}
-    if rec.get("pros_id"):
+    if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
         pros, pclient, ps, info = await dossier_ctx(user, rec["pros_id"])
         client = client or pclient
         base = ps

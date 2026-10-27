@@ -151,6 +151,15 @@ async def new_invoice(tenant: str, email: str, plan: dict, months: int, by: str,
     cr = await upgrade_credit(tenant, plan)
     q = quote(plan, months, float(cfg.get("vat_rate", 21)) if vat_rate is None else float(vat_rate), cr.get("credit", 0))
     q["credit_note"] = cr.get("note", "") if q["credit"] else ""
+    q["credit_from_invoice"] = cr.get("from_invoice") if q["credit"] else None
+    if q["credit"]:
+        for old in await db.invoices.find({"tenant": tenant, "status": PENDING, "credit": {"$gt": 0}}, {"_id": 0, "id": 1, "session_id": 1}).to_list(50):
+            await db.invoices.update_one({"id": old["id"]}, {"$set": {"status": CANCELLED, "cancel_reason": "înlocuită de o proformă nouă cu credit recalculat"}})
+            if old.get("session_id"):
+                try:
+                    stripe.checkout.Session.expire(old["session_id"])
+                except stripe.error.StripeError:
+                    pass
     issuer = await db.settings.find_one({"owner": S.PLATFORM["id"]}, {"_id": 0, "company": 1, "cui": 1, "regcom": 1, "address": 1, "phone": 1, "email": 1, "iban": 1, "bank": 1}) or {}
     inv = {"id": str(uuid.uuid4()), "number": await next_number(), "tenant": tenant, "user_email": email, "plan": plan["code"], "plan_name": plan["name"],
            **q, "currency": "RON", "status": PENDING, "client": {k: v for k, v in prof.items() if k not in ("_id", "tenant")},
@@ -167,6 +176,8 @@ async def activate(inv_id: str, by: str, how: str) -> bool:
     if not inv:
         return False
     sub = await db.subscriptions.find_one({"tenant": inv["tenant"]}, {"_id": 0}) or {}
+    if inv.get("credit") and inv.get("credit_from_invoice") and sub.get("last_invoice") != inv["credit_from_invoice"]:
+        await log(inv["tenant"], "atenție credit", by, f"{inv['number']}: creditul de {inv['credit']:.2f} lei a fost calculat pe {inv['credit_from_invoice']}, dar abonamentul s-a modificat între timp — verificați manual")
     start = today()
     if sub.get("plan") == inv["plan"] and sub.get("status") == "activ" and (sub.get("valid_until") or "") >= start.isoformat():
         start = date.fromisoformat(sub["valid_until"]) + timedelta(days=1)
@@ -213,7 +224,7 @@ async def issue_fiscal(inv_id: str) -> dict:
     if not c:
         await db.invoices.update_one({"id": inv_id, "fiscal.status": {"$ne": "emisă"}}, {"$set": {"fiscal": {"status": "neconfigurat", "at": now(),
                                      "error": "Contul SmartBill nu este conectat — factura fiscală se emite manual."}}})
-        return {"status": "neconfigurat"}
+        return {"status": "neconfigurat", "error": "Contul SmartBill nu este conectat — factura fiscală se emite manual."}
     inv = await db.invoices.find_one_and_update({"id": inv_id, "status": PAID, "fiscal.status": {"$nin": ["emisă", "în curs"]}},
                                                 {"$set": {"fiscal.status": "în curs", "fiscal.at": now()}}, return_document=True)
     if not inv:
@@ -328,7 +339,7 @@ async def billing_checkout(request: Request, user: dict = Depends(get_current_us
                                           "description": f"Proformă {inv['number']}: {inv['net']:.2f} RON + TVA {inv['vat_rate']:g}% {inv['vat']:.2f} RON"}}}],
             success_url=f"{origin}/abonament?session_id={{CHECKOUT_SESSION_ID}}", cancel_url=f"{origin}/abonament?anulat=1",
             metadata={"invoice_id": inv["id"], "invoice_number": inv["number"], "tenant": user["id"], "plan": plan["code"], "months": str(months)},
-            client_reference_id=inv["id"], adaptive_pricing={"enabled": False}, expires_at=int((datetime.now(timezone.utc) + timedelta(hours=23)).timestamp()))
+            client_reference_id=inv["id"], adaptive_pricing={"enabled": False}, managed_payments={"enabled": False}, expires_at=int((datetime.now(timezone.utc) + timedelta(hours=23)).timestamp()))
     except stripe.error.StripeError as e:
         await db.invoices.update_one({"id": inv["id"]}, {"$set": {"status": CANCELLED, "cancel_reason": "eroare furnizor plăți"}})
         logger.error(f"stripe checkout: {e}")
@@ -439,7 +450,10 @@ def render_invoice(inv: dict) -> bytes:
     f = lambda v: f"{v:,.2f}".replace(",", " ").replace(".", ",")
     per = f"{inv.get('period_from')} → {inv.get('period_to')}" if inv.get("period_from") else f"{inv['months']} lună(i) de la data plății"
     rows = [["Descriere", "Cant.", "Preț unitar fără TVA", "Valoare fără TVA", "Cota TVA", "Valoare TVA"],
-            [f"Abonament D-ENERGY {inv['plan_name']} — perioada: {per}", f"{inv['months']} luni", f(inv["unit"]), f(inv["net"]), f"{inv['vat_rate']:g}%", f(inv["vat"])]]
+            [f"Abonament D-ENERGY {inv['plan_name']} — perioada: {per}", f"{inv['months']} luni", f(inv["unit"]), f(inv.get("gross") or inv["net"]), f"{inv['vat_rate']:g}%", ""]]
+    if inv.get("credit"):
+        rows.append([f"Credit abonament anterior — {e(inv.get('credit_note'))}", "1", "−" + f(inv["credit"]), "−" + f(inv["credit"]), f"{inv['vat_rate']:g}%", ""])
+    rows.append(["Total", "", "", f(inv["net"]), f"{inv['vat_rate']:g}%", f(inv["vat"])])
     tot = [["Total fără TVA (bază de impozitare)", f(inv["net"]) + " RON"], [f"TVA {inv['vat_rate']:g}%", f(inv["vat"]) + " RON"], ["TOTAL DE PLATĂ", f(inv["total"]) + " RON"]]
     t2 = Table([[Paragraph(a, st["cellb"]), Paragraph(b, st["cellb"])] for a, b in tot], colWidths=[60 * mm, 40 * mm], hAlign="RIGHT")
     t2.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, D.GRID), ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#eef4ff"))]))

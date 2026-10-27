@@ -73,7 +73,8 @@ export default function Subscription() {
           {[1, 3, 6, 12].map((m) => <option key={m} value={m}>{m} {m === 1 ? "lună" : "luni"}</option>)}</select></div>
         <div className="text-sm space-y-0.5" data-testid="checkout-summary">
           {q?.error ? <div className="font-semibold" style={{ color: "#9b2c2c" }} data-testid="checkout-error">{q.error}</div> : q && <>
-            {q.credit > 0 && <><div>Preț abonament: {lei(q.gross)}</div><div style={{ color: "#166534" }} data-testid="checkout-credit">Credit din abonamentul actual: −{lei(q.credit)} <span className="text-[11px]">({q.credit_note})</span></div></>}
+            {q.credit > 0 ? <><div>Preț abonament: {lei(q.gross)}</div><div style={{ color: "#166534" }} data-testid="checkout-credit">Credit din abonamentul actual: −{lei(q.credit)} <span className="text-[11px]">({q.credit_note})</span></div></>
+              : q.credit_note && <div className="text-[11px]" style={{ color: "var(--muted)" }} data-testid="checkout-credit-note">{q.credit_note}</div>}
             <div>Bază de impozitare: <b data-testid="checkout-net">{lei(q.net)}</b></div><div>TVA {q.vat_rate}%: <b data-testid="checkout-vat">{lei(q.vat)}</b></div>
             <div className="text-lg font-extrabold" data-testid="checkout-total">Total de plată: {lei(q.total)}</div></>}</div>
         <Btn onClick={pay} disabled={busy || !plan || q?.error} data-testid="pay-btn"><CreditCard size={15} />{busy ? "Se generează linkul…" : "Plătește abonamentul"}</Btn>
