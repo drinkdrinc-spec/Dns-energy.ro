@@ -43,7 +43,7 @@ export function AtrDossier({ id, form, setVal }) {
           {f.status ? ` · ${f.status}` : ""}
         </div>) : <div style={{ color: "var(--muted)" }}>Nu există încă un link ATR înregistrat pentru acest operator. Verificați formularul pe site-ul oficial înainte de depunere.</div>}
         <div className="mt-2" style={{ color: "var(--muted)" }}>PDF-ul generat de DNS Energy este un model completat pentru lucru și verificare; nu este garantat ca reproducere identică a formularului oficial curent.</div>
-      </div>
+      </div>}
       <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (peste 27 kW)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
