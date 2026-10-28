@@ -72,7 +72,7 @@ export default function ModulePage({ moduleKey }) {
     const refs = [...new Set((cfg.fields || []).filter((f) => f.type === "ref").map((f) => f.ref))];
     refs.forEach((ref) => {
       api.get(`/data/${ref}`).then((r) => {
-        setRefOptions((prev) => ({ ...prev, [ref]: r.data.map((x) => ({ id: x.id, label: MODULES[ref].display(x) })) }));
+        setRefOptions((prev) => ({ ...prev, [ref]: r.data.map((x) => ({ ...x, id: x.id, label: MODULES[ref].display(x) })) }));
       }).catch(() => {});
     });
     // eslint-disable-next-line
@@ -129,7 +129,23 @@ export default function ModulePage({ moduleKey }) {
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
           <div className="grid sm:grid-cols-2 gap-4">
-            {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
+            {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => {
+              if (key === "atr" && name === "client_name") {
+                const client = (refOptions.clients || []).find((x) => x.label === value);
+                setForm((prev) => ({
+                  ...prev,
+                  client_name: value,
+                  ...(client ? {
+                    pod: prev.pod || client.pod || "",
+                    operator: client.operator || prev.operator || "",
+                    address: prev.address || client.address || "",
+                    cf_nr: prev.cf_nr || client.cf_nr || "",
+                    cadastral_nr: prev.cadastral_nr || client.cadastral_nr || "",
+                    object_name: prev.object_name || client.name || value,
+                  } : {}),
+                }));
+              } else setVal(name, value);
+            }} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
           </div>
 
           {cfg.checklist && (
