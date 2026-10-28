@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 27: tested Settings IBAN/Banca -> ANRE proforma transfer/PDF, admin visa AI e-mail draft (SSE) + send, visas.xlsx export, and the iteration_26 visa panel regression. Backend 11/11 new tests pass and 4/4 iter26 regression tests pass. UI end-to-end passed: Settings save and reload, visa panel order and colours, Excel download, dialog draft -> edit -> send, toast, and the last-contact line appearing after the panel refreshed. No functional bugs found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Setări (/setari)", "issues": ["'Banca' sits alone in the left column with an empty cell next to it before the full-width 'Adresă firmă'. Pair it with IBAN or reorder the fields to close the gap."]},
+      {"screen": "VisaEmailDialog", "issues": ["While the AI is drafting, the only sign of activity is the disabled button, with no spinner. The body stayed empty for about 4 s before the first tokens arrived."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter27_iban_ai_email_xlsx.py", "/app/backend/tests/seed_iter27_ui.py", "/app/test_reports/pytest/pytest_iter27.xml"],
+  "action_items": [
+    "Optional: add a loading indicator while the AI draft streams in VisaEmailDialog",
+    "Optional: add try/catch and an error toast to Settings.save (it currently fails silently on API error)",
+    "Optional: tidy the Settings grid so 'Banca' does not leave an empty cell"
+  ],
+  "critical_code_review_comments": [
+    "PUT /api/settings accepts arbitrary keys with no validation or IBAN format check; a malformed IBAN goes straight into proformas and e-mails.",
+    "visas.xlsx authenticates with the token in the query string (?auth=TOKEN), so the token can end up in browser history and proxy logs. This is the existing pattern; a short-lived signed download token would be safer.",
+    "In the Excel file, last_contact_at and visa_reminded_at are cut to the UTC date, which can be one day off from the local ro-RO date shown in the panel near midnight.",
+    "The panel's row testids are keyed on CUI (visa-row-{cui}), so they would be duplicated if two tenants share a CUI.",
+    "adm_send_email updates last_contact_at only after send_email succeeds, which is correct: a failed send raises and does not record a contact."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter27_iban_ai_email_xlsx.py", "/app/backend/tests/seed_iter27_ui.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "TEST_iter27_* and TEST_ui27_* operators were seeded and removed afterwards. Test subscriber, dossiers and invoices were cleaned up. Admin Settings iban/bank were restored to empty strings (checked in Mongo).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: pytest tests/test_iter27_iban_ai_email_xlsx.py (pytest.ini uses xdist). It saves and restores admin iban/bank. For UI: python tests/seed_iter27_ui.py seed|clean; panel at /operatori-anre. The e-mail recipient delivered@resend.dev sends successfully. The AI draft starts with 'Subiect:' and the frontend splits it into subject and body correctly."
+}

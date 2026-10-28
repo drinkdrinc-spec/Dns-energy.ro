@@ -66,3 +66,7 @@ Web app "D-ENERGY" for DNS HOSTESS S.R.L. (Romanian UI, responsive) to manage el
 ## Iterația 26 (iunie 2026)
 - E-mail memento vizare: buton „Comandă dosarul de vizare” → /dosare-anre?tip=vizare (tip preselectat, comanda doar după confirmare; redirect păstrat după login).
 - Admin Operatori: panou „Vizări ANRE apropiate” (90 zile + depășite, roșu/galben/verde). GET /api/admin/operators/visas. Testat iteration_26 (100%).
+## Iterația 27 (iunie 2026)
+- Setări: câmpuri IBAN încasări + Banca (folosite pe proforme, e-mail OP, factură).
+- Panou vizări: buton „E-mail AI” (redactare GPT-6 Sol, editare, trimitere; last_contact_at) + export Excel (/api/admin/operators/visas.xlsx). Testat iteration_27 (100%).
+- SmartBill: amânat din nou de utilizator.
