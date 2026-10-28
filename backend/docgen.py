@@ -292,8 +292,8 @@ def doc_notificare(ctx):
 
 
 def doc_imputernicire(ctx):
-    scope = ctx.raw("imputernicire_scope") or (f"accesul meu/nostru la rețeaua de distribuție a energiei electrice la nivelul Județului {ctx.raw('county')};\nobținerea avizului de amplasament."
-                                                if ctx.raw("county") else None)
+    scope = ctx.raw("imputernicire_scope") or (f"reprezentarea mea/noastră în relația cu operatorul de distribuție pentru {ctx.request_scope}, inclusiv depunerea și urmărirea cererii, completarea dosarului și ridicarea documentelor emise;\nobținerea/actualizarea avizului tehnic de racordare și a documentelor de racordare aferente."
+                                                if ctx.raw("county") or ctx.power_increase else None)
     items = [escape(x.strip()) for x in str(scope).split("\n") if x.strip()] if scope else [M]
     reg = "înregistrată la Registrul Comerțului sub numărul" if ctx.pj else "act de identitate cu seria și numărul"
     return hdr() + [
