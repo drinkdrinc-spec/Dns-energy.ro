@@ -1,0 +1,49 @@
+name: Build DNS Energy preview
+
+on:
+  push:
+    branches:
+      - deployment-prep
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-preview
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout preview branch
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          DISABLE_VISUAL_EDITS: "true"
+          DISABLE_EMERGENT_OVERLAY: "true"
+          REACT_APP_BACKEND_URL: ""
+          VITE_GITHUB_PAGES: "true"
+        run: yarn build
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/build
+      - name: Deploy preview
+        id: deployment
+        uses: actions/deploy-pages@v4
