@@ -83,7 +83,7 @@ export function GeneratedDocs({ id, files, form }) {
           {DOCS.map(([k, label]) => (
             <a key={k} href={docUrl(k, id)} target="_blank" rel="noopener noreferrer" data-testid={`doc-${k}`}
               className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2.5 text-sm hover:border-[var(--blue)] transition-colors" style={{ borderColor: "var(--line)" }}>
-              <FileText size={15} style={{ color: "var(--blue)" }} /> {label}
+              <FileText size={15} style={{ color: "var(--blue)" }} /> {k === "notificare" && form?.request_type === "Spor de putere + prosumator" ? "Anexa 1 oficială — spor de putere (OD)" : label}
             </a>
           ))}
         </div>
