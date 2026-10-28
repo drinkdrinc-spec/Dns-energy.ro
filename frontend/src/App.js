@@ -27,6 +27,7 @@ import OperatorAttest from "@/pages/OperatorAttest";
 import AdminOperators from "@/pages/AdminOperators";
 import AnreDossiers from "@/pages/AnreDossiers";
 import SchemaTehnica from "@/pages/SchemaTehnica";
+import DistributionPortals from "@/pages/DistributionPortals";
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -66,6 +67,7 @@ function AppRoutes() {
         <Route path="/spor-putere" element={<Gate feat={ROUTE_FEATURE["/spor-putere"]}><ModulePage moduleKey="power" /></Gate>} />
         <Route path="/cerere-atr" element={<Gate feat="atr"><ModulePage moduleKey="atr" /></Gate>} />
         <Route path="/formulare-oficiale" element={<FormsRegistry />} />
+        <Route path="/portaluri-distribuitori" element={<DistributionPortals />} />
         <Route path="/catalog" element={<Gate feat={ROUTE_FEATURE["/catalog"]}><Catalog /></Gate>} />
         <Route path="/catalog-echipamente" element={<Gate feat={ROUTE_FEATURE["/catalog-echipamente"]}><EquipmentCatalog /></Gate>} />
         <Route path="/setari-baza" element={<Gate feat={ROUTE_FEATURE["/setari-baza"]}><BaseSettings /></Gate>} />
