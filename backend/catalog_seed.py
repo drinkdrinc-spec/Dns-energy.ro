@@ -21,4 +21,19 @@ SEED = [
     {"category": "Baterie", "brand_model": "Deye SE-G5.1 Pro", "kwh": 5.12, "ah": 100, "voltage": 51.2, "tech": "LV", "coupling": "DC"},
     {"category": "Baterie", "brand_model": "Huawei LUNA2000-5-S0", "kwh": 5, "ah": 0, "voltage": 360, "tech": "HV", "coupling": "DC"},
     {"category": "Smart meter", "brand_model": "Eastron SDM630 Modbus", "phases": "Trifazat"},
+
+    # Modele solicitate pentru configurarea reală a sistemelor. Parametrii care diferă
+    # între variante sunt lăsați necompletați până la atașarea fișei oficiale exacte.
+    {"category": "Invertor", "brand_model": "Solis S6-EH3P10K-H", "type": "Hibrid", "phases": "Trifazat", "notes": "Familie S6; confirmați sufixul exact și parametrii din fișa tehnică."},
+    {"category": "Invertor", "brand_model": "Solis S6 30 kW", "type": "Hibrid", "phases": "Trifazat", "p_nom_kw": 30, "notes": "Modelul complet/SKU și parametrii DC/MPPT se confirmă din plăcuță și fișa oficială."},
+    {"category": "Invertor", "brand_model": "Solis S6 50 kW", "type": "On-grid", "phases": "Trifazat", "p_nom_kw": 50, "notes": "Modelul complet/SKU și parametrii DC/MPPT se confirmă din plăcuță și fișa oficială."},
+    {"category": "Invertor", "brand_model": "Deye BOS-G 100 kW system", "type": "Hibrid / sistem de stocare", "phases": "Trifazat", "p_nom_kw": 100, "notes": "BOS-G este familia de baterii HV; configurația de 100 kW se completează cu modelul exact de invertor și configurația rackurilor."},
+    {"category": "Invertor", "brand_model": "FoxESS H3 Smart / H3 series", "type": "Hibrid", "phases": "Trifazat", "notes": "Selectați ulterior modelul și puterea exactă; nu se folosesc valori generice la dimensionare."},
+    {"category": "Baterie", "brand_model": "Dyness STACK100", "tech": "HV", "coupling": "DC", "notes": "Familie STACK100; capacitatea utilizabilă și numărul de module se completează conform configurației exacte."},
+    {"category": "Baterie", "brand_model": "Dyness STACK280", "tech": "HV", "coupling": "DC", "notes": "Familie STACK280; capacitatea utilizabilă și numărul de module se completează conform configurației exacte."},
+    {"category": "Baterie", "brand_model": "Deye BOS-G HV battery rack", "tech": "HV", "coupling": "DC", "notes": "Alegeți configurația exactă de module/rack și atașați fișa tehnică și declarația UE de conformitate."},
+    {"category": "Baterie", "brand_model": "FoxESS high-voltage battery (model de completat)", "tech": "HV", "coupling": "DC", "notes": "Selectați modelul exact compatibil cu invertorul."},
+    {"category": "Panou", "brand_model": "JinkoSolar Tiger Neo 440 W", "w": 440, "notes": "Familia are variante diferite; completați codul exact și valorile din fișa oficială."},
+    {"category": "Panou", "brand_model": "LONGi Hi-MO 7 (model de completat)", "notes": "Completați codul exact al modulului și parametrii electrici din fișa oficială."},
+    {"category": "Panou", "brand_model": "AIKO Neostar (model de completat)", "notes": "Completați puterea și codul exact al modulului din fișa oficială."},
 ]
