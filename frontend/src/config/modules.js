@@ -362,4 +362,4 @@ export const MODULES = {
   },
 };
 
-export const MODULE_ORDER = ["clients", "prosumator", "diu", "works", "mono", "panels", "anti", "pram", "equipment", "power"];
+export const MODULE_ORDER = ["clients", "atr", "power", "prosumator", "diu", "pram", "mono", "works", "panels", "anti", "equipment"];
