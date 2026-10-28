@@ -80,7 +80,7 @@ export function GeneratedDocs({ id, files, form }) {
       </div>
       {!id ? <p className="text-xs" style={{ color: "var(--muted)" }}>Salvează dosarul pentru a genera documentele.</p> : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {DOCS.filter(([k]) => !(k === "notificare" && form?.request_type === "Spor de putere + prosumator")).map(([k, label]) => (
+          {DOCS.map(([k, label]) => (
             <a key={k} href={docUrl(k, id)} target="_blank" rel="noopener noreferrer" data-testid={`doc-${k}`}
               className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2.5 text-sm hover:border-[var(--blue)] transition-colors" style={{ borderColor: "var(--line)" }}>
               <FileText size={15} style={{ color: "var(--blue)" }} /> {label}
