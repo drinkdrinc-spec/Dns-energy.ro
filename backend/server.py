@@ -639,22 +639,75 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
                        attach: int = Query(0)):
     user = await user_from_token(authorization, auth)
     rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+
+    is_power_increase = str(rec.get("request_type") or "").strip() == "Spor de putere + prosumator"
+    client = await get_client(user["id"], rec)
+    annex1 = None
+    if is_power_increase:
+        # Use the actual Annex 1 PDF registered for the client's distribution operator.
+        operator = str(rec.get("operator") or client.get("operator") or "").lower()
+        if "delgaz" in operator:
+            op_names = ["delgaz grid", "delgaz"]
+        elif "rețele electrice" in operator or "retele electrice" in operator or "e-distribu" in operator:
+            op_names = ["rețele electrice românia", "rețele electrice"]
+        elif "oltenia" in operator:
+            op_names = ["distribuție energie oltenia", "distributie energie oltenia"]
+        elif "deer" in operator or "distribuție energie electrică" in operator or "distributie energie electrica" in operator:
+            op_names = ["deer", "distribuție energie electrică romania", "distributie energie electrica romania"]
+        else:
+            op_names = []
+        if op_names:
+            rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
+            candidates = [f for f in rows
+                if any(n in str(f.get("operator") or "").lower() for n in op_names)
+                and "prosumator" in str(f.get("kind") or "").lower()
+                and ("spor" in str(f.get("kind") or "").lower() or "anexa 1" in str(f.get("title") or "").lower())
+                and "anexa 1" in str(f.get("title") or "").lower()
+                and str(f.get("url") or "").lower().split("?")[0].endswith(".pdf")]
+            for item in candidates:
+                try:
+                    resp = requests.get(item["url"], timeout=20, headers={"User-Agent": "DNS-Energy/1.0"})
+                    if resp.status_code == 200 and resp.content.startswith(b"%PDF"):
+                        annex1 = {"bytes": resp.content, "title": item.get("title") or "Anexa 1 oficială"}
+                        break
+                except Exception as exc:
+                    logger.warning("Nu s-a putut descărca Anexa 1 oficială: %s", exc)
+        if doc_type == "notificare":
+            if not annex1:
+                raise HTTPException(status_code=404, detail="Nu există un PDF Anexa 1 disponibil în Registrul formularelor pentru distribuitorul selectat. Verificați/înregistrați formularul oficial; Anexa 2 nu va fi folosită la spor de putere.")
+            return Response(content=annex1["bytes"], media_type="application/pdf",
+                            headers={"Content-Disposition": disp("inline", f"Anexa_1_spor_putere_{(rec.get('client_name') or 'prosumator').replace(' ', '_')}.pdf")})
+
     if doc_type == "all":
-        # Dosarul complet include schema CEF o singură dată; varianta "schema"
-        # rămâne disponibilă separat pentru descărcare individuală.
+        # Dosarul complet include schema CEF o singură dată.
         keys = [k for k in docgen.DOCS if k != "schema"]
+        if is_power_increase:
+            keys = [k for k in keys if k != "notificare"]
     else:
         keys = [doc_type]
     if any(k not in docgen.DOCS for k in keys):
         raise HTTPException(status_code=404, detail="Tip document inexistent")
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
+
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     settings, _ = await effective_settings(user["id"], rec, base)
-    client = await get_client(user["id"], rec)
     pdf = docgen.render(keys, rec, settings, client)
-    # Pentru dosarul complet anexăm automat fișele tehnice și declarațiile de
-    # conformitate încărcate în catalog pentru echipamentele selectate.
+
+    if doc_type == "all" and is_power_increase and annex1:
+        try:
+            writer = PdfWriter()
+            for page in PdfReader(io.BytesIO(pdf)).pages:
+                writer.add_page(page)
+            for page in PdfReader(io.BytesIO(annex1["bytes"])).pages:
+                writer.add_page(page)
+            merged = io.BytesIO()
+            writer.write(merged)
+            pdf = merged.getvalue()
+        except Exception as exc:
+            logger.warning("Nu s-a putut atașa Anexa 1 oficială: %s", exc)
+
+    # Attach catalog technical sheets and declarations.
     if attach or doc_type == "all":
         pdf = merge_pdfs(pdf, await catalog_files(user["id"], rec))
     fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
