@@ -80,7 +80,26 @@ export default function ModulePage({ moduleKey }) {
 
   const openNew = () => { setForm({}); setEditId(null); setChecks({}); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); };
-  const setVal = (name, value) => setForm((p) => ({ ...p, [name]: value }));
+  const setVal = (name, value) => {
+    if (key === "atr" && name === "pod") {
+      const pod = String(value || "").trim().toUpperCase().replace(/\\s+/g, "");
+      let detected = "";
+      let note = "";
+      if (/^RO001E/.test(pod)) detected = "Rețele Electrice Muntenia S.A.";
+      else if (/^RO002E/.test(pod)) detected = "Rețele Electrice Dobrogea S.A.";
+      else if (/^RO005E/.test(pod)) detected = "Rețele Electrice Banat S.A.";
+      else if (/^EMO3/.test(pod)) detected = "Delgaz Grid S.A.";
+      else if (/^5940\\d{14}$/.test(pod)) {
+        detected = "DEER — sucursală de confirmat";
+        note = "POD-ul indică DEER; sucursala trebuie confirmată după județ/localitate.";
+      } else if (pod) {
+        note = "Nu am putut identifica în siguranță operatorul din prefixul POD. Verifică operatorul pe factura de energie sau în instrumentul ANRE.";
+      }
+      setForm((p) => ({ ...p, pod, ...(detected ? { operator: detected } : {}), pod_check_note: note }));
+      return;
+    }
+    setForm((p) => ({ ...p, [name]: value }));
+  };
 
   const save = async () => {
     const orig = items.find((i) => i.id === editId);
@@ -147,6 +166,7 @@ export default function ModulePage({ moduleKey }) {
               } else setVal(name, value);
             }} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
           </div>
+          {key === "atr" && form.pod_check_note && <div className="mt-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>{form.pod_check_note}</div>}
 
           {cfg.checklist && (
             <div className="mt-6">
