@@ -28,6 +28,7 @@ import AdminOperators from "@/pages/AdminOperators";
 import AnreDossiers from "@/pages/AnreDossiers";
 import SchemaTehnica from "@/pages/SchemaTehnica";
 import DistributionPortals from "@/pages/DistributionPortals";
+import ArchivedDossiers from "@/pages/ArchivedDossiers";
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -74,6 +75,7 @@ function AppRoutes() {
         <Route path="/simulare" element={<Gate feat={ROUTE_FEATURE["/simulare"]}><Simulare /></Gate>} />
         <Route path="/distribuitori" element={<Gate feat={ROUTE_FEATURE["/distribuitori"]}><Operators /></Gate>} />
         <Route path="/documente" element={<Gate feat={ROUTE_FEATURE["/documente"]}><Documents /></Gate>} />
+        <Route path="/dosare-arhivate" element={<Gate feat="prosumator"><ArchivedDossiers /></Gate>} />
         <Route path="/setari" element={<Settings />} />
         <Route path="/utilizatori" element={<Users />} />
         <Route path="/abonament" element={<Subscription />} />
