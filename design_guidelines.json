@@ -1,0 +1,82 @@
+{
+  "project_name": "D-ENERGY - DNS HOSTESS S.R.L.",
+  "app_type": "enterprise_management_dashboard",
+  "language": "ro",
+  "persona": "E1 Anti-AI Creative Designer - Tactical Energy & High-Density Engineering Dashboard",
+  "design_archetype": "THE PERFORMANCE PRO & TECH UTILITY",
+  "instructions_to_main_agent": [
+    "Build a modern, Romanian-language full-featured ERP/Dashboard suite for D-ENERGY (DNS HOSTESS S.R.L.).",
+    "All navigation, UI text, form labels, badges, status indicators, and modal titles MUST be in clear Romanian language.",
+    "Implement a complete dark/light theme switch with high visual density and crisp tactical borders.",
+    "Modules to include: 1. Panou Principal (KPIs & Lucrări în Curs), 2. Management Clienți (Persoane Fizice & Juridice), 3. Dosar Prosumator (Documente & Checklist Racordare), 4. Dosar de Utilizare (DI-U & Scheme Monofilare & Protecții), 5. Tablouri Electrice & Protecții Antiinsularizare, 6. Buletine & Rapoarte PRAM, 7. Catalog Tehnic (Panouri, Invertoare, Baterii), 8. Spor de Putere & Branșamente (Monofazat/Trifazat), 9. Management Lucrări & Devize (Quotes & Docs), 10. Simulare Proiect Fotovoltaic, 11. Setări Companie (DNS HOSTESS S.R.L.).",
+    "Include responsive desktop & mobile navigation with quick actions, filtering, search bar, and interactive calculators.",
+    "Ensure every interactive element (buttons, tabs, inputs, modals, status chips) has explicit `data-testid` attributes."
+  ],
+  "typography": {
+    "heading_font": "Barlow, Outfit, sans-serif",
+    "body_font": "Inter, system-ui, sans-serif",
+    "mono_font": "JetBrains Mono, Source Code Pro, monospace",
+    "font_imports": [
+      "https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,600;0,700;0,900;1,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    ],
+    "scale": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-lg sm:text-xl font-semibold tracking-normal",
+      "h4": "text-base font-semibold",
+      "body": "text-sm sm:text-base leading-relaxed",
+      "small_label": "text-xs font-mono uppercase tracking-wider"
+    }
+  },
+  "colors": {
+    "theme_mode": "dark_and_light_switchable",
+    "dark_theme": {
+      "background": "#0B0F17",
+      "surface_card": "#131C2E",
+      "surface_hover": "#1E2A42",
+      "border": "#2A3B5C",
+      "text_primary": "#F8FAFC",
+      "text_secondary": "#94A3B8",
+      "accent_solar_amber": "#F59E0B",
+      "accent_energy_emerald": "#10B981",
+      "accent_tech_cyan": "#06B6D4",
+      "accent_voltage_red": "#EF4444"
+    },
+    "light_theme": {
+      "background": "#F8FAFC",
+      "surface_card": "#FFFFFF",
+      "surface_hover": "#F1F5F9",
+      "border": "#E2E8F0",
+      "text_primary": "#0F172A",
+      "text_secondary": "#64748B",
+      "accent_solar_amber": "#D97706",
+      "accent_energy_emerald": "#059669",
+      "accent_tech_cyan": "#0891B2",
+      "accent_voltage_red": "#DC2626"
+    },
+    "forbidden_colors": ["#1B93A4", "#7351B7"]
+  },
+  "layout_and_grids": {
+    "density_mode": "MODE B - High Density Engineering Grid",
+    "base_grid": "grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6",
+    "card_style": "border rounded-xl backdrop-blur-md transition-all duration-200 shadow-sm hover:shadow-md",
+    "padding_system": "p-4 sm:p-6 lg:p-8"
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-xl bg-slate-900/80 border-slate-700/60",
+    "status_badges": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium font-mono",
+    "diagram_containers": "bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-xs"
+  },
+  "image_urls": {
+    "solar_technician_1": "https://images.unsplash.com/photo-1668097613572-40b7c11c8727?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "solar_roof_installation": "https://images.unsplash.com/photo-1624397640148-949b1732bb0a?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "electrician_panel_work": "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "solar_panels_rooftop": "https://images.unsplash.com/photo-1660330589257-813305a4a383?crop=entropy&cs=srgb&fm=jpg&q=85"
+  },
+  "universal_guidelines_for_main_agent": [
+    "Ensure all interactive components (buttons, dropdowns, inputs, tabs, table rows) have unambiguous `data-testid` attributes.",
+    "Never use raw transparent backgrounds on dropdown menus or modal overlays.",
+    "Ensure hover states explicitly state text colors.",
+    "Keep typography clean, high contrast, and formatted properly for technical Romanian terms (e.g. Spor de putere, Antiinsularizare, Scheme monofilare, Buletin PRAM)."
+  ]
+}
