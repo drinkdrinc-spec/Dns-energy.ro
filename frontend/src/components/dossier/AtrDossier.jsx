@@ -15,8 +15,14 @@ const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
 const pdf = (id, full) => `${API}/atr/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
 
 export function AtrDossier({ id, form, setVal }) {
-  const [pros, setPros] = useState([]);
+  const [pros, setPros] = useState([]);\n  const [officialForms, setOfficialForms] = useState([]);
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!form.operator) { setOfficialForms([]); return; }
+    api.get(`/forms/operator-links?operator=${encodeURIComponent(form.operator)}&scope=atr`)
+      .then((r) => setOfficialForms(r.data || []))
+      .catch(() => setOfficialForms([]));
+  }, [form.operator]);
   const att = form.attachments || {};
   const recs = form.receptors || [];
   const prod = String(form.kind || "").includes("producere");
@@ -28,6 +34,15 @@ export function AtrDossier({ id, form, setVal }) {
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="atr-dossier">
       <FormAlert operator={form.operator} scope="atr" />
+      {form.operator && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-official-forms">
+        <div className="font-bold mb-1">Formulare oficiale înregistrate pentru distribuitor</div>
+        {officialForms.length ? officialForms.map((f) => <div key={f.id} className="mt-1">
+          <a href={f.url} target="_blank" rel="noopener noreferrer" className="underline font-semibold">{f.title || "Formular oficial ATR"}</a>
+          {f.version ? ` · versiunea ${f.version}` : ""}
+          {f.status ? ` · ${f.status}` : ""}
+        </div>) : <div style={{ color: "var(--muted)" }}>Nu există încă un link ATR înregistrat pentru acest operator. Verificați formularul pe site-ul oficial înainte de depunere.</div>}
+        <div className="mt-2" style={{ color: "var(--muted)" }}>PDF-ul generat de DNS Energy este un model completat pentru lucru și verificare; nu este garantat ca reproducere identică a formularului oficial curent.</div>
+      </div>
       <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (> 27 kW)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
