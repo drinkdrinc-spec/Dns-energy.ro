@@ -800,7 +800,7 @@ def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
     pdf = BaseDocTemplate(buf, pageTemplates=[land, port] if first_land else [port, land], title=f"D-ENERGY — {ctx.raw('name') or ''}")
     story = []
     keys = list(doc_keys)
-    if keys and not any(k in ("schema_cef", "schema") for k in keys) and "gdpr" not in keys:
+    if keys and not (len(keys) == 1 and keys[0] in ("schema_cef", "schema")) and "gdpr" not in keys:
         keys.append("gdpr")
     for i, k in enumerate(keys):
         if k in ("schema_cef", "schema"):
@@ -868,7 +868,7 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, c
         if blocks is None:
             blocks = []
             doc_keys = list(keys or [doc_key])
-            if doc_keys and not any(k in ("schema_cef", "schema") for k in doc_keys) and "gdpr" not in doc_keys:
+            if doc_keys and not (len(doc_keys) == 1 and doc_keys[0] in ("schema_cef", "schema")) and "gdpr" not in doc_keys:
                 doc_keys.append("gdpr")
             for i, k in enumerate(doc_keys):
                 if i:
