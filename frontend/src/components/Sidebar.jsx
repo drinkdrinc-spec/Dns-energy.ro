@@ -2,12 +2,12 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { BrandMark } from "@/components/BrandMark";
 import { useAuth } from "@/context/AuthContext";
 import {
-  LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert,
+  LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, Archive,
   FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt, Sparkles,
 } from "lucide-react";
 import { can, isOff, ROUTE_FEATURE } from "@/lib/plan";
 
-const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles };
+const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles, Archive };
 
 const NAV = [
   { label: "Flux de lucru", items: [
@@ -43,6 +43,7 @@ const NAV = [
   ]},
   { label: "Administrare", items: [
     { to: "/documente", icon: "Files", text: "Documente", testid: "nav-documents" },
+    { to: "/dosare-arhivate", icon: "Archive", text: "Dosare vechi / delegare", testid: "nav-archived-dossiers" },
     { to: "/setari", icon: "Settings", text: "Setări", testid: "nav-settings" },
     { to: "/utilizatori", icon: "ShieldCheck", text: "Utilizatori și roluri", testid: "nav-users", admin: true },
     { to: "/abonament", icon: "CreditCard", text: "Abonament și facturare", testid: "nav-subscription", owner: true },
