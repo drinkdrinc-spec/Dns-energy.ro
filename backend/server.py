@@ -696,10 +696,11 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
 
     if doc_type == "all" and is_power_increase and annex1:
         try:
+            # Anexa 1 ocupa primul loc al notificării în dosar; Anexa 2 nu este generată pentru spor.
             writer = PdfWriter()
-            for page in PdfReader(io.BytesIO(pdf)).pages:
-                writer.add_page(page)
             for page in PdfReader(io.BytesIO(annex1["bytes"])).pages:
+                writer.add_page(page)
+            for page in PdfReader(io.BytesIO(pdf)).pages:
                 writer.add_page(page)
             merged = io.BytesIO()
             writer.write(merged)
