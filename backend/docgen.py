@@ -308,6 +308,33 @@ def doc_imputernicire(ctx):
         B("small", "(*) câmp obligatoriu de completat; în cazul necompletării fără documente justificative atașate, cererea va fi considerată neconformă.")]
 
 
+def doc_storage(ctx):
+    """Fișă separată pentru instalația de stocare, după structura dosarului ReEnergy."""
+    bats = storage(ctx)
+    rows = [["Nr.", "Producător / model", "Capacitate nominală (kWh)", "Tensiune (V)", "Capacitate (Ah)",
+             "Tehnologie", "Cuplare", "Nr. module", "Serie"]]
+    for i, b in enumerate(bats, 1):
+        rows.append([
+            str(i), escape(str(b.get("model") or M)),
+            escape(str(b.get("kwh") if b.get("kwh") is not None else M)),
+            escape(str(b.get("voltage") if b.get("voltage") is not None else M)),
+            escape(str(b.get("ah") if b.get("ah") is not None else M)),
+            escape(str(b.get("tech") or M)),
+            escape(str(b.get("coupling") or M)),
+            escape(str(b.get("modules") if b.get("modules") is not None else M)),
+            escape(str(b.get("serial") or M)),
+        ])
+    if not bats:
+        rows.append(["—", "Nu este declarat un sistem de stocare în datele dosarului", M, M, M, M, M, M, M])
+    return hdr() + [
+        B("title", "DATE DESPRE INSTALAȚIA DE STOCARE"),
+        B("p", f"<b>Beneficiar:</b> {ctx.name}<br/><b>Loc de consum:</b> {ctx.loc}<br/><b>POD:</b> {ctx.v('pod')}"),
+        B("table", rows, [6, 27, 15, 10, 10, 12, 10, 10, 14], True),
+        B("small", "Datele sunt preluate din configurația dosarului. Câmpurile marcate cu „—” trebuie completate/verificate pe baza etichetei și fișei tehnice a echipamentului."),
+        sign(ex_sig(ctx), ben_sig(ctx)),
+    ]
+
+
 def doc_afm(ctx):
     afm = ctx.raw("afm")
     txt = M if not afm else ("ACCESEZ" if str(afm).lower().startswith("d") else "NU accesez")
@@ -610,6 +637,7 @@ def doc_schema(ctx):
 DOCS = {
     "notificare": ("Anexa 2 — Notificare (Ord. ANRE 19/2022)", doc_notificare),
     "schema_cef": ("Schemă monofilară", doc_schema),
+    "date_stocare": ("Date despre instalația de stocare", doc_storage),
     "declaratie_afm": ("Declarație accesare fonduri (AFM)", doc_afm),
     "buletin_reglaj": ("Buletin reglaj", doc_buletin_reglaj),
     "buletin_priza": ("Buletin de verificare și măsurare priză de pământ", doc_buletin_priza),
