@@ -320,7 +320,8 @@ export const MODULES = {
     ],
     fields: [
       { name: "client_name", label: "Solicitant / client *", type: "ref", ref: "clients", required: true },
-      { name: "operator", label: "Operator de distribuție", type: "select", options: ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER — Muntenia Nord", "Delgaz Grid", "Distribuție Energie Oltenia", "Rețele Electrice România"] },
+      { name: "pod", label: "POD — codul de pe factura de energie", type: "text", placeholder: "Introdu POD-ul exact de pe factură", full: true },
+      { name: "operator", label: "Operator de distribuție (preluat din fișa clientului; verifică după POD)", type: "select", options: ["Distribuție Energie Electrică Romania Sucursala Transilvania Nord", "Distribuție Energie Electrică Romania Sucursala Transilvania Sud", "Distribuție Energie Electrică Romania Sucursala Muntenia Nord", "Delgaz Grid S.A.", "Distribuție Energie Oltenia S.A.", "Rețele Electrice Muntenia S.A.", "Rețele Electrice Banat S.A.", "Rețele Electrice Dobrogea S.A."] },
       { name: "kind", label: "Tip loc", type: "select", options: ["Loc de consum", "Loc de consum și de producere (> 27 kW)"] },
       { name: "request_type", label: "Tip solicitare", type: "select", options: ["utilizator nou definitiv", "utilizator nou temporar", "dezvoltarea unui utilizator existent (spor de putere)", "modificarea elementelor de natură tehnică cu depășirea puterii aprobate anterior", "modificarea elementelor de natură tehnică fără depășirea puterii aprobate anterior", "modificarea elementelor de natură administrativă fără depășirea puterii aprobate anterior"] },
       { name: "object_name", label: "Denumirea obiectivului", type: "text" },
