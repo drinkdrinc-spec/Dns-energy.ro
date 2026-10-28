@@ -15,7 +15,8 @@ const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
 const pdf = (id, full) => `${API}/atr/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
 
 export function AtrDossier({ id, form, setVal }) {
-  const [pros, setPros] = useState([]);\n  const [officialForms, setOfficialForms] = useState([]);
+  const [pros, setPros] = useState([]);
+  const [officialForms, setOfficialForms] = useState([]);
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     if (!form.operator) { setOfficialForms([]); return; }
