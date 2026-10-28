@@ -83,7 +83,8 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
              P(f"1.2 Consultant de specialitate / împuternicit: <b>{g(s, 'company')}</b>, telefon {g(s, 'phone')}, e-mail {g(s, 'email')}, "
                f"atestat ANRE nr./data {g(s, 'anre_attest')}{(' / ' + escape(str(s.get('anre_issued')))) if s.get('anre_issued') else ''}."),
              P("2. Date generale asupra obiectivului pentru care se solicită avizul tehnic de racordare", "b"),
-             P(f"2.1 Denumirea obiectivului: {g(rec, 'object_name')}<br/>2.2 Adresa obiectivului: județ {g(c, 'county')}, localitatea {g(c, 'locality')}, "
+             P(f"2.1 POD loc de consum: {g(rec, 'pod') if rec.get('pod') else g(c, 'pod')}"),
+             P(f"2.2 Denumirea obiectivului: {g(rec, 'object_name')}<br/>2.3 Adresa obiectivului: județ {g(c, 'county')}, localitatea {g(c, 'locality')}, "
                f"{g(rec, 'address') if rec.get('address') else g(c, 'address')}; CF nr. {g(rec, 'cf_nr') if rec.get('cf_nr') else g(c, 'cf_nr')}, nr. cadastral "
                f"{g(rec, 'cadastral_nr') if rec.get('cadastral_nr') else g(c, 'cadastral_nr')}"),
              P(f"2.3 Specificul activității: {g(rec, 'activity')}; număr de schimburi {g(rec, 'shifts')}; zile lucrătoare / săptămână {g(rec, 'workdays')} (doar persoane juridice)"),
