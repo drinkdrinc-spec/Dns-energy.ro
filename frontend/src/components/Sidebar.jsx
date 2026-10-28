@@ -39,6 +39,7 @@ const NAV = [
     { to: "/formulare-oficiale", icon: "BookOpen", text: "Registru formulare oficiale", testid: "nav-forms" },
     { to: "/simulare", icon: "SunMedium", text: "Simulare proiect & hartă", testid: "nav-project" },
     { to: "/distribuitori", icon: "Network", text: "Distribuitori România", testid: "nav-operators" },
+    { to: "/portaluri-distribuitori", icon: "Network", text: "Portal depunere după POD", testid: "nav-distribution-portals" },
   ]},
   { label: "Administrare", items: [
     { to: "/documente", icon: "Files", text: "Documente", testid: "nav-documents" },
