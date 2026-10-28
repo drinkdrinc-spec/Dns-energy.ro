@@ -7,6 +7,22 @@ import { DiuCircuits } from "./DiuCircuits";
 
 const tok = () => localStorage.getItem("den_token");
 
+const OPERATOR_DOCS = {
+  "DEER — Transilvania Nord": ["Formularul / cererea DI-U aplicabilă DEER", "ATR / certificatul de racordare și condițiile din soluție", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare cerute pentru lucrare", "Declarații, certificate și fișe tehnice ale echipamentelor"],
+  "DEER — Transilvania Sud": ["Formularul / cererea DI-U aplicabilă DEER", "ATR / certificatul de racordare și condițiile din soluție", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare cerute pentru lucrare", "Declarații, certificate și fișe tehnice ale echipamentelor"],
+  "Delgaz Grid": ["Formularul și anexele curente pentru instalația de utilizare", "ATR / certificatul de racordare și condițiile tehnice", "Schema monofilară finală și documentația instalației", "Buletine de verificări și procese-verbale aplicabile", "Documentele echipamentelor și ale executantului"],
+  "Distribuție Energie Oltenia": ["Formularul și anexele curente DI-U", "ATR / certificatul de racordare și condițiile de punere în funcțiune", "Schema monofilară finală și documentația tehnică", "Procese-verbale / buletine de verificare aplicabile", "Documentele executantului și certificatele echipamentelor"],
+  "Rețele Electrice Muntenia": ["Formularul și anexele curente ale operatorului", "ATR / certificatul de racordare", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare aplicabile", "Declarații și fișe tehnice ale echipamentelor"],
+  "Rețele Electrice Banat": ["Formularul și anexele curente ale operatorului", "ATR / certificatul de racordare", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare aplicabile", "Declarații și fișe tehnice ale echipamentelor"],
+  "Rețele Electrice Dobrogea": ["Formularul și anexele curente ale operatorului", "ATR / certificatul de racordare", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare aplicabile", "Declarații și fișe tehnice ale echipamentelor"],
+};
+const operatorDocsFor = (operator) => {
+  if (!operator) return ["Selectează operatorul pentru a pregăti lista de verificare."];
+  const match = Object.keys(OPERATOR_DOCS).find((name) => operator.toLowerCase().includes(name.toLowerCase().split(" — ")[0].toLowerCase()) && (name.includes("DEER") ? operator.includes(name.split(" — ")[1]) : true));
+  return OPERATOR_DOCS[match] || ["Formularul oficial actual al operatorului", "ATR / certificatul de racordare", "Schema monofilară și documentația tehnică finală", "Buletine și procese-verbale aplicabile", "Fișe tehnice și declarații de conformitate"];
+};
+
+
 export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
   const [pros, setPros] = useState([]);
   const [pid, setPid] = useState(form.pros_id || "");
@@ -33,6 +49,11 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
         <Btn variant="secondary" onClick={importPros} disabled={!pid} data-testid="diu-import-btn"><Download size={14} /> Preia datele</Btn>
       </div>
       <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Se preiau clientul, adresa, puterea, operatorul, ATR, protecțiile TG și circuitele invertoarelor. Circuitele existente nu se suprascriu.</p>
+      <div className="mt-4 rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="diu-operator-requirements">
+        <div className="font-bold text-sm">Dosar adaptat operatorului de distribuție</div>
+        <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Operator selectat: <b>{form.operator || "neselectat"}</b>. Lista de mai jos este o listă de verificare orientativă; formularele oficiale și cerințele exacte trebuie confirmate din versiunea curentă publicată de operator.</p>
+        <ul className="mt-2 grid sm:grid-cols-2 gap-2 text-xs">{operatorDocsFor(form.operator).map((item, i) => <li key={item} className="rounded border px-3 py-2" style={{ borderColor: "var(--line)" }}>□ {item}</li>)}</ul>
+      </div>
       <DiuCircuits form={form} setVal={setVal} />
       <div className="flex items-center justify-between flex-wrap gap-2 mt-5">
         <div className="text-xs font-bold" style={{ color: docs?.complete ? "#166534" : "#9b2c2c" }} data-testid="diu-docs-state">
