@@ -18,7 +18,7 @@ export default function Settings() {
   const fields = [
     ["company", "Denumire firmă"], ["brand", "Brand aplicație"], ["rep", "Reprezentant"],
     ["phone", "Telefon firmă"], ["cui", "CUI"], ["regcom", "Nr. Registrul Comerțului"],
-    ["anre_attest", "Nr. atestat ANRE"], ["address", "Adresă firmă", true],
+    ["anre_attest", "Nr. atestat ANRE"], ["iban", "IBAN încasări (proforme, OP)"], ["bank", "Banca"], ["address", "Adresă firmă", true],
   ];
 
   return (
