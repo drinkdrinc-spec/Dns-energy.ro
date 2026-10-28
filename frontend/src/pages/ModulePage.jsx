@@ -200,7 +200,7 @@ export default function ModulePage({ moduleKey }) {
             title="Verificare AI înainte de predarea către beneficiar" action="Salvează ca „Predat beneficiarului”" />}
           {key === "prosumator" && editId && <AiDossierCheck id={editId} />}
           {key === "prosumator" && editId && <SignRequests dossierId={editId} />}
-          {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} />}
+          {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} form={form} />}
           {key === "clients" && editId && <ClientDocs client={form} onChange={(docs) => setVal("docs", docs)} />}
           {key === "clients" && editId && <SignRequests clientName={form.name} />}
 
