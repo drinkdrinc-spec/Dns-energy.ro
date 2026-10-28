@@ -80,6 +80,7 @@ export default defineConfig(async ({ mode, command }) => {
   const env = loadEnv(mode, __dirname, ["REACT_APP_", "VITE_"]);
   const emergentOverlay = await loadEmergentOverlay();
   return {
+    base: process.env.VITE_GITHUB_PAGES === "true" ? "/Dns-energy.ro/" : "/",
     plugins: [
       // Visual-edit tagging is dev-server-only, matching the package's own apply: serve.
       jsxInJs({ tagForVisualEdits: command === "serve" && !visualEditsDisabled }),
