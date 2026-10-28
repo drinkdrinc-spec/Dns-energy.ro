@@ -147,7 +147,7 @@ export const MODULES = {
       { name: "type", label: "Tip instalație", type: "select", options: ["Instalație electrică", "Sistem fotovoltaic on-grid", "Sistem fotovoltaic hibrid", "Instalație electrică industrială", "Branșament / racordare", "Alt tip"] },
       { name: "power", label: "Putere instalată (kW)", type: "number" },
       { name: "address", label: "Adresă obiectiv", type: "text" },
-      { name: "operator", label: "Operator de distribuție", type: "text" },
+      { name: "operator", label: "Operator de distribuție *", type: "select", required: true, options: ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER — Muntenia Nord", "Delgaz Grid", "Distribuție Energie Oltenia", "Rețele Electrice Muntenia", "Rețele Electrice Banat", "Rețele Electrice Dobrogea"] },
       { name: "atr", label: "ATR / referință soluție", type: "text" },
       { name: "date", label: "Data finalizării", type: "date" },
       { name: "responsible", label: "Responsabil lucrare", type: "text" },
