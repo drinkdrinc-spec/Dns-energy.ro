@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@source not inline('overline');
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: 'Inter', 'Segoe UI', Arial, sans-serif;
+  --font-mono: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+}
+
+:root {
+  --navy: #101a2e;
+  --navy2: #172642;
+  --blue: #2878f0;
+  --cyan: #42c7d9;
+  --bg: #f3f6fb;
+  --ink: #172238;
+  --muted: #6b7890;
+  --line: #e0e7f1;
+  --green: #13866b;
+  --amber: #a86a0a;
+
+  --background: 0 0% 100%;
+  --foreground: 218 42% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 218 42% 15%;
+  --primary: 217 87% 55%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 33% 96%;
+  --secondary-foreground: 218 42% 15%;
+  --muted: 214 33% 96%;
+  --muted-foreground: 218 15% 49%;
+  --accent: 214 33% 96%;
+  --accent-foreground: 218 42% 15%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 38% 91%;
+  --input: 214 38% 91%;
+  --ring: 217 87% 55%;
+  --radius: 0.6rem;
+}
+
+@layer base {
+  *, ::after, ::before { border-color: var(--line); }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  button:not(:disabled), [role='button']:not(:disabled) { cursor: pointer; }
+  input, select, textarea { font-family: inherit; }
+}
+
+/* D-ENERGY component helpers */
+.den-field label { display:block; font-size:11px; font-weight:700; color:var(--muted); margin-bottom:6px; letter-spacing:.3px; }
+.den-input {
+  width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px;
+  font-size:13px; background:#fff; color:var(--ink); outline:none; transition:border-color .15s, box-shadow .15s;
+}
+.den-input:focus { border-color:var(--blue); box-shadow:0 0 0 3px #2878f022; }
+.den-panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:22px; box-shadow:0 1px 2px #0f1b3708; }
+.den-notice { background:#fffaf0; border:1px solid #f2dfb7; color:#7c5a1c; border-radius:10px; padding:13px 15px; font-size:12.5px; line-height:1.55; }
+
+::-webkit-scrollbar { width:10px; height:10px; }
+::-webkit-scrollbar-thumb { background:#cbd6e6; border-radius:8px; }
+
+@media print {
+  aside, header, .den-noprint { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  .den-panel { box-shadow: none !important; border: 1px solid #ccc; break-inside: avoid; }
+  body { background: #fff !important; }
+}

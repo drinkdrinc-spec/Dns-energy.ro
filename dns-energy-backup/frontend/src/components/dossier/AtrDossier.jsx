@@ -1,0 +1,63 @@
+import { useEffect, useState } from "react";
+import { api, API } from "@/lib/api";
+import { Btn } from "@/components/Layout";
+import { Slot } from "@/components/dossier/PowerDossier";
+import { Plus, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { FormAlert } from "@/components/dossier/FormAlert";
+import { AtrTracking } from "@/components/dossier/AtrTracking";
+
+const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schiță de amplasament", "req"], ["cf", "Extras de carte funciară (CF / nr. cadastral)", "req"],
+  ["prop", "Act de proprietate / drept de folosință", "req"], ["id", "Act de identitate / CUI / acte de funcționare", "req"], ["cu", "Certificat de urbanism", "new"],
+  ["ac", "Autorizație de construire", ""], ["puz", "PUZ / PUD (dacă e cerut prin CU)", ""], ["acord", "Acord notarial proprietar (dacă nu e proprietar)", ""],
+  ["imp", "Împuternicire reprezentant / proiectant", ""], ["memoriu", "Memoriu tehnic — date tehnice și energetice", ""],
+  ["schema", "Schemă monofilară instalație de producere + racordare", "prod"], ["fise", "Fișe tehnice / certificate invertoare", "prod"], ["atr_prev", "ATR / certificat de racordare anterior", "spor"]];
+const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
+const pdf = (id, full) => `${API}/atr/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
+
+export function AtrDossier({ id, form, setVal }) {
+  const [pros, setPros] = useState([]);
+  useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
+  const att = form.attachments || {};
+  const recs = form.receptors || [];
+  const prod = String(form.kind || "").includes("producere");
+  const isNew = !form.request_type || String(form.request_type).startsWith("utilizator nou");
+  const need = DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && !isNew)).map(([k]) => k);
+  const has = (k) => (att[k] || []).length > 0 || (!!form.pros_id && prod && AUTO[k]);
+  const missing = need.filter((k) => !has(k));
+  const setR = (i, k, v) => setVal("receptors", recs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <div className="sm:col-span-2 den-panel mt-3" data-testid="atr-dossier">
+      <FormAlert operator={form.operator} scope="atr" />
+      <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (> 27 kW)" : "loc de consum"}</h3>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {prod && <>
+          <div className="den-field"><label>Dosar de prosumator / CEF asociat (date PV, schemă, fișe)</label><select className="den-input" value={form.pros_id || ""} onChange={(e) => setVal("pros_id", e.target.value)} data-testid="atr-pros">
+            <option value="">— fără —</option>{pros.map((p) => <option key={p.id} value={p.id}>{p.number} · {p.client_name}</option>)}</select></div>
+          <div className="den-field"><label>Putere instalată centrală (kW)</label><input className="den-input" value={form.pv_kw || ""} onChange={(e) => setVal("pv_kw", e.target.value)} data-testid="atr-pv-kw" /></div>
+          <div className="den-field"><label>Putere max. evacuată (kW)</label><input className="den-input" value={form.p_evac_kw || ""} onChange={(e) => setVal("p_evac_kw", e.target.value)} data-testid="atr-evac-kw" /></div>
+          <div className="den-field"><label>Data PIF centrală</label><input type="date" className="den-input" value={form.pif_date || ""} onChange={(e) => setVal("pif_date", e.target.value)} /></div>
+        </>}
+        <div className="den-field"><label>Factor de putere mediu (cos φ)</label><input className="den-input" value={form.cos_phi || ""} onChange={(e) => setVal("cos_phi", e.target.value)} /></div>
+        <div className="den-field"><label>Cel mai mare motor (kW)</label><input className="den-input" value={form.motor_kw || ""} onChange={(e) => setVal("motor_kw", e.target.value)} /></div>
+      </div>
+      <div className="mt-4 text-xs font-bold">Lista receptoarelor</div>
+      {recs.map((r, i) => <div key={i} className="grid grid-cols-[1fr_90px_1fr_24px] gap-2 mt-1" data-testid={`atr-rec-${i}`}>
+        <input className="den-input" placeholder="Denumire" value={r.name || ""} onChange={(e) => setR(i, "name", e.target.value)} />
+        <input className="den-input" placeholder="kW" value={r.kw || ""} onChange={(e) => setR(i, "kw", e.target.value)} />
+        <input className="den-input" placeholder="Observații / regim" value={r.notes || ""} onChange={(e) => setR(i, "notes", e.target.value)} />
+        <button type="button" onClick={() => setVal("receptors", recs.filter((_, j) => j !== i))}><Trash2 size={13} style={{ color: "#b33333" }} /></button></div>)}
+      <button type="button" className="text-xs font-bold mt-2 inline-flex items-center gap-1" style={{ color: "var(--blue)" }} onClick={() => setVal("receptors", [...recs, {}])} data-testid="atr-add-rec"><Plus size={12} />Adaugă receptor</button>
+      <div className="mt-4 flex items-center gap-2 text-xs font-bold" data-testid="atr-checklist-status">
+        {missing.length ? <><AlertTriangle size={14} style={{ color: "#8a5a00" }} />Lipsesc {missing.length} documente obligatorii</> : <><CheckCircle2 size={14} style={{ color: "#166534" }} />Toate documentele obligatorii sunt atașate</>}</div>
+      {DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={!!form.pros_id && prod && AUTO[k]} autoLabel={AUTO[k]} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}
+      <div className="flex flex-wrap gap-2 mt-4">
+        {id ? <>
+          <a href={pdf(id, 0)} target="_blank" rel="noopener noreferrer" data-testid="atr-cerere-pdf"><Btn type="button" variant="secondary">Cererea ATR completată (PDF)</Btn></a>
+          <a href={pdf(id, 1)} target="_blank" rel="noopener noreferrer" data-testid="atr-full-pdf"><Btn type="button">Dosar ATR — PDF unic</Btn></a>
+          <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>
+        </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați cererea pentru a genera documentele.</span>}
+      </div>
+      {id && <AtrTracking id={id} operator={form.operator} />}
+    </div>
+  );
+}

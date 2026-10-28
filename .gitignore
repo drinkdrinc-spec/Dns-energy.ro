@@ -85,7 +85,7 @@ android-sdk/
 **/.emergent/recordings/
 
 .env
-.env.*
+.env.
 !.env.example
-backend/.env
-frontend/.env
+/.env
+/.env.

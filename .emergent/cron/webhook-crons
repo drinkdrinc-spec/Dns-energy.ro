@@ -1,0 +1,12 @@
+# Managed by Emergent webhook-cron (pod-local syscron). DO NOT EDIT.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+JOB_ID=74e96df1-28da-4581-b62b-011d0320a134
+WEBHOOK_ENV_FILE=/app/backend/.env
+CRON_API_URL=https://ea.int.apis.emergentagent.com
+
+0 5 * * * root CRON_NAME=billing-reminders METHOD=POST ENDPOINT_URL_B64=aHR0cHM6Ly8yMzI5ODRmNi1lOTM4LTQ4MjYtODg0Mi01OGIwM2VmNDEyN2QucHJldmlldy5lbWVyZ2VudGFnZW50LmNvbS9hcGkvY3Jvbi9iaWxsaW5nLXJlbWluZGVycw== /bin/sh /app/.emergent/cron/dispatch_webhook.sh >> /var/log/webhook-cron.log 2>&1
+0 6 * * * root CRON_NAME=atr-deadlines METHOD=POST ENDPOINT_URL_B64=aHR0cHM6Ly8yMzI5ODRmNi1lOTM4LTQ4MjYtODg0Mi01OGIwM2VmNDEyN2QucHJldmlldy5lbWVyZ2VudGFnZW50LmNvbS9hcGkvY3Jvbi9hdHItZGVhZGxpbmVz /bin/sh /app/.emergent/cron/dispatch_webhook.sh >> /var/log/webhook-cron.log 2>&1
+0 4 * * 1 root CRON_NAME=forms-check METHOD=POST ENDPOINT_URL_B64=aHR0cHM6Ly8yMzI5ODRmNi1lOTM4LTQ4MjYtODg0Mi01OGIwM2VmNDEyN2QucHJldmlldy5lbWVyZ2VudGFnZW50LmNvbS9hcGkvY3Jvbi9mb3Jtcy1jaGVjaw== /bin/sh /app/.emergent/cron/dispatch_webhook.sh >> /var/log/webhook-cron.log 2>&1
+0 7 * * * root CRON_NAME=anre-visa METHOD=POST ENDPOINT_URL_B64=aHR0cHM6Ly8yMzI5ODRmNi1lOTM4LTQ4MjYtODg0Mi01OGIwM2VmNDEyN2QucHJldmlldy5lbWVyZ2VudGFnZW50LmNvbS9hcGkvY3Jvbi9hbnJlLXZpc2E= /bin/sh /app/.emergent/cron/dispatch_webhook.sh >> /var/log/webhook-cron.log 2>&1
+* * * * * root JOB_ID=74e96df1-28da-4581-b62b-011d0320a134 CRON_API_URL=https://ea.int.apis.emergentagent.com /bin/sh /app/.emergent/cron/watch_crons.sh >> /var/log/webhook-cron.log 2>&1

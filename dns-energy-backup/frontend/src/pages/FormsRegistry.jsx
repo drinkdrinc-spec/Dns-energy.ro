@@ -1,0 +1,113 @@
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { api, formatApiErrorDetail } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { PageHeader, Btn } from "@/components/Layout";
+import { ExternalLink, RefreshCw, Trash2, Check } from "lucide-react";
+
+const ST = { "valid": ["#ecfdf3", "#166534"], "versiune nouă detectată": ["#fff8e6", "#8a5a00"], "link invalid": ["#fff0f0", "#9b2c2c"],
+  "neverificabil automat": ["#eef4ff", "#1e40af"], "neverificat": ["#f3f4f6", "#6b7280"] };
+const err = (e) => toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Eroare");
+
+function Row({ f, admin, reload }) {
+  const c = ST[f.status] || ST["neverificat"];
+  const lc = f.last_check || {};
+  const act = async (fn, ok) => { try { await fn(); toast.success(ok); reload(); } catch (e) { err(e); } };
+  return (
+    <div className="border-t py-3 flex flex-wrap gap-3 items-start" style={{ borderColor: "var(--line)" }} data-testid={`form-row-${f.id}`}>
+      <div className="flex-1 min-w-[260px]">
+        <div className="text-[11px] font-bold uppercase" style={{ color: "var(--blue)" }}>{f.operator} · {f.kind}</div>
+        <b className="text-sm">{f.title}</b>
+        <div className="text-[11px] mt-0.5" style={{ color: "var(--muted)" }}>
+          Versiune confirmată: <b>{f.version || "—"}</b>{lc.detected_version ? ` · detectată: ${lc.detected_version}` : ""}{lc.at ? ` · verificat ${new Date(lc.at).toLocaleString("ro-RO")}` : ""}{lc.http ? ` · HTTP ${lc.http}` : ""}</div>
+        <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold inline-flex items-center gap-1 mt-1 break-all" style={{ color: "var(--blue)" }} data-testid={`form-link-${f.id}`}>{f.url} <ExternalLink size={11} /></a>
+        {f.status === "neverificabil automat" && <div className="text-[11px] mt-1" style={{ color: "#1e40af" }}>Site-ul operatorului blochează verificarea automată — deschideți linkul și confirmați manual versiunea.</div>}
+      </div>
+      <span className="text-[11px] font-bold rounded-full px-2 py-0.5" style={{ background: c[0], color: c[1] }} data-testid={`form-status-${f.id}`}>{f.status}</span>
+      {admin && <div className="flex gap-3 text-xs font-bold">
+        <button onClick={() => act(() => api.post(`/forms/check?fid=${f.id}`), "Verificat")} style={{ color: "var(--blue)" }} data-testid={`form-check-${f.id}`}><RefreshCw size={13} /></button>
+        <button onClick={() => { const v = window.prompt("Versiunea confirmată (ex. cod formular / ediție / dată):", lc.detected_version || f.version || ""); if (v !== null) act(() => api.post(`/forms/${f.id}/confirm`, { version: v }), "Versiune confirmată"); }} style={{ color: "#166534" }} data-testid={`form-confirm-${f.id}`}><Check size={13} /></button>
+        <button onClick={() => window.confirm("Ștergeți formularul din registru?") && act(() => api.delete(`/forms/${f.id}`), "Șters")} data-testid={`form-delete-${f.id}`}><Trash2 size={13} style={{ color: "#b33333" }} /></button>
+      </div>}
+    </div>
+  );
+}
+
+const OPS = ["DEER", "Delgaz Grid", "Rețele Electrice România", "Distribuție Energie Oltenia", "ANRE"];
+
+function Holidays() {
+  const y = new Date().getFullYear();
+  const [d, setD] = useState(null);
+  const [row, setRow] = useState({ date: "", label: "" });
+  const load = () => api.get(`/calendar/holidays?year=${y}`).then((r) => setD(r.data));
+  useEffect(() => { load(); }, []); // eslint-disable-line
+  const put = async (extra) => { try { await api.put("/calendar/extra", { extra }); toast.success("Zile libere salvate"); load(); } catch (e) { err(e); } };
+  if (!d) return null;
+  return (
+    <div className="den-panel mb-5" data-testid="holidays-panel">
+      <b className="text-sm">Sărbători legale {y} (calculate automat) și zile libere suplimentare</b>
+      <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>Folosite la calculul termenelor în zile lucrătoare (ex. verificarea dosarului ATR).</p>
+      <div className="flex flex-wrap gap-1.5 text-[11px]" data-testid="holidays-legal">{d.legal.map((h) => <span key={h.date} className="rounded-full px-2 py-0.5" style={{ background: "#eef4ff" }}>{new Date(h.date).toLocaleDateString("ro-RO")} · {h.label}</span>)}</div>
+      <div className="flex flex-wrap gap-1.5 text-[11px] mt-2" data-testid="holidays-extra">{d.extra.map((h) => <span key={h.date} className="rounded-full px-2 py-0.5 inline-flex items-center gap-1" style={{ background: "#fff8e6" }}>{new Date(h.date).toLocaleDateString("ro-RO")} · {h.label}
+        <button onClick={() => put(d.extra.filter((x) => x.date !== h.date))} data-testid={`holiday-del-${h.date}`}><Trash2 size={10} /></button></span>)}</div>
+      <div className="flex flex-wrap gap-2 items-end mt-2">
+        <div className="den-field"><label>Zi liberă suplimentară</label><input type="date" className="den-input" value={row.date} onChange={(e) => setRow({ ...row, date: e.target.value })} data-testid="holiday-date" /></div>
+        <div className="den-field"><label>Motiv</label><input className="den-input" value={row.label} onChange={(e) => setRow({ ...row, label: e.target.value })} data-testid="holiday-label" /></div>
+        <Btn onClick={() => row.date && put([...d.extra, row]).then(() => setRow({ date: "", label: "" }))} data-testid="holiday-add">Adaugă</Btn>
+      </div>
+    </div>
+  );
+}
+
+function Contacts() {
+  const [rows, setRows] = useState([]);
+  useEffect(() => { api.get("/operator-contacts").then((r) => setRows(r.data)); }, []);
+  const save = async (op, email, el) => { try { await api.put(`/operator-contacts/${op}`, { email }); setRows((r) => r.map((c) => (c.op === op ? { ...c, email } : c))); toast.success("Adresă salvată"); } catch (e) { err(e); el.value = rows.find((c) => c.op === op)?.email || ""; } };
+  return (
+    <div className="den-panel mb-5" data-testid="operator-contacts">
+      <b className="text-sm">Adrese de e-mail pentru depunerea cererilor ATR</b>
+      <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>Doar adrese de pe domeniul oficial al fiecărui operator. Utilizatorii le pot modifica la fiecare trimitere (tot pe domeniul oficial).</p>
+      {rows.map((c) => <div key={c.op} className="flex flex-wrap gap-2 items-end py-1">
+        <div className="den-field flex-1 min-w-[260px]"><label>{c.name} ({c.domains.join(", ")})</label>
+          <input className="den-input" defaultValue={c.email} onBlur={(e) => e.target.value !== c.email && save(c.op, e.target.value, e.target)} data-testid={`contact-${c.op}`} /></div></div>)}
+    </div>
+  );
+}
+
+function AddForm({ reload }) {
+  const [f, setF] = useState({ operator: "DEER", title: "", kind: "", url: "" });
+  const save = async () => { try { await api.post("/forms", f); toast.success("Formular adăugat și verificat"); setF({ ...f, title: "", url: "", kind: "" }); reload(); } catch (e) { err(e); } };
+  return (
+    <div className="den-panel mb-5 flex flex-wrap gap-2 items-end" data-testid="form-add">
+      <div className="den-field w-48"><label>Operator</label><select className="den-input" value={f.operator} onChange={(e) => setF({ ...f, operator: e.target.value })} data-testid="form-add-operator">{OPS.map((o) => <option key={o}>{o}</option>)}</select></div>
+      {[["title", "Denumire formular", "flex-1 min-w-[200px]"], ["kind", "Tip", "w-36"], ["url", "Link oficial (https://…)", "flex-1 min-w-[240px]"]].map(([k, l, w]) => (
+        <div key={k} className={`den-field ${w}`}><label>{l}</label><input className="den-input" value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} data-testid={`form-add-${k}`} /></div>))}
+      <Btn onClick={save} data-testid="form-add-save">Adaugă</Btn>
+    </div>
+  );
+}
+
+export default function FormsRegistry() {
+  const { user } = useAuth();
+  const [rows, setRows] = useState(null);
+  const [op, setOp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => api.get("/forms").then((r) => setRows(r.data));
+  useEffect(() => { load(); }, []);
+  const ops = useMemo(() => [...new Set((rows || []).map((r) => r.operator))], [rows]);
+  if (!rows) return null;
+  const checkAll = async () => { setBusy(true); try { await api.post("/forms/check"); toast.success("Toate linkurile au fost verificate"); load(); } catch (e) { err(e); } setBusy(false); };
+  const shown = rows.filter((r) => !op || r.operator === op);
+  return (
+    <div>
+      <PageHeader eyebrow="Racordare" title="Registru formulare oficiale" sub="Linkurile oficiale DEER, Delgaz Grid, Rețele Electrice și Distribuție Energie Oltenia, cu verificare automată săptămânală (luni 06:00) a linkurilor și a versiunilor; administratorul primește e-mail la modificări."
+        action={user?.platform && <Btn onClick={checkAll} disabled={busy} data-testid="forms-check-all"><RefreshCw size={15} />{busy ? "Se verifică…" : "Verifică acum toate"}</Btn>} />
+      {user?.platform && <Contacts />}
+      {user?.platform && <Holidays />}
+      {user?.platform && <AddForm reload={load} />}
+      <div className="flex gap-2 flex-wrap mb-4">{["", ...ops].map((o) => <button key={o || "all"} onClick={() => setOp(o)} data-testid={`forms-filter-${o || "all"}`} className="rounded-full px-4 py-2 text-[12px] font-bold border"
+        style={o === op ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>{o || "Toți operatorii"}</button>)}</div>
+      <div className="den-panel" data-testid="forms-list">{shown.map((f) => <Row key={f.id} f={f} admin={user?.platform} reload={load} />)}</div>
+    </div>
+  );
+}

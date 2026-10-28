@@ -1,0 +1,1468 @@
+<!doctype html>
+<html lang="ro-RO">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="profile" href="//gmpg.org/xfn/11">
+    		    <!-- PVC Template -->
+    <script type="text/template" id="pvc-stats-view-template">
+    <i class="pvc-stats-icon small" aria-hidden="true"><svg aria-hidden="true" focusable="false" data-prefix="far" data-icon="chart-bar" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="svg-inline--fa fa-chart-bar fa-w-16 fa-2x"><path fill="currentColor" d="M396.8 352h22.4c6.4 0 12.8-6.4 12.8-12.8V108.8c0-6.4-6.4-12.8-12.8-12.8h-22.4c-6.4 0-12.8 6.4-12.8 12.8v230.4c0 6.4 6.4 12.8 12.8 12.8zm-192 0h22.4c6.4 0 12.8-6.4 12.8-12.8V140.8c0-6.4-6.4-12.8-12.8-12.8h-22.4c-6.4 0-12.8 6.4-12.8 12.8v198.4c0 6.4 6.4 12.8 12.8 12.8zm96 0h22.4c6.4 0 12.8-6.4 12.8-12.8V204.8c0-6.4-6.4-12.8-12.8-12.8h-22.4c-6.4 0-12.8 6.4-12.8 12.8v134.4c0 6.4 6.4 12.8 12.8 12.8zM496 400H48V80c0-8.84-7.16-16-16-16H16C7.16 64 0 71.16 0 80v336c0 17.67 14.33 32 32 32h464c8.84 0 16-7.16 16-16v-16c0-8.84-7.16-16-16-16zm-387.2-48h22.4c6.4 0 12.8-6.4 12.8-12.8v-70.4c0-6.4-6.4-12.8-12.8-12.8h-22.4c-6.4 0-12.8 6.4-12.8 12.8v70.4c0 6.4 6.4 12.8 12.8 12.8z" class=""></path></svg></i>
+	Vizualizări pagina total: <%= total_view %> 	<% if ( today_view > 0 ) { %>
+		<span class="views_today">, Vizualizări azi: <%= today_view %> </span>
+	<% } %>
+	</span>
+	</script>
+		    <meta name='robots' content='index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' />
+
+	<!-- This site is optimized with the Yoast SEO plugin v28.5 - https://yoast.com/product/yoast-seo-wordpress/ -->
+	<title>Racordare la rețea - Distribuție Energie Electrică Romania</title>
+	<meta name="description" content="Racordare la rețea - Cereri de racordare - Cererile tip de racordare sunt diferenţiate funcţie de categoria de utilizator din care face parte" />
+	<link rel="canonical" href="https://www.distributie-energie.ro/racordare-la-retea-2/" />
+	<meta property="og:locale" content="ro_RO" />
+	<meta property="og:type" content="article" />
+	<meta property="og:title" content="Racordare la rețea - Distribuție Energie Electrică Romania" />
+	<meta property="og:description" content="Racordare la rețea - Cereri de racordare - Cererile tip de racordare sunt diferenţiate funcţie de categoria de utilizator din care face parte" />
+	<meta property="og:url" content="https://www.distributie-energie.ro/racordare-la-retea-2/" />
+	<meta property="og:site_name" content="Distribuție Energie Electrică Romania" />
+	<meta property="article:modified_time" content="2026-07-29T12:16:04+00:00" />
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:label1" content="Timp estimat pentru citire" />
+	<meta name="twitter:data1" content="4 minute" />
+	<script type="application/ld+json" class="yoast-schema-graph">{"@context":"https:\/\/schema.org","@graph":[{"@type":"WebPage","@id":"https:\/\/www.distributie-energie.ro\/racordare-la-retea-2\/","url":"https:\/\/www.distributie-energie.ro\/racordare-la-retea-2\/","name":"Racordare la rețea - Distribuție Energie Electrică Romania","isPartOf":{"@id":"https:\/\/www.distributie-energie.ro\/#website"},"datePublished":"2023-12-08T11:59:10+00:00","dateModified":"2026-07-29T12:16:04+00:00","description":"Racordare la rețea - Cereri de racordare - Cererile tip de racordare sunt diferenţiate funcţie de categoria de utilizator din care face parte","breadcrumb":{"@id":"https:\/\/www.distributie-energie.ro\/racordare-la-retea-2\/#breadcrumb"},"inLanguage":"ro-RO","potentialAction":[{"@type":"ReadAction","target":["https:\/\/www.distributie-energie.ro\/racordare-la-retea-2\/"]}]},{"@type":"BreadcrumbList","@id":"https:\/\/www.distributie-energie.ro\/racordare-la-retea-2\/#breadcrumb","itemListElement":[{"@type":"ListItem","position":1,"name":"Acasă","item":"https:\/\/www.distributie-energie.ro\/"},{"@type":"ListItem","position":2,"name":"Racordare la rețea"}]},{"@type":"WebSite","@id":"https:\/\/www.distributie-energie.ro\/#website","url":"https:\/\/www.distributie-energie.ro\/","name":"Distribuție Energie Electrică Romania","description":"","potentialAction":[{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https:\/\/www.distributie-energie.ro\/?s={search_term_string}"},"query-input":{"@type":"PropertyValueSpecification","valueRequired":true,"valueName":"search_term_string"}}],"inLanguage":"ro-RO"}]}</script>
+	<!-- / Yoast SEO plugin. -->
+
+
+<link rel="alternate" type="application/rss+xml" title="Distribuție Energie Electrică Romania &raquo; Flux" href="https://www.distributie-energie.ro/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Distribuție Energie Electrică Romania &raquo; Flux comentarii" href="https://www.distributie-energie.ro/comments/feed/" />
+<link rel="alternate" title="oEmbed (JSON)" type="application/json+oembed" href="https://www.distributie-energie.ro/wp-json/oembed/1.0/embed?url=https%3A%2F%2Fwww.distributie-energie.ro%2Fracordare-la-retea-2%2F" />
+<link rel="alternate" title="oEmbed (XML)" type="text/xml+oembed" href="https://www.distributie-energie.ro/wp-json/oembed/1.0/embed?url=https%3A%2F%2Fwww.distributie-energie.ro%2Fracordare-la-retea-2%2F&#038;format=xml" />
+<style id="wp-img-auto-sizes-contain-inline-css">
+img:is([sizes=auto i],[sizes^="auto," i]){contain-intrinsic-size:3000px 1500px}
+/*# sourceURL=wp-img-auto-sizes-contain-inline-css */
+</style>
+
+<style id="wp-emoji-styles-inline-css">
+
+	img.wp-smiley, img.emoji {
+		display: inline !important;
+		border: none !important;
+		box-shadow: none !important;
+		height: 1em !important;
+		width: 1em !important;
+		margin: 0 0.07em !important;
+		vertical-align: -0.1em !important;
+		background: none !important;
+		padding: 0 !important;
+	}
+/*# sourceURL=wp-emoji-styles-inline-css */
+</style>
+<style id="classic-theme-styles-inline-css">
+/*! This file is auto-generated */
+.wp-block-button__link{color:#fff;background-color:#32373c;border-radius:9999px;box-shadow:none;text-decoration:none;padding:calc(.667em + 2px) calc(1.333em + 2px);font-size:1.125em}.wp-block-file__button{background:#32373c;color:#fff;text-decoration:none}
+/*# sourceURL=/wp-includes/css/classic-themes.min.css */
+</style>
+
+<link rel='stylesheet' id='awsm-ead-public-css' href='https://www.distributie-energie.ro/wp-content/plugins/embed-any-document/css/embed-public.min.css?ver=2.7.14' media='all' />
+<style id="global-styles-inline-css">
+:root{--wp--preset--aspect-ratio--square: 1;--wp--preset--aspect-ratio--4-3: 4/3;--wp--preset--aspect-ratio--3-4: 3/4;--wp--preset--aspect-ratio--3-2: 3/2;--wp--preset--aspect-ratio--2-3: 2/3;--wp--preset--aspect-ratio--16-9: 16/9;--wp--preset--aspect-ratio--9-16: 9/16;--wp--preset--color--black: #000000;--wp--preset--color--cyan-bluish-gray: #abb8c3;--wp--preset--color--white: #ffffff;--wp--preset--color--pale-pink: #f78da7;--wp--preset--color--vivid-red: #cf2e2e;--wp--preset--color--luminous-vivid-orange: #ff6900;--wp--preset--color--luminous-vivid-amber: #fcb900;--wp--preset--color--light-green-cyan: #7bdcb5;--wp--preset--color--vivid-green-cyan: #00d084;--wp--preset--color--pale-cyan-blue: #8ed1fc;--wp--preset--color--vivid-cyan-blue: #0693e3;--wp--preset--color--vivid-purple: #9b51e0;--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple: linear-gradient(135deg,rgb(6,147,227) 0%,rgb(155,81,224) 100%);--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan: linear-gradient(135deg,rgb(122,220,180) 0%,rgb(0,208,130) 100%);--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange: linear-gradient(135deg,rgb(252,185,0) 0%,rgb(255,105,0) 100%);--wp--preset--gradient--luminous-vivid-orange-to-vivid-red: linear-gradient(135deg,rgb(255,105,0) 0%,rgb(207,46,46) 100%);--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray: linear-gradient(135deg,rgb(238,238,238) 0%,rgb(169,184,195) 100%);--wp--preset--gradient--cool-to-warm-spectrum: linear-gradient(135deg,rgb(74,234,220) 0%,rgb(151,120,209) 20%,rgb(207,42,186) 40%,rgb(238,44,130) 60%,rgb(251,105,98) 80%,rgb(254,248,76) 100%);--wp--preset--gradient--blush-light-purple: linear-gradient(135deg,rgb(255,206,236) 0%,rgb(152,150,240) 100%);--wp--preset--gradient--blush-bordeaux: linear-gradient(135deg,rgb(254,205,165) 0%,rgb(254,45,45) 50%,rgb(107,0,62) 100%);--wp--preset--gradient--luminous-dusk: linear-gradient(135deg,rgb(255,203,112) 0%,rgb(199,81,192) 50%,rgb(65,88,208) 100%);--wp--preset--gradient--pale-ocean: linear-gradient(135deg,rgb(255,245,203) 0%,rgb(182,227,212) 50%,rgb(51,167,181) 100%);--wp--preset--gradient--electric-grass: linear-gradient(135deg,rgb(202,248,128) 0%,rgb(113,206,126) 100%);--wp--preset--gradient--midnight: linear-gradient(135deg,rgb(2,3,129) 0%,rgb(40,116,252) 100%);--wp--preset--font-size--small: 13px;--wp--preset--font-size--medium: 20px;--wp--preset--font-size--large: 36px;--wp--preset--font-size--x-large: 42px;--wp--preset--spacing--20: 0.44rem;--wp--preset--spacing--30: 0.67rem;--wp--preset--spacing--40: 1rem;--wp--preset--spacing--50: 1.5rem;--wp--preset--spacing--60: 2.25rem;--wp--preset--spacing--70: 3.38rem;--wp--preset--spacing--80: 5.06rem;--wp--preset--shadow--natural: 6px 6px 9px rgba(0, 0, 0, 0.2);--wp--preset--shadow--deep: 12px 12px 50px rgba(0, 0, 0, 0.4);--wp--preset--shadow--sharp: 6px 6px 0px rgba(0, 0, 0, 0.2);--wp--preset--shadow--outlined: 6px 6px 0px -3px rgb(255, 255, 255), 6px 6px rgb(0, 0, 0);--wp--preset--shadow--crisp: 6px 6px 0px rgb(0, 0, 0);}.wp-block-button{--wp--preset--dimension--25: 25%;--wp--preset--dimension--50: 50%;--wp--preset--dimension--75: 75%;--wp--preset--dimension--100: 100%;}:where(body) { margin: 0; }:where(.is-layout-flex){gap: 0.5em;}:where(.is-layout-grid){gap: 0.5em;}body .is-layout-flex{display: flex;}.is-layout-flex{flex-wrap: wrap;align-items: center;}.is-layout-flex > :is(*, div){margin: 0;}body .is-layout-grid{display: grid;}.is-layout-grid > :is(*, div){margin: 0;}body{padding-top: 0px;padding-right: 0px;padding-bottom: 0px;padding-left: 0px;}:root :where(.wp-element-button, .wp-block-button__link){background-color: #32373c;border-width: 0;color: #fff;font-family: inherit;font-size: inherit;font-style: inherit;font-weight: inherit;letter-spacing: inherit;line-height: inherit;padding-top: calc(0.667em + 2px);padding-right: calc(1.333em + 2px);padding-bottom: calc(0.667em + 2px);padding-left: calc(1.333em + 2px);text-decoration: none;text-transform: inherit;}.has-black-color{color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-color{color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-color{color: var(--wp--preset--color--white) !important;}.has-pale-pink-color{color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-color{color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-color{color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-color{color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-color{color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-color{color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-color{color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-color{color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-color{color: var(--wp--preset--color--vivid-purple) !important;}.has-black-background-color{background-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-background-color{background-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-background-color{background-color: var(--wp--preset--color--white) !important;}.has-pale-pink-background-color{background-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-background-color{background-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-background-color{background-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-background-color{background-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-background-color{background-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-background-color{background-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-background-color{background-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-background-color{background-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-background-color{background-color: var(--wp--preset--color--vivid-purple) !important;}.has-black-border-color{border-color: var(--wp--preset--color--black) !important;}.has-cyan-bluish-gray-border-color{border-color: var(--wp--preset--color--cyan-bluish-gray) !important;}.has-white-border-color{border-color: var(--wp--preset--color--white) !important;}.has-pale-pink-border-color{border-color: var(--wp--preset--color--pale-pink) !important;}.has-vivid-red-border-color{border-color: var(--wp--preset--color--vivid-red) !important;}.has-luminous-vivid-orange-border-color{border-color: var(--wp--preset--color--luminous-vivid-orange) !important;}.has-luminous-vivid-amber-border-color{border-color: var(--wp--preset--color--luminous-vivid-amber) !important;}.has-light-green-cyan-border-color{border-color: var(--wp--preset--color--light-green-cyan) !important;}.has-vivid-green-cyan-border-color{border-color: var(--wp--preset--color--vivid-green-cyan) !important;}.has-pale-cyan-blue-border-color{border-color: var(--wp--preset--color--pale-cyan-blue) !important;}.has-vivid-cyan-blue-border-color{border-color: var(--wp--preset--color--vivid-cyan-blue) !important;}.has-vivid-purple-border-color{border-color: var(--wp--preset--color--vivid-purple) !important;}.has-vivid-cyan-blue-to-vivid-purple-gradient-background{background: var(--wp--preset--gradient--vivid-cyan-blue-to-vivid-purple) !important;}.has-light-green-cyan-to-vivid-green-cyan-gradient-background{background: var(--wp--preset--gradient--light-green-cyan-to-vivid-green-cyan) !important;}.has-luminous-vivid-amber-to-luminous-vivid-orange-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-amber-to-luminous-vivid-orange) !important;}.has-luminous-vivid-orange-to-vivid-red-gradient-background{background: var(--wp--preset--gradient--luminous-vivid-orange-to-vivid-red) !important;}.has-very-light-gray-to-cyan-bluish-gray-gradient-background{background: var(--wp--preset--gradient--very-light-gray-to-cyan-bluish-gray) !important;}.has-cool-to-warm-spectrum-gradient-background{background: var(--wp--preset--gradient--cool-to-warm-spectrum) !important;}.has-blush-light-purple-gradient-background{background: var(--wp--preset--gradient--blush-light-purple) !important;}.has-blush-bordeaux-gradient-background{background: var(--wp--preset--gradient--blush-bordeaux) !important;}.has-luminous-dusk-gradient-background{background: var(--wp--preset--gradient--luminous-dusk) !important;}.has-pale-ocean-gradient-background{background: var(--wp--preset--gradient--pale-ocean) !important;}.has-electric-grass-gradient-background{background: var(--wp--preset--gradient--electric-grass) !important;}.has-midnight-gradient-background{background: var(--wp--preset--gradient--midnight) !important;}.has-small-font-size{font-size: var(--wp--preset--font-size--small) !important;}.has-medium-font-size{font-size: var(--wp--preset--font-size--medium) !important;}.has-large-font-size{font-size: var(--wp--preset--font-size--large) !important;}.has-x-large-font-size{font-size: var(--wp--preset--font-size--x-large) !important;}
+/*# sourceURL=global-styles-inline-css */
+</style>
+
+<link rel='stylesheet' id='dnd-upload-cf7-css' href='https://www.distributie-energie.ro/wp-content/plugins/drag-and-drop-multiple-file-upload-contact-form-7/assets/css/dnd-upload-cf7.css?ver=1.4.0' media='all' />
+<link rel='stylesheet' id='contact-form-7-css' href='https://www.distributie-energie.ro/wp-content/plugins/contact-form-7/includes/css/styles.css?ver=6.1.7' media='all' />
+<style id="contact-form-7-inline-css">
+.wpcf7 .wpcf7-recaptcha iframe {margin-bottom: 0;}.wpcf7 .wpcf7-recaptcha[data-align="center"] > div {margin: 0 auto;}.wpcf7 .wpcf7-recaptcha[data-align="right"] > div {margin: 0 0 0 auto;}
+/*# sourceURL=contact-form-7-inline-css */
+</style>
+<link rel='stylesheet' id='cookie-notice-front-css' href='https://www.distributie-energie.ro/wp-content/plugins/cookie-notice/css/front.min.css?ver=3.1.10' media='all' />
+<link rel='stylesheet' id='nbcpf-intlTelInput-style-css' href='https://www.distributie-energie.ro/wp-content/plugins/country-phone-field-contact-form-7/assets/css/intlTelInput.min.css?ver=7.1.3' media='all' />
+<link rel='stylesheet' id='nbcpf-countryFlag-style-css' href='https://www.distributie-energie.ro/wp-content/plugins/country-phone-field-contact-form-7/assets/css/countrySelect.min.css?ver=7.1.3' media='all' />
+<link rel='stylesheet' id='slick-css-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor-theme-core/assets/css/lib/slick.css?ver=1.8.0' media='all' />
+<link rel='stylesheet' id='a3-pvc-style-css' href='https://www.distributie-energie.ro/wp-content/plugins/page-views-count/assets/css/style.min.css?ver=2.9.2' media='all' />
+<link rel='stylesheet' id='solatec-icon-css' href='https://www.distributie-energie.ro/wp-content/themes/solatec/assets/fonts/cms-solatec/styles.css?ver=2.0.7' media='all' />
+<link rel='stylesheet' id='solatec-css' href='https://www.distributie-energie.ro/wp-content/themes/solatec/assets/css/theme.min.css?ver=2.0.7' media='all' />
+<style id="solatec-inline-css">
+:root{--color-accent: rgb(41,52,143);--color-primary: rgb(27,26,26);--color-secondary: rgb(40,191,57);--color-rating: rgb(74,171,61);--color-body: rgb(155,155,155);--color-white: rgb(255,255,255);--color-616161: rgb(97,97,97);--link-regular-color: var(--color-primary);--link-hover-color: var(--color-accent);--link-active-color: var(--color-accent);--body-bg: #fff;--body-font-family: 'Roboto', sans-serif;--body-font-size: 15px;--body-font-weight: 400;--body-font-color: var(--color-body);--body-line-height: 1.666666666666667;--body-letter-spacing: 0px;--body-font-size-large: 17px;--body-font-size-medium: 16px;--body-font-size-small: 13px;--body-font-size-xsmall: 12px;--body-font-size-xxsmall: 11px;--header-height: 91px;--header-width: 320px;--menu-bg: #fff;--menu-regular: var(--color-primary);--menu-hover: var(--color-accent);--menu-active: var(--color-accent);--menu-font-size: 15px;--menu-font-weight: 700;--menu-font-family: var(--body-font-family);--ontop-bg: transparent;--ontop-regular: var(--color-white);--ontop-hover: var(--color-accent);--ontop-active: var(--color-accent);--sticky-bg: #fff;--sticky-regular: var(--color-primary);--sticky-hover: var(--color-accent);--sticky-active: var(--color-accent);--dropdown-bg: #fff;--dropdown-shadow: 0px 5px 83px 0px rgba(40, 40, 40, 0.05);--dropdown-regular: var(--color-body);--dropdown-hover: var(--color-accent);--dropdown-active: var(--color-accent);--dropdown-font-size: 14px;--dropdown-item-bg: transparent;--dropdown-item-bg-hover: transparent;--ptitle-layout: 1;--ptitle-color: var(--color-white);--ptitle-alpha: 1;--ptitle-rgba: unset;--ptitle-background-color: #999;--ptitle-background-repeat: no-repeat;--ptitle-background-size: cover;--ptitle-background-attachment: scroll;--ptitle-background-position: center;--ptitle-background-image: url(https://www.distributie-energie.ro/wp-content/uploads/2023/12/Distributie-energie-electrica-3.jpg);--ptitle-overlay-color: inherit;--ptitle-overlay-alpha: 1;--ptitle-overlay-rgba: rgba(27, 26, 26, 0.25);--ptitle-breadcrumb-regular: #ffffff;--ptitle-breadcrumb-hover: var(--color-accent);--ptitle-breadcrumb-active: var(--color-white);--heading-h1-size: 36px;--heading-h2-size: 30px;--heading-h3-size: 24px;--heading-h4-size: 20px;--heading-h5-size: 18px;--heading-h6-size: 16px;--heading-font-family: 'Rubik', sans-serif;--heading-font-color: var(--color-primary);--heading-font-color-hover: var(--color-primary);--heading-font-weight: 500;--heading-line-height: 1.4;--heading-letter-spacing: 0;--heading-h1-typo-font-family: var(--heading-font-family);--heading-h1-typo-font-size: var(--heading-h1-size);--heading-h1-typo-font-weight: var(--heading-font-weight);--heading-h1-typo-font-color: var(--heading-font-color);--heading-h1-typo-line-height: var(--heading-line-height);--heading-h1-typo-letter-spacing: var(--heading-letter-spacing);--heading-h2-typo-font-family: var(--heading-font-family);--heading-h2-typo-font-size: var(--heading-h2-size);--heading-h2-typo-font-weight: var(--heading-font-weight);--heading-h2-typo-font-color: var(--heading-font-color);--heading-h2-typo-line-height: var(--heading-line-height);--heading-h2-typo-letter-spacing: var(--heading-letter-spacing);--heading-h3-typo-font-family: var(--heading-font-family);--heading-h3-typo-font-size: var(--heading-h3-size);--heading-h3-typo-font-weight: var(--heading-font-weight);--heading-h3-typo-font-color: var(--heading-font-color);--heading-h3-typo-line-height: var(--heading-line-height);--heading-h3-typo-letter-spacing: var(--heading-letter-spacing);--heading-h4-typo-font-family: var(--heading-font-family);--heading-h4-typo-font-size: var(--heading-h4-size);--heading-h4-typo-font-weight: var(--heading-font-weight);--heading-h4-typo-font-color: var(--heading-font-color);--heading-h4-typo-line-height: var(--heading-line-height);--heading-h4-typo-letter-spacing: var(--heading-letter-spacing);--heading-h5-typo-font-family: var(--heading-font-family);--heading-h5-typo-font-size: var(--heading-h5-size);--heading-h5-typo-font-weight: var(--heading-font-weight);--heading-h5-typo-font-color: var(--heading-font-color);--heading-h5-typo-line-height: var(--heading-line-height);--heading-h5-typo-letter-spacing: var(--heading-letter-spacing);--heading-h6-typo-font-family: var(--heading-font-family);--heading-h6-typo-font-size: var(--heading-h6-size);--heading-h6-typo-font-weight: var(--heading-font-weight);--heading-h6-typo-font-color: var(--heading-font-color);--heading-h6-typo-line-height: 1.4667;--heading-h6-typo-letter-spacing: var(--heading-letter-spacing);--meta-font-family: 'Roboto', sans-serif;--meta-font-size: 13px;--meta-font-color: #333333;--meta-font-color-hover: var(--color-accent);--meta-font-weight: 400;--meta-separate-color: var(--color-secondary);--border-color: var(--color-secondary);--border-main: 1px solid var(--border-color);--border-main2: 2px solid var(--border-color);--comment-avatar-size: 60;--comment-border: 0;--comment-radius: 6px;--logo-width:350px;--logo-height:125px;--logo-units:px;--logo-width-sm:180px;--logo-height-sm:55px;--gradient-1:90deg, var(--color-primary) 0%, var(--color-accent) 100%;--gradient-2:top,  rgba(27,26,26,1) 0%, rgba(29,42,53,1) 7%, rgba(41,137,216,0.02) 50%, rgba(32,124,202,0) 51%, rgba(27,26,26,0) 82%;}
+/*# sourceURL=solatec-inline-css */
+</style>
+<link rel='stylesheet' id='elementor-icons-ekiticons-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementskit-lite/modules/elementskit-icon-pack/assets/css/ekiticons.css?ver=3.2.3' media='all' />
+<link rel='stylesheet' id='elementor-icons-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/eicons/css/elementor-icons.min.css?ver=5.25.0' media='all' />
+<link rel='stylesheet' id='elementor-frontend-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/css/frontend-lite.min.css?ver=3.18.2' media='all' />
+<link rel='stylesheet' id='swiper-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/swiper/v8/css/swiper.min.css?ver=8.4.5' media='all' />
+<link rel='stylesheet' id='elementor-post-5071-css' href='https://www.distributie-energie.ro/wp-content/uploads/elementor/css/post-5071.css?ver=1788247128' media='all' />
+<link rel='stylesheet' id='font-awesome-5-all-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/font-awesome/css/all.min.css?ver=3.18.2' media='all' />
+<link rel='stylesheet' id='font-awesome-4-shim-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/font-awesome/css/v4-shims.min.css?ver=3.18.2' media='all' />
+<link rel='stylesheet' id='elementor-global-css' href='https://www.distributie-energie.ro/wp-content/uploads/elementor/css/global.css?ver=1788247129' media='all' />
+<link rel='stylesheet' id='elementor-post-15018-css' href='https://www.distributie-energie.ro/wp-content/uploads/elementor/css/post-15018.css?ver=1788247157' media='all' />
+<link rel='stylesheet' id='a3pvc-css' href='//www.distributie-energie.ro/wp-content/uploads/sass/pvc.min.css?ver=1707720646' media='all' />
+<link rel='stylesheet' id='popup-maker-site-css' href='//www.distributie-energie.ro/wp-content/uploads/pum/pum-site-styles.css?generated=1785736725&#038;ver=1.25.0' media='all' />
+<link rel='stylesheet' id='ekit-widget-styles-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementskit-lite/widgets/init/assets/css/widget-styles.css?ver=3.2.3' media='all' />
+<link rel='stylesheet' id='ekit-responsive-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementskit-lite/widgets/init/assets/css/responsive.css?ver=3.2.3' media='all' />
+<link rel='stylesheet' id='google-fonts-1-css' href='https://fonts.googleapis.com/css?family=Roboto:100,100italic,200,200italic,300,300italic,400,400italic,500,500italic,600,600italic,700,700italic,800,800italic,900,900italic%7CRoboto+Slab:100,100italic,200,200italic,300,300italic,400,400italic,500,500italic,600,600italic,700,700italic,800,800italic,900,900italic&#038;display=swap&#038;subset=latin-ext&#038;ver=7.1.3' media='all' />
+<link rel='stylesheet' id='elementor-icons-shared-0-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/font-awesome/css/fontawesome.min.css?ver=5.15.3' media='all' />
+<link rel='stylesheet' id='elementor-icons-fa-solid-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/font-awesome/css/solid.min.css?ver=5.15.3' media='all' />
+<link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin><script id="jquery-core-js" src="https://www.distributie-energie.ro/wp-includes/js/jquery/jquery.min.js?ver=3.7.1"></script>
+<script id="jquery-migrate-js" src="https://www.distributie-energie.ro/wp-includes/js/jquery/jquery-migrate.min.js?ver=3.4.1"></script>
+<script id="cookie-notice-front-js-before">
+var cnArgs = {"ajaxUrl":"https:\/\/www.distributie-energie.ro\/wp-admin\/admin-ajax.php","nonce":"28ed076593","hideEffect":"fade","position":"bottom","onScroll":false,"onScrollOffset":100,"onClick":false,"cookieName":"cookie_notice_accepted","cookieTime":604800,"cookieTimeRejected":2592000,"globalCookie":false,"redirection":false,"cache":true,"revokeCookies":false,"revokeCookiesOpt":"manual"};
+
+//# sourceURL=cookie-notice-front-js-before
+</script>
+<script id="cookie-notice-front-js" src="https://www.distributie-energie.ro/wp-content/plugins/cookie-notice/js/front.min.js?ver=3.1.10"></script>
+<script id="etc-main-js-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementor-theme-core/assets/js/main.js?ver=1.0.0"></script>
+<script id="underscore-js" src="https://www.distributie-energie.ro/wp-includes/js/underscore.min.js?ver=1.13.8"></script>
+<script id="backbone-js" src="https://www.distributie-energie.ro/wp-includes/js/backbone.min.js?ver=1.6.1"></script>
+<script id="a3-pvc-backbone-js-extra">
+var pvc_vars = {"rest_api_url":"https://www.distributie-energie.ro/wp-json/pvc/v1","ajax_url":"https://www.distributie-energie.ro/wp-admin/admin-ajax.php","security":"2d7b8a7af8","ajax_load_type":"admin_ajax"};
+//# sourceURL=a3-pvc-backbone-js-extra
+</script>
+<script id="a3-pvc-backbone-js" src="https://www.distributie-energie.ro/wp-content/plugins/page-views-count/assets/js/pvc.backbone.min.js?ver=2.9.2"></script>
+<script id="font-awesome-4-shim-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/font-awesome/js/v4-shims.min.js?ver=3.18.2"></script>
+<link rel="https://api.w.org/" href="https://www.distributie-energie.ro/wp-json/" /><link rel="alternate" title="JSON" type="application/json" href="https://www.distributie-energie.ro/wp-json/wp/v2/pages/15018" /><link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://www.distributie-energie.ro/xmlrpc.php?rsd" />
+<meta name="generator" content="WordPress 7.1.3" />
+<link rel='shortlink' href='https://www.distributie-energie.ro/?p=15018' />
+<meta name="generator" content="Redux 4.5.14" /><meta name="google-site-verification" content="OVgG5xLw2QFD0iqh78jae0P6zT-p7Vk4dgFUHeq2OEk" />
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JL1JHFM308"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-JL1JHFM308');
+</script>
+<style>
+	.cms-contact-button {
+		display: none;
+	}
+</style><meta name="generator" content="Elementor 3.18.2; features: e_dom_optimization, e_optimized_assets_loading, e_optimized_css_loading, additional_custom_breakpoints, block_editor_assets_optimize, e_image_loading_optimization; settings: css_print_method-external, google_font-enabled, font_display-swap">
+<link rel="icon" href="https://www.distributie-energie.ro/wp-content/uploads/2023/11/cropped-Logo-distributie-electrica-1-32x32.png" sizes="32x32" />
+<link rel="icon" href="https://www.distributie-energie.ro/wp-content/uploads/2023/11/cropped-Logo-distributie-electrica-1-192x192.png" sizes="192x192" />
+<link rel="apple-touch-icon" href="https://www.distributie-energie.ro/wp-content/uploads/2023/11/cropped-Logo-distributie-electrica-1-180x180.png" />
+<meta name="msapplication-TileImage" content="https://www.distributie-energie.ro/wp-content/uploads/2023/11/cropped-Logo-distributie-electrica-1-270x270.png" />
+<style id="cms_theme_options-dynamic-css" title="dynamic-css" class="redux-options-output">body #pagetitle{background-image:url('https://www.distributie-energie.ro/wp-content/uploads/2023/12/Distributie-energie-electrica-3.jpg');}</style>    <script>
+  var currentUrl = "https%3A%2F%2Fwww.distributie-energie.ro%2Fracordare-la-retea-2%2F";
+</script>
+
+<link rel='stylesheet' id='wp-block-paragraph-css' href='https://www.distributie-energie.ro/wp-includes/blocks/paragraph/style.min.css?ver=7.1.3' media='all' />
+<link rel='stylesheet' id='wp-block-group-css' href='https://www.distributie-energie.ro/wp-includes/blocks/group/style.min.css?ver=7.1.3' media='all' />
+<link rel='stylesheet' id='elementor-post-104-css' href='https://www.distributie-energie.ro/wp-content/uploads/elementor/css/post-104.css?ver=1788247131' media='all' />
+<link rel='stylesheet' id='elementor-post-1233-css' href='https://www.distributie-energie.ro/wp-content/uploads/elementor/css/post-1233.css?ver=1790601233' media='all' />
+<link rel='stylesheet' id='e-animations-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/animations/animations.min.css?ver=3.18.2' media='all' />
+<link rel='stylesheet' id='elementor-icons-fa-regular-css' href='https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/font-awesome/css/regular.min.css?ver=5.15.3' media='all' />
+
+</head>
+
+<body class="wp-singular page-template-default page page-id-15018 wp-theme-solatec cookies-not-set group-blog redux-page cms-header-sticky cms-body-font-default cms-heading-font-default cms-subheading-font-default elementor-default elementor-kit-5071 elementor-page elementor-page-15018">
+                <div id="cms-loadding" class="cms-loader">
+                <div class="loading-spinner">
+                    <div class="loading-dot1"></div>
+                    <div class="loading-dot2"></div>
+                </div>
+            </div>
+            <div id="cms-page" class="cms-page">
+        <div class="cms-header-wraps">
+                <div id="cms-header-top" class="cms-header-top empty-none container-full">		<div data-elementor-type="wp-post" data-elementor-id="104" class="elementor elementor-104">
+							        <section class="elementor-section elementor-top-section elementor-element elementor-element-9c3408c elementor-section-full_width elementor-section-stretched elementor-section-content-middle cms-justify-content-between elementor-section-height-min-height elementor-section-height-default elementor-section-items-middle cms-full-content-with-space-none" data-id="9c3408c" data-element_type="section" data-settings="{&quot;stretch_section&quot;:&quot;section-stretched&quot;}">
+		
+		<div class="cms-section-boxed-bg"></div>        <div class="elementor-container elementor-column-gap-narrow " >
+		        <div class="elementor-column elementor-col-100 elementor-top-column elementor-element elementor-element-9d6abdd" data-id="9d6abdd" data-element_type="column">
+        <div class="elementor-widget-wrap elementor-element-populated">
+                        		<div class="elementor-element elementor-element-d14f5fe elementor-widget elementor-widget-spacer" data-id="d14f5fe" data-element_type="widget" data-widget_type="spacer.default">
+				<div class="elementor-widget-container">
+			<style>/*! elementor - v3.18.0 - 08-12-2023 */
+.elementor-column .elementor-spacer-inner{height:var(--spacer-size)}.e-con{--container-widget-width:100%}.e-con-inner>.elementor-widget-spacer,.e-con>.elementor-widget-spacer{width:var(--container-widget-width,var(--spacer-size));--align-self:var(--container-widget-align-self,initial);--flex-shrink:0}.e-con-inner>.elementor-widget-spacer>.elementor-widget-container,.e-con>.elementor-widget-spacer>.elementor-widget-container{height:100%;width:100%}.e-con-inner>.elementor-widget-spacer>.elementor-widget-container>.elementor-spacer,.e-con>.elementor-widget-spacer>.elementor-widget-container>.elementor-spacer{height:100%}.e-con-inner>.elementor-widget-spacer>.elementor-widget-container>.elementor-spacer>.elementor-spacer-inner,.e-con>.elementor-widget-spacer>.elementor-widget-container>.elementor-spacer>.elementor-spacer-inner{height:var(--container-widget-height,var(--spacer-size))}.e-con-inner>.elementor-widget-spacer.elementor-widget-empty,.e-con>.elementor-widget-spacer.elementor-widget-empty{position:relative;min-height:22px;min-width:22px}.e-con-inner>.elementor-widget-spacer.elementor-widget-empty .elementor-widget-empty-icon,.e-con>.elementor-widget-spacer.elementor-widget-empty .elementor-widget-empty-icon{position:absolute;top:0;bottom:0;left:0;right:0;margin:auto;padding:0;width:22px;height:22px}</style>		<div class="elementor-spacer">
+			<div class="elementor-spacer-inner"></div>
+		</div>
+				</div>
+				</div>
+				<div class="elementor-element elementor-element-fa6f3aa elementor-widget-elementskit-dual-button-mobile-center elementor-widget elementor-widget-elementskit-dual-button" data-id="fa6f3aa" data-element_type="widget" data-widget_type="elementskit-dual-button.default">
+				<div class="elementor-widget-container">
+			<div class="ekit-wid-con" >
+                <div class="ekit-element-align-wrapper">
+                    <div class="ekit_double_button">                <a class="ekit-double-btn ekit-double-btn-one" href="https://www.distributie-energie.ro/ghid-de-informare-utilizatori/">
+                    <i aria-hidden="true" class="icon icon-information"></i>Ghid de Informare Utilizatori                </a>
+            
+            <a class="ekit-double-btn ekit-double-btn-two" href="https://www.distributie-energie.ro/anunturi-comunicate-noutati/">
+                    <i aria-hidden="true" class="far fa-newspaper"></i>Comunicate | Noutăți                </a>
+                  </div>
+                </div>
+            </div>		</div>
+				</div>
+		        </div>
+        </div>
+        		        </div>
+        </section>
+							</div>
+		</div>
+    <header id="cms-header" class="cms-header header-layout5 is-sticky header-sticky relative cms-shadow-3">
+    <div class="header-container container container-full">
+        <div class="row justify-content-between gutters-20 gutters-xl-40 align-items-center">
+                    <div class="cms-header-logo col-auto">
+            <a class="logo-default" href="https://www.distributie-energie.ro/" title="Distribuție Energie Electrică Romania" rel="home"><img class="cms-logo" src="https://www.distributie-energie.ro/wp-content/uploads/2023/11/Distributie-energie-electrica-romania.png" alt="Distribuție Energie Electrică Romania"/></a><a class="logo-ontop" href="https://www.distributie-energie.ro/" title="Distribuție Energie Electrică Romania" rel="home"><img class="cms-logo" src="https://www.distributie-energie.ro/wp-content/uploads/2023/11/Distributie-energie-electrica-romania.png" alt="Distribuție Energie Electrică Romania"/></a><a class="logo-sticky" href="https://www.distributie-energie.ro/" title="Distribuție Energie Electrică Romania" rel="home"><img class="cms-logo" src="https://www.distributie-energie.ro/wp-content/uploads/2023/11/Distributie-energie-electrica-romania.png" alt="Distribuție Energie Electrică Romania"/></a><a class="logo-mobile" href="https://www.distributie-energie.ro/" title="Distribuție Energie Electrică Romania" rel="home"><img class="cms-logo" src="https://www.distributie-energie.ro/wp-content/uploads/2023/11/Asset-3@4x.png" alt="Distribuție Energie Electrică Romania"/></a>        </div>  
+                <div class="cms-navigation col">
+                <div class="row align-items-center justify-content-end">
+                    <div class="col-12 col-xl-auto">
+                        <div class="row align-items-center gutters-20 gutters-xl-40">
+                            <div class="cms-main-navigation col-12 col-xl-auto">
+                                <ul id="cms-primary-menu" class="cms-primary-menu clearfix"><li id="menu-item-5020" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-5020"><a href="#">Distribuție<span class="main-menu-toggle"></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-6442" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-6442"><a href="https://www.distributie-energie.ro/interventii-in-reteaua-de-distributie-electrica-2/">Intervenții în rețeaua de distribuție electrică</a></li>
+	<li id="menu-item-6467" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-6467"><a href="https://www.distributie-energie.ro/contracte/">Contractare serviciu de distribuție energie electrică</a></li>
+	<li id="menu-item-6847" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-6847"><a href="https://www.distributie-energie.ro/date-de-masurare/">Date de măsurare</a></li>
+	<li id="menu-item-14035" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-14035"><a href="https://www.distributie-energie.ro/tarife/">Tarife</a></li>
+	<li id="menu-item-14083" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-14083"><a href="https://www.distributie-energie.ro/normative/">Normative &amp; Standarde</a></li>
+	<li id="menu-item-14137" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-14137"><a href="https://www.distributie-energie.ro/specificatii-tehnice/">Specificații Tehnice</a></li>
+	<li id="menu-item-14480" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-14480"><a href="https://www.distributie-energie.ro/date-de-consum/">Date și indicatori</a></li>
+	<li id="menu-item-14621" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-14621"><a href="https://www.distributie-energie.ro/dte-tip-pentru-bransamente/">DTE tip pentru branșamente</a></li>
+</ul>
+</li>
+<li id="menu-item-18287" class="menu-item menu-item-type-post_type menu-item-object-page current-menu-item page_item page-item-15018 current_page_item current-menu-ancestor current-menu-parent current_page_parent current_page_ancestor menu-item-has-children menu-item-18287"><a href="https://www.distributie-energie.ro/racordare-la-retea-2/" aria-current="page">Racordare la rețea<span class="main-menu-toggle"></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-14977" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-14977"><a href="https://www.distributie-energie.ro/adrese-de-e-mail-transmitere-documente/">Serviciu online racordare la rețea</a></li>
+	<li id="menu-item-16950" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16950"><a href="https://www.distributie-energie.ro/racordare-la-retea-client-casnic/">Racordare la rețea client casnic</a></li>
+	<li id="menu-item-18477" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-18477"><a href="https://www.distributie-energie.ro/racordare-la-retea-prosumator/">Racordare la rețea prosumator</a></li>
+	<li id="menu-item-15178" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15178"><a href="https://www.distributie-energie.ro/ghid-racordare-la-retea/">Ghid racordare la rețea</a></li>
+	<li id="menu-item-14995" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-14995"><a href="https://www.distributie-energie.ro/amplasament/">Amplasament</a></li>
+	<li id="menu-item-21029" class="menu-item menu-item-type-post_type menu-item-object-page current-menu-item page_item page-item-15018 current_page_item menu-item-21029"><a href="https://www.distributie-energie.ro/racordare-la-retea-2/" aria-current="page">Racordare la rețea</a></li>
+	<li id="menu-item-15286" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15286"><a href="https://www.distributie-energie.ro/racordare-producatori-energie-electrica/">Racordare producători energie electrică</a></li>
+</ul>
+</li>
+<li id="menu-item-5021" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-5021"><a href="#">Informații utile<span class="main-menu-toggle"></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-15415" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15415"><a href="https://www.distributie-energie.ro/ghid-de-informare-utilizatori/">Ghid de informare utilizatori</a></li>
+	<li id="menu-item-15441" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-15441"><a target="_blank" href="https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf">GDPR</a></li>
+	<li id="menu-item-15497" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15497"><a href="https://www.distributie-energie.ro/smi/">Sisteme de măsurare inteligentă a energiei electrice</a></li>
+	<li id="menu-item-41238" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-41238"><a href="https://www.distributie-energie.ro/masurarea-consumului-de-energie-electrica-activitatea-de-citirie-a-contoarelor-electrice/">Masurarea consumului de energie electrica/ Activitatea de citirie a contoarelor electrice</a></li>
+	<li id="menu-item-16297" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-has-children menu-item-16297"><a href="https://www.distributie-energie.ro/pentru-prosumatori/">Prosumatori<span class="main-menu-toggle"></span></a>
+	<ul class="sub-menu">
+		<li id="menu-item-16388" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16388"><a href="https://www.distributie-energie.ro/pentru-prosumatori/monitorizare-prosumatori/">Monitorizare Prosumatori</a></li>
+	</ul>
+</li>
+	<li id="menu-item-16699" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16699"><a href="https://www.distributie-energie.ro/siguranta-utilizatorului/">Siguranța utilizatorului</a></li>
+	<li id="menu-item-16726" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16726"><a href="https://www.distributie-energie.ro/conventia-de-consum/">Convenția de Consum</a></li>
+</ul>
+</li>
+<li id="menu-item-5132" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-has-children menu-item-5132"><a href="https://www.distributie-energie.ro/despre-noi/">Despre noi<span class="main-menu-toggle"></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-5250" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-5250"><a href="https://www.distributie-energie.ro/sucursale/">Sucursale</a></li>
+	<li id="menu-item-5530" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-5530"><a href="https://www.distributie-energie.ro/investitii/">Investiții</a></li>
+	<li id="menu-item-5531" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-5531"><a href="https://www.distributie-energie.ro/despre-noi/">Despre noi</a></li>
+	<li id="menu-item-5562" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-5562"><a href="https://www.distributie-energie.ro/finantari-din-fonduri-nerambursabile/">Finanțări din fonduri nerambursabile</a></li>
+	<li id="menu-item-16753" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16753"><a href="https://www.distributie-energie.ro/situatii-financiare-deer/">Situații Financiare DEER</a></li>
+</ul>
+</li>
+<li id="menu-item-18533" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children menu-item-18533"><a href="https://www.distributie-energie.ro/intreruperi-deer/">Suport<span class="main-menu-toggle"></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-16759" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16759"><a href="https://www.distributie-energie.ro/intreruperi-deer/">Întreruperi energie electrică</a></li>
+	<li id="menu-item-16786" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16786"><a href="https://www.distributie-energie.ro/asistenta-in-caz-de-intreruperi-2/">Asistență în caz de întreruperi</a></li>
+	<li id="menu-item-33754" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-33754"><a href="https://www.distributie-energie.ro/deranjamente/">Transmitere Deranjamente</a></li>
+	<li id="menu-item-16870" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16870"><a href="https://www.distributie-energie.ro/reprogramare-citire-contoare/">Reprogramare citire contoare</a></li>
+	<li id="menu-item-17036" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-17036"><a href="https://www.distributie-energie.ro/sesizari-sustrageri-energie-electrica/">Sesizări sustrageri energie electrică</a></li>
+	<li id="menu-item-5058" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-5058"><a href="https://www.distributie-energie.ro/anunturi-comunicate-noutati/">Comunicate / Noutăți</a></li>
+	<li id="menu-item-16403" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16403"><a href="https://www.distributie-energie.ro/lista-institutii-mass-media/">Listă instituții mass-media</a></li>
+</ul>
+</li>
+<li id="menu-item-5059" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-has-children menu-item-5059"><a href="https://www.distributie-energie.ro/contact/">Contact<span class="main-menu-toggle"></span></a>
+<ul class="sub-menu">
+	<li id="menu-item-16594" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16594"><a href="https://www.distributie-energie.ro/apel-de-urgenta/">Apel de urgență</a></li>
+	<li id="menu-item-16951" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-16951"><a href="https://www.distributie-energie.ro/telefonul-clientului/">Telefon sesizare deranjamente</a></li>
+	<li id="menu-item-17003" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-17003"><a href="https://www.distributie-energie.ro/sesizari-si-reclamatii/">Sesizări și reclamații</a></li>
+	<li id="menu-item-15443" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-15443"><a href="https://www.distributie-energie.ro/wp-content/uploads/2025/06/Centre-de-relatii-cu-clientii-si-puncte-de-informare.pdf">Lista centrelor de relații cu clienții</a></li>
+	<li id="menu-item-29544" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-29544"><a href="https://www.distributie-energie.ro/audiente/">Audiențe</a></li>
+</ul>
+</li>
+<li id="menu-item-25121" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-25121"><a href="https://www.distributie-energie.ro/cariere/">Cariere</a></li>
+</ul>                            </div>
+                                                    </div>
+                    </div>
+                    <div class="cms-navigation-attrs has-atts col-12 col-xl-auto">
+                        <div class="cms-navigation-attrs-inner row gutters-20 gutters-xl-30 align-items-center">
+                                                    </div>
+                    </div>
+                </div>
+            </div>
+                        <div class="col col-lg-auto ">
+                <div class="row align-items-center justify-content-end">
+                            <div class="cms-header-hidden-sidebar header-icon cms-transition col-auto">
+            <span class="fas fa-globe"></span>
+        </div>
+                <div id="main-menu-mobile" class="main-menu-mobile col-auto">
+                <span class="btn-nav-mobile open-menu">
+                    <span></span>
+                </span>
+            </div>
+                        </div>
+            </div>
+        </div>
+    </div>
+</header>        </div>
+                <div id="cms-main" class="cms-main">
+        	<div class="cms-main-inner">
+    
+    		<div data-elementor-type="wp-page" data-elementor-id="15018" class="elementor elementor-15018">
+							        <section class="elementor-section elementor-top-section elementor-element elementor-element-365a011 elementor-section-full_width elementor-section-stretched p-0 elementor-section-height-default elementor-section-height-default cms-full-content-with-space-none cms-boxed-bg-false" data-id="365a011" data-element_type="section" data-settings="{&quot;stretch_section&quot;:&quot;section-stretched&quot;}">
+		
+		<div class="cms-section-boxed-bg"></div>        <div class="elementor-container elementor-column-gap-no " >
+		        <div class="elementor-column elementor-col-100 elementor-top-column elementor-element elementor-element-84658b3" data-id="84658b3" data-element_type="column">
+        <div class="elementor-widget-wrap elementor-element-populated">
+                        		<div class="elementor-element elementor-element-c7de34e cms-page-title-layout-5 elementor-widget elementor-widget-cms_page_title" data-id="c7de34e" data-element_type="widget" data-widget_type="cms_page_title.default">
+				<div class="elementor-widget-container">
+			
+<div class="cms-ptitle-wrapper cms-bg-cover " style="background-image:url(https://www.distributie-energie.ro/wp-content/uploads/2024/02/D.E.E.R-53-scaled1.jpg);">
+    <div class="cms-page-title-gradient cms-gradient-3">
+        <div class="container">
+            <div class="row">
+                <div class="col-xl-6">
+                    <div class="cms-heading text-40 pb-20 text-white">Racordare la rețea</div>
+                    <div class="cms-subheading text-17 lh-27 pr-xl-100 font-700 pb-30 text-white"> Ghid racordare la rețea</div>
+                    <div class="row empty-none gutters-grid">        <div class="cms-btn-wraps col-auto text-start">
+                <a href="https://www.distributie-energie.ro/racordare-la-retea-client-casnic/" class="btn btn-fill btn-white btn-hover-accent btn-lg">
+                <span class="cms-btn-content cms-btn-content-btn1">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Client Casnic</span>
+                                    </span>
+            </a>
+                </div>
+            <div class="cms-btn-wraps col-auto text-start">
+                <a href="https://www.distributie-energie.ro/racordare-la-retea-prosumator/" class="btn btn-fill btn-white btn-hover-accent btn-lg">
+                <span class="cms-btn-content cms-btn-content-btn2">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Prosumator</span>
+                                    </span>
+            </a>
+                </div>
+    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="cms-breadcrumb-wrap">
+    <div class="container">
+            </div>
+</div>
+		</div>
+				</div>
+		        </div>
+        </div>
+        		        </div>
+        </section>
+		        <section class="elementor-section elementor-top-section elementor-element elementor-element-b3bad5f pt-95 pb-80 elementor-reverse-tablet elementor-reverse-mobile elementor-section-boxed elementor-section-height-default elementor-section-height-default cms-boxed-bg-false" data-id="b3bad5f" data-element_type="section">
+		
+		<div class="cms-section-boxed-bg"></div>        <div class="elementor-container elementor-column-gap-wide " >
+		        <div class="elementor-column elementor-col-33 elementor-top-column elementor-element elementor-element-295676a order-xl-first" data-id="295676a" data-element_type="column">
+        <div class="elementor-widget-wrap elementor-element-populated">
+                        		<div class="elementor-element elementor-element-b7286c5 cms-menu-layout-3 elementor-invisible elementor-widget elementor-widget-cms_menu" data-id="b7286c5" data-element_type="widget" data-settings="{&quot;_animation&quot;:&quot;fadeInUp&quot;}" data-widget_type="cms_menu.default">
+				<div class="elementor-widget-container">
+			<div class="cms-menu-wraps cms-radius-8 p-40 relative">
+	<div class="cms-heading text-19 lh-30 mb-20 mt-n8">Racordare la rețea</div>
+	<div class="menu-paginii-container"><ul id="menu-paginii" class="cms-menu cms-menu-style-3"><li id="menu-item-18687" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-18687"><span class="text- link-hover-"><a href="https://www.distributie-energie.ro/racordare-la-retea-prosumator/"><span class="menu-icon cmsi-arrow-circle-right rtl-flip"></span>Racordare la rețea prosumator</a></span></li>
+<li id="menu-item-18688" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-18688"><span class="text- link-hover-"><a href="https://www.distributie-energie.ro/racordare-la-retea-client-casnic/"><span class="menu-icon cmsi-arrow-circle-right rtl-flip"></span>Racordare la rețea client casnic</a></span></li>
+<li id="menu-item-18689" class="menu-item menu-item-type-post_type menu-item-object-page current-menu-item page_item page-item-15018 current_page_item menu-item-18689"><span class="text- link-hover-"><a href="https://www.distributie-energie.ro/racordare-la-retea-2/" aria-current="page"><span class="menu-icon cmsi-arrow-circle-right rtl-flip"></span>Racordare la rețea</a></span></li>
+<li id="menu-item-18690" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-18690"><span class="text- link-hover-"><a href="https://www.distributie-energie.ro/ghid-racordare-la-retea/"><span class="menu-icon cmsi-arrow-circle-right rtl-flip"></span>Ghid racordare la rețea</a></span></li>
+<li id="menu-item-40020" class="menu-item menu-item-type-custom menu-item-object-custom menu-item-40020"><span class="text- link-hover-"><a href="https://www.distributie-energie.ro/wp-content/uploads/2026/06/Informatii-importante-despre-modalitatile-de-plata-a-facturilor.pdf"><span class="menu-icon cmsi-arrow-circle-right rtl-flip"></span>Modalitati de plata a facturilor</a></span></li>
+</ul></div></div>		</div>
+				</div>
+				<div class="elementor-element elementor-element-247bedf cms-quick-contact-layout-2 elementor-widget elementor-widget-cms_quickcontact" data-id="247bedf" data-element_type="widget" data-widget_type="cms_quickcontact.default">
+				<div class="elementor-widget-container">
+			<div style="background-image:url(https://clona.distributie-energie.ro/wp-content/uploads/2023/12/Distributie-energie-electrica.png); background-repeat: no-repeat; background-size: cover; background-position:center;" class="bg-accent cms-radius-8 overflow-hidden">
+	<div class="cms-gradient-4" style="background-color:#4aab3dE0">
+		<div class="p-tb-60 p-lr-40">
+	        <div class="cms-heading text-19 lh-29 mt-n8 text-white">TELVERDE ZONA TRANSILVANIA NORD</div>
+	        <div class="cms-heading-desc text-14 lh-24 p-tb-25 d-none text-white"></div>
+	                <div class="cms-btn-wraps mt-10 mb-20 text-start">
+                <a href="tel:0800400929" class="btn btn-outline btn-white btn-hover-white btn-lg">
+                <span class="cms-btn-content cms-btn-content-btn2">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi cmsi-phone-alt"></i>                        </span>
+                                        <span class="cms-btn-text">Sună acum</span>
+                                    </span>
+            </a>
+                </div>
+        		<div class="cms-contact-button text-24 cms-heading font-400 mb-n10">
+    			<a href="tel:0800.400.929" class="text-white text-hover-white">        <span class="cms-icon-wrap" ><i aria-hidden="true" class="cms-icon cms-phone-icon fa fa-phone-alt" style=""></i></span>
+        &nbsp;0800.400.929</a>
+    		</div>
+		</div>
+	</div>
+</div>		</div>
+				</div>
+				<div class="elementor-element elementor-element-ea9e559 cms-quick-contact-layout-2 elementor-widget elementor-widget-cms_quickcontact" data-id="ea9e559" data-element_type="widget" data-widget_type="cms_quickcontact.default">
+				<div class="elementor-widget-container">
+			<div style="background-image:url(https://clona.distributie-energie.ro/wp-content/uploads/2023/12/Distributie-energie-electrica.png); background-repeat: no-repeat; background-size: cover; background-position:center;" class="bg-accent cms-radius-8 overflow-hidden">
+	<div class="cms-gradient-4" style="background-color:#4aab3dE0">
+		<div class="p-tb-60 p-lr-40">
+	        <div class="cms-heading text-19 lh-29 mt-n8 text-white">TELVERDE ZONA TRANSILVANIA SUD</div>
+	        <div class="cms-heading-desc text-14 lh-24 p-tb-25 d-none text-white"></div>
+	                <div class="cms-btn-wraps mt-10 mb-20 text-start">
+                <a href="tel:0800500929" class="btn btn-outline btn-white btn-hover-white btn-lg">
+                <span class="cms-btn-content cms-btn-content-btn2">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi cmsi-phone-alt"></i>                        </span>
+                                        <span class="cms-btn-text">Sună acum</span>
+                                    </span>
+            </a>
+                </div>
+        		<div class="cms-contact-button text-24 cms-heading font-400 mb-n10">
+    			<a href="tel:0800.500.929" class="text-white text-hover-white">        <span class="cms-icon-wrap" ><i aria-hidden="true" class="cms-icon cms-phone-icon fa fa-phone-alt" style=""></i></span>
+        &nbsp;0800.500.929</a>
+    		</div>
+		</div>
+	</div>
+</div>		</div>
+				</div>
+				<div class="elementor-element elementor-element-8e61b7d cms-quick-contact-layout-2 elementor-widget elementor-widget-cms_quickcontact" data-id="8e61b7d" data-element_type="widget" data-widget_type="cms_quickcontact.default">
+				<div class="elementor-widget-container">
+			<div style="background-image:url(https://clona.distributie-energie.ro/wp-content/uploads/2023/12/Distributie-energie-electrica.png); background-repeat: no-repeat; background-size: cover; background-position:center;" class="bg-accent cms-radius-8 overflow-hidden">
+	<div class="cms-gradient-4" style="background-color:#4aab3dE0">
+		<div class="p-tb-60 p-lr-40">
+	        <div class="cms-heading text-19 lh-29 mt-n8 text-white">TELVERDE ZONA MUNTENIA NORD</div>
+	        <div class="cms-heading-desc text-14 lh-24 p-tb-25 d-none text-white"></div>
+	                <div class="cms-btn-wraps mt-10 mb-20 text-start">
+                <a href="tel:0800500205" class="btn btn-outline btn-white btn-hover-white btn-lg">
+                <span class="cms-btn-content cms-btn-content-btn2">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi cmsi-phone-alt"></i>                        </span>
+                                        <span class="cms-btn-text">Sună acum</span>
+                                    </span>
+            </a>
+                </div>
+        		<div class="cms-contact-button text-24 cms-heading font-400 mb-n10">
+    			<a href="tel:0800.500.205" class="text-white text-hover-white">        <span class="cms-icon-wrap" ><i aria-hidden="true" class="cms-icon cms-phone-icon fa fa-phone-alt" style=""></i></span>
+        &nbsp;0800.500.205</a>
+    		</div>
+		</div>
+	</div>
+</div>		</div>
+				</div>
+		        </div>
+        </div>
+                <div class="elementor-column elementor-col-66 elementor-top-column elementor-element elementor-element-74eac4a" data-id="74eac4a" data-element_type="column">
+        <div class="elementor-widget-wrap elementor-element-populated">
+                        		<div class="elementor-element elementor-element-5aef0d6 cms-heading-layout-1 elementor-invisible elementor-widget elementor-widget-cms_heading" data-id="5aef0d6" data-element_type="widget" data-settings="{&quot;_animation&quot;:&quot;fadeInUp&quot;}" data-widget_type="cms_heading.default">
+				<div class="elementor-widget-container">
+			<div class="cms-heading-wrapper ">
+        <div class="cms-heading cms-mainheading text-24 mt-n8 text-">Cereri de racordare​ | Documente anexate cererii de racordare</div>
+    <div class="cms-heading-extra-space"></div>
+    <div class="cms-heading-desc empty-none pt-10 text-16 lh-27 text-"><p>Cererile tip de racordare sunt diferenţiate funcţie de categoria de utilizator din care face parte solicitantul:</p>
+</div>
+</div>		</div>
+				</div>
+				<div class="elementor-element elementor-element-137cecc cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="137cecc" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10">        <div class="cms-icon-wrap main-icon" ><i aria-hidden="true" class="cms-icon text-64 text-accent cmsi cmsi-energy" style=""></i></div>
+        </div>
+        <div class="col">
+            <div class="cms-heading text-18">Consumator Casnic</div> 
+            <div class="pt-15">Document anexat cererii de racordare Distribuție Energie Electrică România</div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Consumator-casnic.doc" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Mai multe detalii</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-e5ffaea cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="e5ffaea" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10">        <div class="cms-icon-wrap main-icon" ><i aria-hidden="true" class="cms-icon text-64 text-accent cmsi cmsi-energy" style=""></i></div>
+        </div>
+        <div class="col">
+            <div class="cms-heading text-18">Consumator (mic) Noncasnic</div> 
+            <div class="pt-15">Document anexat cererii de racordare Distribuție Energie Electrică România</div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Consumator-mic-noncasnic.doc" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Mai multe detalii</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-cc079ab cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="cc079ab" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10">        <div class="cms-icon-wrap main-icon" ><i aria-hidden="true" class="cms-icon text-64 text-accent cmsi cmsi-energy" style=""></i></div>
+        </div>
+        <div class="col">
+            <div class="cms-heading text-18">Consumator (mare) Noncasnic</div> 
+            <div class="pt-15">Document anexat cererii de racordare Distribuție Energie Electrică România</div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Consumator-mare-noncasnic.doc" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Mai multe detalii</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-1c8e3f6 cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="1c8e3f6" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10">        <div class="cms-icon-wrap main-icon" ><i aria-hidden="true" class="cms-icon text-64 text-accent cmsi cmsi-energy" style=""></i></div>
+        </div>
+        <div class="col">
+            <div class="cms-heading text-18">Producător</div> 
+            <div class="pt-15">Document anexat cererii de racordare Distribuție Energie Electrică România</div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Producator.doc" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Mai multe detalii</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-a19f442 cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="a19f442" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10">        <div class="cms-icon-wrap main-icon" ><i aria-hidden="true" class="cms-icon text-64 text-accent cmsi cmsi-energy" style=""></i></div>
+        </div>
+        <div class="col">
+            <div class="cms-heading text-18">Autoproducător</div> 
+            <div class="pt-15">Document anexat cererii de racordare Distribuție Energie Electrică România</div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Autoproducator.doc" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Mai multe detalii</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-d5f44ec cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="d5f44ec" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10">        <div class="cms-icon-wrap main-icon" ><i aria-hidden="true" class="cms-icon text-64 text-accent cmsi cmsi-energy" style=""></i></div>
+        </div>
+        <div class="col">
+            <div class="cms-heading text-18">Prosumatori</div> 
+            <div class="pt-15">Document anexat cererii de racordare Distribuție Energie Electrică România</div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="#lcexistent" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Mai multe detalii</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+		        </div>
+        </div>
+        		        </div>
+        </section>
+		<div class="elementor-element elementor-element-55616bb e-flex e-con-boxed e-con e-parent" data-id="55616bb" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-46e00cd elementor-widget elementor-widget-text-editor" data-id="46e00cd" data-element_type="widget" data-widget_type="text-editor.default">
+				<div class="elementor-widget-container">
+			<style>/*! elementor - v3.18.0 - 08-12-2023 */
+.elementor-widget-text-editor.elementor-drop-cap-view-stacked .elementor-drop-cap{background-color:#69727d;color:#fff}.elementor-widget-text-editor.elementor-drop-cap-view-framed .elementor-drop-cap{color:#69727d;border:3px solid;background-color:transparent}.elementor-widget-text-editor:not(.elementor-drop-cap-view-default) .elementor-drop-cap{margin-top:8px}.elementor-widget-text-editor:not(.elementor-drop-cap-view-default) .elementor-drop-cap-letter{width:1em;height:1em}.elementor-widget-text-editor .elementor-drop-cap{float:left;text-align:center;line-height:1;font-size:50px}.elementor-widget-text-editor .elementor-drop-cap-letter{display:inline-block}</style>				<p><strong><em>Persoane fizice si juridice care au puterea instalata pe producere &lt;= 400kW;<br />Autoritati publice locale indiferent de puterea instalata pe producere</em></strong></p>						</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-bd31aad e-flex e-con-boxed e-con e-parent" data-id="bd31aad" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-c1708da elementor-widget elementor-widget-menu-anchor" data-id="c1708da" data-element_type="widget" id="lcexistent" data-widget_type="menu-anchor.default">
+				<div class="elementor-widget-container">
+			<style>/*! elementor - v3.18.0 - 08-12-2023 */
+body.elementor-page .elementor-widget-menu-anchor{margin-bottom:0}</style>		<div id="prosumatori" class="elementor-menu-anchor"></div>
+				</div>
+				</div>
+				<div class="elementor-element elementor-element-f5dcd64 cms-cta-layout-2 elementor-widget elementor-widget-cms_cta" data-id="f5dcd64" data-element_type="widget" data-widget_type="cms_cta.default">
+				<div class="elementor-widget-container">
+			<div class="cms-cta-wrap ">
+	<div class="cms-cta-heading-wrap empty-none cms-heading cms-cta-heading text-19 mt-n8 mb-20 text-">
+				<span>Cerere Loc consum si producere nou (Anexa 1)</span>
+	</div>
+	        <div class="cms-btn-wraps  text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/1.-Loc-consum-si-producere-nou-_Anexa-nr-1.docx" class="btn btn-fill btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-brochure1">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+    </div>
+
+ 		</div>
+				</div>
+				<div class="elementor-element elementor-element-7bad9fe cms-cta-layout-2 elementor-widget elementor-widget-cms_cta" data-id="7bad9fe" data-element_type="widget" data-widget_type="cms_cta.default">
+				<div class="elementor-widget-container">
+			<div class="cms-cta-wrap ">
+	<div class="cms-cta-heading-wrap empty-none cms-heading cms-cta-heading text-19 mt-n8 mb-20 text-">
+				<span>Notificare Loc consum existent (Anexa 2)</span>
+	</div>
+	        <div class="cms-btn-wraps  text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx" class="btn btn-fill btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-brochure1">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+    </div>
+
+ 		</div>
+				</div>
+				<div class="elementor-element elementor-element-6f77a53 cms-cta-layout-2 elementor-widget elementor-widget-cms_cta" data-id="6f77a53" data-element_type="widget" data-widget_type="cms_cta.default">
+				<div class="elementor-widget-container">
+			<div class="cms-cta-wrap ">
+	<div class="cms-cta-heading-wrap empty-none cms-heading cms-cta-heading text-19 mt-n8 mb-20 text-">
+				<span>Notificare Loc consum si producere existent actualizare CRR (anexa 3)</span>
+	</div>
+	        <div class="cms-btn-wraps  text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/3.-Loc-de-consum-si-producere-existent-actualizare-CRR_Anexa-nr-3.docx" class="btn btn-fill btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-brochure1">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+    </div>
+
+ 		</div>
+				</div>
+				<div class="elementor-element elementor-element-f5509eb cms-cta-layout-2 elementor-widget elementor-widget-cms_cta" data-id="f5509eb" data-element_type="widget" data-widget_type="cms_cta.default">
+				<div class="elementor-widget-container">
+			<div class="cms-cta-wrap ">
+	<div class="cms-cta-heading-wrap empty-none cms-heading cms-cta-heading text-19 mt-n8 mb-20 text-">
+				<span>Cerere Loc consum existent Spor de Putere (Anexa 1)</span>
+	</div>
+	        <div class="cms-btn-wraps  text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/4.-Loc-consum-si_sau-producere-existent-Spor-Putere_Anexa-nr-1.docx" class="btn btn-fill btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-brochure1">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+    </div>
+
+ 		</div>
+				</div>
+				<div class="elementor-element elementor-element-54aee95 cms-cta-layout-2 elementor-widget elementor-widget-cms_cta" data-id="54aee95" data-element_type="widget" data-widget_type="cms_cta.default">
+				<div class="elementor-widget-container">
+			<div class="cms-cta-wrap ">
+	<div class="cms-cta-heading-wrap empty-none cms-heading cms-cta-heading text-19 mt-n8 mb-20 text-">
+				<span>Cerere de racordare prosumator – prin programe de finantare.</span>
+	</div>
+	        <div class="cms-btn-wraps  text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Cerere-de-racordare-prosumator-–-prin-programe-de-finantare-Anexa-4.docx" class="btn btn-fill btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-brochure1">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+    </div>
+
+ 		</div>
+				</div>
+				<div class="elementor-element elementor-element-8563779 cms-cta-layout-2 elementor-widget elementor-widget-cms_cta" data-id="8563779" data-element_type="widget" data-widget_type="cms_cta.default">
+				<div class="elementor-widget-container">
+			<div class="cms-cta-wrap ">
+	<div class="cms-cta-heading-wrap empty-none cms-heading cms-cta-heading text-19 mt-n8 mb-20 text-">
+				<span>Notificare prosumatori si proiecte demonstrative – Pi mai mica sau egală cu 10,8 kW, conexiune diferita de trifazic (Anexa 5)</span>
+	</div>
+	        <div class="cms-btn-wraps  text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Loc-consum-si_sau-producere-existent-prevazut_cu_instalatii_de_producere_Anexa-nr-5.docx" class="btn btn-fill btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-brochure1">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+    </div>
+
+ 		</div>
+				</div>
+				<div class="elementor-element elementor-element-2501e09 cms-cta-layout-2 elementor-widget elementor-widget-cms_cta" data-id="2501e09" data-element_type="widget" data-widget_type="cms_cta.default">
+				<div class="elementor-widget-container">
+			<div class="cms-cta-wrap ">
+	<div class="cms-cta-heading-wrap empty-none cms-heading cms-cta-heading text-19 mt-n8 mb-20 text-">
+				<span>Persoane fizice si juridice care au puterea instalata pe producere > 400kW</span>
+	</div>
+	        <div class="cms-btn-wraps  text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Persoane-fizice-si-juridice-care-au-puterea-instalata-pe-producere-mai-mare-de-400kW.doc" class="btn btn-fill btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-brochure1">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+    </div>
+
+ 		</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-f5e30bd e-flex e-con-boxed e-con e-parent" data-id="f5e30bd" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-15eed0f elementor-widget elementor-widget-spacer" data-id="15eed0f" data-element_type="widget" data-widget_type="spacer.default">
+				<div class="elementor-widget-container">
+					<div class="elementor-spacer">
+			<div class="elementor-spacer-inner"></div>
+		</div>
+				</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-8a88e5e e-flex e-con-boxed e-con e-parent" data-id="8a88e5e" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-2fb4c44 elementor-widget elementor-widget-heading" data-id="2fb4c44" data-element_type="widget" data-widget_type="heading.default">
+				<div class="elementor-widget-container">
+			<style>/*! elementor - v3.18.0 - 08-12-2023 */
+.elementor-heading-title{padding:0;margin:0;line-height:1}.elementor-widget-heading .elementor-heading-title[class*=elementor-size-]>a{color:inherit;font-size:inherit;line-height:inherit}.elementor-widget-heading .elementor-heading-title.elementor-size-small{font-size:15px}.elementor-widget-heading .elementor-heading-title.elementor-size-medium{font-size:19px}.elementor-widget-heading .elementor-heading-title.elementor-size-large{font-size:29px}.elementor-widget-heading .elementor-heading-title.elementor-size-xl{font-size:39px}.elementor-widget-heading .elementor-heading-title.elementor-size-xxl{font-size:59px}</style><h2 class="elementor-heading-title elementor-size-default">IMPORTANT !!! Cererea de racordare va fi însoțită de următoarele documente, după cum urmează:</h2>		</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-ad194b5 e-flex e-con-boxed e-con e-parent" data-id="ad194b5" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-2ed6b3a cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="2ed6b3a" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10"></div>
+        <div class="col">
+            <div class="cms-heading text-18">Declaratie autenticitate date</div> 
+            <div class="pt-15">Obligatoriu pentru toate tipurile de cereri</div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 ">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2024/02/Declaratie-autenticitate-date-racordare.doc" class="btn btn-outline btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-eda1670 cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="eda1670" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10"></div>
+        <div class="col">
+            <div class="cms-heading text-18">Model imputernicire</div> 
+            <div class="pt-15">În cazul în care cererea se depune prin împuternicit</div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 ">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2026/07/Model-de-imputernicire.pdf" class="btn btn-outline btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-e057345 cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="e057345" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10"></div>
+        <div class="col">
+            <div class="cms-heading text-18">Nota de informare generală privind prelucrarea datelor cu caracter personal </div> 
+            <div class="pt-15">În cazul persoanelor fizice</div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 ">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/Nota-informare-clienti-DEER-final.doc" class="btn btn-outline btn-accent btn-hover-primary btn-md">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-980416f e-flex e-con-boxed e-con e-parent" data-id="980416f" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-8963811 elementor-widget elementor-widget-spacer" data-id="8963811" data-element_type="widget" data-widget_type="spacer.default">
+				<div class="elementor-widget-container">
+					<div class="elementor-spacer">
+			<div class="elementor-spacer-inner"></div>
+		</div>
+				</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-26806e9 e-flex e-con-boxed e-con e-parent" data-id="26806e9" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-0d2a4f8 elementor-widget elementor-widget-heading" data-id="0d2a4f8" data-element_type="widget" data-widget_type="heading.default">
+				<div class="elementor-widget-container">
+			<h3 class="elementor-heading-title elementor-size-default">Elaborare Studiu de Soluție cu Terți</h3>		</div>
+				</div>
+				<div class="elementor-element elementor-element-ebf45e4 cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="ebf45e4" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10"></div>
+        <div class="col">
+            <div class="cms-heading text-18">Convenție de Atribuire Sucursală</div> 
+            <div class="pt-15"> </div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2024/09/Conventie-de-atribuire-Sucursala-7-modif1-2024.doc" class="btn btn-outline btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-right  rtl-flip">
+                            <i aria-hidden="true" class="fas fa-download"></i>                        </span>
+                                        <span class="cms-btn-text">Descarcă</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-cd06691 e-flex e-con-boxed e-con e-parent" data-id="cd06691" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-d0782c7 elementor-widget elementor-widget-spacer" data-id="d0782c7" data-element_type="widget" data-widget_type="spacer.default">
+				<div class="elementor-widget-container">
+					<div class="elementor-spacer">
+			<div class="elementor-spacer-inner"></div>
+		</div>
+				</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-00200e7 e-flex e-con-boxed e-con e-parent" data-id="00200e7" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-e2487bc elementor-widget elementor-widget-heading" data-id="e2487bc" data-element_type="widget" data-widget_type="heading.default">
+				<div class="elementor-widget-container">
+			<h2 class="elementor-heading-title elementor-size-default">Cereri de incheiere contracte de racordare</h2>		</div>
+				</div>
+				<div class="elementor-element elementor-element-8f8dd63 elementor-widget elementor-widget-spacer" data-id="8f8dd63" data-element_type="widget" data-widget_type="spacer.default">
+				<div class="elementor-widget-container">
+					<div class="elementor-spacer">
+			<div class="elementor-spacer-inner"></div>
+		</div>
+				</div>
+				</div>
+				<div class="elementor-element elementor-element-87b2a4f elementor-widget elementor-widget-heading" data-id="87b2a4f" data-element_type="widget" data-widget_type="heading.default">
+				<div class="elementor-widget-container">
+			<h4 class="elementor-heading-title elementor-size-default">1. Consumatori clienti casnici cu instalatie de racordare noua sau spor de putere, Prosumatori clienti casnici cu instalatie de racordare noua sau spor de putere, Prosumatori clienti casnici indiferent de puterea instalata a instalatiei de producere, fara evacuarea in retea a puterii produse cu instalatie de racordare noua sau spor de putere (conform Ordinului ANRE nr. 18/2022).</h4>		</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-8890dfe e-flex e-con-boxed e-con e-parent" data-id="8890dfe" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-d730b58 elementor-widget elementor-widget-text-editor" data-id="d730b58" data-element_type="widget" data-widget_type="text-editor.default">
+				<div class="elementor-widget-container">
+							<ul><li>Contract de execuție încheiat de către Solicitant direct cu un executant atestat ANRE<ul><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/Notificare-utilizator-incheiere-contract-cu-tert-Ordin-181.doc">📥 Notificare</a></li></ul></li><li>Contract de execuție încheiat prin intermediul operatorului de distribuție<ul><li>Cu licitație<ul><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Cerere-incheiere-contract-de-racordare-cu-licitatie.doc">📥 Cerere de încheiere contract de racordare</a></li></ul></li><li>Cu atribuire<ul><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Cerere-incheiere-contract-de-racordare-cu-atribuire.doc">📥 Cerere de încheiere contract de racordare</a></li><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Conventie-de-atribuire-DEER.doc">📥 Convenție de Atribuire DEER</a></li><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Conventie-de-atribuire-sucursala.doc">📥 Convenție de Atribuire Sucursală</a></li></ul></li></ul></li></ul>						</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-13a60a4 e-flex e-con-boxed e-con e-parent" data-id="13a60a4" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-3b2734c elementor-widget elementor-widget-heading" data-id="3b2734c" data-element_type="widget" data-widget_type="heading.default">
+				<div class="elementor-widget-container">
+			<h4 class="elementor-heading-title elementor-size-default">2. Toate tipurile de solicitari, cu exceptia celor de la pct. 1</h4>		</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-1a33429 e-flex e-con-boxed e-con e-parent" data-id="1a33429" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-e45bbbc elementor-widget elementor-widget-text-editor" data-id="e45bbbc" data-element_type="widget" data-widget_type="text-editor.default">
+				<div class="elementor-widget-container">
+							<ul><li>Contract de executie incheiat de către Solicitant direct cu un executant atestat ANRE<ul><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/Notificare.doc">📥</a><a href="https://www.distributie-energie.ro/wp-content/uploads/2021/01/Notificare.doc"> Notificare</a></li></ul></li><li>Contract de executie incheiat prin intermediul operatorului de distributie<ul><li>Cu licitație<ul><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/Cerere-incheiere-contract-de-racordare.doc">📥</a><a href="https://www.distributie-energie.ro/wp-content/uploads/2021/01/Cerere-incheiere-contract-de-racordare.doc"> Cerere de încheiere contract de racordare</a></li></ul></li><li>Cu atribuire<ul><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/Cerere-incheiere-contract-de-racordare-1.doc">📥</a><a href="https://www.distributie-energie.ro/wp-content/uploads/2021/01/Cerere-incheiere-contract-de-racordare-1.doc"> Cerere de încheiere contract de racordare</a></li><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/Conventie-de-atribuire-DEER-1.doc">📥</a><a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Conventie-de-atribuire-DEER-1.doc"> Convenție de Atribuire DEER</a></li><li><a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/Conventie-de-atribuire-Sucursala-1.doc">📥</a><a href="https://www.distributie-energie.ro/wp-content/uploads/2024/04/Conventie-de-atribuire-sucursala-1.doc"> Convenție de Atribuire Sucursală</a></li></ul></li></ul></li></ul>						</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-43edf34 e-flex e-con-boxed e-con e-parent" data-id="43edf34" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-ad686f8 cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="ad686f8" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10"></div>
+        <div class="col">
+            <div class="cms-heading text-18">INSTRUCȚIUNE privind stabilirea costurilor aferente lucrărilor de întărire generale de care beneficiază mai mulți utilizatori pentru racordarea locurilor de producere/locurilor de consum și de producere (avizată cu aviz ANRE nr. 64/14.12.2022)</div> 
+            <div class="pt-15"> </div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/DEER-PO-intarire-RED.pdf" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Deschide</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-618c7ea cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="618c7ea" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10"></div>
+        <div class="col">
+            <div class="cms-heading text-18">PROCEDURĂ privind asigurarea accesului la rețea (în curs de actualizare)</div> 
+            <div class="pt-15"> </div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2023/12/DEER-PO-MRC-2.1-Asigurarea-accesului-la-retea.pdf" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Deschide</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-7291b4d cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="7291b4d" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10"></div>
+        <div class="col">
+            <div class="cms-heading text-18">Ordinul ANRE nr. 15/2026 pentru modificarea şi completarea unor ordine ale preşedintelui Autorităţii Naţionale de Reglementare în Domeniul Energiei din domeniul racordării utilizatorilor la reţeaua electrică de interes public</div> 
+            <div class="pt-15"> </div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://www.distributie-energie.ro/wp-content/uploads/2026/05/Ordin-ANRE-15_2026_s.docx" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Deschide</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+				<div class="elementor-element elementor-element-61735b5 cms-icon-box-layout-3 elementor-widget elementor-widget-cms_fancy_box" data-id="61735b5" data-element_type="widget" data-widget_type="cms_fancy_box.default">
+				<div class="elementor-widget-container">
+			<div class="cms-icon-boxes bg-white cms-radius-8 p-40 cms-shadow-2  cms-transition">
+    <div class="row ">
+        <div class="col-12 mb-10"></div>
+        <div class="col">
+            <div class="cms-heading text-18">Procedura privind alocarea capacității rețelei electrice pentru racordarea locurilor de producere a energiei electrice</div> 
+            <div class="pt-15"> </div>
+                    <div class="cms-btn-wraps d-inline-block pt-10 text-start">
+                <a href="https://transelectrica.ro/ro/web/tel/procesul-de-alocare-a-capacitatii-retelei-electrice" class="btn btn-fill btn-accent btn-hover-primary">
+                <span class="cms-btn-content cms-btn-content-button">
+                                            <span class="cms-btn-icon order-left  rtl-flip">
+                            <i aria-hidden="true" class="cmsi-arrow-circle-right"></i>                        </span>
+                                        <span class="cms-btn-text">Deschide</span>
+                                    </span>
+            </a>
+                </div>
+            </div>
+    </div>
+</div>
+		</div>
+				</div>
+					</div>
+				</div>
+		<div class="elementor-element elementor-element-1023e00 e-flex e-con-boxed e-con e-parent" data-id="1023e00" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;boxed&quot;}" data-core-v316-plus="true">
+					<div class="e-con-inner">
+				<div class="elementor-element elementor-element-b1a834b elementor-widget elementor-widget-spacer" data-id="b1a834b" data-element_type="widget" data-widget_type="spacer.default">
+				<div class="elementor-widget-container">
+					<div class="elementor-spacer">
+			<div class="elementor-spacer-inner"></div>
+		</div>
+				</div>
+				</div>
+					</div>
+				</div>
+							</div>
+		    
+		</div>
+	</div>
+	<div id="cms-footer" class="cms-footer relative">		<div data-elementor-type="wp-post" data-elementor-id="1233" class="elementor elementor-1233">
+							<div class="elementor-element elementor-element-01d8109 text-15 pt-115 pb-90 e-con-full e-flex e-con e-parent" data-id="01d8109" data-element_type="container" data-settings="{&quot;background_background&quot;:&quot;classic&quot;,&quot;content_width&quot;:&quot;full&quot;}" data-core-v316-plus="true">
+		<div class="elementor-element elementor-element-c58c25f e-con-full e-flex e-con e-child" data-id="c58c25f" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;full&quot;}">
+				<div class="elementor-element elementor-element-16e7ac0 elementor-widget elementor-widget-image" data-id="16e7ac0" data-element_type="widget" data-widget_type="image.default">
+				<div class="elementor-widget-container">
+			<style>/*! elementor - v3.18.0 - 08-12-2023 */
+.elementor-widget-image{text-align:center}.elementor-widget-image a{display:inline-block}.elementor-widget-image a img[src$=".svg"]{width:48px}.elementor-widget-image img{vertical-align:middle;display:inline-block}</style>												<img width="300" height="" data-src="https://www.distributie-energie.ro/wp-content/uploads/elementor/thumbs/Distributie-energie-electrica-romania-qfrz8l6jto93jr13rakhzh7kwwm5mvsk9f8n7w52os.png" title="Distributie energie electrica romania" alt="Distributie energie electrica romania" class="cms-lazy lazy-loading" />															</div>
+				</div>
+				</div>
+		<div class="elementor-element elementor-element-bbe2a6f e-con-full e-flex e-con e-child" data-id="bbe2a6f" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;full&quot;}">
+				<div class="elementor-element elementor-element-1328ce1 cms-quick-contact-layout-9 elementor-widget elementor-widget-cms_quickcontact" data-id="1328ce1" data-element_type="widget" data-widget_type="cms_quickcontact.default">
+				<div class="elementor-widget-container">
+			<div class="cms-qc-wrap">
+	<div class="cms-qc-inner">
+			        <div class="cms-heading text-16 lh-30 pb-35 mt-n8  text-white">CONTACT SESIZARE DERANJAMENTE</div>
+	    	    <div class="cms-heading-desc text-14 lh-24 text-white"><p>(PREFIX JUDEȚ) urmat de 929</p>
+<p>SAU</p>
+<p>TELVERDE </p>
+<p><a href="tel:0800400929">ZONA TRANSILVANIA NORD 0800.400.929</a><br />
+<a href="tel:0800500929">ZONA TRANSILVANIA SUD 0800.500.929</a><br />
+<a href="tel:0800500205">ZONA MUNTENIA NORD 0800.500.205</a></p>
+<p>Email: <a href="/cdn-cgi/l/email-protection#48272e2e212b2d082c213b3c3a212a3d3c212d652d262d3a2f212d663a27"><span class="__cf_email__" data-cfemail="fc939a9a959f99bc98958f888e959e89889599d19992998e9b9599d28e93">[email&#160;protected]</span></a></p>
+</div>
+	    <div class="cms-contact-button text-19 p-tb-15 cms-heading">
+	    				<a href="tel:" class="text-primary text-hover-primary">        <span class="cms-icon-wrap" ><i aria-hidden="true" class="cms-icon cms-phone-icon text-16 fa fa-phone-alt" style=""></i></span>
+        &nbsp;  </a>
+		</div>
+					<div class="cms-heading-desc text-14 lh-24 text-white"><p>Str. Arinilor nr. 22 B, Cluj-Napoca, 400568  RO</p>
+</div>
+	            		    <div class="map-image pt-20 empty-none font-700"><a href="https://maps.app.goo.gl/F4ynQRzZrjKLoiaq7" target="_blank" class="text-white text-hover-accent"><span class="cms-icon fas fa-map-marker-alt mr-10"></span><span>Get Directions</span></a></div>
+			</div>
+</div>		</div>
+				</div>
+				</div>
+		<div class="elementor-element elementor-element-2694c0b e-con-full e-flex e-con e-child" data-id="2694c0b" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;full&quot;}">
+				<div class="elementor-element elementor-element-808c518 cms-menu-layout-1 elementor-widget elementor-widget-cms_menu" data-id="808c518" data-element_type="widget" data-widget_type="cms_menu.default">
+				<div class="elementor-widget-container">
+			<div class="cms-menu-wraps relative">
+			<div class="cms-heading text-16 lh-30 pb-35 mt-n8 text-white">Legal</div>
+	<div class="menu-company-container"><ul id="menu-company" class="cms-menu cms-menu-default"><li id="menu-item-15292" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15292"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/legislatie-aplicabila/"><span class="menu-icon"></span>Legislație aplicabilă</a></span></li>
+<li id="menu-item-15293" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15293"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/conformitate/"><span class="menu-icon"></span>Conformitate</a></span></li>
+<li id="menu-item-15294" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15294"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/etica/"><span class="menu-icon"></span>Etică</a></span></li>
+<li id="menu-item-15295" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15295"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/avertizor-de-integritate/"><span class="menu-icon"></span>Avertizor de integritate</a></span></li>
+<li id="menu-item-15296" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15296"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/responsabilitate-sociala/"><span class="menu-icon"></span>Responsabilitate socială</a></span></li>
+<li id="menu-item-15297" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-15297"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/date-cheie/"><span class="menu-icon"></span>Date cheie</a></span></li>
+</ul></div></div>		</div>
+				</div>
+				<div class="elementor-element elementor-element-4d3d982 elementor-widget elementor-widget-shortcode" data-id="4d3d982" data-element_type="widget" data-widget_type="shortcode.default">
+				<div class="elementor-widget-container">
+					<div class="elementor-shortcode">Numar vizitatori unici: <div style='display:block;width:100%;text-align:left;'><span class='visitors' style=''>5998894</span></div> 
+<br>Vizualizari pagina total: <div style='display:block;width:100%;text-align:left;'><span class='page-views' style=''>12337628</span></div></div>
+				</div>
+				</div>
+				</div>
+		<div class="elementor-element elementor-element-fef102c e-con-full e-flex e-con e-child" data-id="fef102c" data-element_type="container" data-settings="{&quot;content_width&quot;:&quot;full&quot;}">
+				<div class="elementor-element elementor-element-90f26a6 cms-menu-layout-1 elementor-widget elementor-widget-cms_menu" data-id="90f26a6" data-element_type="widget" data-widget_type="cms_menu.default">
+				<div class="elementor-widget-container">
+			<div class="cms-menu-wraps relative">
+			<div class="cms-heading text-16 lh-30 pb-35 mt-n8 text-white">Informații</div>
+	<div class="menu-informatii-racordare-container"><ul id="menu-informatii-racordare" class="cms-menu cms-menu-default"><li id="menu-item-17037" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-17037"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/informatii-generale/"><span class="menu-icon"></span>Informații generale</a></span></li>
+<li id="menu-item-17038" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-17038"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/amplasament/"><span class="menu-icon"></span>Amplasament</a></span></li>
+<li id="menu-item-17039" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-17039"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/dezvoltatori/"><span class="menu-icon"></span>Dezvoltatori</a></span></li>
+<li id="menu-item-17040" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-17040"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/extinderi-retele-electrice/"><span class="menu-icon"></span>Extinderi rețele electrice</a></span></li>
+<li id="menu-item-17041" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-17041"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/lista-proiectanti-si-excutanti-atestati/"><span class="menu-icon"></span>Listă proiectanți și executanți atestați</a></span></li>
+<li id="menu-item-17042" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-17042"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/racordare-producatori-energie-electrica/"><span class="menu-icon"></span>Racordare producători energie electrică</a></span></li>
+</ul></div></div>		</div>
+				</div>
+				</div>
+				</div>
+		        <section class="elementor-section elementor-top-section elementor-element elementor-element-8865140 elementor-section-stretched p-tb-30 text-14 elementor-section-boxed elementor-section-height-default elementor-section-height-default cms-boxed-bg-false" data-id="8865140" data-element_type="section" data-settings="{&quot;stretch_section&quot;:&quot;section-stretched&quot;,&quot;background_background&quot;:&quot;classic&quot;}">
+		
+		<div class="cms-section-boxed-bg"></div>        <div class="elementor-container elementor-column-gap-default " >
+		        <div class="elementor-column elementor-col-33 elementor-top-column elementor-element elementor-element-df00134" data-id="df00134" data-element_type="column">
+        <div class="elementor-widget-wrap elementor-element-populated">
+                        		<div class="elementor-element elementor-element-523afa0 cms-menu-layout-4 elementor-widget-tablet__width-auto elementor-widget elementor-widget-cms_menu" data-id="523afa0" data-element_type="widget" data-widget_type="cms_menu.default">
+				<div class="elementor-widget-container">
+			<div class="cms-menu-wraps">
+	<div class="menu-footer-menu-container"><ul id="menu-footer-menu" class="cms-menu cms-menu-horz cms-menu-separator"><li id="menu-item-5192" class="menu-item menu-item-type-post_type menu-item-object-page menu-item-5192"><span class="text-white link-hover-white"><a href="https://www.distributie-energie.ro/termeni-si-conditii/"><span class="menu-icon"></span>Termeni și condiții</a></span></li>
+</ul></div></div>		</div>
+				</div>
+		        </div>
+        </div>
+                <div class="elementor-column elementor-col-33 elementor-top-column elementor-element elementor-element-bc48426" data-id="bc48426" data-element_type="column">
+        <div class="elementor-widget-wrap elementor-element-populated">
+                        		<div class="elementor-element elementor-element-041723d elementor-widget elementor-widget-shortcode" data-id="041723d" data-element_type="widget" data-widget_type="shortcode.default">
+				<div class="elementor-widget-container">
+					<div class="elementor-shortcode"><div class="pvc_clear"></div><p id="pvc_stats_15018" class="pvc_stats all  pvc_load_by_ajax_update" data-element-id="15018" style=""><i class="pvc-stats-icon small" aria-hidden="true"><svg aria-hidden="true" focusable="false" data-prefix="far" data-icon="chart-bar" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="svg-inline--fa fa-chart-bar fa-w-16 fa-2x"><path fill="currentColor" d="M396.8 352h22.4c6.4 0 12.8-6.4 12.8-12.8V108.8c0-6.4-6.4-12.8-12.8-12.8h-22.4c-6.4 0-12.8 6.4-12.8 12.8v230.4c0 6.4 6.4 12.8 12.8 12.8zm-192 0h22.4c6.4 0 12.8-6.4 12.8-12.8V140.8c0-6.4-6.4-12.8-12.8-12.8h-22.4c-6.4 0-12.8 6.4-12.8 12.8v198.4c0 6.4 6.4 12.8 12.8 12.8zm96 0h22.4c6.4 0 12.8-6.4 12.8-12.8V204.8c0-6.4-6.4-12.8-12.8-12.8h-22.4c-6.4 0-12.8 6.4-12.8 12.8v134.4c0 6.4 6.4 12.8 12.8 12.8zM496 400H48V80c0-8.84-7.16-16-16-16H16C7.16 64 0 71.16 0 80v336c0 17.67 14.33 32 32 32h464c8.84 0 16-7.16 16-16v-16c0-8.84-7.16-16-16-16zm-387.2-48h22.4c6.4 0 12.8-6.4 12.8-12.8v-70.4c0-6.4-6.4-12.8-12.8-12.8h-22.4c-6.4 0-12.8 6.4-12.8 12.8v70.4c0 6.4 6.4 12.8 12.8 12.8z" class=""></path></svg></i> <img loading="lazy" width="16" height="16" alt="Loading" src="https://www.distributie-energie.ro/wp-content/plugins/page-views-count/ajax-loader-2x.gif" border=0 /></p><div class="pvc_clear"></div></div>
+				</div>
+				</div>
+		        </div>
+        </div>
+                <div class="elementor-column elementor-col-33 elementor-top-column elementor-element elementor-element-d8f77ec cms-column-element-horizontal" data-id="d8f77ec" data-element_type="column">
+        <div class="elementor-widget-wrap elementor-element-populated">
+                        		<div class="elementor-element elementor-element-174f679 elementor-widget__width-auto elementor-widget elementor-widget-text-editor" data-id="174f679" data-element_type="widget" data-widget_type="text-editor.default">
+				<div class="elementor-widget-container">
+							<p><span style="color: #ffffff;">©2026&nbsp;<span class="ui-provider ed axa axb axc axd axe axf axg axh axi axj axk axl axm axn axo axp axq axr axs axt axu axv axw axx axy axz aya ayb ayc ayd aye ayf ayg ayh" dir="ltr">Web Design by </span></span><a style="color: #ffffff;" href="https://fusedigital.ro" rel="noopener">Digital Assets Romania</a></p>						</div>
+				</div>
+		        </div>
+        </div>
+        		        </div>
+        </section>
+							</div>
+		</div>	</div>
+        <div class="d-none">
+            <div id="cms-search-popup" class="cms-search-popup">
+                <div class="container">
+                    <form role="search" method="get" class="cms-search-form cms-search-form-popup" action="https://www.distributie-energie.ro/">
+                        <input type="search" class="cms-search-field" placeholder="Type Words Then Enter" value="" name="s" />
+                        <button type="submit" class="cms-search-submit" value="Cauta"></button>
+                    </form>
+                </div>
+            </div>
+        </div>
+                <a href="#" class="cms-scroll cms-scroll-top"><span class="cms-scroll-top-arrow cms-scroll-top-icon"><span class="fa fa-arrow-up"></span></span></a>
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script type="speculationrules">
+{"prefetch":[{"source":"document","where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":["/wp-*.php","/wp-admin/*","/wp-content/uploads/*","/wp-content/*","/wp-content/plugins/*","/wp-content/themes/solatec/*","/*\\?(.+)"]}},{"not":{"selector_matches":"a[rel~=\"nofollow\"]"}},{"not":{"selector_matches":".no-prefetch, .no-prefetch a"}}]},"eagerness":"conservative"}]}
+</script>
+    <script type="text/javascript">
+        var templateUrl = 'https://www.distributie-energie.ro';
+        var post_id = '15018';
+    </script>
+    <div 
+	id="pum-26275" 
+	role="dialog" 
+	aria-modal="false"
+	class="pum pum-overlay pum-theme-17062 pum-theme-enterprise-blue popmake-overlay click_open" 
+	data-popmake="{&quot;id&quot;:26275,&quot;slug&quot;:&quot;director-divizia-operatiuni-si-dezvoltare&quot;,&quot;theme_id&quot;:17062,&quot;cookies&quot;:[{&quot;event&quot;:&quot;on_popup_close&quot;,&quot;settings&quot;:{&quot;name&quot;:&quot;pum-26275&quot;,&quot;key&quot;:&quot;&quot;,&quot;session&quot;:false,&quot;path&quot;:&quot;1&quot;,&quot;time&quot;:&quot;1 month&quot;}}],&quot;triggers&quot;:[{&quot;type&quot;:&quot;click_open&quot;,&quot;settings&quot;:{&quot;extra_selectors&quot;:&quot;&quot;,&quot;cookie_name&quot;:null}}],&quot;mobile_disabled&quot;:null,&quot;tablet_disabled&quot;:null,&quot;meta&quot;:{&quot;display&quot;:{&quot;stackable&quot;:false,&quot;overlay_disabled&quot;:false,&quot;scrollable_content&quot;:false,&quot;disable_reposition&quot;:false,&quot;size&quot;:&quot;medium&quot;,&quot;responsive_min_width&quot;:&quot;0%&quot;,&quot;responsive_min_width_unit&quot;:false,&quot;responsive_max_width&quot;:&quot;100%&quot;,&quot;responsive_max_width_unit&quot;:false,&quot;custom_width&quot;:&quot;640px&quot;,&quot;custom_width_unit&quot;:false,&quot;custom_height&quot;:&quot;380px&quot;,&quot;custom_height_unit&quot;:false,&quot;custom_height_auto&quot;:false,&quot;location&quot;:&quot;center&quot;,&quot;position_from_trigger&quot;:false,&quot;position_top&quot;:&quot;100&quot;,&quot;position_left&quot;:&quot;0&quot;,&quot;position_bottom&quot;:&quot;0&quot;,&quot;position_right&quot;:&quot;0&quot;,&quot;position_fixed&quot;:false,&quot;animation_type&quot;:&quot;fade&quot;,&quot;animation_speed&quot;:&quot;350&quot;,&quot;animation_origin&quot;:&quot;center top&quot;,&quot;overlay_zindex&quot;:false,&quot;zindex&quot;:&quot;1999999999&quot;},&quot;close&quot;:{&quot;text&quot;:&quot;&quot;,&quot;button_delay&quot;:&quot;0&quot;,&quot;overlay_click&quot;:false,&quot;esc_press&quot;:false,&quot;f4_press&quot;:false},&quot;click_open&quot;:[]}}">
+
+	<div id="popmake-26275" class="pum-container popmake theme-17062 pum-responsive pum-responsive-medium responsive size-medium">
+
+				
+				
+		
+				<div class="pum-content popmake-content" tabindex="0">
+			<p><img fetchpriority="high" fetchpriority="high" decoding="async" class="aligncenter wp-image-37601 size-full" src="https://www.distributie-energie.ro/wp-content/uploads/2026/03/prezentare-scaled.jpg" alt="" width="2560" height="1866" srcset="https://www.distributie-energie.ro/wp-content/uploads/2026/03/prezentare-scaled.jpg 2560w, https://www.distributie-energie.ro/wp-content/uploads/2026/03/prezentare-1536x1119.jpg 1536w, https://www.distributie-energie.ro/wp-content/uploads/2026/03/prezentare-2048x1492.jpg 2048w, https://www.distributie-energie.ro/wp-content/uploads/2026/03/prezentare-686x500.jpg 686w" sizes="(max-width: 2560px) 100vw, 2560px" /></p>
+		</div>
+
+				
+							<button type="button" class="pum-close popmake-close" aria-label="Închide">
+			x			</button>
+		
+	</div>
+
+</div>
+<div 
+	id="pum-26276" 
+	role="dialog" 
+	aria-modal="false"
+	class="pum pum-overlay pum-theme-17062 pum-theme-enterprise-blue popmake-overlay click_open" 
+	data-popmake="{&quot;id&quot;:26276,&quot;slug&quot;:&quot;director-divizia-strategie-planificare-dee&quot;,&quot;theme_id&quot;:17062,&quot;cookies&quot;:[],&quot;triggers&quot;:[{&quot;type&quot;:&quot;click_open&quot;,&quot;settings&quot;:{&quot;extra_selectors&quot;:&quot;&quot;,&quot;cookie_name&quot;:null}}],&quot;mobile_disabled&quot;:null,&quot;tablet_disabled&quot;:null,&quot;meta&quot;:{&quot;display&quot;:{&quot;stackable&quot;:false,&quot;overlay_disabled&quot;:false,&quot;scrollable_content&quot;:false,&quot;disable_reposition&quot;:false,&quot;size&quot;:&quot;medium&quot;,&quot;responsive_min_width&quot;:&quot;0%&quot;,&quot;responsive_min_width_unit&quot;:false,&quot;responsive_max_width&quot;:&quot;100%&quot;,&quot;responsive_max_width_unit&quot;:false,&quot;custom_width&quot;:&quot;640px&quot;,&quot;custom_width_unit&quot;:false,&quot;custom_height&quot;:&quot;380px&quot;,&quot;custom_height_unit&quot;:false,&quot;custom_height_auto&quot;:false,&quot;location&quot;:&quot;center&quot;,&quot;position_from_trigger&quot;:false,&quot;position_top&quot;:&quot;100&quot;,&quot;position_left&quot;:&quot;0&quot;,&quot;position_bottom&quot;:&quot;0&quot;,&quot;position_right&quot;:&quot;0&quot;,&quot;position_fixed&quot;:false,&quot;animation_type&quot;:&quot;fade&quot;,&quot;animation_speed&quot;:&quot;350&quot;,&quot;animation_origin&quot;:&quot;center top&quot;,&quot;overlay_zindex&quot;:false,&quot;zindex&quot;:&quot;1999999999&quot;},&quot;close&quot;:{&quot;text&quot;:&quot;&quot;,&quot;button_delay&quot;:&quot;0&quot;,&quot;overlay_click&quot;:false,&quot;esc_press&quot;:false,&quot;f4_press&quot;:false},&quot;click_open&quot;:[]}}">
+
+	<div id="popmake-26276" class="pum-container popmake theme-17062 pum-responsive pum-responsive-medium responsive size-medium">
+
+				
+				
+		
+				<div class="pum-content popmake-content" tabindex="0">
+			<p><a><img decoding="async" class="" style="margin: -27px -27px -27px -27px;" src="https://www.distributie-energie.ro/wp-content/uploads/2024/06/prezentare-Gabriel-GHEORGHE.png" width="915" height="348" /></a></p>
+		</div>
+
+				
+							<button type="button" class="pum-close popmake-close" aria-label="Închide">
+			x			</button>
+		
+	</div>
+
+</div>
+<div 
+	id="pum-26269" 
+	role="dialog" 
+	aria-modal="false"
+	class="pum pum-overlay pum-theme-17062 pum-theme-enterprise-blue popmake-overlay click_open" 
+	data-popmake="{&quot;id&quot;:26269,&quot;slug&quot;:&quot;director-divizia-financiara&quot;,&quot;theme_id&quot;:17062,&quot;cookies&quot;:[{&quot;event&quot;:&quot;on_popup_close&quot;,&quot;settings&quot;:{&quot;name&quot;:&quot;pum-26269&quot;,&quot;key&quot;:&quot;&quot;,&quot;session&quot;:false,&quot;path&quot;:&quot;1&quot;,&quot;time&quot;:&quot;1 month&quot;}}],&quot;triggers&quot;:[{&quot;type&quot;:&quot;click_open&quot;,&quot;settings&quot;:{&quot;extra_selectors&quot;:&quot;&quot;,&quot;cookie_name&quot;:null}}],&quot;mobile_disabled&quot;:null,&quot;tablet_disabled&quot;:null,&quot;meta&quot;:{&quot;display&quot;:{&quot;stackable&quot;:false,&quot;overlay_disabled&quot;:false,&quot;scrollable_content&quot;:false,&quot;disable_reposition&quot;:false,&quot;size&quot;:&quot;medium&quot;,&quot;responsive_min_width&quot;:&quot;0%&quot;,&quot;responsive_min_width_unit&quot;:false,&quot;responsive_max_width&quot;:&quot;100%&quot;,&quot;responsive_max_width_unit&quot;:false,&quot;custom_width&quot;:&quot;640px&quot;,&quot;custom_width_unit&quot;:false,&quot;custom_height&quot;:&quot;380px&quot;,&quot;custom_height_unit&quot;:false,&quot;custom_height_auto&quot;:false,&quot;location&quot;:&quot;center&quot;,&quot;position_from_trigger&quot;:false,&quot;position_top&quot;:&quot;100&quot;,&quot;position_left&quot;:&quot;0&quot;,&quot;position_bottom&quot;:&quot;0&quot;,&quot;position_right&quot;:&quot;0&quot;,&quot;position_fixed&quot;:false,&quot;animation_type&quot;:&quot;fade&quot;,&quot;animation_speed&quot;:&quot;350&quot;,&quot;animation_origin&quot;:&quot;center top&quot;,&quot;overlay_zindex&quot;:false,&quot;zindex&quot;:&quot;1999999999&quot;},&quot;close&quot;:{&quot;text&quot;:&quot;&quot;,&quot;button_delay&quot;:&quot;0&quot;,&quot;overlay_click&quot;:false,&quot;esc_press&quot;:false,&quot;f4_press&quot;:false},&quot;click_open&quot;:[]}}">
+
+	<div id="popmake-26269" class="pum-container popmake theme-17062 pum-responsive pum-responsive-medium responsive size-medium">
+
+				
+				
+		
+				<div class="pum-content popmake-content" tabindex="0">
+			<p><a><img decoding="async" class="" style="margin: -27px -27px -27px -27px;" src="https://www.distributie-energie.ro/wp-content/uploads/2024/06/prezentare-Anamaria-ANDRO.png" width="915" height="348" /></a></p>
+		</div>
+
+				
+							<button type="button" class="pum-close popmake-close" aria-label="Închide">
+			x			</button>
+		
+	</div>
+
+</div>
+<div 
+	id="pum-26271" 
+	role="dialog" 
+	aria-modal="false"
+	class="pum pum-overlay pum-theme-17062 pum-theme-enterprise-blue popmake-overlay click_open" 
+	data-popmake="{&quot;id&quot;:26271,&quot;slug&quot;:&quot;director-divizia-comerciala&quot;,&quot;theme_id&quot;:17062,&quot;cookies&quot;:[{&quot;event&quot;:&quot;on_popup_close&quot;,&quot;settings&quot;:{&quot;name&quot;:&quot;pum-26271&quot;,&quot;key&quot;:&quot;&quot;,&quot;session&quot;:false,&quot;path&quot;:&quot;1&quot;,&quot;time&quot;:&quot;1 month&quot;}}],&quot;triggers&quot;:[{&quot;type&quot;:&quot;click_open&quot;,&quot;settings&quot;:{&quot;extra_selectors&quot;:&quot;&quot;,&quot;cookie_name&quot;:null}}],&quot;mobile_disabled&quot;:null,&quot;tablet_disabled&quot;:null,&quot;meta&quot;:{&quot;display&quot;:{&quot;stackable&quot;:false,&quot;overlay_disabled&quot;:false,&quot;scrollable_content&quot;:false,&quot;disable_reposition&quot;:false,&quot;size&quot;:&quot;medium&quot;,&quot;responsive_min_width&quot;:&quot;0%&quot;,&quot;responsive_min_width_unit&quot;:false,&quot;responsive_max_width&quot;:&quot;100%&quot;,&quot;responsive_max_width_unit&quot;:false,&quot;custom_width&quot;:&quot;640px&quot;,&quot;custom_width_unit&quot;:false,&quot;custom_height&quot;:&quot;380px&quot;,&quot;custom_height_unit&quot;:false,&quot;custom_height_auto&quot;:false,&quot;location&quot;:&quot;center top&quot;,&quot;position_from_trigger&quot;:false,&quot;position_top&quot;:&quot;100&quot;,&quot;position_left&quot;:&quot;0&quot;,&quot;position_bottom&quot;:&quot;0&quot;,&quot;position_right&quot;:&quot;0&quot;,&quot;position_fixed&quot;:false,&quot;animation_type&quot;:&quot;fade&quot;,&quot;animation_speed&quot;:&quot;350&quot;,&quot;animation_origin&quot;:&quot;center top&quot;,&quot;overlay_zindex&quot;:false,&quot;zindex&quot;:&quot;1999999999&quot;},&quot;close&quot;:{&quot;text&quot;:&quot;&quot;,&quot;button_delay&quot;:&quot;0&quot;,&quot;overlay_click&quot;:false,&quot;esc_press&quot;:false,&quot;f4_press&quot;:false},&quot;click_open&quot;:[]}}">
+
+	<div id="popmake-26271" class="pum-container popmake theme-17062 pum-responsive pum-responsive-medium responsive size-medium">
+
+				
+				
+		
+				<div class="pum-content popmake-content" tabindex="0">
+			<p><img loading="lazy" loading="lazy" decoding="async" class="aligncenter wp-image-35855 size-full" src="https://www.distributie-energie.ro/wp-content/uploads/2026/01/PrezentareIB.png" alt="" width="2330" height="1895" srcset="https://www.distributie-energie.ro/wp-content/uploads/2026/01/PrezentareIB.png 2330w, https://www.distributie-energie.ro/wp-content/uploads/2026/01/PrezentareIB-1536x1249.png 1536w, https://www.distributie-energie.ro/wp-content/uploads/2026/01/PrezentareIB-2048x1666.png 2048w, https://www.distributie-energie.ro/wp-content/uploads/2026/01/PrezentareIB-615x500.png 615w" sizes="(max-width: 2330px) 100vw, 2330px" /></p>
+		</div>
+
+				
+							<button type="button" class="pum-close popmake-close" aria-label="Închide">
+			x			</button>
+		
+	</div>
+
+</div>
+<div 
+	id="pum-26267" 
+	role="dialog" 
+	aria-modal="false"
+	class="pum pum-overlay pum-theme-17062 pum-theme-enterprise-blue popmake-overlay click_open" 
+	data-popmake="{&quot;id&quot;:26267,&quot;slug&quot;:&quot;director-general-2&quot;,&quot;theme_id&quot;:17062,&quot;cookies&quot;:[{&quot;event&quot;:&quot;on_popup_close&quot;,&quot;settings&quot;:{&quot;name&quot;:&quot;pum-26267&quot;,&quot;key&quot;:&quot;&quot;,&quot;session&quot;:false,&quot;path&quot;:&quot;1&quot;,&quot;time&quot;:&quot;1 month&quot;}}],&quot;triggers&quot;:[{&quot;type&quot;:&quot;click_open&quot;,&quot;settings&quot;:{&quot;extra_selectors&quot;:&quot;&quot;,&quot;cookie_name&quot;:null}}],&quot;mobile_disabled&quot;:null,&quot;tablet_disabled&quot;:null,&quot;meta&quot;:{&quot;display&quot;:{&quot;stackable&quot;:false,&quot;overlay_disabled&quot;:false,&quot;scrollable_content&quot;:false,&quot;disable_reposition&quot;:false,&quot;size&quot;:&quot;medium&quot;,&quot;responsive_min_width&quot;:&quot;0%&quot;,&quot;responsive_min_width_unit&quot;:false,&quot;responsive_max_width&quot;:&quot;100%&quot;,&quot;responsive_max_width_unit&quot;:false,&quot;custom_width&quot;:&quot;640px&quot;,&quot;custom_width_unit&quot;:false,&quot;custom_height&quot;:&quot;380px&quot;,&quot;custom_height_unit&quot;:false,&quot;custom_height_auto&quot;:false,&quot;location&quot;:&quot;center&quot;,&quot;position_from_trigger&quot;:false,&quot;position_top&quot;:&quot;100&quot;,&quot;position_left&quot;:&quot;0&quot;,&quot;position_bottom&quot;:&quot;0&quot;,&quot;position_right&quot;:&quot;0&quot;,&quot;position_fixed&quot;:false,&quot;animation_type&quot;:&quot;fade&quot;,&quot;animation_speed&quot;:&quot;350&quot;,&quot;animation_origin&quot;:&quot;center top&quot;,&quot;overlay_zindex&quot;:false,&quot;zindex&quot;:&quot;1999999999&quot;},&quot;close&quot;:{&quot;text&quot;:&quot;&quot;,&quot;button_delay&quot;:&quot;0&quot;,&quot;overlay_click&quot;:false,&quot;esc_press&quot;:false,&quot;f4_press&quot;:false},&quot;click_open&quot;:[]}}">
+
+	<div id="popmake-26267" class="pum-container popmake theme-17062 pum-responsive pum-responsive-medium responsive size-medium">
+
+				
+				
+		
+				<div class="pum-content popmake-content" tabindex="0">
+			<p><a><img loading="lazy" loading="lazy" decoding="async" class="" style="margin: -27px -27px -27px -27px;" src="https://www.distributie-energie.ro/wp-content/uploads/2024/06/prezentare-Mihaela-Rodica-SUCIU.png" width="915" height="348" /></a></p>
+		</div>
+
+				
+							<button type="button" class="pum-close popmake-close" aria-label="Închide">
+			x			</button>
+		
+	</div>
+
+</div>
+            <div class="cms-hidden-sidebar">
+                <div class="cms-hidden-close fas fa-times"></div>
+                <div class="cms-hidden-sidebar-inner cms-mousewheel p-30">
+                    <div class="cms-hidden-sidebar-inner2 cms-mousewheel-inner">
+                        <div class="cms-sidebar-area">
+                            <div class="cms-sidebar-area-inner">
+                                <div id="block-5" class="cms-widget widget_block"><div class="cms-widget-inner">
+<div class="wp-block-group"><div class="wp-block-group__inner-container is-layout-constrained wp-block-group-is-layout-constrained">
+<p class="wp-block-paragraph">Cererile de racordare, precum și toate documentele aferente procesului de acces la rețea, obținerea avizelor de amplasament și toate documentele aferente, se depun doar prin Portalul Dedicat la următoarea adresa:  <strong><a href="https://avize.distributie-energie.ro" data-type="link" data-id="https://avize.distributie-energie.ro">PLATFORMĂ ON-LINE</a></strong></p>
+</div></div>
+</div></div>                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+                <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=&#039;Rubik&#039;, sans-serif:wght@400;500;600;700&family=&#039;Roboto&#039;, sans-serif:wght@400;700&display=swap" rel="stylesheet">
+    <script id="awsm-ead-pdf-object-js" src="https://www.distributie-energie.ro/wp-content/plugins/embed-any-document/js/pdfobject.min.js?ver=2.7.14"></script>
+<script id="awsm-ead-public-js-extra">
+var eadPublic = [];
+//# sourceURL=awsm-ead-public-js-extra
+</script>
+<script id="awsm-ead-public-js" src="https://www.distributie-energie.ro/wp-content/plugins/embed-any-document/js/embed-public.min.js?ver=2.7.14"></script>
+<script id="wp-hooks-js" src="https://www.distributie-energie.ro/wp-includes/js/dist/hooks.min.js?ver=f0f188028580e8dc1255"></script>
+<script id="wp-i18n-js" src="https://www.distributie-energie.ro/wp-includes/js/dist/i18n.min.js?ver=1dfe7db3940c23ea9216"></script>
+<script id="wp-i18n-js-after">
+wp.i18n.setLocaleData( { 'text direction\u0004ltr': [ 'ltr' ] } );
+wp.i18n.setLocaleData( { 'text direction\u0004ltr': [ 'ltr' ] } );
+//# sourceURL=wp-i18n-js-after
+</script>
+<script id="swv-js" src="https://www.distributie-energie.ro/wp-content/plugins/contact-form-7/includes/swv/js/index.js?ver=6.1.7"></script>
+<script id="contact-form-7-js-translations">
+( function( domain, translations ) {
+	var localeData = translations.locale_data[ domain ] || translations.locale_data.messages;
+	localeData[""].domain = domain;
+	wp.i18n.setLocaleData( localeData, domain );
+} )( "contact-form-7", {"translation-revision-date":"2026-04-20 12:39:31+0000","generator":"GlotPress\/4.0.3","domain":"messages","locale_data":{"messages":{"":{"domain":"messages","plural-forms":"nplurals=3; plural=(n == 1) ? 0 : ((n == 0 || n % 100 >= 2 && n % 100 <= 19) ? 1 : 2);","lang":"ro"},"This contact form is placed in the wrong place.":["Acest formular de contact este plasat \u00eentr-un loc gre\u0219it."],"Error:":["Eroare:"]}},"comment":{"reference":"includes\/js\/index.js"}} );
+//# sourceURL=contact-form-7-js-translations
+</script>
+<script id="contact-form-7-js-before">
+var wpcf7 = {
+    "api": {
+        "root": "https:\/\/www.distributie-energie.ro\/wp-json\/",
+        "namespace": "contact-form-7\/v1"
+    },
+    "cached": 1
+};
+//# sourceURL=contact-form-7-js-before
+</script>
+<script id="contact-form-7-js" src="https://www.distributie-energie.ro/wp-content/plugins/contact-form-7/includes/js/index.js?ver=6.1.7"></script>
+<script id="codedropz-uploader-js-extra">
+var dnd_cf7_uploader = {"ajax_url":"https://www.distributie-energie.ro/wp-admin/admin-ajax.php","ajax_nonce":"53aded61af","drag_n_drop_upload":{"tag":"h3","text":"Drag &amp; Drop Files Here","or_separator":"or","browse":"Browse Files","server_max_error":"The uploaded file exceeds the maximum upload size of your server.","large_file":"Uploaded file is too large","inavalid_type":"Uploaded file is not allowed for file type","max_file_limit":"Note : Some of the files are not uploaded ( Only %count% files allowed )","required":"This field is required.","delete":{"text":"deleting","title":"Remove"}},"dnd_text_counter":"of","disable_btn":""};
+//# sourceURL=codedropz-uploader-js-extra
+</script>
+<script id="codedropz-uploader-js" src="https://www.distributie-energie.ro/wp-content/plugins/drag-and-drop-multiple-file-upload-contact-form-7/assets/js/codedropz-uploader-min.js?ver=1.4.0"></script>
+<script id="nbcpf-intlTelInput-script-js" src="https://www.distributie-energie.ro/wp-content/plugins/country-phone-field-contact-form-7/assets/js/intlTelInput.min.js?ver=7.1.3"></script>
+<script id="nbcpf-countryFlag-script-js-extra">
+var nbcpf = {"ajaxurl":"https://www.distributie-energie.ro/wp-admin/admin-ajax.php"};
+//# sourceURL=nbcpf-countryFlag-script-js-extra
+</script>
+<script id="nbcpf-countryFlag-script-js" src="https://www.distributie-energie.ro/wp-content/plugins/country-phone-field-contact-form-7/assets/js/countrySelect.min.js?ver=7.1.3"></script>
+<script id="nbcpf-countryFlag-script-js-after">
+		(function($) {
+			$(function() {
+				$(".wpcf7-countrytext").countrySelect({
+					
+				});
+				$(".wpcf7-phonetext").intlTelInput({
+					autoHideDialCode: true,
+					autoPlaceholder: true,
+					nationalMode: false,
+					separateDialCode: true,
+					hiddenInput: "full_number",
+						
+				});
+
+				$(".wpcf7-phonetext").each(function () {
+					var hiddenInput = $(this).attr('name');
+					//console.log(hiddenInput);
+					var dial_code = $(this).siblings(".flag-container").find(".selected-flag .selected-dial-code").text();
+					$("input[name="+hiddenInput+"-country-code]").val(dial_code);
+				});
+				
+				$(".wpcf7-phonetext").on("countrychange", function() {
+					// do something with iti.getSelectedCountryData()
+					//console.log(this.value);
+					var hiddenInput = $(this).attr("name");
+					var dial_code = $(this).siblings(".flag-container").find(".selected-flag .selected-dial-code").text();
+					$("input[name="+hiddenInput+"-country-code]").val(dial_code);
+					
+				});
+					
+					var isMobile = /Android.+Mobile|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+					$(".wpcf7-phonetext").on("keyup", function() {
+						var dial_code = $(this).siblings(".flag-container").find(".selected-flag .selected-dial-code").text();
+						
+						var value   = $(this).val();
+						if(value == "+")
+							$(this).val("");
+						else if(value.indexOf("+") == "-1")
+							$(this).val(dial_code + value);
+						else if(value.indexOf("+") > 0)
+							$(this).val(dial_code + value.substring(dial_code.length));
+					});$(".wpcf7-countrytext").on("keyup", function() {
+					var country_name = $(this).siblings(".flag-dropdown").find(".country-list li.active span.country-name").text();
+					if(country_name == "")
+					var country_name = $(this).siblings(".flag-dropdown").find(".country-list li.highlight span.country-name").text();
+					
+					var value   = $(this).val();
+					//console.log(country_name, value);
+					$(this).val(country_name + value.substring(country_name.length));
+				});
+				
+			});
+		})(jQuery);
+//# sourceURL=nbcpf-countryFlag-script-js-after
+</script>
+<script id="jquery-slick-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementor-theme-core/assets/js/lib/slick.js?ver=1.8.0"></script>
+<script id="cms-jquery-slick-js" src="https://www.distributie-energie.ro/wp-content/themes/solatec/elementor/js/cms-slick-slider.js?ver=2.0.7"></script>
+<script id="solatec-js-extra">
+var main_data = {"ajax_url":"https://www.distributie-energie.ro/wp-admin/admin-ajax.php"};
+//# sourceURL=solatec-js-extra
+</script>
+<script id="solatec-js" src="https://www.distributie-energie.ro/wp-content/themes/solatec/assets/js/main.js?ver=2.0.7"></script>
+<script id="cms-elementor-custom-js-js" src="https://www.distributie-energie.ro/wp-content/themes/solatec/elementor/js/elementor-custom.js?ver=2.0.7"></script>
+<script id="elementskit-framework-js-frontend-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementskit-lite/libs/framework/assets/js/frontend-script.js?ver=3.2.3"></script>
+<script id="elementskit-framework-js-frontend-js-after">
+		var elementskit = {
+			resturl: 'https://www.distributie-energie.ro/wp-json/elementskit/v1/',
+		}
+
+		
+//# sourceURL=elementskit-framework-js-frontend-js-after
+</script>
+<script id="ekit-widget-scripts-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementskit-lite/widgets/init/assets/js/widget-scripts.js?ver=3.2.3"></script>
+<script id="newsletter-js-extra">
+var newsletter_data = {"action_url":"https://www.distributie-energie.ro/wp-admin/admin-ajax.php"};
+//# sourceURL=newsletter-js-extra
+</script>
+<script id="newsletter-js" src="https://www.distributie-energie.ro/wp-content/plugins/newsletter/main.js?ver=9.3.9"></script>
+<script id="q2w3_fixed_widget-js-extra">
+var q2w3_sidebar_options = [{"sidebar":"q2w3-default-sidebar","use_sticky_position":true,"margin_top":130,"margin_bottom":0,"stop_elements_selectors":"","screen_max_width":0,"screen_max_height":0,"widgets":[".eu-logo"]}];
+//# sourceURL=q2w3_fixed_widget-js-extra
+</script>
+<script id="q2w3_fixed_widget-js" src="https://www.distributie-energie.ro/wp-content/plugins/q2w3-fixed-widget/js/frontend.min.js?ver=6.2.3"></script>
+<script id="jquery-ui-core-js-before">
+jQuery.uiBackCompat = true;
+jQuery.uiBackCompat = true;
+//# sourceURL=jquery-ui-core-js-before
+</script>
+<script id="jquery-ui-core-js" src="https://www.distributie-energie.ro/wp-includes/js/jquery/ui/core.min.js?ver=1.14.2"></script>
+<script id="popup-maker-site-js-extra">
+var pum_vars = {"version":"1.25.0","pm_dir_url":"https://www.distributie-energie.ro/wp-content/plugins/popup-maker/","ajaxurl":"https://www.distributie-energie.ro/wp-admin/admin-ajax.php","restapi":"https://www.distributie-energie.ro/wp-json/pum/v1","rest_nonce":null,"default_theme":"10499","debug_mode":"","disable_tracking":"","disable_url_params":"","home_url":"/","message_position":"top","core_sub_forms_enabled":"1","popups":[],"cookie_domain":"","paramNames":{"popup_id":"pid","cta":"cta","notrack":"notrack"},"analytics_enabled":"1","analytics_route":"analytics","analytics_api":"https://www.distributie-energie.ro/wp-json/pum/v1"};
+var pum_sub_vars = {"ajaxurl":"https://www.distributie-energie.ro/wp-admin/admin-ajax.php","message_position":"top"};
+var pum_popups = {"pum-26275":{"triggers":[],"cookies":[{"event":"on_popup_close","settings":{"name":"pum-26275","key":"","session":false,"path":"1","time":"1 month"}}],"disable_on_mobile":false,"disable_on_tablet":false,"explain":null,"type_section":null,"theme_id":"17062","size":"medium","responsive_min_width":"0%","responsive_max_width":"100%","custom_width":"640px","custom_height_auto":false,"custom_height":"380px","scrollable_content":false,"animation_type":"fade","animation_speed":"350","animation_origin":"center top","open_sound":"none","custom_sound":"","location":"center","position_top":"100","position_bottom":"0","position_left":"0","position_right":"0","position_from_trigger":false,"position_fixed":false,"overlay_disabled":false,"stackable":false,"disable_reposition":false,"zindex":"1999999999","close_button_delay":"0","close_on_form_submission":false,"close_on_form_submission_delay":"0","close_on_overlay_click":false,"close_on_esc_press":false,"close_on_f4_press":false,"disable_form_reopen":false,"disable_accessibility":false,"theme_slug":"enterprise-blue","id":26275,"slug":"director-divizia-operatiuni-si-dezvoltare"},"pum-26276":{"triggers":[],"cookies":[],"disable_on_mobile":false,"disable_on_tablet":false,"explain":null,"type_section":null,"theme_id":"17062","size":"medium","responsive_min_width":"0%","responsive_max_width":"100%","custom_width":"640px","custom_height_auto":false,"custom_height":"380px","scrollable_content":false,"animation_type":"fade","animation_speed":"350","animation_origin":"center top","open_sound":"none","custom_sound":"","location":"center","position_top":"100","position_bottom":"0","position_left":"0","position_right":"0","position_from_trigger":false,"position_fixed":false,"overlay_disabled":false,"stackable":false,"disable_reposition":false,"zindex":"1999999999","close_button_delay":"0","close_on_form_submission":false,"close_on_form_submission_delay":"0","close_on_overlay_click":false,"close_on_esc_press":false,"close_on_f4_press":false,"disable_form_reopen":false,"disable_accessibility":false,"atc_promotion":null,"fi_promotion":null,"theme_slug":"enterprise-blue","id":26276,"slug":"director-divizia-strategie-planificare-dee"},"pum-26269":{"triggers":[],"cookies":[{"event":"on_popup_close","settings":{"name":"pum-26269","key":"","session":false,"path":"1","time":"1 month"}}],"disable_on_mobile":false,"disable_on_tablet":false,"explain":null,"type_section":null,"theme_id":"17062","size":"medium","responsive_min_width":"0%","responsive_max_width":"100%","custom_width":"640px","custom_height_auto":false,"custom_height":"380px","scrollable_content":false,"animation_type":"fade","animation_speed":"350","animation_origin":"center top","open_sound":"none","custom_sound":"","location":"center","position_top":"100","position_bottom":"0","position_left":"0","position_right":"0","position_from_trigger":false,"position_fixed":false,"overlay_disabled":false,"stackable":false,"disable_reposition":false,"zindex":"1999999999","close_button_delay":"0","close_on_form_submission":false,"close_on_form_submission_delay":"0","close_on_overlay_click":false,"close_on_esc_press":false,"close_on_f4_press":false,"disable_form_reopen":false,"disable_accessibility":false,"atc_promotion":null,"fi_promotion":null,"theme_slug":"enterprise-blue","id":26269,"slug":"director-divizia-financiara"},"pum-26271":{"triggers":[],"cookies":[{"event":"on_popup_close","settings":{"name":"pum-26271","key":"","session":false,"path":"1","time":"1 month"}}],"disable_on_mobile":false,"disable_on_tablet":false,"explain":null,"type_section":null,"theme_id":"17062","size":"medium","responsive_min_width":"0%","responsive_max_width":"100%","custom_width":"640px","custom_height_auto":false,"custom_height":"380px","scrollable_content":false,"animation_type":"fade","animation_speed":"350","animation_origin":"center top","open_sound":"none","custom_sound":"","location":"center top","position_top":"100","position_bottom":"0","position_left":"0","position_right":"0","position_from_trigger":false,"position_fixed":false,"overlay_disabled":false,"stackable":false,"disable_reposition":false,"zindex":"1999999999","close_button_delay":"0","close_on_form_submission":false,"close_on_form_submission_delay":"0","close_on_overlay_click":false,"close_on_esc_press":false,"close_on_f4_press":false,"disable_form_reopen":false,"disable_accessibility":false,"theme_slug":"enterprise-blue","id":26271,"slug":"director-divizia-comerciala"},"pum-26267":{"triggers":[],"cookies":[{"event":"on_popup_close","settings":{"name":"pum-26267","key":"","session":false,"path":"1","time":"1 month"}}],"disable_on_mobile":false,"disable_on_tablet":false,"explain":null,"type_section":null,"theme_id":"17062","size":"medium","responsive_min_width":"0%","responsive_max_width":"100%","custom_width":"640px","custom_height_auto":false,"custom_height":"380px","scrollable_content":false,"animation_type":"fade","animation_speed":"350","animation_origin":"center top","open_sound":"none","custom_sound":"","location":"center","position_top":"100","position_bottom":"0","position_left":"0","position_right":"0","position_from_trigger":false,"position_fixed":false,"overlay_disabled":false,"stackable":false,"disable_reposition":false,"zindex":"1999999999","close_button_delay":"0","close_on_form_submission":false,"close_on_form_submission_delay":"0","close_on_overlay_click":false,"close_on_esc_press":false,"close_on_f4_press":false,"disable_form_reopen":false,"disable_accessibility":false,"atc_promotion":null,"fi_promotion":null,"theme_slug":"enterprise-blue","id":26267,"slug":"director-general-2"}};
+//# sourceURL=popup-maker-site-js-extra
+</script>
+<script id="popup-maker-site-js" src="//www.distributie-energie.ro/wp-content/uploads/pum/pum-site-scripts.js?defer&#038;generated=1785736725&#038;ver=1.25.0"></script>
+<script id="srs_simple_hits_counter_js-js" src="https://www.distributie-energie.ro/wp-content/plugins/srs-simple-hits-counter/js/srs_simple_hits_counter_js.js?ver=7.1.3"></script>
+<script id="elementor-webpack-runtime-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/js/webpack.runtime.min.js?ver=3.18.2"></script>
+<script id="elementor-frontend-modules-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/js/frontend-modules.min.js?ver=3.18.2"></script>
+<script id="elementor-waypoints-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/lib/waypoints/waypoints.min.js?ver=4.0.2"></script>
+<script id="elementor-frontend-js-before">
+var elementorFrontendConfig = {"environmentMode":{"edit":false,"wpPreview":false,"isScriptDebug":false},"i18n":{"shareOnFacebook":"Partajeaz\u0103 pe Facebook","shareOnTwitter":"Partajeaz\u0103 pe Twitter","pinIt":"Partajeaz\u0103 pe Pinterest","download":"Descarc\u0103","downloadImage":"Descarc\u0103 imaginea","fullscreen":"Ecran \u00eentreg","zoom":"M\u0103re\u0219te","share":"Partajeaz\u0103","playVideo":"Ruleaz\u0103 videoul","previous":"Anterioar\u0103","next":"Urm\u0103toare","close":"\u00cenchide","a11yCarouselWrapperAriaLabel":"Carousel | Horizontal scrolling: Arrow Left & Right","a11yCarouselPrevSlideMessage":"Diapozitivul anterior","a11yCarouselNextSlideMessage":"Diapozitivul urm\u0103tor","a11yCarouselFirstSlideMessage":"Acesta este primul diapozitiv","a11yCarouselLastSlideMessage":"Acesta este ultimul diapozitiv","a11yCarouselPaginationBulletMessage":"Mergi la diapozitiv"},"is_rtl":false,"breakpoints":{"xs":0,"sm":480,"md":768,"lg":1025,"xl":1440,"xxl":1600},"responsive":{"breakpoints":{"mobile":{"label":"Portret mobil","value":767,"default_value":767,"direction":"max","is_enabled":true},"mobile_extra":{"label":"Peisaj pe mobil","value":880,"default_value":880,"direction":"max","is_enabled":false},"tablet":{"label":"Portret pe tablet\u0103","value":1024,"default_value":1024,"direction":"max","is_enabled":true},"tablet_extra":{"label":"Peisaj pe tablet\u0103","value":1200,"default_value":1200,"direction":"max","is_enabled":false},"laptop":{"label":"Laptop","value":1366,"default_value":1366,"direction":"max","is_enabled":false},"widescreen":{"label":"Ecran lat","value":2400,"default_value":2400,"direction":"min","is_enabled":false}}},"version":"3.18.2","is_static":false,"experimentalFeatures":{"e_dom_optimization":true,"e_optimized_assets_loading":true,"e_optimized_css_loading":true,"additional_custom_breakpoints":true,"container":true,"e_swiper_latest":true,"block_editor_assets_optimize":true,"landing-pages":true,"e_image_loading_optimization":true,"e_global_styleguide":true},"urls":{"assets":"https:\/\/www.distributie-energie.ro\/wp-content\/plugins\/elementor\/assets\/"},"swiperClass":"swiper","settings":{"page":[],"editorPreferences":[]},"kit":{"active_breakpoints":["viewport_mobile","viewport_tablet"],"global_image_lightbox":"yes","lightbox_enable_counter":"yes","lightbox_enable_fullscreen":"yes","lightbox_enable_zoom":"yes","lightbox_enable_share":"yes","lightbox_title_src":"title","lightbox_description_src":"description"},"post":{"id":15018,"title":"Racordare%20la%20re%C8%9Bea%20-%20Distribu%C8%9Bie%20Energie%20Electric%C4%83%20Romania","excerpt":"","featuredImage":false}};
+//# sourceURL=elementor-frontend-js-before
+</script>
+<script id="elementor-frontend-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementor/assets/js/frontend.min.js?ver=3.18.2"></script>
+<script id="animate-circle-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementskit-lite/widgets/init/assets/js/animate-circle.min.js?ver=3.2.3"></script>
+<script id="elementskit-elementor-js-extra">
+var ekit_config = {"ajaxurl":"https://www.distributie-energie.ro/wp-admin/admin-ajax.php","nonce":"806ab79326"};
+//# sourceURL=elementskit-elementor-js-extra
+</script>
+<script id="elementskit-elementor-js" src="https://www.distributie-energie.ro/wp-content/plugins/elementskit-lite/widgets/init/assets/js/elementor.js?ver=3.2.3"></script>
+<script id="wp-emoji-settings" type="application/json">
+{"baseUrl":"https://s.w.org/images/core/emoji/17.0.2/72x72/","ext":".png","svgUrl":"https://s.w.org/images/core/emoji/17.0.2/svg/","svgExt":".svg","source":{"concatemoji":"https://www.distributie-energie.ro/wp-includes/js/wp-emoji-release.min.js?ver=7.1.3"}}
+</script>
+<script type="module">
+/*! This file is auto-generated */
+var e="script#wp-emoji-settings",t=document.querySelector(e);if(!(t instanceof HTMLScriptElement))throw new Error("Element missing: "+e);const r=JSON.parse(t.text),s=(window._wpemojiSettings=r,"wpEmojiSettingsSupports"),o=["flag","emoji"];function i(e){try{var t={supportTests:e,timestamp:(new Date).valueOf()};sessionStorage.setItem(s,JSON.stringify(t))}catch(e){}}function c(e,t,n){e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(t,0,0);t=new Uint32Array(e.getImageData(0,0,e.canvas.width,e.canvas.height).data);e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(n,0,0);const r=new Uint32Array(e.getImageData(0,0,e.canvas.width,e.canvas.height).data);return t.every((e,t)=>e===r[t])}function p(e,t){e.clearRect(0,0,e.canvas.width,e.canvas.height),e.fillText(t,0,0);var n=e.getImageData(16,16,1,1);for(let e=0;e<n.data.length;e++)if(0!==n.data[e])return!1;return!0}function u(e,t,n,r){switch(t){case"flag":return n(e,"\ud83c\udff3\ufe0f\u200d\u26a7\ufe0f","\ud83c\udff3\ufe0f\u200b\u26a7\ufe0f")?!1:!n(e,"\ud83c\udde8\ud83c\uddf6","\ud83c\udde8\u200b\ud83c\uddf6")&&!n(e,"\ud83c\udff4\udb40\udc67\udb40\udc62\udb40\udc65\udb40\udc6e\udb40\udc67\udb40\udc7f","\ud83c\udff4\u200b\udb40\udc67\u200b\udb40\udc62\u200b\udb40\udc65\u200b\udb40\udc6e\u200b\udb40\udc67\u200b\udb40\udc7f");case"emoji":return!r(e,"\ud83e\u1fac8")}return!1}function f(e,t,n,r){let a;const s=(a="undefined"!=typeof WorkerGlobalScope&&self instanceof WorkerGlobalScope?new OffscreenCanvas(300,150):document.createElement("canvas")).getContext("2d",{willReadFrequently:!0}),o=(s.textBaseline="top",s.font="600 32px Arial",{});return e.forEach(e=>{o[e]=t(s,e,n,r)}),o}function a(e){var t=document.createElement("script");t.src=e,t.defer=!0,document.head.appendChild(t)}r.supports={everything:!0,everythingExceptFlag:!0},new Promise(t=>{let n=function(){try{var e=JSON.parse(sessionStorage.getItem(s));if("object"==typeof e&&"number"==typeof e.timestamp&&(new Date).valueOf()<e.timestamp+604800&&"object"==typeof e.supportTests)return e.supportTests}catch(e){}return null}();if(!n){if("undefined"!=typeof Worker&&"undefined"!=typeof OffscreenCanvas&&"undefined"!=typeof URL&&URL.createObjectURL&&"undefined"!=typeof Blob)try{var e="postMessage("+f.toString()+"("+[JSON.stringify(o),u.toString(),c.toString(),p.toString()].join(",")+"));",r=new Blob([e],{type:"text/javascript"});const a=new Worker(URL.createObjectURL(r),{name:"wpTestEmojiSupports"});return void(a.onmessage=e=>{i(n=e.data),a.terminate(),t(n)})}catch(e){}i(n=f(o,u,c,p))}t(n)}).then(e=>{for(const n in e)r.supports[n]=e[n],r.supports.everything=r.supports.everything&&r.supports[n],"flag"!==n&&(r.supports.everythingExceptFlag=r.supports.everythingExceptFlag&&r.supports[n]);var t;r.supports.everythingExceptFlag=r.supports.everythingExceptFlag&&!r.supports.flag,r.supports.everything||((t=r.source||{}).concatemoji?a(t.concatemoji):t.wpemoji&&t.twemoji&&(a(t.twemoji),a(t.wpemoji)))});
+//# sourceURL=https://www.distributie-energie.ro/wp-includes/js/wp-emoji-loader.min.js
+</script>
+
+		<!-- Cookie Compliance for WordPress (formerly Compliance by Hu-manity.co) plugin v3.1.10 https://cookie-compliance.co/ -->
+		<div id="cookie-notice" role="dialog" class="cookie-notice-hidden cookie-revoke-hidden cn-position-bottom" aria-label="Cookie Compliance" style="background-color: rgba(255,255,255,1);"><div class="cookie-notice-container" style="color: #555555"><span id="cn-notice-text" class="cn-text-container">Bună! Site-ul nostru folosește cookie-uri, în încercarea de a vă oferi cea mai bună experiență de navigare. Prin continuarea navigării, vă exprimați acordul pentru modul în care folosim informațiile obținute astfel.
+Dacă doriți să aflați mai multe despre tipurile de cookie-uri pe care le utilizăm, inclusiv despre modul în care pot fi dezactivate, vă invităm să consultați politica noastră, disponibilă <a href="https://www.distributie-energie.ro/wp-content/uploads/2020/12/Politica-privind-utilizarea-cookies-DEER.pdf">aici</a> </span><span id="cn-notice-buttons" class="cn-buttons-container"><button id="cn-accept-cookie" data-cookie-set="accept" class="cn-set-cookie cn-button cn-button-custom button" aria-label="Accept cookies">Accept cookies</button><button id="cn-refuse-cookie" data-cookie-set="refuse" class="cn-set-cookie cn-button cn-button-custom button" aria-label="Refuz cookies">Refuz cookies</button></span><button type="button" id="cn-close-notice" data-cookie-set="accept" class="cn-close-icon" aria-label="Refuz cookies" tabindex="0"></button></div>
+			
+		</div>
+		<!-- / Cookie Compliance for WordPress plugin --></body>
+</html>
+
+
+<!-- Page supported by LiteSpeed Cache 7.9.1 on 2026-10-27 15:35:38 -->
