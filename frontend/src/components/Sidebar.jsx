@@ -10,32 +10,32 @@ import { can, isOff, ROUTE_FEATURE } from "@/lib/plan";
 const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles };
 
 const NAV = [
+  { label: "Flux de lucru", items: [
+    { to: "/clienti", icon: "Users", text: "Clienți", testid: "nav-clients" },
+    { to: "/cerere-atr", icon: "FileCheck2", text: "Cerere ATR", testid: "nav-atr" },
+    { to: "/spor-putere", icon: "PlugZap", text: "Spor de putere", testid: "nav-power" },
+    { to: "/prosumator", icon: "SunMedium", text: "Dosare de prosumator", testid: "nav-prosumator" },
+    { to: "/diu", icon: "FolderOpen", text: "Dosar DIU", testid: "nav-diu" },
+    { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
+    { to: "/mono", icon: "GitBranch", text: "Schema monofilară", testid: "nav-mono" },
+  ]},
   { label: "Principal", items: [
     { to: "/", icon: "LayoutDashboard", text: "Panou principal", testid: "nav-home" },
-    { to: "/clienti", icon: "Users", text: "Clienți", testid: "nav-clients" },
     { to: "/asistent-ai", icon: "Sparkles", text: "Asistent AI", testid: "nav-ai-assistant" },
     { to: "/oferte", icon: "Receipt", text: "Oferte de preț", testid: "nav-offers" },
     { to: "/contracte", icon: "FileCheck2", text: "Contracte", testid: "nav-contracts" },
   ]},
-  { label: "Dosare", items: [
-    { to: "/prosumator", icon: "SunMedium", text: "Dosar de prosumator", testid: "nav-prosumator" },
-    { to: "/diu", icon: "FolderOpen", text: "Dosar de utilizare (DI-U)", testid: "nav-diu" },
-    { to: "/lucrari", icon: "Briefcase", text: "Gestionarea lucrărilor", testid: "nav-works" },
-  ]},
   { label: "Tehnic", items: [
-    { to: "/mono", icon: "GitBranch", text: "Scheme monofilare", testid: "nav-mono" },
+    { to: "/lucrari", icon: "Briefcase", text: "Gestionarea lucrărilor", testid: "nav-works" },
     { to: "/tablouri", icon: "LayoutGrid", text: "Tablouri electrice", testid: "nav-panels" },
     { to: "/antiinsularizare", icon: "ShieldAlert", text: "Antiinsularizare", testid: "nav-anti" },
-    { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
     { to: "/echipamente", icon: "Cpu", text: "Echipamente", testid: "nav-equipment" },
     { to: "/semnare", icon: "PenLine", text: "Semnare la distanță", testid: "nav-remote-signing" },
     { to: "/setari-baza", icon: "ShieldCheck", text: "Setări de bază", testid: "nav-base-settings" },
     { to: "/catalog-echipamente", icon: "Cpu", text: "Catalog echipamente", testid: "nav-equipment-catalog" },
     { to: "/catalog", icon: "BookOpen", text: "Catalog tehnic (linkuri)", testid: "nav-catalog" },
   ]},
-  { label: "Racordare", items: [
-    { to: "/spor-putere", icon: "PlugZap", text: "Spor de putere / BMP", testid: "nav-power" },
-    { to: "/cerere-atr", icon: "FileCheck2", text: "Cerere ATR", testid: "nav-atr" },
+  { label: "Racordare și resurse", items: [
     { to: "/formulare-oficiale", icon: "BookOpen", text: "Registru formulare oficiale", testid: "nav-forms" },
     { to: "/simulare", icon: "SunMedium", text: "Simulare proiect & hartă", testid: "nav-project" },
     { to: "/distribuitori", icon: "Network", text: "Distribuitori România", testid: "nav-operators" },
