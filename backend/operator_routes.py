@@ -1,5 +1,7 @@
 from datetime import datetime, timezone, date, timedelta
+import asyncio
 import hmac
+import re
 import os
 import uuid
 from html import escape as hesc
@@ -154,13 +156,14 @@ async def adm_visas(user: dict = Depends(get_current_user)):
     t = date.today()
     out = []
     async for o in db.operators.find({"visa_date": {"$nin": [None, ""], "$lte": (t + timedelta(days=90)).isoformat()}}, {"_id": 0, "doc_path": 0, "history": 0}).sort("visa_date", 1):
-        out.append({k: o.get(k) for k in ("tenant", "company", "cui", "attest_no", "contact_name", "contact_email", "contact_phone", "visa_date", "visa_confirmed", "visa_reminded_at", "last_contact_at", "status")}
+        out.append({k: o.get(k) for k in ("tenant", "company", "cui", "attest_no", "contact_name", "contact_email", "contact_phone", "visa_date", "visa_confirmed", "visa_reminded_at", "last_contact_at", "last_call", "status")}
                    | {"days_left": (date.fromisoformat(o["visa_date"]) - t).days})
     return out
 
 
 VISA_COLS = (("company", "Firmă"), ("cui", "CUI"), ("attest_no", "Nr. atestat"), ("visa_date", "Data vizării"), ("days_left", "Zile rămase"), ("visa_confirmed", "Dată confirmată"),
-             ("contact_name", "Persoană contact"), ("contact_phone", "Telefon"), ("contact_email", "E-mail"), ("visa_reminded_at", "Memento trimis"), ("last_contact_at", "Ultimul contact"))
+             ("contact_name", "Persoană contact"), ("contact_phone", "Telefon"), ("contact_email", "E-mail"), ("visa_reminded_at", "Memento trimis"), ("last_contact_at", "Ultimul e-mail"),
+             ("call_at", "Ultimul apel"), ("call_outcome", "Rezultat apel"), ("callback_date", "Data revenirii"), ("call_note", "Notiță apel"))
 
 
 @api.get("/admin/operators/visas.xlsx")
@@ -178,17 +181,34 @@ async def adm_visas_xlsx(authorization: str = Header(None), auth: str = Query(No
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor="0B1F3A")
     for r in rows:
-        ws.append([("da" if r.get(k) else "nu") if k == "visa_confirmed" else (str(r.get(k) or "")[:10] if k in ("visa_reminded_at", "last_contact_at", "visa_date") else r.get(k)) for k, _ in VISA_COLS] + [""])
+        lc = r.get("last_call") or {}
+        r = {**r, "call_at": lc.get("at"), "call_outcome": lc.get("outcome"), "callback_date": lc.get("callback_date"), "call_note": lc.get("note")}
+        ws.append([("da" if r.get(k) else "nu") if k == "visa_confirmed" else (str(r.get(k) or "")[:10] if k in ("visa_reminded_at", "last_contact_at", "visa_date", "call_at") else r.get(k)) for k, _ in VISA_COLS] + [""])
         if r["days_left"] < 0:
             for c in ws[ws.max_row]:
                 c.fill = PatternFill("solid", fgColor="FDECEC")
-    for col, w in zip("ABCDEFGHIJKL", (34, 12, 14, 13, 11, 14, 24, 16, 28, 14, 14, 40)):
+    for col, w in zip("ABCDEFGHIJKLMNOP", (34, 12, 14, 13, 11, 14, 24, 16, 28, 14, 14, 13, 20, 14, 40, 40)):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A2"
     out = io.BytesIO()
     wb.save(out)
     return Response(content=out.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": S.disp("attachment", f"vizari_ANRE_{date.today().isoformat()}.xlsx"), "Cache-Control": "no-store"})
+
+
+def visa_prompt(o, instructions):
+    import ai_routes as AI
+    left = (date.fromisoformat(o["visa_date"]) - date.today()).days
+    info = {"firma": o.get("company"), "persoana_contact": o.get("contact_name"), "nr_atestat": o.get("attest_no"), "tipuri_atestat": o.get("attest_types"),
+            "data_vizarii": date.fromisoformat(o["visa_date"]).strftime("%d.%m.%Y"), "zile_ramase": left, "situatie": "termen depășit" if left < 0 else "termen apropiat"}
+    return ("Redactează un e-mail personalizat de la DNS HOSTESS S.R.L. (platforma D-ENERGY) către firma de mai jos, despre vizarea periodică a atestatului ANRE. "
+            "Ton profesionist, cordial, concis (max 180 de cuvinte). Menționează data și situația termenului, ce acte se pregătesc de obicei (certificat constatator recent, personal autorizat ANRE, dotări) "
+            "și oferă serviciul D-ENERGY de pregătire a dosarului de vizare (3.200 lei + TVA; tarifele ANRE se plătesc separat). Nu inventa alte prețuri sau termene legale exacte. "
+            "Format obligatoriu: prima linie „Subiect: ...”, apoi o linie goală, apoi corpul e-mailului semnat „Echipa D-ENERGY — DNS HOSTESS S.R.L.”.\n"
+            f"Instrucțiuni suplimentare admin: {str(instructions or '—')[:600]}\nDate firmă (JSON): {AI.json.dumps(info, ensure_ascii=False)}")
+
+
+SYS_MAIL = "Ești redactor de e-mailuri comerciale pentru D-ENERGY. "
 
 
 @api.post("/admin/operators/{tenant}/ai-email")
@@ -199,25 +219,14 @@ async def adm_ai_email(tenant: str, request: Request, user: dict = Depends(get_c
     if not o or not o.get("visa_date"):
         raise HTTPException(status_code=404, detail="Operatorul nu are dată de vizare")
     b = await request.json()
-    left = (date.fromisoformat(o["visa_date"]) - date.today()).days
-    info = {"firma": o.get("company"), "persoana_contact": o.get("contact_name"), "nr_atestat": o.get("attest_no"), "tipuri_atestat": o.get("attest_types"),
-            "data_vizarii": date.fromisoformat(o["visa_date"]).strftime("%d.%m.%Y"), "zile_ramase": left, "situatie": "termen depășit" if left < 0 else "termen apropiat"}
-    prompt = ("Redactează un e-mail personalizat de la DNS HOSTESS S.R.L. (platforma D-ENERGY) către firma de mai jos, despre vizarea periodică a atestatului ANRE. "
-              "Ton profesionist, cordial, concis (max 180 de cuvinte). Menționează data și situația termenului, ce acte se pregătesc de obicei (certificat constatator recent, personal autorizat ANRE, dotări) "
-              "și oferă serviciul D-ENERGY de pregătire a dosarului de vizare (3.200 lei + TVA; tarifele ANRE se plătesc separat). Nu inventa alte prețuri sau termene legale exacte. "
-              "Format obligatoriu: prima linie „Subiect: ...”, apoi o linie goală, apoi corpul e-mailului semnat „Echipa D-ENERGY — DNS HOSTESS S.R.L.”.\n"
-              f"Instrucțiuni suplimentare admin: {str(b.get('instructions') or '—')[:600]}\nDate firmă (JSON): {AI.json.dumps(info, ensure_ascii=False)}")
-    return AI.sse(AI.new_chat("Ești redactor de e-mailuri comerciale pentru D-ENERGY. " + AI.RULES), prompt)
+    return AI.sse(AI.new_chat(SYS_MAIL + AI.RULES), visa_prompt(o, b.get("instructions")))
 
 
-@api.post("/admin/operators/{tenant}/email")
-async def adm_send_email(tenant: str, request: Request, user: dict = Depends(get_current_user)):
-    platform_only(user)
+async def send_op_email(tenant, subject, body, user):
     o = await db.operators.find_one({"tenant": tenant}, {"_id": 0, "contact_email": 1, "email": 1, "company": 1})
     if not o:
         raise HTTPException(status_code=404, detail="Operator inexistent")
-    b = await request.json()
-    subj, body = str(b.get("subject") or "").strip()[:200], str(b.get("body") or "").strip()[:8000]
+    subj, body = str(subject or "").strip()[:200], str(body or "").strip()[:8000]
     to = o.get("contact_email") or o.get("email")
     if not subj or not body or not to:
         raise HTTPException(status_code=400, detail="Completați subiectul și textul e-mailului")
@@ -225,7 +234,94 @@ async def adm_send_email(tenant: str, request: Request, user: dict = Depends(get
     await send_email(to=to, subject=subj, html=html, reply_to=user.get("email"))
     await db.operators.update_one({"tenant": tenant}, {"$set": {"last_contact_at": now()}, "$push": {"history": {"at": now(), "by": user.get("email"), "event": f"e-mail trimis la {to}: {subj}"}}})
     await S.audit(user, "e-mail către operator", "operators", tenant, [to, subj])
-    return {"sent": True, "to": to}
+    return to
+
+
+@api.post("/admin/operators/{tenant}/email")
+async def adm_send_email(tenant: str, request: Request, user: dict = Depends(get_current_user)):
+    platform_only(user)
+    b = await request.json()
+    return {"sent": True, "to": await send_op_email(tenant, b.get("subject"), b.get("body"), user)}
+
+
+def split_draft(t):
+    m = re.match(r"\s*Subiect:\s*(.*)\n?([\s\S]*)$", t, re.I)
+    return (m.group(1).strip(), m.group(2).strip()) if m else ("", t.strip())
+
+
+@api.post("/admin/operators/campaign/drafts")
+async def adm_campaign_drafts(request: Request, user: dict = Depends(get_current_user)):
+    import ai_routes as AI
+    platform_only(user)
+    b = await request.json()
+    t = date.today()
+    recent = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    targets, skipped = [], []
+    async for o in db.operators.find({"visa_date": {"$nin": [None, ""], "$lte": (t + timedelta(days=30)).isoformat()}}, {"_id": 0, "doc_path": 0, "history": 0, "calls": 0}).sort("visa_date", 1):
+        why = "fără e-mail de contact" if not (o.get("contact_email") or o.get("email")) else "contactată în ultimele 7 zile" if (o.get("last_contact_at") or "") >= recent else None
+        (skipped if why else targets).append({**o, "_why": why})
+    sem = asyncio.Semaphore(4)
+
+    async def one(o):
+        async with sem:
+            base = {"tenant": o["tenant"], "company": o.get("company"), "cui": o.get("cui"), "to": o.get("contact_email") or o.get("email"),
+                    "visa_date": o["visa_date"], "days_left": (date.fromisoformat(o["visa_date"]) - t).days}
+            try:
+                subj, body = split_draft(re.sub(r"^#{1,6}\s+", "", re.sub(r"\*\*(.+?)\*\*", r"\1", await AI.collect(AI.new_chat(SYS_MAIL + AI.RULES), visa_prompt(o, b.get("instructions")))), flags=re.M))
+                return {**base, "subject": subj, "body": body}
+            except Exception as e:
+                S.logger.error(f"campaign draft failed {o['tenant']}: {e}")
+                return {**base, "subject": "", "body": "", "error": "Ciorna nu a putut fi redactată; scrieți textul manual sau reîncercați."}
+    items = await asyncio.gather(*[one(o) for o in targets[:40]])
+    return {"items": items, "skipped": [{"company": o.get("company"), "cui": o.get("cui"), "reason": o["_why"]} for o in skipped]}
+
+
+@api.post("/admin/operators/campaign/send")
+async def adm_campaign_send(request: Request, user: dict = Depends(get_current_user)):
+    platform_only(user)
+    items = (await request.json()).get("items") or []
+    if not items or len(items) > 40:
+        raise HTTPException(status_code=400, detail="Selectați între 1 și 40 de e-mailuri")
+    res = []
+    for i in items:
+        try:
+            res.append({"tenant": i.get("tenant"), "sent": True, "to": await send_op_email(str(i.get("tenant")), i.get("subject"), i.get("body"), user)})
+        except HTTPException as e:
+            res.append({"tenant": i.get("tenant"), "sent": False, "error": e.detail})
+    await S.audit(user, "campanie vizări ANRE", "operators", "campaign", [f"{sum(r['sent'] for r in res)}/{len(res)} trimise"])
+    return {"results": res, "sent": sum(r["sent"] for r in res)}
+
+
+CALL_OUTCOMES = ("interesat", "nu răspunde", "revine / sună înapoi", "a comandat", "refuză", "alt rezultat")
+
+
+@api.post("/admin/operators/{tenant}/calls")
+async def adm_call(tenant: str, request: Request, user: dict = Depends(get_current_user)):
+    platform_only(user)
+    b = await request.json()
+    if b.get("outcome") not in CALL_OUTCOMES:
+        raise HTTPException(status_code=400, detail="Alegeți rezultatul apelului")
+    cb = str(b.get("callback_date") or "").strip()
+    if cb:
+        try:
+            cb = date.fromisoformat(cb).isoformat()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data revenirii invalidă")
+    c = {"id": str(uuid.uuid4()), "at": now(), "by": user.get("email"), "outcome": b["outcome"], "note": str(b.get("note") or "").strip()[:1000], "callback_date": cb or None}
+    r = await db.operators.update_one({"tenant": tenant}, {"$push": {"calls": c}, "$set": {"last_call": c}})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Operator inexistent")
+    await S.audit(user, "apel operator", "operators", tenant, [c["outcome"]])
+    return c
+
+
+@api.get("/admin/operators/{tenant}/calls")
+async def adm_calls(tenant: str, user: dict = Depends(get_current_user)):
+    platform_only(user)
+    o = await db.operators.find_one({"tenant": tenant}, {"_id": 0, "calls": 1})
+    if o is None:
+        raise HTTPException(status_code=404, detail="Operator inexistent")
+    return {"items": list(reversed(o.get("calls") or [])), "outcomes": CALL_OUTCOMES}
 
 
 async def run_visa(run_id: str, base: str):
