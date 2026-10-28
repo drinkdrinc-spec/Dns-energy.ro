@@ -636,8 +636,8 @@ def doc_schema(ctx):
 
 DOCS = {
     "notificare": ("Anexa 2 — Notificare (Ord. ANRE 19/2022)", doc_notificare),
-    "schema_cef": ("Schemă monofilară", doc_schema),
     "date_stocare": ("Date despre instalația de stocare", doc_storage),
+    "schema_cef": ("Schemă monofilară", doc_schema),
     "declaratie_afm": ("Declarație accesare fonduri (AFM)", doc_afm),
     "buletin_reglaj": ("Buletin reglaj", doc_buletin_reglaj),
     "buletin_priza": ("Buletin de verificare și măsurare priză de pământ", doc_buletin_priza),
