@@ -159,6 +159,13 @@ class Ctx:
     def cef_kw(self):
         p = self.raw("power")
         return f"{fmt(num(p))} kW" if p else M
+    @property
+    def power_increase(self):
+        return str(self.raw("request_type") or "").strip() == "Spor de putere + prosumator"
+
+    @property
+    def request_scope(self):
+        return "spor de putere și racordare a centralei electrice fotovoltaice în regim de prosumator" if self.power_increase else "racordare a centralei electrice fotovoltaice în regim de prosumator"
 
 
 # ---------- blocks ----------
@@ -352,7 +359,7 @@ def doc_decl_executant(ctx):
         B("title", "DECLARAȚIA EXECUTANTULUI"), B("sub", f"conform art. 54 alin. (1) din Ordinul ANRE nr. 59/2013 · Nr. {ctx.v('doc_no')} din {ctx.date}"),
         B("p", f"<b>{ctx.company}</b>, cu sediul în {ctx.e('address')}, înregistrată la Oficiul Național al Registrului Comerțului sub nr. {ctx.e('regcom')}, cod unic de "
                f"înregistrare {ctx.e('cui')}, telefon {ctx.e('phone')}, e-mail {ctx.e('email')}, deținătoare a atestatului ANRE {ctx.e('anre_attest')}, reprezentată prin "
-               f"{ctx.rep}, confirmăm prin prezenta declarație, pentru obiectivul cu cod loc de consum / POD {ctx.v('nlc', '—')} / {ctx.v('pod')}, situat în {ctx.loc}, "
+               f"{ctx.rep}, confirmăm prin prezenta declarație, pentru obiectivul cu cod loc de consum / POD {ctx.v('nlc', '—')} / {ctx.v('pod')}, situat în {ctx.loc}, în cadrul lucrării de {ctx.request_scope}, "
                f"având ca beneficiar <b>{ctx.name}</b>, cu domiciliul/sediul în {ctx.v('hq_address')}, următoarele:"),
         B("bullets", [f"respectarea cerințelor din Avizul Tehnic de Racordare nr. {escape(str(atr)) if atr else '______________ / ____________'} emis de "
                       f"{ctx.v('operator')} pentru obiectivul mai sus menționat (dacă este cazul);",
@@ -366,6 +373,7 @@ def doc_decl_executant(ctx):
 def doc_decl_conformitate(ctx):
     return hdr() + [
         B("title", "DECLARAȚIA DE CONFORMITATE privind calitatea lucrărilor"), B("sub", f"în conformitate cu art. 5 din HGR 1022/2002 · {ctx.date}"),
+        B("p", f"Obiectul lucrării: {ctx.request_scope}. Puterea PV declarată: {ctx.cef_kw}; puterea branșamentului aprobată/cerută: {ctx.v('bransament_kw')} kW."),
         B("p", f"<b>{ctx.company}</b>, cu sediul în {ctx.e('address')}, telefon {ctx.e('phone')}, email {ctx.e('email')}, înregistrată la Oficiul Național al Registrului "
                f"Comerțului sub nr. {ctx.e('regcom')}, cod unic de înregistrare {ctx.e('cui')}, atestat ANRE {ctx.e('anre_attest')}, asigurăm, garantăm și declarăm pe propria "
                "răspundere, conform prevederilor art. 5 din Hotărârea Guvernului nr. 1022/2002 privind regimul produselor și serviciilor care pot pune în pericol viața, "
@@ -413,7 +421,8 @@ def doc_pv_receptie(ctx):
     dec = ctx.raw("receptie_decision")
     others = ctx.v("receptie_others", "nu este cazul")
     out = hdr() + [
-        B("title", "PROCES-VERBAL DE RECEPȚIE LA TERMINAREA LUCRĂRILOR"), B("sub", "privind lucrarea de realizare a centralei electrice fotovoltaice"),
+        B("title", "PROCES-VERBAL DE RECEPȚIE LA TERMINAREA LUCRĂRILOR"), B("sub", f"privind {ctx.request_scope}"),
+        B("p", f"Puterea PV: {ctx.cef_kw}; puterea branșamentului aprobată/cerută: {ctx.v('bransament_kw')} kW."),
         B("b", "1. Părțile"),
         B("p", f"<b>Beneficiar (investitor):</b> {ctx.name}, loc de consum {ctx.loc}, telefon {ctx.v('phone')}, cod identificare loc consum {ctx.v('nlc', '—')}, POD {ctx.v('pod')}"),
         B("p", f"<b>Executant:</b> {ctx.company}, cu sediul în {ctx.e('address')}, CUI {ctx.e('cui')}, nr. înreg. Registrul Comerțului {ctx.e('regcom')}, e-mail "
@@ -454,6 +463,7 @@ def doc_pv_pif(ctx):
     anti = ctx.raw("anti_relay_present")
     return hdr() + [
         B("title", "PROCES-VERBAL DE PUNERE ÎN FUNCȚIUNE FINALĂ"),
+        B("p", f"Scopul dosarului: {ctx.request_scope}. Puterea PV: {ctx.cef_kw}; puterea branșamentului aprobată/cerută: {ctx.v('bransament_kw')} kW."),
         B("sub", f"a sistemului de producere a energiei electrice — Centrala electrică fotovoltaică CEF {ctx.cef_kw}"),
         B("table", [["Denumire beneficiar", f"<b>{ctx.name}</b>"], ["Loc de consum", ctx.loc], ["POD", ctx.v("pod")],
                     ["Tip cerere AFM", (escape(str(ctx.raw('afm'))).upper() if ctx.raw("afm") else M)]], [50, 124], False),
@@ -525,6 +535,7 @@ def doc_pv_teste(ctx):
     period = f"{ro_date(ctx.raw('test_from')) or M} — {ro_date(ctx.raw('test_to')) or M}"
     out = [B("p", f"Nr. înregistrare OD …………………………………/…………………………………<br/>aferent cererii de punere sub tensiune nr. …………………………………<br/>POD <b>{ctx.v('pod')}</b>"),
            B("title", "PROCES VERBAL"), B("sub", f"de efectuare a testelor și verificărilor de punere în funcțiune a instalației de utilizare și producere<br/>situată în {ctx.loc}"),
+           B("p", f"Scopul lucrării: {ctx.request_scope}. Puterea PV: {ctx.cef_kw}; puterea branșamentului aprobată/cerută: {ctx.v('bransament_kw')} kW."),
            B("p", f"încheiat azi {pd} cu ocazia efectuării testelor și verificărilor de punere în funcțiune a instalației de utilizare/producere {ctx.cef_kw}"),
            B("b", "Datele tehnice ale instalației de producere:"),
            B("p", f"1. Seria invertorului: {'; '.join(escape(i.get('serial')) for i in invs if i.get('serial')) or M}<br/>tipul invertorului: "
@@ -617,14 +628,14 @@ def doc_buletin_reglaj(ctx):
 def doc_autenticitate(ctx):
     rows = [["Nr. crt.", "Documente anexate cererii"]] + [[str(i + 1), escape(t)] for i, t in enumerate(ctx.opis_titles)]
     return hdr() + [
-        B("title", "DECLARAȚIE AUTENTICITATE DATE ŞI CONFORMITATE CU ORIGINALUL"), B("sub", f"pentru locul de consum situat în {ctx.loc}"),
+        B("title", "DECLARAȚIE AUTENTICITATE DATE ŞI CONFORMITATE CU ORIGINALUL"), B("sub", f"pentru {ctx.request_scope}, la locul de consum situat în {ctx.loc}"),
         B("p", f"Subsemnatul <b>{ctx.name}</b>, domiciliat în {ctx.v('hq_address')}, CNP/CUI: {ctx.v('idcode')}, confirm autenticitatea datelor cuprinse în cererea de "
                "racordare pentru locul de consum arătat mai sus şi declar pe propria răspundere că documentele anexate sunt conforme cu originalul."),
         B("table", rows, [16, 158], True), sign(["Data", f"<b>{ctx.date}</b>"], ben_sig(ctx))]
 
 
 def doc_decl_beneficiar(ctx):
-    return hdr() + [B("title", "DECLARAȚIE PE PROPRIA RĂSPUNDERE"), B("sub", "a titularului locului de consum"),
+    return hdr() + [B("title", "DECLARAȚIE PE PROPRIA RĂSPUNDERE"), B("sub", f"a titularului locului de consum — {ctx.request_scope}"),
                     B("p", f"Subsemnatul(a) <b>{ctx.name}</b>, CNP/CUI <b>{ctx.v('idcode')}</b>, domiciliat(ă) în {ctx.v('hq_address')}, declar pe propria răspundere că mă oblig "
                            "să respect instrucțiunile de exploatare ale echipamentelor și să nu modific setările de protecție ale invertorului fără acordul operatorului de distribuție."),
                     sign(["Data", f"<b>{ctx.date}</b>"], ["Declarant,", f"<b>{ctx.name}</b>", "semnătura"])]
