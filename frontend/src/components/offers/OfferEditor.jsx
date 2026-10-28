@@ -30,7 +30,29 @@ export function OfferEditor({ id, onBack, onOpen }) {
       toast.error(e.response?.data?.detail || "Eroare"); return false;
     }
   };
-  const status = async (st) => { if (await save()) { try { await api.post(`/offers/${id}/status`, { status: st }); load(); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } } };
+  const status = async (st) => {
+    if (!(await save())) return;
+    try {
+      await api.post(`/offers/${id}/status`, { status: st });
+      if (st === "Acceptată" && !o.contract_id) {
+        try {
+          const { data } = await api.post(`/offers/${id}/contract`, {
+            payment: { mode: "integral", due_days: "5", due_rule: "În termen de 5 zile de la emiterea facturii", advance_type: "percent", advance_value: "", advance_days: "", balance_rule: "", tranches: [] },
+            execution_term: "Maxim 30 de zile calendaristice, conform ofertei acceptate",
+            works_warranty_months: "24",
+            place: b.install_address || b.address || "România",
+            date: new Date().toISOString().slice(0, 10)
+          });
+          toast.success(`Oferta a fost acceptată. Contractul nr. ${data.number} a fost generat automat.`);
+        } catch (e) {
+          toast.error(`Oferta a fost acceptată, dar contractul nu s-a putut genera automat: ${e.response?.data?.detail || "verifică pozițiile și prețurile ofertei"}`);
+        }
+      } else {
+        toast.success(st === "Acceptată" && o.contract_id ? "Oferta este acceptată și are deja contract." : "Status ofertă actualizat");
+      }
+      load();
+    } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); }
+  };
   const dup = async () => { const { data } = await api.post(`/offers/${id}/duplicate`); toast.success(`Ofertă nouă nr. ${data.number}`); onOpen(data.id); };
   const pdf = `${API}/offers/${id}/pdf?auth=${tok()}`;
   const ta = (k, l, rows = 3) => <div className="den-field sm:col-span-2"><label>{l}</label><textarea className="den-input" rows={rows} value={o[k] ?? ""} onChange={(e) => set(k, e.target.value)} data-testid={`offer-${k}`} /></div>;
