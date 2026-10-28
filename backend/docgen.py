@@ -641,6 +641,21 @@ def doc_decl_beneficiar(ctx):
                     sign(["Data", f"<b>{ctx.date}</b>"], ["Declarant,", f"<b>{ctx.name}</b>", "semnătura"])]
 
 
+def doc_gdpr(ctx):
+    return hdr() + [
+        B("title", "INFORMARE PRIVIND PRELUCRAREA DATELOR CU CARACTER PERSONAL"),
+        B("sub", "Regulamentul (UE) 2016/679 — GDPR"),
+        B("p", f"Operatorul datelor: <b>{ctx.company}</b>, CUI {ctx.e('cui')}, sediul {ctx.e('address')}, e-mail {ctx.e('email')}, telefon {ctx.e('phone')}."),
+        B("p", f"Datele beneficiarului <b>{ctx.name}</b> și datele de contact, identificare, proprietate, loc de consum/POD și documentele tehnice furnizate sunt prelucrate pentru întocmirea, depunerea și urmărirea dosarului de racordare/prosumator, inclusiv, după caz, pentru solicitarea sporului de putere, relația cu operatorul de distribuție și îndeplinirea obligațiilor legale aplicabile."),
+        B("p", "Temeiurile prelucrării se stabilesc în funcție de operațiune și pot include executarea demersurilor solicitate de persoana vizată, îndeplinirea obligațiilor legale și interesul legitim justificat al operatorului. Datele nu se folosesc în scopuri de marketing fără un temei separat."),
+        B("p", "Datele pot fi comunicate, în măsura necesară, operatorului de distribuție, furnizorilor de energie, autorităților competente și prestatorilor implicați în găzduirea sau administrarea platformei, cu respectarea obligațiilor de confidențialitate și securitate. Datele sunt păstrate numai pe perioada necesară scopurilor declarate și termenelor legale de arhivare."),
+        B("p", "Persoana vizată poate solicita, în condițiile legii, accesul la date, rectificarea, ștergerea sau restricționarea prelucrării, se poate opune prelucrării atunci când este aplicabil și poate depune plângere la ANSPDCP. Furnizarea datelor strict necesare poate fi indispensabilă întocmirii și depunerii dosarului."),
+        B("p", "Pentru exercitarea drepturilor sau întrebări privind datele, contactați operatorul la datele de mai sus. Această informare nu înlocuiește analiza temeiurilor și termenelor de păstrare specifice activității operatorului."),
+        B("p", f"Am luat la cunoștință informarea de mai sus. Beneficiar: <b>{ctx.name}</b>. Data: {ctx.date}."),
+        sign(["Furnizor / executant", f"<b>{ctx.company}</b>", ctx.rep, "Semnătură și ștampilă"], ["Beneficiar", f"<b>{ctx.name}</b>", "Semnătură: __________________"])
+    ]
+
+
 def doc_schema(ctx):
     return [B("schema")]
 
@@ -661,6 +676,7 @@ DOCS = {
     "imputernicire": ("Împuternicire", doc_imputernicire),
     "declaratie_autenticitate": ("Declarație autenticitate date și conformitate cu originalul (opis)", doc_autenticitate),
     "declaratie_beneficiar": ("Declarație beneficiar (suplimentar)", doc_decl_beneficiar),
+    "gdpr": ("Informare GDPR privind prelucrarea datelor", doc_gdpr),
     "schema": ("Schemă monofilară", doc_schema),
 }
 
@@ -783,7 +799,10 @@ def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
     first_land = bool(doc_keys) and doc_keys[0] in ("schema_cef", "schema")
     pdf = BaseDocTemplate(buf, pageTemplates=[land, port] if first_land else [port, land], title=f"D-ENERGY — {ctx.raw('name') or ''}")
     story = []
-    for i, k in enumerate(doc_keys):
+    keys = list(doc_keys)
+    if keys and not any(k in ("schema_cef", "schema") for k in keys) and "gdpr" not in keys:
+        keys.append("gdpr")
+    for i, k in enumerate(keys):
         if k in ("schema_cef", "schema"):
             draw, tbl = schema_cef.story(ctx, lambda t, st="p": Paragraph(t, S[st]), lambda rows, w, head=True: pdf_table(rows, [x / mm for x in w], head, None, 273), S)
             if i:
@@ -792,7 +811,10 @@ def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
             continue
         if i:
             story.append(PageBreak())
-        story += to_flow(DOCS[k][1](ctx), ctx)
+        blocks = DOCS[k][1](ctx)
+        if not any(isinstance(b, (list, tuple)) and b and b[0] == "sign" for b in blocks):
+            blocks = blocks + [sign(ex_sig(ctx), ben_sig(ctx))]
+        story += to_flow(blocks, ctx)
     pdf.build(story)
     return buf.getvalue()
 
@@ -845,10 +867,16 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, c
     else:
         if blocks is None:
             blocks = []
-            for i, k in enumerate(keys or [doc_key]):
+            doc_keys = list(keys or [doc_key])
+            if doc_keys and not any(k in ("schema_cef", "schema") for k in doc_keys) and "gdpr" not in doc_keys:
+                doc_keys.append("gdpr")
+            for i, k in enumerate(doc_keys):
                 if i:
                     blocks.append(B("pagebreak"))
-                blocks += DOCS[k][1](ctx)
+                doc_blocks = DOCS[k][1](ctx)
+                if not any(isinstance(b, (list, tuple)) and b and b[0] == "sign" for b in doc_blocks):
+                    doc_blocks = doc_blocks + [sign(ex_sig(ctx), ben_sig(ctx))]
+                blocks += doc_blocks
         for b in blocks:
             k = b[0]
             if k == "hdr":
