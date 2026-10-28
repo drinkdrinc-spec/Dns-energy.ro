@@ -37,7 +37,7 @@ export function OfferEditor({ id, onBack, onOpen }) {
       if (st === "Acceptată" && !o.contract_id) {
         try {
           const { data } = await api.post(`/offers/${id}/contract`, {
-            payment: { mode: "integral", due_days: "5", due_rule: "În termen de 5 zile de la emiterea facturii", advance_type: "percent", advance_value: "", advance_days: "", balance_rule: "", tranches: [] },
+            payment: { mode: "integral", due_days: "", due_rule: "Conform condițiilor de plată agreate de părți", advance_type: "percent", advance_value: "", advance_days: "", balance_rule: "", tranches: [] },
             execution_term: "Maxim 30 de zile calendaristice, conform ofertei acceptate",
             works_warranty_months: "24",
             place: b.install_address || b.address || "România",
