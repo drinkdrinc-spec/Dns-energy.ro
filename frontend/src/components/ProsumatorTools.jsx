@@ -68,18 +68,18 @@ function CatalogFiles({ id }) {
   );
 }
 
-export function GeneratedDocs({ id, files }) {
+export function GeneratedDocs({ id, files, form }) {
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="generated-docs">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <h3 className="font-bold text-sm">Documente generate automat</h3>
+        <h3 className="font-bold text-sm">Documente generate automat</h3>\n        {form?.request_type === "Spor de putere + prosumator" && <p className="text-xs sm:col-span-2" style={{ color: "var(--muted)" }}>Pentru spor de putere, dosarul PDF înlocuiește Anexa 2 cu Anexa 1 oficială a distribuitorului, dacă formularul PDF este înregistrat. Verificați linkul și versiunea înainte de depunere.</p>}
         {id && <a href={docUrl("all", id)} target="_blank" rel="noopener noreferrer" data-testid="doc-all">
           <Btn><FileDown size={15} /> Dosar complet (PDF)</Btn>
         </a>}
       </div>
       {!id ? <p className="text-xs" style={{ color: "var(--muted)" }}>Salvează dosarul pentru a genera documentele.</p> : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {DOCS.map(([k, label]) => (
+          {DOCS.filter(([k]) => !(k === "notificare" && form?.request_type === "Spor de putere + prosumator")).map(([k, label]) => (
             <a key={k} href={docUrl(k, id)} target="_blank" rel="noopener noreferrer" data-testid={`doc-${k}`}
               className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2.5 text-sm hover:border-[var(--blue)] transition-colors" style={{ borderColor: "var(--line)" }}>
               <FileText size={15} style={{ color: "var(--blue)" }} /> {label}
