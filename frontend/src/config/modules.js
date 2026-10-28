@@ -59,6 +59,7 @@ export const MODULES = {
     ],
     fields: [
       { name: "number", label: "Număr dosar intern", type: "text", placeholder: "PROS-2026-001" },
+      { name: "request_type", label: "Tip cerere distribuitor", type: "select", options: ["Racordare prosumator — fără spor de putere", "Spor de putere + prosumator"], full: true },
       { name: "client_name", label: "Beneficiar / client *", type: "ref", ref: "clients", required: true },
       { type: "section", label: "Date tehnice (datele clientului se preiau automat din fișa clientului)" },
       { name: "power", label: "Putere maximă simultan evacuată (kW)", type: "number" },
