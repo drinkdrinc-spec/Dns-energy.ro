@@ -185,6 +185,26 @@ async def form_alerts(operator: str = "", scope: str = "atr", user: dict = Depen
     return out
 
 
+# ---------------- official operator forms ----------------
+@api.get("/forms/operator-links")
+async def operator_form_links(operator: str = "", scope: str = "atr", user: dict = Depends(get_current_user)):
+    """Return registered official-form links for the selected distributor, not only changed/broken forms."""
+    if not operator.strip():
+        return []
+    op = ATR.op_key(operator)
+    want = ("atr",) if scope == "atr" else ("spor", "prosumator")
+    rows = await db.official_forms.find({}, {"_id": 0, "history": 0}).to_list(500)
+    out = []
+    for f in rows:
+        kind = str(f.get("kind") or "").lower()
+        url = str(f.get("url") or "").strip()
+        if ATR.op_key(f.get("operator")) != op or not any(w in kind for w in want) or not url.startswith("https://"):
+            continue
+        out.append({k: f.get(k) for k in ("id", "operator", "title", "url", "status", "version")} |
+                   {"checked": (f.get("last_check") or {}).get("at")})
+    return sorted(out, key=lambda f: (f.get("status") in ("link invalid", "versiune nouă detectată"), str(f.get("title") or "")))
+
+
 # ---------------- submission ----------------
 @api.post("/atr/{item_id}/submit")
 async def atr_submit(item_id: str, request: Request, user: dict = Depends(get_current_user)):
