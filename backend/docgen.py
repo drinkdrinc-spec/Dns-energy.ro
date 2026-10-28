@@ -812,7 +812,7 @@ def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
         if i:
             story.append(PageBreak())
         blocks = DOCS[k][1](ctx)
-        if not any(isinstance(b, (list, tuple)) and b and b[0] == "sign" for b in blocks):
+        if not any(isinstance(b, (list, tuple)) and b and b[0] == "sign" and ctx.company in str(b) and ctx.name in str(b) and ("ștampilă" in str(b).lower() or "stampila" in str(b).lower()) for b in blocks):
             blocks = blocks + [sign(ex_sig(ctx), ben_sig(ctx))]
         story += to_flow(blocks, ctx)
     pdf.build(story)
@@ -874,7 +874,7 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, c
                 if i:
                     blocks.append(B("pagebreak"))
                 doc_blocks = DOCS[k][1](ctx)
-                if not any(isinstance(b, (list, tuple)) and b and b[0] == "sign" for b in doc_blocks):
+                if not any(isinstance(b, (list, tuple)) and b and b[0] == "sign" and ctx.company in str(b) and ctx.name in str(b) and ("ștampilă" in str(b).lower() or "stampila" in str(b).lower()) for b in doc_blocks):
                     doc_blocks = doc_blocks + [sign(ex_sig(ctx), ben_sig(ctx))]
                 blocks += doc_blocks
         for b in blocks:
