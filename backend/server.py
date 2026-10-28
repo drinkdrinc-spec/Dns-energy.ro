@@ -664,10 +664,19 @@ from pypdf import PdfReader, PdfWriter
 import io
 
 async def seed_catalog(owner: str):
+    # Seed idempotent: adaugă numai modelele lipsă și pentru conturile deja existente.
     await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
-    res = await db.settings.update_one({"owner": owner, "catalog_seeded": {"$ne": True}}, {"$set": {"catalog_seeded": True}})
-    if res.modified_count and not await db.catalog.count_documents({"owner": owner}):
-        await db.catalog.insert_many([_new({"id": owner}, {**x, "notes": CATALOG_NOTE}) for x in CATALOG_SEED])
+    await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
+    existing = await db.catalog.find({"owner": owner}, {"category": 1, "brand_model": 1, "_id": 0}).to_list(10000)
+    known = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()) for x in existing}
+    missing = []
+    for item in CATALOG_SEED:
+        key = (item.get("category"), (item.get("brand_model") or "").strip().casefold())
+        if key not in known:
+            missing.append(_new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE}))
+            known.add(key)
+    if missing:
+        await db.catalog.insert_many(missing)
 
 def derive_cef(d: dict) -> dict:
     if (d.get("cef") or {}).get("inverters"):
