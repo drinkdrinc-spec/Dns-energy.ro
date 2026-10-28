@@ -73,7 +73,7 @@ ALL_FEATURES = {"prosumator": "Dosare de prosumator", "diu": "Dosar instalație 
                 "panels": "Tablouri electrice", "anti": "Antiinsularizare", "pram": "Buletine PRAM", "equipment": "Echipamente",
                 "power": "Spor de putere / BMP", "atr": "Cerere ATR (aviz tehnic de racordare)", "works": "Gestionarea lucrărilor", "projects": "Simulare proiect", "sign_remote": "Semnare la distanță",
                 "ai_extract": "Import automat din documente (AI)", "ai_gpt": "Asistent AI ChatGPT (chat, verificare dosar, redactare, import)", "oferte": "Oferte de preț și contracte"}
-MODULE_FEATURE = {"clients": "prosumator", "prosumator": "prosumator", "documents": "prosumator", "catalog": "prosumator", "staff": "prosumator",
+MODULE_FEATURE = {"clients": "prosumator", "prosumator": "prosumator", "documents": "prosumator", "archived_dossiers": "prosumator", "catalog": "prosumator", "staff": "prosumator",
                   "instruments": "prosumator", "diu": "diu", "mono": "mono", "panels": "panels", "anti": "anti", "pram": "pram",
                   "equipment": "equipment", "power": "power", "atr": "atr", "works": "works", "projects": "projects"}
 DEFAULT_PLANS = [
@@ -316,7 +316,7 @@ async def logout(user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 # ---------------- Generic module CRUD ----------------
-MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents", "catalog", "staff", "instruments"]
+MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents", "archived_dossiers", "catalog", "staff", "instruments"]
 
 def clean(doc: dict) -> dict:
     doc.pop("_id", None)
