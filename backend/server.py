@@ -640,8 +640,9 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     user = await user_from_token(authorization, auth)
     rec = await check_access(user, "prosumator", item_id)
     if doc_type == "all":
-        has_cef = bool(((rec or {}).get("cef") or {}).get("inverters"))
-        keys = [k for k in docgen.DOCS if k not in ("schema", "schema_cef")]
+        # Dosarul complet include schema CEF o singură dată; varianta "schema"
+        # rămâne disponibilă separat pentru descărcare individuală.
+        keys = [k for k in docgen.DOCS if k != "schema"]
     else:
         keys = [doc_type]
     if any(k not in docgen.DOCS for k in keys):
@@ -652,7 +653,9 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     settings, _ = await effective_settings(user["id"], rec, base)
     client = await get_client(user["id"], rec)
     pdf = docgen.render(keys, rec, settings, client)
-    if attach:
+    # Pentru dosarul complet anexăm automat fișele tehnice și declarațiile de
+    # conformitate încărcate în catalog pentru echipamentele selectate.
+    if attach or doc_type == "all":
         pdf = merge_pdfs(pdf, await catalog_files(user["id"], rec))
     fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{fname}")})
