@@ -88,7 +88,8 @@ def pram_head(ctx, r, title, norm):
     p = r.get("pram_m") or {}
     return hdr() + [B("title", title), B("sub", norm),
                     B("p", f"Beneficiar: <b>{ctx.name}</b> · Obiectiv: {ctx.loc} · Dosar DI-U: {e(r.get('number'))}"),
-                    B("p", f"Data măsurătorilor: {ro_date(p.get('date')) or M} · Aparat de măsură: {e(p.get('instrument'))} · Verificator: {e(p.get('verifier'))}")]
+                    B("p", f"Data măsurătorilor: {ro_date(p.get('date')) or M} · Aparat de măsură: {e(p.get('instrument'))} · Verificator: {e(p.get('verifier'))}"),
+                    *([B("p", f"Buletin metrologic valabil până la: {ro_date(s.get('meter_valid'))}")] if s.get("meter_valid") else [])]
 
 
 def pram_sign(ctx, r):
