@@ -194,6 +194,7 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && editId && <PifPanel id={editId} />}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
+          {key === "diu" && <DossierExtras form={form} setVal={setVal} compact />}
           {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} savedAt={savedAt} />}
           {key === "diu" && editId && <SignRequests dossierId={editId} module="diu" />}
           {key === "diu" && editId && <AiPrecheck id={editId} base="diu" open={diuPre} onClose={() => setDiuPre(false)} onFinalize={doSave} form={form}
