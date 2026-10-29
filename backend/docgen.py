@@ -781,7 +781,21 @@ def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
             continue
         if i:
             story.append(PageBreak())
-        story += to_flow(DOCS[k][1](ctx), ctx)
+        blocks = DOCS[k][1](ctx)
+        # Defensive guard: a reception PV must contain exactly one signature block
+        # (installer/executant + beneficiary). Prevent accidental duplicate blocks
+        # from being rendered if the document template is extended or composed.
+        if k == "pv_receptie":
+            seen_sign = False
+            unique_blocks = []
+            for block in blocks:
+                if block[0] == "sign":
+                    if seen_sign:
+                        continue
+                    seen_sign = True
+                unique_blocks.append(block)
+            blocks = unique_blocks
+        story += to_flow(blocks, ctx)
     pdf.build(story)
     return buf.getvalue()
 
