@@ -11,10 +11,10 @@ export default function Layout() {
     <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
       <Sidebar open={open} onClose={() => setOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 bg-white border-b" style={{ borderColor: "var(--line)" }}>
-          <button data-testid="menu-btn" onClick={() => setOpen(true)}><Menu size={22} /></button>
+        <header className="mobile-app-header md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 border-b">
+          <button data-testid="menu-btn" onClick={() => setOpen(true)} aria-label="Deschide meniul"><Menu size={22} /></button>
           <BrandMark size={30} />
-          <span className="font-extrabold tracking-wide">D-ENERGY</span>
+          <span className="font-extrabold tracking-wide">DNS ENERGY</span>
         </header>
         <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto">
           <PlanBanner />
