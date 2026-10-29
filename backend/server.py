@@ -1822,8 +1822,21 @@ async def startup():
     await db.users.create_index("email", unique=True)
     for m in MODULES:
         await db[m].create_index("owner")
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    jwt_secret = os.environ.get("JWT_SECRET", "")
+    if PRIVATE_MODE:
+        # Never boot a private staging service with fallback/default credentials.
+        if not admin_email or not admin_password:
+            raise RuntimeError("Private mode requires ADMIN_EMAIL and ADMIN_PASSWORD environment secrets")
+        if len(admin_password) < 16:
+            raise RuntimeError("Private mode requires ADMIN_PASSWORD with at least 16 characters")
+        if len(jwt_secret) < 32:
+            raise RuntimeError("Private mode requires JWT_SECRET with at least 32 characters")
+    else:
+        # Local development still needs explicit credentials; do not silently create admin123.
+        if not admin_email or not admin_password or not jwt_secret:
+            raise RuntimeError("Set ADMIN_EMAIL, ADMIN_PASSWORD and JWT_SECRET in backend/.env before startup")
     existing = await db.users.find_one({"email": admin_email})
     if not existing:
         await db.users.insert_one({"id": str(uuid.uuid4()), "email": admin_email,
