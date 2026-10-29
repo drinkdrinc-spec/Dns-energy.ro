@@ -58,6 +58,10 @@ async def get_current_user(request: Request) -> dict:
         user = await db.users.find_one({"id": payload["sub"]})
         if not user:
             raise HTTPException(status_code=401, detail="Utilizator inexistent")
+        if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
+            admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+            if not admin_email or user.get("email", "").lower() != admin_email or user.get("role") != "admin":
+                raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
         user.pop("password_hash", None)
         user.pop("_id", None)
         if user.get("status", "active") != "active":
@@ -248,6 +252,10 @@ async def login(body: LoginReq, request: Request):
     att = await db.login_attempts.find_one({"identifier": ident})
     if att and att.get("count", 0) >= 5 and att.get("until", "") > datetime.now(timezone.utc).isoformat():
         raise HTTPException(status_code=429, detail="Prea multe încercări eșuate. Încercați din nou peste 15 minute.")
+    private_mode = os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    if private_mode and (not admin_email or email != admin_email):
+        raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(body.password, user["password_hash"]):
         await db.login_attempts.update_one({"identifier": ident}, {"$inc": {"count": 1}, "$set": {"until": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()}}, upsert=True)
