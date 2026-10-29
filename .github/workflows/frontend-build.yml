@@ -1,0 +1,35 @@
+name: DNS Energy frontend build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-build.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install dependencies
+        working-directory: frontend
+        run: yarn install --frozen-lockfile
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          DISABLE_VISUAL_EDITS: "true"
+          DISABLE_EMERGENT_OVERLAY: "true"
+          REACT_APP_BACKEND_URL: ""
+        run: yarn build
