@@ -5,7 +5,7 @@ import { Btn } from "@/components/Layout";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import { BillingForm } from "@/components/billing/BillingForm";
 import { toast } from "sonner";
-import { Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
 export default function Login() {
   const { login } = useAuth();
@@ -57,9 +57,15 @@ export default function Login() {
           <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>{reg ? "Contul devine activ după aprobarea administratorului. Apoi alegeți și plătiți abonamentul." : "Intră în contul tău DNS Energy pentru a continua."}</p>
           {reg && <div className="den-field mb-4"><label>Nume complet</label><input data-testid="register-name" className="den-input" value={name} onChange={(e) => setName(e.target.value)} required /></div>}
           <div className="den-field mb-4"><label>Email (cont)</label>
-            <input data-testid="login-email" className="den-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
+            <input data-testid="login-email" className="den-input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
           <div className="den-field mb-4"><label>Parolă{reg ? " (minimum 8 caractere)" : ""}</label>
-            <input data-testid="login-password" className="den-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
+            <div className="relative">
+              <LockKeyhole size={17} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
+              <input data-testid="login-password" className="den-input pl-10 pr-12" type={showPassword ? "text" : "password"} autoComplete={reg ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <button type="button" aria-label={showPassword ? "Ascunde parola" : "Afișează parola"} onClick={() => setShowPassword((visible) => !visible)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1" style={{ color: "var(--muted)" }}>
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div></div>
           {reg && <>
             <h2 className="text-base font-extrabold mt-2 mb-2">Date de facturare</h2>
             <BillingForm value={billing} onChange={setBilling} />
