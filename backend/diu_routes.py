@@ -25,7 +25,13 @@ async def diu_ctx(user: dict, item_id: str):
     prec = CEF.flatten(CEF.from_legacy(prec)) if prec else {}
     client = await S.get_client(user["id"], rec) or (await S.get_client(user["id"], prec) if prec else {})
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    s, _ = await S.effective_settings(user["id"], prec, base)
+    # DI-U may override the signers and measuring instrument selected for the
+    # linked prosumer dossier. If the DI-U has no selection, inherit the prosumer
+    # dossier selection so both workflows use the same validated company data.
+    effective_rec = {**prec, **rec, "snapshot": None}
+    effective_rec["signers"] = rec.get("signers") or prec.get("signers") or {}
+    effective_rec["instrument_id"] = rec.get("instrument_id") or prec.get("instrument_id")
+    s, _ = await S.effective_settings(user["id"], effective_rec, base)
     prec = {k: v for k, v in prec.items() if not k.startswith(OWN)}
     merged = {**prec, **{k: v for k, v in rec.items() if v not in (None, "", [], {})}}
     for k in ("address", "county"):
