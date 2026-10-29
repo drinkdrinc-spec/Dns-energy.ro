@@ -22,8 +22,12 @@ export function DossierExtras({ form, setVal, compact = false }) {
   return (
     <div className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
       <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
-        <h4 className="font-bold text-sm mb-1">Semnatari și aparat de măsură</h4>
-        <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>Pot fi alese doar persoanele cu cel puțin o autorizație valabilă, încărcată și marcată „verificată” în Setări de bază.</p>
+        <h4 className="font-bold text-sm mb-1">{compact ? "DI-U — personal, semnături și aparat PRAM" : "Semnatari și aparat de măsură"}</h4>
+        <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>
+          {compact
+            ? "Selectează aici persoanele care vor apărea în documentele DI-U și aparatul folosit pe buletinul de priză de pământ. Salvează dosarul după modificări."
+            : "Pot fi alese doar persoanele cu cel puțin o autorizație valabilă, încărcată și marcată „verificată” în Setări de bază."}
+        </p>
         {ROLES.map(([k, l]) => (
           <div key={k} className="den-field mb-2"><label>{l}</label>
             <select className="den-input" value={sg[k] || ""} onChange={(e) => setVal("signers", { ...sg, [k]: e.target.value })} data-testid={`signer-${k}`}>
@@ -31,12 +35,15 @@ export function DossierExtras({ form, setVal, compact = false }) {
               {staff.map((p) => <option key={p.id} value={p.id} disabled={!eligible(p)}>{p.name} · {p.qualification || ""}{eligible(p) ? "" : " (autorizație lipsă/expirată/neverificată)"}</option>)}
             </select></div>
         ))}
-        <div className="den-field"><label>Aparat de măsură (buletin priză)</label>
+        <div className="den-field"><label>{compact ? "Aparat PRAM folosit pe buletinul prizei de pământ" : "Aparat de măsură (buletin priză)"}</label>
           <select className="den-input" value={form.instrument_id || ""} onChange={(e) => setVal("instrument_id", e.target.value)} data-testid="instrument-select">
             <option value="">— neselectat —</option>
             {inst.map((i) => <option key={i.id} value={i.id} disabled={status(i.expires, i.file) !== "valabil"}>{i.maker_model} · seria {i.serial} · {i.cert_name} până la {i.expires || "—"}{status(i.expires, i.file) !== "valabil" ? " (expirat / lipsă)" : ""}</option>)}
           </select></div>
       </div>
+      {compact && <div className="rounded-lg px-3 py-2 text-[11px] sm:col-span-2" style={{ background: "#fff8e7", color: "#79521a" }}>
+        Pentru aplicarea automată a semnăturii instalatorului, în Setări → Personal trebuie să existe o semnătură grafică autorizată; pentru ștampilă, în Setări trebuie încărcată imaginea ștampilei firmei. Dacă lipsesc sau nu sunt autorizate, documentul trebuie semnat olograf — aplicația nu inventează semnături.
+      </div>}
       {!compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between mb-2"><h4 className="font-bold text-sm">Buletin reglaj — valori setate în invertor</h4>
           <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("reglaj", Object.fromEntries(REGLAJ.map(([k]) => [k, { val: TYPICAL[k][0], t: TYPICAL[k][1] }])))} data-testid="reglaj-typical">Preia valorile tip Ord. ANRE 132/2020 (verifică în invertor)</button></div>
