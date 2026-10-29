@@ -64,9 +64,17 @@ def vdrop_dc(i, length, section, material, v):
 def string_calc(s, inv, tmin):
     cnt = int(n(s.get("panels")))
     voc, vmp, isc = n(inv.get("panel_voc")), n(inv.get("panel_vmp")), n(inv.get("panel_isc"))
-    cv = n(inv.get("panel_coef_voc"), -0.27) / 100
-    voc_cold = cnt * voc * (1 + cv * (tmin - 25))
-    vmp_hot = cnt * vmp * (1 + (cv - 0.0008) * (T_CELL_HOT - 25))
+    # Temperature coefficients are model-specific. Never substitute an invented default.
+    cvoc_raw = inv.get("panel_coef_voc")
+    cvmp_raw = inv.get("panel_coef_vmp")
+    voc_cold = None
+    vmp_hot = None
+    if cvoc_raw not in (None, "") and voc:
+        cvoc = n(cvoc_raw) / 100
+        voc_cold = cnt * voc * (1 + cvoc * (tmin - 25))
+    if cvmp_raw not in (None, "") and vmp:
+        cvmp = n(cvmp_raw) / 100
+        vmp_hot = cnt * vmp * (1 + cvmp * (T_CELL_HOT - 25))
     return {"panels": cnt, "mppt": int(n(s.get("mppt"), 1)) or 1, "voc_stc": cnt * voc, "voc_cold": voc_cold,
             "vmp_stc": cnt * vmp, "vmp_hot": vmp_hot, "isc": isc, "kwp": cnt * n(inv.get("panel_w")) / 1000}
 
@@ -104,6 +112,10 @@ def check(cef: dict) -> dict:
                 w.append(f"{tag}: nu are stringuri definite.")
         if strings and not (n(inv.get("panel_voc")) and n(inv.get("panel_vmp"))):
             w.append(f"{tag}: lipsesc Voc/Vmp ale panoului — tensiunile stringurilor nu pot fi verificate.")
+        if strings and inv.get("panel_coef_voc") in (None, ""):
+            w.append(f"{tag}: coeficientul de temperatură Voc al modelului de panou lipsește; Voc la rece rămâne neconfirmat.")
+        if strings and inv.get("panel_coef_vmp") in (None, ""):
+            w.append(f"{tag}: coeficientul de temperatură Vmp al modelului de panou lipsește; Vmp la cald rămâne neconfirmat.")
         if strings and "Invertor de baterie" in str(inv.get("kind") or inv.get("type") or ""):
             e.append(f"{tag}: invertorul de baterie (AC) nu are intrări PV — eliminați stringurile sau schimbați tipul.")
         if strings and mppt_count and len({s["mppt"] for s in strings}) < min(mppt_count, len(strings)):
@@ -114,7 +126,7 @@ def check(cef: dict) -> dict:
         per_mppt = {}
         for si, s in enumerate(strings):
             st = f"{tag} / string {si + 1}"
-            if vdc_max and s["voc_cold"] > vdc_max:
+            if vdc_max and s["voc_cold"] is not None and s["voc_cold"] > vdc_max:
                 e.append(f"{st}: Voc la {tmin:g}°C = {s['voc_cold']:.0f} V depășește tensiunea maximă DC a invertorului ({vdc_max:g} V).")
             if mmax and s["vmp_stc"] > mmax:
                 w.append(f"{st}: Vmp = {s['vmp_stc']:.0f} V peste limita superioară MPPT ({mmax:g} V).")
@@ -194,7 +206,8 @@ def check(cef: dict) -> dict:
         isc1 = max([x["isc"] for x in strings] or [0])
         i_dc = 1.25 * isc1
         vmp_any = max([x["vmp_stc"] for x in strings] or [0])
-        voc_cold_max = max([x["voc_cold"] for x in strings] or [0])
+        known_voc_cold = [x["voc_cold"] for x in strings if x["voc_cold"] is not None]
+        voc_cold_max = max(known_voc_cold) if known_voc_cold else None
         p_ds = None
         for sct in SECTIONS[1:]:
             if iz(sct, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True) >= i_dc and (not dL or vdrop_dc(isc1, dL, sct, dmat, vmp_any) <= 1):
@@ -218,7 +231,8 @@ def check(cef: dict) -> dict:
 
         out_inv.append({"index": idx + 1, "tri": tri, "kwp": round(kwp, 3), "p_nom": p_nom, "p_max": p_max, "p_limit": p_lim,
                         "dc_ac_ratio": round(ratio, 2), "battery_kwh": round(b_kwh, 2), "strings": [{k2: (round(v, 1) if isinstance(v, float) else v) for k2, v in s.items()} for s in strings],
-                        "isc_mppt_max": round(isc_max, 1), "voc_cold_max": round(voc_cold_max, 0), "proposals": prop, "errors": e, "warnings": w})
+                        "isc_mppt_max": round(isc_max, 1), "voc_cold_max": round(voc_cold_max, 0) if voc_cold_max is not None else None,
+                        "proposals": prop, "errors": e, "warnings": w})
         errors += e; warnings += w
 
     for sid, users in shared_users.items():
