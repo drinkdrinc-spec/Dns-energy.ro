@@ -34,6 +34,16 @@ async def diu_ctx(user: dict, item_id: str):
     s, _ = await S.effective_settings(user["id"], effective_rec, base)
     prec = {k: v for k, v in prec.items() if not k.startswith(OWN)}
     merged = {**prec, **{k: v for k, v in rec.items() if v not in (None, "", [], {})}}
+    # Feed the selected, currently valid metrology instrument and authorized
+    # PRAM verifier into the DI-U PRAM templates (which read pram_m fields).
+    pm = dict(merged.get("pram_m") or {})
+    if s.get("meter_device"):
+        pm["instrument"] = " ".join(str(v) for v in (s.get("meter_device"), ("seria " + str(s.get("meter_serial"))) if s.get("meter_serial") else None) if v)
+    if s.get("meter_valid"):
+        pm["metrology_valid_until"] = s.get("meter_valid")
+    if s.get("measurer"):
+        pm["verifier"] = s.get("measurer")
+    merged["pram_m"] = pm
     for k in ("address", "county"):
         if not merged.get(k) and client.get(k):
             merged[k] = client[k]
