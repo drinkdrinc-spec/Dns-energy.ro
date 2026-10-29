@@ -5,7 +5,7 @@ import { F } from "@/components/cef/F";
 import { Plus, Pencil, Trash2, Upload, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 
-const CATS = ["Invertor", "Panou", "Baterie", "Smart meter"];
+const CATS = ["Invertor", "Panou", "Baterie", "Smart meter", "Contor", "Transformator de curent (CT)", "MCB/Întreruptor", "RCD/RCCB", "RCBO", "AFDD", "SPD AC", "SPD DC", "Siguranță gPV", "Separator", "Contactor", "Cablu", "Tablou electric", "Releu monitorizare", "Accesoriu"];
 const FIELDS = {
   Invertor: [["type", "Tip", ["Hibrid", "On-grid", "Invertor de baterie (AC)"]], ["phases", "Faze", ["Trifazat", "Monofazat"]], ["p_nom_kw", "Pn (kW)"], ["p_max_kw", "Pmax (kW)"], ["red_limit_mode", "Limitare putere în RED", ["Nu este declarată", "Limitare putere evacuată", "Zero export"]],
     ["vdc_max", "Udc max (V)"], ["mppt_min", "MPPT min (V)"], ["mppt_max", "MPPT max (V)"], ["mppt_count", "Nr. MPPT"], ["imax_mppt", "Imax / MPPT (A)"], ["battery_voltage", "Tensiune baterie compatibilă", null, "text"]],
@@ -13,7 +13,9 @@ const FIELDS = {
   Baterie: [["kwh", "kWh / modul"], ["ah", "Ah"], ["voltage", "Tensiune (V)"], ["tech", "Tehnologie", ["LV", "HV"]], ["coupling", "Cuplare", ["DC", "AC"]]],
   "Smart meter": [["phases", "Faze", ["Trifazat", "Monofazat"]]],
 };
-const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || ""} · ${i.type || ""}` : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V` : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.voltage ?? "—"} V` : i.phases || "";
+const COMMON_FIELDS = [["rated_current_a", "Curent nominal (A)"], ["rated_voltage_v", "Tensiune nominală (V)"], ["breaking_capacity_ka", "Capacitate de rupere (kA)"], ["poles", "Poli", ["1P", "1P+N", "2P", "3P", "3P+N", "4P"]], ["cross_section_mm2", "Secțiune (mm²)"], ["manufacturer_code", "Cod producător", null, "text"]];
+const PROVENANCE_FIELDS = [["source_url", "URL sursă oficială", null, "text"], ["datasheet_version", "Versiune/revizie document", null, "text"], ["verified_at", "Data verificării (AAAA-LL-ZZ)", null, "text"], ["verification_status", "Stare verificare", ["Neverificat", "Incomplet", "Verificat"]]];
+const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || ""} · ${i.type || ""}` : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V` : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.voltage ?? "—"} V` : [i.rated_current_a != null ? `${i.rated_current_a} A` : null, i.rated_voltage_v != null ? `${i.rated_voltage_v} V` : null, i.breaking_capacity_ka != null ? `${i.breaking_capacity_ka} kA` : null, i.cross_section_mm2 != null ? `${i.cross_section_mm2} mm²` : null].filter(Boolean).join(" · ") || i.phases || "Parametri de completat";
 
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
@@ -47,9 +49,10 @@ export default function EquipmentCatalog() {
   const rows = useMemo(() => items.filter((i) => i.category === cat && (!q || i.brand_model?.toLowerCase().includes(q.toLowerCase()))), [items, cat, q]);
 
   const save = async () => {
-    if (!form.brand_model) return toast.error("Completează marca și modelul");
+    if (!form.brand_model?.trim()) return toast.error("Completează producătorul și codul exact de model");
     const { id, ...rest } = form;
-    if (id) await api.put(`/data/catalog/${id}`, rest); else await api.post("/data/catalog", { ...rest, category: cat });
+    const payload = { ...rest, category: form.category || cat, verification_status: form.verification_status || "Neverificat" };
+    if (id) await api.put(`/data/catalog/${id}`, payload); else await api.post("/data/catalog", payload);
     toast.success("Salvat"); setForm(null); load();
   };
   const remove = async (id) => { if (!window.confirm("Ștergi modelul din catalog?")) return; await api.delete(`/data/catalog/${id}`); load(); };
@@ -58,7 +61,7 @@ export default function EquipmentCatalog() {
     <div>
       <PageHeader eyebrow="Bibliotecă echipamente" title="Catalog echipamente"
         sub="Modele cu date electrice, fișe tehnice și declarații de conformitate, reutilizate în configurarea CEF și în dosarele clienților."
-        action={<Btn onClick={() => setForm(form ? null : { category: cat })} data-testid="catalog-add-btn">{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> Model nou</>}</Btn>} />
+        action={<Btn onClick={() => setForm(form ? null : { category: cat, verification_status: "Neverificat" })} data-testid="catalog-add-btn">{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> Model nou</>}</Btn>} />
       <div className="flex flex-wrap gap-2 mb-4">
         {CATS.map((c) => <button key={c} onClick={() => { setCat(c); setForm(null); }} data-testid={`catalog-tab-${c}`}
           className="rounded-full px-4 py-2 text-[12px] font-bold border transition-colors" style={c === cat ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>{c}</button>)}
@@ -68,8 +71,8 @@ export default function EquipmentCatalog() {
           <h2 className="text-lg font-bold mb-4">{form.id ? "Editează modelul" : `Model nou — ${cat}`}</h2>
           <div className="grid sm:grid-cols-3 gap-3">
             <F label="Marcă și model *" value={form.brand_model} onChange={(v) => setForm({ ...form, brand_model: v })} testid="cat-field-brand_model" className="sm:col-span-2" />
-            {FIELDS[form.category || cat].map(([k, l, opts, t]) => <F key={k} label={l} value={form[k]} options={opts || undefined} type={opts ? undefined : (t || "number")} onChange={(v) => setForm({ ...form, [k]: v })} testid={`cat-field-${k}`} />)}
-            <F label="Observații" value={form.notes} onChange={(v) => setForm({ ...form, notes: v })} testid="cat-field-notes" className="sm:col-span-3" />
+            {(FIELDS[form.category || cat] || COMMON_FIELDS).map(([k, l, opts, t]) => <F key={k} label={l} value={form[k]} options={opts || undefined} type={opts ? undefined : (t || "number")} onChange={(v) => setForm({ ...form, [k]: v })} testid={`cat-field-${k}`} />)}
+            <div className="sm:col-span-3 border-t pt-4 mt-2" style={{ borderColor: "var(--line)" }}><h3 className="font-bold text-sm mb-2">Sursa și verificarea datelor</h3><p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Folosește documentația producătorului pentru codul exact. Nu marca modelul ca verificat dacă sursa nu confirmă valorile.</p><div className="grid sm:grid-cols-2 gap-3">{PROVENANCE_FIELDS.map(([k, l, opts, t]) => <F key={k} label={l} value={form[k]} options={opts || undefined} type={opts ? undefined : (t || "text")} onChange={(v) => setForm({ ...form, [k]: v })} testid={`cat-field-${k}`} />)}</div></div><F label="Observații / limitări documentate" value={form.notes} onChange={(v) => setForm({ ...form, notes: v })} testid="cat-field-notes" className="sm:col-span-3" />
           </div>
           <div className="flex gap-2 mt-5"><Btn onClick={save} data-testid="catalog-save-btn">Salvează</Btn><Btn variant="secondary" onClick={() => setForm(null)}>Anulează</Btn></div>
           {!form.id && <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>După salvare poți încărca fișa tehnică și declarația de conformitate din listă.</p>}
@@ -88,7 +91,7 @@ export default function EquipmentCatalog() {
             <tbody>
               {rows.map((i) => (
                 <tr key={i.id} className="border-t" style={{ borderColor: "var(--line)" }} data-testid={`catalog-row-${i.id}`}>
-                  <td className="px-3 py-3 font-bold">{i.brand_model}{i.notes && <div className="text-[11px] font-normal" style={{ color: "var(--muted)" }}>{i.notes}</div>}</td>
+                  <td className="px-3 py-3 font-bold">{i.brand_model}{i.notes && <div className="text-[11px] font-normal" style={{ color: "var(--muted)" }}>{i.notes}</div>}<div className="mt-1 text-[10px] font-semibold" style={{ color: i.verification_status === "Verificat" ? "#17663a" : i.verification_status === "Incomplet" ? "#8a5b00" : "#777" }}>{i.verification_status || "Neverificat"}</div>{i.source_url && <a href={i.source_url} target="_blank" rel="noopener noreferrer" className="text-[11px] inline-block mt-1" style={{ color: "var(--blue)" }}>Sursă oficială ↗</a>}{i.datasheet_version && <div className="text-[10px] font-normal" style={{ color: "var(--muted)" }}>Revizie: {i.datasheet_version}</div>}</td>
                   <td className="px-3 py-3 whitespace-nowrap">{spec(i)}</td>
                   <td className="px-3 py-3"><div className="flex flex-col gap-1">
                     <DocSlot item={i} k="datasheet" label="Fișă tehnică" onUploaded={load} />
