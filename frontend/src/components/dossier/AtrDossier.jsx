@@ -42,7 +42,7 @@ export function AtrDossier({ id, form, setVal }) {
   const recs = form.receptors || [];
   const prod = String(form.kind || "").includes("producere");
   const isNew = !form.request_type || String(form.request_type).startsWith("utilizator nou");
-  const need = DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && !isNew)).map(([k]) => k);
+  const need = DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && !isNew) || (r === "gdpr" && operatorSource?.id === "deer")).map(([k]) => k);
   const has = (k) => (att[k] || []).length > 0 || (!!form.pros_id && prod && AUTO[k]);
   const missing = need.filter((k) => !has(k));
   const setR = (i, k, v) => setVal("receptors", recs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
