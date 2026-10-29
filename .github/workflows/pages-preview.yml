@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - deployment-prep
+      - dns-energy-mobile-dashboard
   workflow_dispatch:
 
 permissions:
