@@ -51,11 +51,24 @@ export const MODULES = {
       { key: "number", label: "Nr. dosar" }, { key: "client_name", label: "Beneficiar" },
       { key: "power", label: "Putere PV (kW)" }, { key: "operator", label: "Operator" }, { key: "status", label: "Stadiu" },
     ],
+    // Checklist arranged in the order the dossier is usually assembled.
+    // The exact required set depends on the selected operator, connection case and current official forms.
     checklist: [
-      "Cerere de racordare (prosumator)", "Act de identitate / documente firmă", "Act de proprietate / folosință",
-      "Certificat de racordare / ATR", "Fișa tehnică invertor (cu funcție anti-insularizare)", "Fișe tehnice panouri fotovoltaice",
-      "Certificat de conformitate invertor (NTS / rețea)", "Schema monofilară a instalației PV", "Proiect tehnic / documentație execuție",
-      "Buletin de verificare PRAM", "Convenție de consum / contract furnizare", "Proces-verbal recepție / punere în funcțiune",
+      "01 · Cerere de racordare / notificare aplicabilă operatorului",
+      "02 · Act de identitate (persoană fizică) / documente firmă (persoană juridică)",
+      "03 · Act de proprietate / drept de folosință asupra locului de consum",
+      "04 · Împuternicire, dacă dosarul este depus prin reprezentant",
+      "05 · Notă de informare privind prelucrarea datelor personale — DEER, pentru persoane fizice, dacă este solicitată",
+      "06 · ATR / certificat de racordare existent, după caz",
+      "07 · Proiect tehnic / documentație de execuție",
+      "08 · Schema monofilară a instalației de producere și racordare",
+      "09 · Fișe tehnice panouri fotovoltaice",
+      "10 · Fișe tehnice și certificate de conformitate pentru invertor(e)",
+      "11 · Fișe tehnice baterie / BESS și documente BMS, dacă există",
+      "12 · Documente și setări pentru protecția anti-insularizare, conform invertorului și cerințelor OD",
+      "13 · Buletin de verificare PRAM",
+      "14 · Proces-verbal de recepție / punere în funcțiune, după caz",
+      "15 · Convenție de consum / contract de furnizare, dacă este solicitat",
     ],
     fields: [
       { name: "number", label: "Număr dosar intern", type: "text", placeholder: "PROS-2026-001" },
