@@ -22,8 +22,18 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-app = FastAPI()
+PRIVATE_MODE = os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
+app = FastAPI(
+    docs_url=None if PRIVATE_MODE else "/docs",
+    redoc_url=None if PRIVATE_MODE else "/redoc",
+    openapi_url=None if PRIVATE_MODE else "/openapi.json",
+)
 api_router = APIRouter(prefix="/api")
+
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    return {"status": "ok"}
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("d-energy")
