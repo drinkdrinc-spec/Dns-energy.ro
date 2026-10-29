@@ -66,15 +66,16 @@ export function AtrDossier({ id, form, setVal }) {
         <div className="mt-2" style={{ color: "var(--muted)" }}>PDF-ul generat de DNS Energy este un model completat pentru lucru și verificare; nu este garantat ca reproducere identică a formularului oficial curent.</div>
       </div>}
       {operatorSource?.id === "deer" && <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--line)" }} data-testid="atr-annex-selector">
-        <div className="font-bold mb-2">Anexă oficială pentru DEER</div>
-        <label className="block text-xs font-semibold mb-1" htmlFor="atr-annex-choice">Selectează formularul cerut de operator</label>
+        <div className="font-bold mb-1">Anexă pentru dosarul existent — DEER</div>
+        <div className="text-xs mb-3" style={{ color: "var(--muted)" }}>Schimbi numai anexa. Datele clientului, echipamentele, documentele încărcate și restul dosarului se păstrează.</div>
+        <label className="block text-xs font-semibold mb-1" htmlFor="atr-annex-choice">Anexa cerută de operator</label>
         <select id="atr-annex-choice" className="den-input w-full" value={annexChoice} onChange={(e) => setVal("annex_choice", e.target.value)}>
           <option value="anexa2">Anexa 2 — Notificare loc de consum existent</option>
-          <option value="anexa1">Anexa 1 — Cerere loc de consum existent cu spor de putere</option>
+          <option value="anexa1">Anexa 1 — Cerere pentru loc existent cu spor de putere</option>
         </select>
         <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>{annexInfo.note}</div>
         <a href={annexInfo.url} target="_blank" rel="noopener noreferrer" className="inline-flex underline font-semibold text-sm mt-2">Deschide formularul oficial selectat ↗</a>
-        <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Schimbarea selecției actualizează alegerea din dosar. Înainte de depunere, confirmă cu OD că anexa selectată este cea aplicabilă; simpla schimbare a selecției nu înseamnă că documentul oficial a fost completat automat.</div>
+        <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Alegerea se salvează în datele cererii când salvezi dosarul. Formularul oficial trebuie completat cu datele existente înainte de export; confirmă cu OD ce anexă se aplică.</div>
       </div>}
       <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (peste 27 kW)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
