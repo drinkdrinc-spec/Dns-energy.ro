@@ -216,7 +216,13 @@ def pub_user(u: dict) -> dict:
 
 @api_router.post("/auth/register")
 async def register(body: RegisterReq, request: Request):
+    # Private test mode: only permit one-time bootstrap for the configured admin email.
+    # Once any platform admin exists, public self-registration is permanently closed.
     email = body.email.lower()
+    configured_admin = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    existing_admin = await db.users.find_one({"role": "admin", "tenant": {"$in": [None, ""]}})
+    if not configured_admin or email != configured_admin or existing_admin:
+        raise HTTPException(status_code=403, detail="Înregistrarea publică este dezactivată. Accesul este permis numai administratorului DNS Energy.")
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email deja înregistrat")
     if len(body.password or "") < 8:
