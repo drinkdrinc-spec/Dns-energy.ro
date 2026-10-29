@@ -30,7 +30,7 @@ export function AtrDossier({ id, form, setVal }) {
       .then((r) => setOfficialForms(r.data || []))
       .catch(() => setOfficialForms([]));
   }, [form.operator]);
-  const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || "")); 
+  const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
   const att = form.attachments || {};
   const recs = form.receptors || [];
   const prod = String(form.kind || "").includes("producere");
