@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages-preview
@@ -45,14 +43,3 @@ jobs:
           path: frontend/build
           if-no-files-found: error
           retention-days: 7
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: frontend/build
-      - name: Deploy preview
-        id: deployment
-        uses: actions/deploy-pages@v4
