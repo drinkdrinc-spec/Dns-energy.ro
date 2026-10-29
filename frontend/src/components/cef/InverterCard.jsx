@@ -25,14 +25,15 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
         <button onClick={remove} className="p-1.5 rounded hover:bg-[#fff0f0]" data-testid={`${t}-remove`} title="Elimină invertorul"><Trash2 size={15} style={{ color: "#b33333" }} /></button>
       </div>
       <div className="grid sm:grid-cols-4 gap-3">
-        <CatalogPick items={catalog} category="Invertor" testid={`${t}-pick`} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt })} />
+        <CatalogPick items={catalog} category="Invertor" testid={`${t}-pick`} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, red_limit_mode: it.red_limit_mode || "Nu este declarată" })} />
         <F label="Marcă și model" value={inv.brand_model} onChange={s("brand_model")} testid={`${t}-model`} className="sm:col-span-2" />
         <F label="Tip" value={inv.type} onChange={s("type")} options={["Hibrid", "On-grid", "Invertor de baterie (AC)"]} testid={`${t}-type`} />
         <F label="Faze" value={inv.phases} onChange={s("phases")} options={["Trifazat", "Monofazat"]} testid={`${t}-phases`} />
         {inv.phases === "Monofazat" && <F label="Faza de racord" value={inv.phase} onChange={s("phase")} options={["L1", "L2", "L3"]} testid={`${t}-phase`} />}
         <F label="Putere nominală (kW)" type="number" value={inv.p_nom_kw} onChange={s("p_nom_kw")} testid={`${t}-pnom`} />
         <F label="Putere maximă (kW)" type="number" value={inv.p_max_kw} onChange={s("p_max_kw")} testid={`${t}-pmax`} />
-        <F label="Limitare configurată (kW)" type="number" value={inv.p_limit_kw} onChange={s("p_limit_kw")} testid={`${t}-plim`} />
+        <F label="Limitare putere în RED" value={inv.red_limit_mode || "Nu este declarată"} onChange={s("red_limit_mode")} options={["Nu este declarată", "Limitare putere evacuată", "Zero export"]} testid={`${t}-red-limit-mode`} />
+        <F label="Pmax evacuată în RED (kW)" type="number" value={inv.p_limit_kw} onChange={s("p_limit_kw")} testid={`${t}-plim`} />
         <F label="Udc max (V)" type="number" value={inv.vdc_max} onChange={s("vdc_max")} testid={`${t}-vdc`} />
         <F label="MPPT min (V)" type="number" value={inv.mppt_min} onChange={s("mppt_min")} testid={`${t}-mpptmin`} />
         <F label="MPPT max (V)" type="number" value={inv.mppt_max} onChange={s("mppt_max")} testid={`${t}-mpptmax`} />
