@@ -11,6 +11,12 @@ const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schi
   ["ac", "Autorizație de construire", ""], ["puz", "PUZ / PUD (dacă e cerut prin CU)", ""], ["acord", "Acord notarial proprietar (dacă nu e proprietar)", ""],
   ["imp", "Împuternicire reprezentant / proiectant", ""], ["memoriu", "Memoriu tehnic — date tehnice și energetice", ""],
   ["schema", "Schemă monofilară instalație de producere + racordare", "prod"], ["fise", "Fișe tehnice / certificate invertoare", "prod"], ["atr_prev", "ATR / certificat de racordare anterior", "spor"]];
+const OFFICIAL_SOURCES = [
+  { id: "deer", match: /deer|distribuție energie electrică|distributie energie electrica/i, name: "DEER — formulare și documente de racordare", docs: "https://www.distributie-energie.ro/racordare-la-retea-2/", portal: "https://avize.distributie-energie.ro/" },
+  { id: "delgaz", match: /delgaz/i, name: "Delgaz Grid — documente pentru prosumatori", docs: "https://delgaz.ro/energie-electrica/prosumatori", portal: "https://delgaz.ro/" },
+  { id: "oltenia", match: /oltenia|deo connect|distribuție oltenia|distributie oltenia/i, name: "Distribuție Oltenia — formulare pentru prosumatori", docs: "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html", portal: "https://portal.distributieoltenia.ro/" },
+  { id: "rer", match: /rețele electrice|retele electrice|e-distribu/i, name: "Rețele Electrice România — cereri și documente", docs: "https://www.reteleelectrice.ro/cereri-documente/", portal: "https://www.reteleelectrice.ro/" },
+];
 const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
 const pdf = (id, full) => `${API}/atr/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
 
@@ -24,6 +30,7 @@ export function AtrDossier({ id, form, setVal }) {
       .then((r) => setOfficialForms(r.data || []))
       .catch(() => setOfficialForms([]));
   }, [form.operator]);
+  const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || "")); 
   const att = form.attachments || {};
   const recs = form.receptors || [];
   const prod = String(form.kind || "").includes("producere");
@@ -35,6 +42,14 @@ export function AtrDossier({ id, form, setVal }) {
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="atr-dossier">
       <FormAlert operator={form.operator} scope="atr" />
+      {form.operator && operatorSource && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-official-source-links">
+        <div className="font-bold mb-2">Surse oficiale pentru formulare și documente — {form.operator}</div>
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          <a href={operatorSource.docs} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Deschide formularele și lista documentelor <span aria-hidden="true">↗</span></a>
+          <a href={operatorSource.portal} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Deschide portalul operatorului <span aria-hidden="true">↗</span></a>
+        </div>
+        <div className="mt-2" style={{ color: "var(--muted)" }}>Linkuri către surse oficiale. Formularul aplicabil se alege în funcție de locul nou/existent, spor de putere și situația prosumatorului.</div>
+      </div>}
       {form.operator && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-official-forms">
         <div className="font-bold mb-1">Formulare oficiale înregistrate pentru distribuitor</div>
         {officialForms.length ? officialForms.map((f) => <div key={f.id} className="mt-1">
