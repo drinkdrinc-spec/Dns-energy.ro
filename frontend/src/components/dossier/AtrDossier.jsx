@@ -17,6 +17,10 @@ const OFFICIAL_SOURCES = [
   { id: "oltenia", match: /oltenia|deo connect|distribuție oltenia|distributie oltenia/i, name: "Distribuție Oltenia — formulare pentru prosumatori", docs: "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html", portal: "https://portal.distributieoltenia.ro/" },
   { id: "rer", match: /rețele electrice|retele electrice|e-distribu/i, name: "Rețele Electrice România — cereri și documente", docs: "https://www.reteleelectrice.ro/cereri-documente/", portal: "https://www.reteleelectrice.ro/" },
 ];
+const DEER_ANNEXES = {
+  anexa1: { title: "Cerere — loc de consum existent cu spor de putere (Anexa 1)", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/Cerere-loc-de-consum-existent-Spor-de-Putere-Anexa-nr-1.docx", note: "Se selectează când OD solicită procedura de spor de putere; verifică formularul curent și indicațiile OD." },
+  anexa2: { title: "Notificare — loc de consum existent (Anexa 2)", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx", note: "Se folosește numai dacă situația și cerințele OD permit notificarea pentru loc existent, fără procedură de spor de putere." },
+};
 const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
 const pdf = (id, full) => `${API}/atr/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
 
@@ -31,6 +35,8 @@ export function AtrDossier({ id, form, setVal }) {
       .catch(() => setOfficialForms([]));
   }, [form.operator]);
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
+  const annexChoice = form.annex_choice || (String(form.request_type || "").toLowerCase().includes("spor") ? "anexa1" : "anexa2");
+  const annexInfo = DEER_ANNEXES[annexChoice];
   const att = form.attachments || {};
   const recs = form.receptors || [];
   const prod = String(form.kind || "").includes("producere");
@@ -58,6 +64,17 @@ export function AtrDossier({ id, form, setVal }) {
           {f.status ? ` · ${f.status}` : ""}
         </div>) : <div style={{ color: "var(--muted)" }}>Nu există încă un link ATR înregistrat pentru acest operator. Verificați formularul pe site-ul oficial înainte de depunere.</div>}
         <div className="mt-2" style={{ color: "var(--muted)" }}>PDF-ul generat de DNS Energy este un model completat pentru lucru și verificare; nu este garantat ca reproducere identică a formularului oficial curent.</div>
+      </div>}
+      {operatorSource?.id === "deer" && <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--line)" }} data-testid="atr-annex-selector">
+        <div className="font-bold mb-2">Anexă oficială pentru DEER</div>
+        <label className="block text-xs font-semibold mb-1" htmlFor="atr-annex-choice">Selectează formularul cerut de operator</label>
+        <select id="atr-annex-choice" className="den-input w-full" value={annexChoice} onChange={(e) => setVal("annex_choice", e.target.value)}>
+          <option value="anexa2">Anexa 2 — Notificare loc de consum existent</option>
+          <option value="anexa1">Anexa 1 — Cerere loc de consum existent cu spor de putere</option>
+        </select>
+        <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>{annexInfo.note}</div>
+        <a href={annexInfo.url} target="_blank" rel="noopener noreferrer" className="inline-flex underline font-semibold text-sm mt-2">Deschide formularul oficial selectat ↗</a>
+        <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Schimbarea selecției actualizează alegerea din dosar. Înainte de depunere, confirmă cu OD că anexa selectată este cea aplicabilă; simpla schimbare a selecției nu înseamnă că documentul oficial a fost completat automat.</div>
       </div>}
       <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (peste 27 kW)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
