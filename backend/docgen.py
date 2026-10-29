@@ -261,7 +261,14 @@ def doc_notificare(ctx):
         pi, pm = num(inv.get("p_nom_kw")), num(inv.get("p_limit_kw")) or num(inv.get("p_max_kw")) or num(inv.get("p_nom_kw"))
         tpi += pi; tpm += pm
         un = "400" if "mono" not in str(inv.get("phases") or ("Trifazat" if tri else "Monofazat")).lower() else "230"
-        rows.append([str(i + 1), "1", escape(inv.get("brand_model") or ""), un, f"{pi:.2f}" if pi else "", f"{pm:.2f}" if pm else "", "", ""])
+        limit_mode = str(inv.get("red_limit_mode") or inv.get("limit_red_mode") or "").strip().lower()
+        if limit_mode in ("limitare putere evacuată", "limitare putere evacuata", "limitare putere activă", "limitare putere activa", "limitare"):
+            obs = f"Limitare putere în RED activată; Pmax evacuată configurată: {pm:.2f} kW, conform configurației tehnice." if pm else "Limitare putere în RED selectată; Pmax evacuată trebuie verificată din configurația tehnică."
+        elif limit_mode in ("zero export", "limitare la zero export", "zero-export"):
+            obs = "Limitare putere în RED: zero export; setarea trebuie verificată conform configurației tehnice."
+        else:
+            obs = "Limitarea puterii în RED nu este declarată; verificați configurația și cerințele OD."
+        rows.append([str(i + 1), "1", escape(inv.get("brand_model") or ""), un, f"{pi:.2f}" if pi else "", f"{pm:.2f}" if pm else "", "", escape(obs)])
     rows.append(["TOTAL:", str(len(invs)) if invs else "", "", "", f"{tpi:.2f}" if tpi else "", f"{tpm:.2f}" if tpm else "", f"{tk:.2f}" if tk else "", ""])
     out += [B("table", rows, [12, 16, 34, 20, 20, 26, 30, 16], True),
             B("small", "NOTĂ:<br/>U.G. = unitate generatoare; panou = panou fotovoltaic; As - asincron; S - sincron; T - termo; H - hidro; E - eolian; "
