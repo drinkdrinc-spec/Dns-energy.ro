@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { api, API, formatApiErrorDetail } from "@/lib/api";
+import { api, formatApiErrorDetail } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { PencilLine, RefreshCw } from "lucide-react";
 
@@ -10,8 +10,30 @@ export function SldEditor({ id, onSaved }) {
   const [ver, setVer] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
   const load = () => api.get(`/sld/${id}/values`).then((r) => { setD(r.data); setVals({}); });
-  useEffect(() => { let live = true; api.get(`/sld/${id}/values`).then((r) => { if (live) setD(r.data); }); return () => { live = false; }; }, [id]);
+  useEffect(() => {
+    let live = true;
+    api.get(`/sld/${id}/values`).then((r) => { if (live) setD(r.data); });
+    return () => { live = false; };
+  }, [id]);
+  useEffect(() => {
+    let live = true;
+    let objectUrl = "";
+    api.get(`/sld/${id}/pdf?v=${ver}`, { responseType: "blob" })
+      .then(({ data }) => {
+        if (!live) return;
+        objectUrl = URL.createObjectURL(data);
+        setPreviewUrl(objectUrl);
+      })
+      .catch((e) => {
+        if (live) toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Nu s-a putut încărca previzualizarea PDF");
+      });
+    return () => {
+      live = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [id, ver]);
   if (!d) return null;
   const save = async () => {
     setBusy(true);
@@ -55,7 +77,7 @@ export function SldEditor({ id, onSaved }) {
         })}
         <Btn type="button" onClick={save} disabled={busy || !n} data-testid="sld-values-save"><RefreshCw size={14} />{busy ? "Se aplică…" : `Aplică ${n || ""} modificări și previzualizează`}</Btn>
       </div>
-      <iframe title="Previzualizare schemă" src={`${API}/sld/${id}/pdf?auth=${localStorage.getItem("den_token")}&v=${ver}`} className="w-full h-[640px] rounded-xl border" style={{ borderColor: "var(--line)" }} data-testid="sld-preview-frame" />
+      <iframe title="Previzualizare schemă" src={previewUrl || undefined} className="w-full h-[640px] rounded-xl border" style={{ borderColor: "var(--line)" }} data-testid="sld-preview-frame" />
     </div>
   );
 }
