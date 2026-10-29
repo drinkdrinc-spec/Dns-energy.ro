@@ -19,6 +19,8 @@ services:
         generateValue: true
       - key: ADMIN_EMAIL
         sync: false
+      - key: DNS_ENERGY_PRIVATE_MODE
+        value: "true"
       - key: ADMIN_PASSWORD
         sync: false
       - key: EMERGENT_LLM_KEY
