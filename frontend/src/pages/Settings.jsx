@@ -46,10 +46,10 @@ export default function Settings() {
         </div>
         <div className="mt-5 border-t pt-4" style={{ borderColor: "var(--line)" }}>
         <h3 className="font-bold text-sm mb-1">Documente firmă și semnare automată</h3>
-        <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Încarcă documentele reale. Aplicația nu inventează semnături; semnăturile grafice și ștampila se aplică doar dacă sunt încărcate și configurate.</p>
+        <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Încarcă fișierele reale o singură dată. Semnăturile persoanelor se gestionează la Personal și autorizări. Ștampila se aplică doar unde documentul și setările permit.</p>
         <div className="grid sm:grid-cols-2 gap-4">
-          <div className="den-field"><label>Atestat ANRE — fișier</label><input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={!loaded} onChange={(e) => uploadSettingFile("anre_file", e.target.files?.[0])} data-testid="set-anre-file" />{f.anre_file?.storage_path && <p className="text-xs mt-1"><FileCheck2 size={13} className="inline" /> Fișier încărcat: {f.anre_file.filename || "atestat ANRE"}</p>}</div>
-          <div className="den-field"><label>Ștampila firmei (imagine PNG/JPG)</label><input type="file" accept="image/png,image/jpeg" disabled={!loaded} onChange={(e) => uploadSettingFile("stamp", e.target.files?.[0])} data-testid="set-stamp-file" />{f.stamp?.storage_path && <p className="text-xs mt-1"><FileCheck2 size={13} className="inline" /> Ștampilă încărcată: {f.stamp.filename || "ștampilă"}</p>}</div>
+          <div className="den-field"><label>Atestat ANRE al firmei — fișier</label><input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={!loaded} onChange={(e) => uploadSettingFile("anre_file", e.target.files?.[0])} data-testid="set-anre-file" />{f.anre_file?.storage_path && <p className="text-xs mt-1"><FileCheck2 size={13} className="inline" /> Fișier încărcat: {f.anre_file.original_filename || f.anre_file.filename || "atestat ANRE"}</p>}</div>
+          <div className="den-field"><label>Ștampila firmei — imagine PNG/JPG</label><input type="file" accept="image/png,image/jpeg" disabled={!loaded} onChange={(e) => uploadSettingFile("stamp", e.target.files?.[0])} data-testid="set-stamp-file" />{f.stamp?.storage_path && <p className="text-xs mt-1"><FileCheck2 size={13} className="inline" /> Ștampilă încărcată: {f.stamp.original_filename || f.stamp.filename || "ștampilă"}</p>}</div>
         </div>
       </div>
       <div className="mt-6"><Btn onClick={save} disabled={!loaded} data-testid="save-settings"><Save size={15} /> Salvează setările</Btn></div>
