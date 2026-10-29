@@ -110,17 +110,24 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                            ("panel_vmp", "Vmp panou (V)"), ("panel_isc", "Isc panou (A)")]:
                 if o.need(f"cef.inverters.{i}.{k}", lbl, inv.get(k), T):
                     o.it(T, lbl, g(inv.get(k)), sp)
-            o.it(T, "Coeficient Voc (%/°C)", g(n(inv.get("panel_coef_voc"), -0.27)), sp if has(inv.get("panel_coef_voc")) else "de confirmat",
-                 note="" if has(inv.get("panel_coef_voc")) else "valoare implicită -0,27 %/°C — confirmați din fișa panoului")
+            o.it(T, "Coeficient Voc (%/°C)", g(inv.get("panel_coef_voc")), sp if has(inv.get("panel_coef_voc")) else "lipsă",
+                 note="" if has(inv.get("panel_coef_voc")) else "preluați valoarea din fișa tehnică oficială; nu se folosește o valoare implicită")
+            o.it(T, "Coeficient Vmp (%/°C)", g(inv.get("panel_coef_vmp")), sp if has(inv.get("panel_coef_vmp")) else "lipsă",
+                 note="" if has(inv.get("panel_coef_vmp")) else "preluați valoarea din fișa tehnică oficială; verificarea Vmp la cald rămâne neconfirmată")
             if not strings:
                 o.missing.append({"path": f"cef.inverters.{i}.strings", "label": f"{T} — configurația stringurilor"})
         vdc_max, mmin, mmax, imax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max")), n(inv.get("imax_mppt"))
         for k, s in enumerate(strings):
             o.it(T, f"String {k + 1} (MPPT {s['mppt']}) — {s['panels']} panouri", g(s["kwp"], " kWp"), "calculat", "P = Ns · Pmod")
-            o.it(T, f"String {k + 1} — Voc la {tmin:g}°C", g(s["voc_cold"], " V", 0), "calculat", "Voc,min = Ns·Voc·[1 + βVoc·(Tmin − 25)]",
-                 (s["voc_cold"] <= vdc_max) if vdc_max else None, f"≤ Udc max {vdc_max:g} V" if vdc_max else "")
-            o.it(T, f"String {k + 1} — Vmp la 70°C / STC", f"{s['vmp_hot']:.0f} / {s['vmp_stc']:.0f} V", "calculat", "Vmp,70 = Ns·Vmp·[1 + (βVoc−0,08%)·45]",
-                 (mmin <= s["vmp_hot"] and s["vmp_stc"] <= mmax) if (mmin and mmax) else None, f"în domeniul MPPT {mmin:g}–{mmax:g} V" if mmax else "")
+            o.it(T, f"String {k + 1} — Voc la {tmin:g}°C", g(s["voc_cold"], " V", 0), "calculat" if s["voc_cold"] is not None else "necalculat",
+                 "Voc,min = Ns·Voc·[1 + βVoc·(Tmin − 25)]",
+                 (s["voc_cold"] <= vdc_max) if (vdc_max and s["voc_cold"] is not None) else None,
+                 f"≤ Udc max {vdc_max:g} V" if vdc_max else "", "" if s["voc_cold"] is not None else "lipsește coeficientul Voc din fișa panoului")
+            vmp_hot_label = f"{s['vmp_hot']:.0f} / {s['vmp_stc']:.0f} V" if s["vmp_hot"] is not None else f"— / {s['vmp_stc']:.0f} V"
+            o.it(T, f"String {k + 1} — Vmp la 70°C / STC", vmp_hot_label, "calculat" if s["vmp_hot"] is not None else "necalculat",
+                 "Vmp,70 = Ns·Vmp·[1 + βVmp·(Tcell − 25)]",
+                 (mmin <= s["vmp_hot"] and s["vmp_stc"] <= mmax) if (mmin and mmax and s["vmp_hot"] is not None) else None,
+                 f"în domeniul MPPT {mmin:g}–{mmax:g} V" if mmax else "", "" if s["vmp_hot"] is not None else "lipsește coeficientul Vmp din fișa panoului")
         per = {}
         for s in strings:
             per.setdefault(s["mppt"], []).append(s)
