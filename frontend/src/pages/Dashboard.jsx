@@ -59,19 +59,19 @@ export default function Dashboard() {
           <h2 className="text-lg font-bold flex items-center gap-2"><SquareStack size={18} style={{ color: "var(--blue)" }} /> Module de lucru</h2>
           <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{ background: "#fff1d6", color: "#a65b00" }}>DNS Energy</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-3">
           {TILES.map((t) => (
             <Link key={t.to} to={t.to} data-testid={`tile-${t.to}`}
-              className="mobile-module-card group flex items-center gap-3 rounded-xl border p-4 sm:p-5 transition hover:shadow-md hover:-translate-y-0.5"
+              className="mobile-module-card group flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-3 rounded-xl border p-3 sm:p-5 min-w-0 transition hover:shadow-md hover:-translate-y-0.5"
               style={{ borderColor: "var(--line)" }}>
-              <div className="mobile-module-icon h-12 w-12 shrink-0 rounded-xl grid place-items-center" style={{ background: "#fff1d6" }}>
-                <t.icon size={22} style={{ color: "#e68a00" }} />
+              <div className="mobile-module-icon h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl grid place-items-center" style={{ background: "#fff1d6" }}>
+                <t.icon size={20} style={{ color: "#e68a00" }} />
               </div>
               <div className="min-w-0 flex-1">
                 <b className="block text-[14px] sm:text-[15px] leading-snug">{t.title}</b>
-                <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--muted)" }}>{t.desc}</p>
+                <p className="hidden sm:block text-[12px] mt-1 leading-relaxed" style={{ color: "var(--muted)" }}>{t.desc}</p>
               </div>
-              <span className="mobile-module-chevron text-xl" aria-hidden="true">›</span>
+              <span className="mobile-module-chevron text-xl hidden sm:inline self-center" aria-hidden="true">›</span>
             </Link>
           ))}
         </div>
