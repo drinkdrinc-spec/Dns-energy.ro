@@ -9,7 +9,8 @@ import { AtrTracking } from "@/components/dossier/AtrTracking";
 const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schiță de amplasament", "req"], ["cf", "Extras de carte funciară (CF / nr. cadastral)", "req"],
   ["prop", "Act de proprietate / drept de folosință", "req"], ["id", "Act de identitate / CUI / acte de funcționare", "req"], ["cu", "Certificat de urbanism", "new"],
   ["ac", "Autorizație de construire", ""], ["puz", "PUZ / PUD (dacă e cerut prin CU)", ""], ["acord", "Acord notarial proprietar (dacă nu e proprietar)", ""],
-  ["imp", "Împuternicire reprezentant / proiectant", ""], ["memoriu", "Memoriu tehnic — date tehnice și energetice", ""],
+  ["imp", "Împuternicire reprezentant / proiectant", ""], ["gdpr", "Notă DEER privind prelucrarea datelor personale (persoane fizice, după caz)", ""],
+  ["memoriu", "Memoriu tehnic — date tehnice și energetice", ""],
   ["schema", "Schemă monofilară instalație de producere + racordare", "prod"], ["fise", "Fișe tehnice / certificate invertoare", "prod"], ["atr_prev", "ATR / certificat de racordare anterior", "spor"]];
 const OFFICIAL_SOURCES = [
   { id: "deer", match: /deer|distribuție energie electrică|distributie energie electrica/i, name: "DEER — formulare și documente de racordare", docs: "https://www.distributie-energie.ro/racordare-la-retea-2/", portal: "https://avize.distributie-energie.ro/" },
@@ -48,6 +49,11 @@ export function AtrDossier({ id, form, setVal }) {
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="atr-dossier">
       <FormAlert operator={form.operator} scope="atr" />
+      {operatorSource?.id === "deer" && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-deer-gdpr">
+        <div className="font-bold mb-1">Document GDPR — DEER</div>
+        <p className="mb-2" style={{ color: "var(--muted)" }}>Pentru persoane fizice, include în dosar nota de informare privind prelucrarea datelor personale, conform listei curente DEER. Este o notă de informare oficială, nu un formular de consimțământ creat de DNS Energy.</p>
+        <a href="https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf" target="_blank" rel="noopener noreferrer" className="underline font-semibold">Deschide nota oficială DEER (PDF) ↗</a>
+      </div>}
       {form.operator && operatorSource && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-official-source-links">
         <div className="font-bold mb-2">Surse oficiale pentru formulare și documente — {form.operator}</div>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
