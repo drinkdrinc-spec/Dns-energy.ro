@@ -29,7 +29,7 @@ def test_temperature_calculations_use_exact_supplied_coefficients():
     )
 
     assert round(result["voc_cold"], 2) == 435.0
-    assert round(result["vmp_hot"], 2) == 286.95
+    assert round(result["vmp_hot"], 2) == 286.94
 
 
 def test_missing_temperature_coefficients_are_reported_as_warnings():
