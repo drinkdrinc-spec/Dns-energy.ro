@@ -136,7 +136,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             o.it(T, f"MPPT {m} — Isc total ({len(ss)} string)", g(isum, " A", 1), "calculat", "ΣIsc pe MPPT", (isum <= imax) if imax else None,
                  f"≤ Imax MPPT {imax:g} A" if imax else "")
         isc1 = max([s["isc"] for s in strings] or [0])
-        imp = n(inv.get("panel_w")) / n(inv.get("panel_vmp")) if n(inv.get("panel_vmp")) else 0
+        imp = n(inv.get("panel_imp")) or (n(inv.get("panel_w")) / n(inv.get("panel_vmp")) if n(inv.get("panel_vmp")) else 0)
         voc_max = r["voc_cold_max"]
         if strings:
             # DC cable
