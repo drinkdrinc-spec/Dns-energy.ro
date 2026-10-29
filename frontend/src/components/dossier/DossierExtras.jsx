@@ -45,7 +45,7 @@ export function DossierExtras({ form, setVal, compact = false }) {
             <input className="den-input py-1" placeholder="valoare" value={rg[k]?.val || ""} onChange={(e) => setR(k, "val", e.target.value)} data-testid={`reglaj-${k}-val`} />
             <input className="den-input py-1" placeholder="timp (s)" value={rg[k]?.t || ""} onChange={(e) => setR(k, "t", e.target.value)} data-testid={`reglaj-${k}-t`} /></div>
         ))}
-      </div>
+      </div>}
       {!compact && <div className="rounded-xl border p-4 bg-white lg:col-span-2" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2"><h4 className="font-bold text-sm">Teste și verificări PIF (Ord. ANRE 228/2018) — rezultate</h4>
           <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("tests", Object.fromEntries(TESTS.map((k) => [k, { ...(ts[k] || {}), ok: ts[k]?.ok || "DA" }])))} data-testid="tests-all-da">Marchează DA pe rândurile necompletate (doar dacă e confirmat de certificatul de tip)</button></div>
