@@ -18,7 +18,7 @@ const OFFICIAL_SOURCES = [
   { id: "rer", match: /rețele electrice|retele electrice|e-distribu/i, name: "Rețele Electrice România — cereri și documente", docs: "https://www.reteleelectrice.ro/cereri-documente/", portal: "https://www.reteleelectrice.ro/" },
 ];
 const DEER_ANNEXES = {
-  anexa1: { title: "Cerere — loc de consum existent cu spor de putere (Anexa 1)", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/Cerere-loc-de-consum-existent-Spor-de-Putere-Anexa-nr-1.docx", note: "Se selectează când OD solicită procedura de spor de putere; verifică formularul curent și indicațiile OD." },
+  anexa1: { title: "Cerere — loc de consum existent cu spor de putere (Anexa 1)", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/4.-Loc-consum-si_sau-producere-existent-Spor-Putere_Anexa-nr-1.docx", note: "Se selectează când OD solicită procedura de spor de putere; verifică formularul curent și indicațiile OD." },
   anexa2: { title: "Notificare — loc de consum existent (Anexa 2)", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx", note: "Se folosește numai dacă situația și cerințele OD permit notificarea pentru loc existent, fără procedură de spor de putere." },
 };
 const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
