@@ -76,9 +76,7 @@ export default function Login() {
           <Btn type="submit" data-testid="login-submit" className="w-full justify-center mt-4 min-h-12" disabled={loading}>
             {loading ? "Se verifică..." : reg ? "Trimite cererea de cont" : "Intră în cont"}
           </Btn>
-          <button type="button" className="text-xs font-bold mt-4 w-full" style={{ color: "var(--blue)" }} onClick={() => { setMode(reg ? "login" : "register"); setErr(""); }} data-testid="toggle-register">
-            {reg ? "Am deja cont — autentificare" : "Nu ai cont? Creează un cont nou"}</button>
-        {!reg && <p className="text-[11px] text-center mt-5" style={{color:"var(--muted)"}}>Acces securizat DNS Energy · Datele contului sunt protejate.</p>}
+          <p className="text-[11px] text-center mt-5" style={{color:"var(--muted)"}}>Acces privat de testare DNS Energy · Înregistrarea publică este dezactivată.</p>
         </form>
       </div>
     </div>
