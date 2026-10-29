@@ -1,32 +1,19 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo { animation: App-logo-spin infinite 20s linear; }
-}
-
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
-}
-
-.App-link { color: #61dafb; }
-
-@keyframes App-logo-spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
 /* DNS Energy: mobile-first document dashboard inspired by the supplied reference. */
 @media (max-width: 767px) {
+    .mobile-app-header {
+        background: #111214;
+        border-color: #303136 !important;
+        color: #f7f7f8;
+        min-height: 58px;
+    }
+
+    .mobile-app-header button {
+        color: #f59e0b;
+        padding: 7px;
+        border-radius: 10px;
+        touch-action: manipulation;
+    }
+
     .dns-dashboard {
         margin: -1rem -1rem 0;
         padding: 1rem;
@@ -89,10 +76,6 @@
         background: #242529 !important;
     }
 
-    .dns-dashboard .mobile-dashboard-recent .rounded-full {
-        white-space: nowrap;
-    }
-
-    .dns-dashboard a,
-    .dns-dashboard button { touch-action: manipulation; }
+    .dns-dashboard .mobile-dashboard-recent .rounded-full { white-space: nowrap; }
+    .dns-dashboard a, .dns-dashboard button { touch-action: manipulation; }
 }
