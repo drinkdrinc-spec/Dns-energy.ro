@@ -12,7 +12,7 @@ const ROLES = [["executant", "Reprezentant executant"], ["resp_tehnic", "Respons
 const status = (exp, file) => (!file ? "lipsă" : !exp ? "valabil" : exp < new Date().toISOString().slice(0, 10) ? "expirat" : "valabil");
 const eligible = (p) => (p.auths || []).some((a) => a.verified && status(a.expires, a.file) === "valabil");
 
-export function DossierExtras({ form, setVal }) {
+export function DossierExtras({ form, setVal, compact = false }) {
   const [staff, setStaff] = useState([]);
   const [inst, setInst] = useState([]);
   useEffect(() => { api.get("/data/staff").then((r) => setStaff(r.data)).catch(() => {}); api.get("/data/instruments").then((r) => setInst(r.data)).catch(() => {}); }, []);
@@ -37,7 +37,7 @@ export function DossierExtras({ form, setVal }) {
             {inst.map((i) => <option key={i.id} value={i.id} disabled={status(i.expires, i.file) !== "valabil"}>{i.maker_model} · seria {i.serial} · {i.cert_name} până la {i.expires || "—"}{status(i.expires, i.file) !== "valabil" ? " (expirat / lipsă)" : ""}</option>)}
           </select></div>
       </div>
-      <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
+      {!compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between mb-2"><h4 className="font-bold text-sm">Buletin reglaj — valori setate în invertor</h4>
           <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("reglaj", Object.fromEntries(REGLAJ.map(([k]) => [k, { val: TYPICAL[k][0], t: TYPICAL[k][1] }])))} data-testid="reglaj-typical">Preia valorile tip Ord. ANRE 132/2020 (verifică în invertor)</button></div>
         {REGLAJ.map(([k, l]) => (
@@ -46,7 +46,7 @@ export function DossierExtras({ form, setVal }) {
             <input className="den-input py-1" placeholder="timp (s)" value={rg[k]?.t || ""} onChange={(e) => setR(k, "t", e.target.value)} data-testid={`reglaj-${k}-t`} /></div>
         ))}
       </div>
-      <div className="rounded-xl border p-4 bg-white lg:col-span-2" style={{ borderColor: "var(--line)" }}>
+      {!compact && <div className="rounded-xl border p-4 bg-white lg:col-span-2" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2"><h4 className="font-bold text-sm">Teste și verificări PIF (Ord. ANRE 228/2018) — rezultate</h4>
           <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("tests", Object.fromEntries(TESTS.map((k) => [k, { ...(ts[k] || {}), ok: ts[k]?.ok || "DA" }])))} data-testid="tests-all-da">Marchează DA pe rândurile necompletate (doar dacă e confirmat de certificatul de tip)</button></div>
         <div className="grid sm:grid-cols-3 gap-2">
@@ -56,7 +56,7 @@ export function DossierExtras({ form, setVal }) {
               <input className="den-input py-1" placeholder="observații / valori" value={ts[k]?.obs || ""} onChange={(e) => setT(k, "obs", e.target.value)} data-testid={`test-${k}-obs`} /></div>
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
