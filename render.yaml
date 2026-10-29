@@ -21,6 +21,8 @@ services:
         sync: false
       - key: DNS_ENERGY_PRIVATE_MODE
         value: "true"
+      - key: CORS_ORIGINS
+        value: https://dns-energy-web.onrender.com
       - key: ADMIN_PASSWORD
         sync: false
       - key: EMERGENT_LLM_KEY
