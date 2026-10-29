@@ -1861,10 +1861,14 @@ import operator_routes  # noqa: E402
 import anre_routes  # noqa: E402
 import anre_templates  # noqa: E402
 app.include_router(api_router)
+# Restrict browser access to explicitly configured frontend origins.
+# Comma-separated list, e.g. https://dns-energy-web.onrender.com
+_cors_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+_cors_origins = [origin.strip().rstrip("/") for origin in _cors_raw.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=False,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
