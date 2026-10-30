@@ -34,7 +34,7 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
     if not key or ".." in key.split("/"):
         raise ValueError("Invalid object key")
     response = _client().put_object(Bucket=_bucket(), Key=key, Body=data, ContentType=content_type)
-    return {"key": key, "etag": response.get("ETag", "").strip('"'), "bucket": _bucket()}
+    return {"path": key, "key": key, "etag": response.get("ETag", "").strip('"'), "bucket": _bucket()}
 
 
 def get_object(path: str):
@@ -43,6 +43,12 @@ def get_object(path: str):
         raise ValueError("Invalid object key")
     response = _client().get_object(Bucket=_bucket(), Key=key)
     return response["Body"].read(), response.get("ContentType", "application/octet-stream")
+
+
+def init_storage(force: bool = False) -> str:
+    """Validate R2 configuration and connectivity during application startup."""
+    healthcheck()
+    return _bucket()
 
 
 def healthcheck() -> bool:
