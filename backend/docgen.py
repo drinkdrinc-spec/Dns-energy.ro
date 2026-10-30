@@ -173,6 +173,21 @@ def B(kind, *a):
     return (kind, *a)
 
 
+def dedupe_reception_signatures(doc_key, blocks):
+    """Keep exactly one signature block in the reception PV."""
+    if doc_key != "pv_receptie":
+        return blocks
+    seen = False
+    unique = []
+    for block in blocks:
+        if isinstance(block, (list, tuple)) and block and block[0] == "sign":
+            if seen:
+                continue
+            seen = True
+        unique.append(block)
+    return unique
+
+
 def hdr():
     return [B("hdr")]
 
