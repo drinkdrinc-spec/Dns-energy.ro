@@ -149,10 +149,22 @@ def check_inverters(user: dict, d: dict):
                             "Dosarul nu poate fi salvat sau finalizat — treceți la abonamentul PRO sau FULL pentru dosare cu mai multe invertoare.")
 
 # ---------------- Object storage ----------------
+# R2 is selected only when all required settings are present. Until then the
+# existing Emergent storage remains the default, preserving the live app.
+from object_storage import CloudflareR2Storage
+
+APP_NAME = "d-energy"
+R2_ENABLED = bool(
+    os.environ.get("R2_ACCOUNT_ID")
+    and os.environ.get("R2_ACCESS_KEY_ID")
+    and os.environ.get("R2_SECRET_ACCESS_KEY")
+    and os.environ.get("R2_BUCKET_NAME")
+)
+r2_storage = CloudflareR2Storage.from_environment() if R2_ENABLED else None
+
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-APP_NAME = "d-energy"
 storage_key = None
 
 def init_storage(force: bool = False):
@@ -165,6 +177,8 @@ def init_storage(force: bool = False):
     return storage_key
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
+    if r2_storage:
+        return r2_storage.put_object(path, data, content_type)
     key = init_storage()
     resp = requests.put(f"{STORAGE_URL}/objects/{path}",
                         headers={"X-Storage-Key": key, "Content-Type": content_type},
@@ -178,6 +192,8 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
     return resp.json()
 
 def get_object(path: str):
+    if r2_storage:
+        return r2_storage.get_object(path)
     key = init_storage()
     resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     if resp.status_code == 404:
