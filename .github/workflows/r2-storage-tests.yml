@@ -33,6 +33,6 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pytest pytest-xdist boto3 openai fastapi httpx python-dotenv
       - name: Compile independent provider modules
-        run: python -m py_compile r2_storage.py ai_provider.py ai_routes.py ai_extract.py mailer.py
+        run: python -m py_compile server.py r2_storage.py ai_provider.py ai_routes.py ai_extract.py mailer.py
       - name: Run isolated R2 adapter tests
         run: python -m pytest -q tests/test_r2_storage.py
