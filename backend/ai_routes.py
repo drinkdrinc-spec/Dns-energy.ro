@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
-from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+from ai_provider import LlmChat, UserMessage, TextDelta, StreamDone
 
 import server as S
 import cef as CEF
@@ -24,7 +24,7 @@ now = lambda: datetime.now(timezone.utc).isoformat()
 
 def new_chat(system: str, history: list = None) -> LlmChat:
     init = [{"role": "system", "content": system}] + (history or [])
-    return LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=str(uuid.uuid4()), system_message=system,
+    return LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=str(uuid.uuid4()), system_message=system,
                    initial_messages=init).with_model(*MODEL)
 
 
