@@ -1781,11 +1781,9 @@ async def startup():
     await db.billing_config.update_one({"id": "main"}, {"$setOnInsert": {"id": "main", "vat_rate": 21.0, "expired_policy": "read_only", "currency": "RON"}}, upsert=True)
     docgen.IMG_LOADER = lambda p: get_object(p)[0]
     await forms_routes.seed()
-    try:
-        init_storage()
-        logger.info("Storage initialized")
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
+    # Fail fast: do not report a healthy API when private file storage is unavailable.
+    init_storage()
+    logger.info("Cloudflare R2 storage initialized")
 
 @app.on_event("shutdown")
 async def shutdown():
