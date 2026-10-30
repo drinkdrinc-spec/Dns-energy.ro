@@ -179,7 +179,7 @@ def story(ctx, P, table, S):
         r = res["inverters"][i]
         ac, dc, pa, pd = inv.get("ac") or {}, inv.get("dc") or {}, r["proposals"]["ac"], r["proposals"]["dc"]
         rows.append([str(i + 1), inv.get("brand_model") or "—", f"{v(inv.get('p_nom_kw'))}/{v(inv.get('p_max_kw'))}/{v(inv.get('p_limit_kw'))}",
-                     " + ".join(str(s["panels"]) for s in r["strings"]) or "—", f"{r['voc_cold_max']:g} / {v(inv.get('vdc_max'))} V",
+                     " + ".join(str(s["panels"]) for s in r["strings"]) or "—", f"{r['voc_cold_max']:g} / {v(inv.get('vdc_max'))} V" if r.get("voc_cold_max") else f"NECONFIRMAT / {v(inv.get('vdc_max'))} V",
                      f"{r['isc_mppt_max']:g} / {v(inv.get('imax_mppt'))} A",
                      f"{v(ac.get('section') or pa.get('section'))} mm² {ac.get('material') or 'Cu'} {v(ac.get('length_m'), ' m')} / C{v(ac.get('breaker_a') or pa.get('breaker_a'))}",
                      f"{v(dc.get('section') or pd.get('section'))} mm² {v(dc.get('length_m'), ' m')} / {v(dc.get('spd_ucpv') or pd.get('spd_ucpv'), ' V')}",
