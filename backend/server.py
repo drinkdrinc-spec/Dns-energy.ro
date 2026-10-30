@@ -158,7 +158,7 @@ APP_NAME = "d-energy"
 storage_key = None
 
 if OBJECT_STORAGE_BACKEND == "r2":
-    from r2_storage import put_object, get_object
+    from r2_storage import init_storage, put_object, get_object
 elif OBJECT_STORAGE_BACKEND == "emergent":
     def init_storage(force: bool = False):
         global storage_key
