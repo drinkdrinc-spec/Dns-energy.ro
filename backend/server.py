@@ -149,10 +149,20 @@ def check_inverters(user: dict, d: dict):
                             "Dosarul nu poate fi salvat sau finalizat — treceți la abonamentul PRO sau FULL pentru dosare cu mai multe invertoare.")
 
 # ---------------- Object storage ----------------
+# R2 is selected only when all required settings are present. Until then the
+# existing Emergent storage remains the default, preserving the live app.
+from object_storage import CloudflareR2Storage
+
+APP_NAME = "d-energy"
+R2_ENABLED = any(
+    os.environ.get(name)
+    for name in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME")
+)
+r2_storage = CloudflareR2Storage.from_environment() if R2_ENABLED else None
+
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-APP_NAME = "d-energy"
 storage_key = None
 
 def init_storage(force: bool = False):
@@ -165,6 +175,8 @@ def init_storage(force: bool = False):
     return storage_key
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
+    if r2_storage:
+        return r2_storage.put_object(path, data, content_type)
     key = init_storage()
     resp = requests.put(f"{STORAGE_URL}/objects/{path}",
                         headers={"X-Storage-Key": key, "Content-Type": content_type},
@@ -177,7 +189,7 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
     resp.raise_for_status()
     return resp.json()
 
-def get_object(path: str):
+def get_emergent_object(path: str):
     key = init_storage()
     resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     if resp.status_code == 404:
@@ -185,6 +197,21 @@ def get_object(path: str):
         resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+def get_object(path: str):
+    if r2_storage:
+        from botocore.exceptions import ClientError
+        try:
+            return r2_storage.get_object(path)
+        except ClientError as exc:
+            # Existing MongoDB records may still point to objects in Emergent.
+            # Fall back only for a missing R2 key; do not hide auth/network errors.
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code not in ("NoSuchKey", "404", "NotFound") and status != 404:
+                raise
+            return get_emergent_object(path)
+    return get_emergent_object(path)
 
 MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
               "webp": "image/webp", "pdf": "application/pdf", "doc": "application/msword",
