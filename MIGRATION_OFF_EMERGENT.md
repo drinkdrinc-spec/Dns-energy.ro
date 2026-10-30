@@ -9,10 +9,10 @@
 
 ## Implementat pe branch-ul de migrare
 - Adaptor Cloudflare R2 S3-compatible: `backend/r2_storage.py`.
-- Selector de stocare opt-in: `OBJECT_STORAGE_BACKEND=emergent` (implicit) sau `r2`.
+- `backend/server.py` folosește direct adaptorul R2; nu există fallback la Emergent. Configurarea R2 este obligatorie la pornirea backendului.
 - Adaptor direct OpenAI pentru chat/analiza documentelor: `backend/ai_provider.py`.
 - Rutele AI și extragerea documentelor folosesc adaptorul OpenAI; PDF-urile sunt randate local ca imagini pentru analiză.
-- Serviciul de e-mail poate utiliza SMTP: `EMAIL_PROVIDER=smtp`; Emergent rămâne implicit până la test.
+- `backend/mailer.py` folosește direct SMTP; nu există selector `EMAIL_PROVIDER` și nu există fallback la e-mailul Emergent.
 - Dependențele Python private `emergentintegrations` și wheel-ul privat Emergent au fost scoase din requirements.
 
 ## Variabile de configurat în Render staging
@@ -24,7 +24,7 @@
 - `ADMIN_EMAIL` și `ADMIN_PASSWORD`: contul administratorului inițial (nu reseta contul existent).
 
 ### Cloudflare R2
-- `OBJECT_STORAGE_BACKEND=r2` numai după copiere și verificarea fișierelor.
+- R2 este activ direct în codul acestei ramuri; backendul nu trebuie pornit până când variabilele R2 sunt configurate și bucketul este verificat.
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
@@ -39,7 +39,7 @@ Tokenul R2 trebuie să aibă doar `Object Read & Write` pentru bucketul `dns-ene
 - API-ul OpenAI se facturează separat de abonamentul ChatGPT.
 
 ### E-mail SMTP
-- `EMAIL_PROVIDER=smtp`
+- SMTP este calea directă de trimitere a e-mailului în această ramură; configurează toate variabilele SMTP înainte de testarea notificărilor.
 - `EMAIL_FROM_NAME=DNS Energy`
 - `SMTP_HOST`, `SMTP_PORT` (587 STARTTLS sau 465 SSL), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`
 - `EMAIL_REPLY_TO` (opțional)
