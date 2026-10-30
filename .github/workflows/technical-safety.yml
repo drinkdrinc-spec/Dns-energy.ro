@@ -1,0 +1,30 @@
+name: DNS Energy technical safety tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/cef.py"
+      - "backend/tests/test_technical_parameter_safety.py"
+      - ".github/workflows/technical-safety.yml"
+  pull_request:
+    paths:
+      - "backend/cef.py"
+      - "backend/tests/test_technical_parameter_safety.py"
+      - ".github/workflows/technical-safety.yml"
+
+jobs:
+  pv-technical-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test runner
+        run: python -m pip install --upgrade pytest
+      - name: Run PV parameter safety regression tests
+        working-directory: backend
+        run: python -m pytest -c /dev/null -q tests/test_technical_parameter_safety.py
