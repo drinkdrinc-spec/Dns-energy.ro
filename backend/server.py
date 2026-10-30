@@ -1753,10 +1753,18 @@ import operator_routes  # noqa: E402
 import anre_routes  # noqa: E402
 import anre_templates  # noqa: E402
 app.include_router(api_router)
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS",
+        "https://dns-energy.ro,https://www.dns-energy.ro,https://dns-energy-web.onrender.com",
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=False,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
