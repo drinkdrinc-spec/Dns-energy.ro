@@ -11,6 +11,7 @@ on:
       - "backend/ai_extract.py"
       - "backend/mailer.py"
       - "backend/requirements.txt"
+      - "frontend/**"
       - ".github/workflows/r2-storage-tests.yml"
   push:
     branches: [main]
@@ -36,3 +37,20 @@ jobs:
         run: python -m py_compile server.py r2_storage.py ai_provider.py ai_routes.py ai_extract.py mailer.py
       - name: Run isolated R2 adapter tests
         run: python -m pytest -q tests/test_r2_storage.py
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+      - name: Build independent frontend
+        run: yarn build
