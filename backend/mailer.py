@@ -1,4 +1,7 @@
 import os
+import asyncio
+import smtplib
+from email.message import EmailMessage
 import re
 import ipaddress
 import logging
@@ -11,8 +14,9 @@ from fastapi import HTTPException
 load_dotenv()
 logger = logging.getLogger(__name__)
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"
-EMAIL_KEY = os.environ["EMERGENT_EMAIL_KEY"]
-EMAIL_FROM_NAME = os.environ["EMAIL_FROM_NAME"]
+EMAIL_PROVIDER = os.environ.get("EMAIL_PROVIDER", "emergent").strip().lower()
+EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "DNS Energy")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
 
 _SHORTENERS = ("bit.ly", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "goo.gl", "rebrand.ly")
@@ -87,12 +91,49 @@ def _assert_safe_email(subject: str, html: str) -> None:
                 raise ValueError(f"Anchor text {m.group(1)!r} ≠ real link host {real!r} (G3)")
 
 
+def _send_smtp(to: str, subject: str, html: str, reply_to: str | None) -> str:
+    host = os.environ["SMTP_HOST"]
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    username = os.environ.get("SMTP_USERNAME", "")
+    password = os.environ.get("SMTP_PASSWORD", "")
+    sender = os.environ["SMTP_FROM_EMAIL"]
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = f"{EMAIL_FROM_NAME} <{sender}>"
+    message["To"] = to
+    effective_reply = reply_to or EMAIL_REPLY_TO
+    if effective_reply:
+        message["Reply-To"] = effective_reply
+    message.set_content("Acest mesaj conține conținut HTML. Deschideți-l într-un client de e-mail compatibil.")
+    message.add_alternative(html, subtype="html")
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=30) as smtp:
+            if username:
+                smtp.login(username, password)
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(host, port, timeout=30) as smtp:
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.ehlo()
+            if username:
+                smtp.login(username, password)
+            smtp.send_message(message)
+    return "smtp-accepted"
+
+
 async def send_email(*, to: str, subject: str, html: str, reply_to: str | None = None) -> str | None:
     _assert_safe_email(subject, html)
-    payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
-    if reply_to or EMAIL_REPLY_TO:
-        payload["contact_email"] = reply_to or EMAIL_REPLY_TO
     try:
+        if EMAIL_PROVIDER == "smtp":
+            return await asyncio.to_thread(_send_smtp, to, subject, html, reply_to)
+        if EMAIL_PROVIDER != "emergent":
+            raise RuntimeError("EMAIL_PROVIDER must be 'emergent' or 'smtp'")
+        if not EMAIL_KEY:
+            raise RuntimeError("EMERGENT_EMAIL_KEY is required while EMAIL_PROVIDER=emergent")
+        payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
+        if reply_to or EMAIL_REPLY_TO:
+            payload["contact_email"] = reply_to or EMAIL_REPLY_TO
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(f"{EMAIL_BASE_URL}/api/v1/email/send", headers={"X-Email-Key": EMAIL_KEY}, json=payload)
         resp.raise_for_status()
