@@ -2,7 +2,7 @@ name: DNS Energy technical safety tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, migration/render-integration-audit]
     paths:
       - "backend/cef.py"
       - "backend/tests/test_technical_parameter_safety.py"
