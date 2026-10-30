@@ -12,7 +12,7 @@ import server as S
 import cef as CEF
 
 db, api, get_current_user, logger = S.db, S.api_router, S.get_current_user, S.logger
-MODEL = ("openai", "gpt-6-sol")
+MODEL = ("openai", "gpt-4.1-mini")
 FEAT = "ai_gpt"
 RULES = ("Răspunzi exclusiv în limba română, clar și profesionist, text simplu (liste cu „- ”, fără tabele markdown). "
          "Nu inventa niciodată măsurători, numere de aviz/ATR, serii, semnături, ștampile sau autorizații: dacă o informație lipsește, scrie [de completat]. "
