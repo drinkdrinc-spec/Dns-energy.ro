@@ -14,7 +14,6 @@ import logging
 import uuid
 import bcrypt
 import jwt
-import requests
 from datetime import datetime, timezone, timedelta
 
 # ---------------- DB ----------------
@@ -149,42 +148,8 @@ def check_inverters(user: dict, d: dict):
                             "Dosarul nu poate fi salvat sau finalizat — treceți la abonamentul PRO sau FULL pentru dosare cu mai multe invertoare.")
 
 # ---------------- Object storage ----------------
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-APP_NAME = "d-energy"
-storage_key = None
-
-def init_storage(force: bool = False):
-    global storage_key
-    if storage_key and not force:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
-
-def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                        headers={"X-Storage-Key": key, "Content-Type": content_type},
-                        data=data, timeout=120)
-    if resp.status_code == 404:
-        key = init_storage(force=True)
-        resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                            headers={"X-Storage-Key": key, "Content-Type": content_type},
-                            data=data, timeout=120)
-    resp.raise_for_status()
-    return resp.json()
-
-def get_object(path: str):
-    key = init_storage()
-    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    if resp.status_code == 404:
-        key = init_storage(force=True)
-        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+# DNS Energy uses Cloudflare R2 directly. No Emergent proxy or fallback.
+from r2_storage import init_storage, put_object, get_object
 
 MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
               "webp": "image/webp", "pdf": "application/pdf", "doc": "application/msword",
@@ -1744,16 +1709,22 @@ async def startup():
     await db.users.create_index("email", unique=True)
     for m in MODULES:
         await db[m].create_index("owner")
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    jwt_secret = os.environ.get("JWT_SECRET", "")
+    if not admin_email or not admin_password:
+        raise RuntimeError("ADMIN_EMAIL and ADMIN_PASSWORD must be configured; insecure default admin credentials are disabled")
+    if len(admin_password) < 14:
+        raise RuntimeError("ADMIN_PASSWORD must contain at least 14 characters")
+    if len(jwt_secret) < 32:
+        raise RuntimeError("JWT_SECRET must contain at least 32 characters")
     existing = await db.users.find_one({"email": admin_email})
     if not existing:
         await db.users.insert_one({"id": str(uuid.uuid4()), "email": admin_email,
             "password_hash": hash_password(admin_password), "name": "Administrator",
             "role": "admin", "created_at": datetime.now(timezone.utc).isoformat()})
-        logger.info("Admin seeded")
-    elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+        logger.info("Initial administrator created")
+    # Never overwrite an existing administrator password during application startup.
     PLATFORM["id"] = (await db.users.find_one({"email": admin_email}))["id"]
     await db.users.update_one({"id": PLATFORM["id"]}, {"$set": {"role": "admin", "status": "active", "tenant": None}})
     for pl in DEFAULT_PLANS:
@@ -1761,11 +1732,10 @@ async def startup():
     await db.billing_config.update_one({"id": "main"}, {"$setOnInsert": {"id": "main", "vat_rate": 21.0, "expired_policy": "read_only", "currency": "RON"}}, upsert=True)
     docgen.IMG_LOADER = lambda p: get_object(p)[0]
     await forms_routes.seed()
-    try:
-        init_storage()
-        logger.info("Storage initialized")
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
+    # R2 is required in the independent deployment. Fail startup if the
+    # bucket is not reachable; never run with file storage silently disabled.
+    init_storage()
+    logger.info("Cloudflare R2 storage initialized")
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -1783,10 +1753,18 @@ import operator_routes  # noqa: E402
 import anre_routes  # noqa: E402
 import anre_templates  # noqa: E402
 app.include_router(api_router)
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS",
+        "https://dns-energy.ro,https://www.dns-energy.ro,https://dns-energy-web.onrender.com",
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=False,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
