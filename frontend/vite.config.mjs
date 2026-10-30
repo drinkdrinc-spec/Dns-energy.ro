@@ -1,7 +1,11 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, loadEnv, transformWithOxc } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const hotReloadDisabled = process.env.CI === "true" || process.env.DISABLE_HOT_RELOAD === "true";
 
 // CRA parity: JSX lives in .js files (App.js, index.js). Vite's transform
 // is configured explicitly so the frontend builds without platform-specific plugins.
