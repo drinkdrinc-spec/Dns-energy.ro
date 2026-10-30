@@ -19,7 +19,7 @@ function jsxInJs() {
     enforce: "pre",
     transform(code, id) {
       const [file] = id.split("?");
-      if (!/\\/src\\/.*\\.js$/.test(file) || file.includes("/node_modules/")) return null;
+      if (!/\/src\/.*\.js$/.test(file) || file.includes("/node_modules/")) return null;
       return transformWithOxc(code, file, { lang: "jsx", jsx: { runtime: "automatic" } });
     },
   };
