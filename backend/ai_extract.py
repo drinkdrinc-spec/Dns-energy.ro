@@ -39,7 +39,7 @@ def _images(content: bytes, mime: str) -> list:
 
 async def extract_gpt(content: bytes, mime: str) -> dict:
     chat = LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=f"extract-{uuid.uuid4()}",
-                   system_message="Extragi date structurate din documente tehnice românești. Răspunzi doar JSON.").with_model("openai", "gpt-6-sol")
+                   system_message="Extragi date structurate din documente tehnice românești. Răspunzi doar JSON.").with_model("openai", "gpt-4.1-mini")
     out = ""
     async for ev in chat.stream_message(UserMessage(text=PROMPT, file_contents=_images(content, mime))):
         if isinstance(ev, TextDelta):
