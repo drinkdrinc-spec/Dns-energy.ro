@@ -189,9 +189,7 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
     resp.raise_for_status()
     return resp.json()
 
-def get_object(path: str):
-    if r2_storage:
-        return r2_storage.get_object(path)
+def get_emergent_object(path: str):
     key = init_storage()
     resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     if resp.status_code == 404:
@@ -199,6 +197,21 @@ def get_object(path: str):
         resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+def get_object(path: str):
+    if r2_storage:
+        from botocore.exceptions import ClientError
+        try:
+            return r2_storage.get_object(path)
+        except ClientError as exc:
+            # Existing MongoDB records may still point to objects in Emergent.
+            # Fall back only for a missing R2 key; do not hide auth/network errors.
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code not in ("NoSuchKey", "404", "NotFound") and status != 404:
+                raise
+            return get_emergent_object(path)
+    return get_emergent_object(path)
 
 MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
               "webp": "image/webp", "pdf": "application/pdf", "doc": "application/msword",
