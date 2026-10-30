@@ -154,11 +154,9 @@ def check_inverters(user: dict, d: dict):
 from object_storage import CloudflareR2Storage
 
 APP_NAME = "d-energy"
-R2_ENABLED = bool(
-    os.environ.get("R2_ACCOUNT_ID")
-    and os.environ.get("R2_ACCESS_KEY_ID")
-    and os.environ.get("R2_SECRET_ACCESS_KEY")
-    and os.environ.get("R2_BUCKET_NAME")
+R2_ENABLED = any(
+    os.environ.get(name)
+    for name in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME")
 )
 r2_storage = CloudflareR2Storage.from_environment() if R2_ENABLED else None
 
