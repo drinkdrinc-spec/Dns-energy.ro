@@ -34,6 +34,7 @@ def test_r2_put_and_get_round_trip(monkeypatch):
     content, mime = r2_storage.get_object("clients/example.pdf")
 
     assert result["etag"] == "test-etag"
+    assert result["path"] == "clients/example.pdf"
     assert content == b"pdf-bytes"
     assert mime == "application/pdf"
 
@@ -51,3 +52,13 @@ def test_r2_requires_bucket_name(monkeypatch):
     monkeypatch.delenv("R2_BUCKET_NAME", raising=False)
     with pytest.raises(RuntimeError, match="R2_BUCKET_NAME"):
         r2_storage._bucket()
+
+
+
+def test_r2_init_storage_checks_bucket(monkeypatch):
+    fake = FakeS3()
+    monkeypatch.setattr(r2_storage, "_client", lambda: fake)
+    monkeypatch.setenv("R2_BUCKET_NAME", "dns-energy-files")
+
+    assert r2_storage.init_storage() == "dns-energy-files"
+    assert fake.head_calls == ["dns-energy-files"]
