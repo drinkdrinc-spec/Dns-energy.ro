@@ -47,8 +47,10 @@ class LlmChat:
         self.client = AsyncOpenAI(api_key=api_key)
 
     def with_model(self, provider: str, model: str):
-        # Provider/model aliases from the old integration are intentionally not
-        # forwarded; the deployment's OPENAI_MODEL is the single source of truth.
+        if provider != "openai":
+            raise ValueError("Only the OpenAI provider is supported by this adapter.")
+        # Explicit deployment configuration takes precedence over call-site defaults.
+        self.model = os.environ.get("OPENAI_MODEL", model or "gpt-4.1-mini")
         return self
 
     async def stream_message(self, message: UserMessage):
