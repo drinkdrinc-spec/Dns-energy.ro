@@ -6,6 +6,8 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-build.yml"
+      - "render.yaml"
+      - "backend/.python-version"
   pull_request:
     paths:
       - "frontend/**"
