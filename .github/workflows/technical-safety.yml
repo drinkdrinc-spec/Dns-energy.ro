@@ -7,6 +7,8 @@ on:
       - "backend/cef.py"
       - "backend/tests/test_technical_parameter_safety.py"
       - ".github/workflows/technical-safety.yml"
+      - "backend/.python-version"
+      - "render.yaml"
   pull_request:
     paths:
       - "backend/cef.py"
@@ -22,7 +24,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.11.11"
       - name: Install test runner
         run: python -m pip install --upgrade pytest
       - name: Run PV parameter safety regression tests
