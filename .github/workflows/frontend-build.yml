@@ -2,7 +2,7 @@ name: DNS Energy frontend build
 
 on:
   push:
-    branches: [main]
+    branches: [main, migration/render-integration-audit]
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-build.yml"
