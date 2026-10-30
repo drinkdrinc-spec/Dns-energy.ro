@@ -149,7 +149,7 @@ def check_inverters(user: dict, d: dict):
                             "Dosarul nu poate fi salvat sau finalizat — treceți la abonamentul PRO sau FULL pentru dosare cu mai multe invertoare.")
 
 # ---------------- Object storage ----------------
-# Independent Cloudflare R2 adapter; legacy Emergent proxy removed.
+# DNS Energy uses Cloudflare R2 directly. No Emergent proxy or fallback.
 from r2_storage import init_storage, put_object, get_object
 
 MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
