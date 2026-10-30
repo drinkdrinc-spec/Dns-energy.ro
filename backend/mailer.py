@@ -5,7 +5,6 @@ from email.message import EmailMessage
 import re
 import ipaddress
 import logging
-import httpx
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 from dotenv import load_dotenv
@@ -13,9 +12,6 @@ from fastapi import HTTPException
 
 load_dotenv()
 logger = logging.getLogger(__name__)
-EMAIL_BASE_URL = "https://integrations.emergentagent.com"
-EMAIL_PROVIDER = os.environ.get("EMAIL_PROVIDER", "emergent").strip().lower()
-EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "DNS Energy")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
 
@@ -125,29 +121,7 @@ def _send_smtp(to: str, subject: str, html: str, reply_to: str | None) -> str:
 async def send_email(*, to: str, subject: str, html: str, reply_to: str | None = None) -> str | None:
     _assert_safe_email(subject, html)
     try:
-        if EMAIL_PROVIDER == "smtp":
-            return await asyncio.to_thread(_send_smtp, to, subject, html, reply_to)
-        if EMAIL_PROVIDER != "emergent":
-            raise RuntimeError("EMAIL_PROVIDER must be 'emergent' or 'smtp'")
-        if not EMAIL_KEY:
-            raise RuntimeError("EMERGENT_EMAIL_KEY is required while EMAIL_PROVIDER=emergent")
-        payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
-        if reply_to or EMAIL_REPLY_TO:
-            payload["contact_email"] = reply_to or EMAIL_REPLY_TO
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(f"{EMAIL_BASE_URL}/api/v1/email/send", headers={"X-Email-Key": EMAIL_KEY}, json=payload)
-        resp.raise_for_status()
-        return resp.json().get("id")
-    except httpx.HTTPStatusError as e:
-        try:
-            code = e.response.json().get("code", "")
-        except ValueError:
-            code = ""
-        if code in ("insufficient_credits", "integration_disabled", "daily_limit_reached"):
-            logger.warning(f"Email paused: {code} ({e.response.status_code}): {e.response.json().get('message', '')}")
-            raise HTTPException(status_code=503, detail="Trimiterea e-mailului este temporar indisponibilă")
-        logger.error(f"Email send failed: {e.response.status_code} {e.response.text}")
-        raise HTTPException(status_code=502, detail="E-mailul nu a putut fi trimis")
+        return await asyncio.to_thread(_send_smtp, to, subject, html, reply_to)
     except HTTPException:
         raise
     except Exception as e:
