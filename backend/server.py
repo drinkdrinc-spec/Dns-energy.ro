@@ -1732,16 +1732,10 @@ async def startup():
     await db.billing_config.update_one({"id": "main"}, {"$setOnInsert": {"id": "main", "vat_rate": 21.0, "expired_policy": "read_only", "currency": "RON"}}, upsert=True)
     docgen.IMG_LOADER = lambda p: get_object(p)[0]
     await forms_routes.seed()
-    try:
-        init_storage()
-        logger.info("Storage initialized")
-    except Exception as e:
-        logger.exception("Storage initialization failed")
-        # R2 is an explicitly selected production dependency: do not start
-        # with uploads silently unavailable. Keep legacy Emergent behavior
-        # unchanged while that backend remains selected.
-        if OBJECT_STORAGE_BACKEND == "r2":
-            raise RuntimeError("Selected R2 storage is unavailable; refusing to start") from e
+    # R2 is required in the independent deployment. Fail startup if the
+    # bucket is not reachable; never run with file storage silently disabled.
+    init_storage()
+    logger.info("Cloudflare R2 storage initialized")
 
 @app.on_event("shutdown")
 async def shutdown():
