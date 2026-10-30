@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest boto3 openai fastapi httpx python-dotenv
+        run: python -m pip install --upgrade pip pytest pytest-xdist boto3 openai fastapi httpx python-dotenv
       - name: Compile independent provider modules
         run: python -m py_compile r2_storage.py ai_provider.py ai_routes.py ai_extract.py mailer.py
       - name: Run isolated R2 adapter tests
