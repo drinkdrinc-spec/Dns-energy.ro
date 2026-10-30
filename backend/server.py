@@ -1753,16 +1753,22 @@ async def startup():
     await db.users.create_index("email", unique=True)
     for m in MODULES:
         await db[m].create_index("owner")
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    jwt_secret = os.environ.get("JWT_SECRET", "")
+    if not admin_email or not admin_password:
+        raise RuntimeError("ADMIN_EMAIL and ADMIN_PASSWORD must be configured; insecure default admin credentials are disabled")
+    if len(admin_password) < 14:
+        raise RuntimeError("ADMIN_PASSWORD must contain at least 14 characters")
+    if len(jwt_secret) < 32:
+        raise RuntimeError("JWT_SECRET must contain at least 32 characters")
     existing = await db.users.find_one({"email": admin_email})
     if not existing:
         await db.users.insert_one({"id": str(uuid.uuid4()), "email": admin_email,
             "password_hash": hash_password(admin_password), "name": "Administrator",
             "role": "admin", "created_at": datetime.now(timezone.utc).isoformat()})
-        logger.info("Admin seeded")
-    elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+        logger.info("Initial administrator created")
+    # Never overwrite an existing administrator password during application startup.
     PLATFORM["id"] = (await db.users.find_one({"email": admin_email}))["id"]
     await db.users.update_one({"id": PLATFORM["id"]}, {"$set": {"role": "admin", "status": "active", "tenant": None}})
     for pl in DEFAULT_PLANS:
