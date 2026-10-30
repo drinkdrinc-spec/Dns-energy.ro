@@ -14,7 +14,7 @@ on:
       - "frontend/**"
       - ".github/workflows/r2-storage-tests.yml"
   push:
-    branches: [main]
+    branches: [main, migration/render-integration-audit]
     paths:
       - "backend/r2_storage.py"
       - "backend/tests/test_r2_storage.py"
