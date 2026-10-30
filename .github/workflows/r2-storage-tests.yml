@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "backend/r2_storage.py"
+      - "backend/server.py"
       - "backend/tests/test_r2_storage.py"
       - "backend/ai_provider.py"
       - "backend/ai_routes.py"
