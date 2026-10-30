@@ -1780,7 +1780,12 @@ async def startup():
         init_storage()
         logger.info("Storage initialized")
     except Exception as e:
-        logger.error(f"Storage init failed: {e}")
+        logger.exception("Storage initialization failed")
+        # R2 is an explicitly selected production dependency: do not start
+        # with uploads silently unavailable. Keep legacy Emergent behavior
+        # unchanged while that backend remains selected.
+        if OBJECT_STORAGE_BACKEND == "r2":
+            raise RuntimeError("Selected R2 storage is unavailable; refusing to start") from e
 
 @app.on_event("shutdown")
 async def shutdown():
