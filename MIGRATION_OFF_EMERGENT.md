@@ -66,3 +66,19 @@ Tokenul R2 trebuie să aibă doar `Object Read & Write` pentru bucketul `dns-ene
 - Cheile R2 create în Cloudflare nu sunt vizibile ulterior în dashboard; trebuie copiate în siguranță în variabilele Render.
 - Testul de integrare R2 necesită acces de rețea la bucket și credențiale din staging.
 - Nu s-a efectuat încă migrarea datelor, deploy-ul sau schimbarea DNS.
+
+
+## Confirmarea proprietarului — păstrarea datelor (30 octombrie 2026)
+Proprietarul a confirmat explicit că trebuie păstrate toate datele existente. Prin urmare:
+1. Migrarea rămâne blocată până la obținerea backupului bazei MongoDB reale și a exportului fișierelor din stocarea veche.
+2. Clusterul Atlas `dns-energy-test` este doar un cluster de test cunoscut și nu este sursa datelor reale.
+3. Nu se face resetare, inițializare cu date goale, suprascriere sau schimbare a conexiunii de producție.
+4. Restaurarea se face într-o bază staging separată; se verifică utilizatorii, dosarele, documentele, semnăturile, ștampilele, indexurile și relațiile dintre înregistrări.
+5. Pentru fiecare fișier se păstrează cheia originală și se verifică numărul, dimensiunea și SHA-256 înainte și după copierea în R2.
+6. Lansarea pe infrastructura nouă este permisă numai după testarea autentificării, accesului la dosare și descărcării tuturor tipurilor de documente.
+
+### Date încă necesare pentru migrare
+- Backup MongoDB complet (`mongodump --archive --gzip`) din baza utilizată de aplicația existentă sau acces securizat la URI-ul sursă.
+- Exportul fișierelor originale din object storage-ul vechi, cu inventar de chei.
+- Confirmarea că backupul provine din instanța activă de producție și data/ora la care a fost realizat.
+- Creditele de acces la sursă trebuie transmise numai printr-un manager de secrete sau introduse direct în dashboard-ul de infrastructură; nu în issue-uri, commit-uri sau conversații.
