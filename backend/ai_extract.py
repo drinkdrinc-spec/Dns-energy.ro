@@ -4,7 +4,7 @@ import json
 import re
 import uuid
 import tempfile
-from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType, ImageContent, TextDelta, StreamDone
+from ai_provider import LlmChat, UserMessage, FileContentWithMimeType, ImageContent, TextDelta, StreamDone
 
 OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER — Muntenia Nord", "Delgaz Grid",
              "Distribuție Energie Oltenia", "Rețele Electrice România", "Alt operator"]
@@ -38,7 +38,7 @@ def _images(content: bytes, mime: str) -> list:
 
 
 async def extract_gpt(content: bytes, mime: str) -> dict:
-    chat = LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=f"extract-{uuid.uuid4()}",
+    chat = LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=f"extract-{uuid.uuid4()}",
                    system_message="Extragi date structurate din documente tehnice românești. Răspunzi doar JSON.").with_model("openai", "gpt-6-sol")
     out = ""
     async for ev in chat.stream_message(UserMessage(text=PROMPT, file_contents=_images(content, mime))):
@@ -50,20 +50,6 @@ async def extract_gpt(content: bytes, mime: str) -> dict:
 
 
 async def extract_pdf(content: bytes, mime: str) -> dict:
-    suffix = ".pdf" if "pdf" in mime else ".jpg"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
-        f.write(content)
-        path = f.name
-    try:
-        chat = LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=f"extract-{uuid.uuid4()}",
-                       system_message="Extragi date structurate din documente tehnice românești. Răspunzi doar JSON.") \
-            .with_model("gemini", "gemini-3-flash-preview")
-        out = ""
-        async for ev in chat.stream_message(UserMessage(text=PROMPT, file_contents=[FileContentWithMimeType(file_path=path, mime_type=mime)])):
-            if isinstance(ev, TextDelta):
-                out += ev.content
-            elif isinstance(ev, StreamDone):
-                break
-        return _parse(out)
-    finally:
-        os.unlink(path)
+    # OpenAI adapter receives rendered page images; this avoids private
+    # Emergent/Gemini file-upload integrations and keeps PDF extraction local.
+    return await extract_gpt(content, mime)
