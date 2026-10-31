@@ -450,6 +450,7 @@ export default function ModulePage({ moduleKey }) {
                           <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/export`)}>Dosar PDF</button>
                           <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/sld/${it.id}/pdf`)}>Schemă</button>
                           <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/pif/pdf`)}>PV PIF</button>
+                          <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/file/priza`)}>PRAM priză</button>
                           {diu && <>
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`)}>PRAM priză</button>
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_cont`)}>Continuitate</button>
