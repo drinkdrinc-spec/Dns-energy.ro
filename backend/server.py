@@ -1325,6 +1325,23 @@ async def atr_pack(user: dict, rec: dict, full: int):
         bykey = {p["key"]: p for p in info["positions"]}
         auto = {"schema": [bykey.get("schema")], "fise": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
     attached = {k for k, v in att.items() if v} | {k for k, v in auto.items() if any(v)}
+    if pros and ATR.is_prod(rec) and "fise" in ATR.required(rec):
+        expected_models = set()
+        cef = pros.get("cef") or {}
+        for inv in cef.get("inverters") or []:
+            for kind, model, cid in (("invertor", inv.get("brand_model"), inv.get("catalog_id")),
+                                     ("panou", inv.get("panel_model"), inv.get("panel_catalog_id"))):
+                key = f"{kind}:{cid or str(model or '').strip().casefold()}"
+                if key.split(":", 1)[1]: expected_models.add(key)
+            if inv.get("battery_mode") == "own":
+                battery = inv.get("battery") or {}
+                key = f"baterie:{battery.get('catalog_id') or str(battery.get('model') or '').strip().casefold()}"
+                if key.split(":", 1)[1]: expected_models.add(key)
+        for battery in cef.get("shared_batteries") or []:
+            key = f"baterie:{battery.get('catalog_id') or str(battery.get('model') or '').strip().casefold()}"
+            if key.split(":", 1)[1]: expected_models.add(key)
+        if expected_models and len(att.get("fise") or []) + len(auto.get("fise") or []) < 2 * len(expected_models):
+            attached.discard("fise")
     parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
     if full and ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) == "deer":
         annex_pdf = ATR.render_deer_annex(rec, client, base, pros or {}, attached)
