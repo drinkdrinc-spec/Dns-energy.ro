@@ -101,9 +101,19 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       <div className="grid sm:grid-cols-2 gap-3">
         <label className="den-field sm:col-span-2"><span>{title(field(cfg, "client_name"), "Beneficiar / client")} *</span>
           <select className="den-input" value={form.client_name || ""} onChange={(e) => {
-            const v = e.target.value; setVal("client_name", v);
+            const v = e.target.value;
             const c = clients.find((x) => x.label === v);
-            if (c) for (const [k, source] of [["cnp", c.cnp || c.idcode], ["phone", "phone"], ["email", "email"], ["hq_address", "hq_address"], ["address", "address"], ["county", "county"], ["pod", "pod"], ["operator", "operator"], ["cf_nr", "cf_nr"], ["cadastral_nr", "cadastral_nr"]]) if (!form[k] && c[source]) setVal(k, c[source]);
+            setVal("client_name", v);
+            setVal("client_id", c?.id || "");
+            // Switching client replaces the identity and supply-point fields together,
+            // so the dossier cannot silently keep another client's POD or address.
+            for (const [k, value] of [
+              ["cnp", c?.cnp || c?.idcode || ""], ["phone", c?.phone || ""], ["email", c?.email || ""],
+              ["hq_address", c?.hq_address || ""], ["address", c?.address || ""], ["county", c?.county || ""],
+              ["pod", c?.pod || ""], ["operator", c?.operator || ""], ["cf_nr", c?.cf_nr || ""],
+              ["cadastral_nr", c?.cadastral_nr || ""], ["supplier", c?.supplier || ""],
+            ]) setVal(k, value);
+            setVal("address_same_as_ci", false);
           }}><option value="">Alege client...</option>{form.client_name && !clients.some((x) => x.label === form.client_name) && <option value={form.client_name}>{form.client_name} · extras din document</option>}{clients.map((c) => <option key={c.id} value={c.label}>{c.label}</option>)}</select>
         </label>
         {input("cnp", "CNP / CUI")}
