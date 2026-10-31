@@ -8,11 +8,12 @@ const DOCS = [
   ["notificare", "Notificare Anexa 2 (OD)"], ["imputernicire", "Împuternicire"],
   ["declaratie_beneficiar", "Declarație beneficiar"], ["declaratie_executant", "Declarație executant"],
   ["declaratie_conformitate", "Declarație de conformitate"], ["pv_receptie", "PV recepție lucrări"],
-  ["pv_pif", "PV punere în funcțiune"], ["buletin_priza", "Buletin priză de pământ"],
+  ["pv_pif", "PV punere în funcțiune"], ["buletin_priza", "Buletin PRAM — priză de pământ"],
   ["buletin_reglaj", "Buletin reglaj invertor"], ["declaratie_autenticitate", "Declarație autenticitate"],
 ];
 
 const docUrl = (type, id) => `${API}/docs/${type}/${id}?auth=${localStorage.getItem("den_token")}`;
+const schemaUrl = (id) => `${API}/sld/${id}/pdf?download=1&auth=${localStorage.getItem("den_token")}`;
 
 export function AiImportButton({ onExtracted }) {
   const ref = useRef();
@@ -76,6 +77,9 @@ export function GeneratedDocs({ id, files, form }) {
         {form?.request_type === "Spor de putere + prosumator" && <p className="text-xs sm:col-span-2" style={{ color: "var(--muted)" }}>Pentru spor de putere, dosarul PDF înlocuiește Anexa 2 cu Anexa 1 oficială a distribuitorului, dacă formularul PDF este înregistrat. Verificați linkul și versiunea înainte de depunere.</p>}
         {id && <a href={docUrl("all", id)} target="_blank" rel="noopener noreferrer" data-testid="doc-all">
           <Btn><FileDown size={15} /> Dosar complet (PDF)</Btn>
+        </a>}
+        {id && <a href={schemaUrl(id)} target="_blank" rel="noopener noreferrer" data-testid="doc-schema">
+          <Btn variant="secondary"><FileDown size={15} /> Schema monofilară (PDF)</Btn>
         </a>}
       </div>
       {!id ? <p className="text-xs" style={{ color: "var(--muted)" }}>Salvează dosarul pentru a genera documentele.</p> : (

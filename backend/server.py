@@ -820,10 +820,12 @@ async def sld_import_legacy(item_id: str, user: dict = Depends(get_current_user)
     return {"ok": True}
 
 @api_router.get("/sld/{item_id}/pdf")
-async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("auto")):
+async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("auto"), download: int = Query(0)):
     user = await user_from_token(authorization, auth)
     rec, client, s, res, state, _ = await sld_ctx(user, item_id)
-    return pdf_resp(SLD.render(rec, client, s, res, state, fmt), f"schema_monofilara_{rec.get('number') or item_id}.pdf")
+    name = f"schema_monofilara_{rec.get('number') or item_id}.pdf"
+    return Response(content=SLD.render(rec, client, s, res, state, fmt), media_type="application/pdf",
+                    headers={"Content-Disposition": disp("attachment" if download else "inline", name)})
 
 @api_router.get("/sld/{item_id}/report")
 async def sld_report(item_id: str, authorization: str = Header(None), auth: str = Query(None)):

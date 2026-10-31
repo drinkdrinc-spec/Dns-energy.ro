@@ -8,6 +8,7 @@ const selectStyle = { borderColor: "var(--line)" };
 export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
   const [catalog, setCatalog] = useState([]);
   const [problem, setProblem] = useState("");
+  const [catalogSearch, setCatalogSearch] = useState({});
   useEffect(() => {
     api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setProblem("Catalogul nu s-a putut încărca. Poți salva datele de bază și selecta echipamentele ulterior."));
   }, []);
@@ -76,16 +77,23 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
         : <input className="den-input" type={type} step={type === "number" ? "any" : undefined} value={form[name] ?? ""} onChange={(e) => { const v = e.target.value; setVal(name, v); if (name === "bransament_kw") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), bransament_kw: Number(v) || "" } }); if (name === "power" && form.cef?.inverters?.[0]) setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : { ...x, p_limit_kw: Number(v) || "" }) }); }} />}
     </label>
   );
-  const catalogSelect = (kind, label) => (
-    <label key={kind} className="den-field">
-      <span>{label}</span>
-      <select className="den-input" style={selectStyle} value={selected[kind] || ""} onChange={(e) => choose(kind, e.target.value)}>
-        <option value="">Alege din catalog...</option>
-        {options[kind].map((x) => <option key={x.id} value={x.id}>{x.brand_model} {x.p_nom_kw ? `· ${x.p_nom_kw} kW` : x.w ? `· ${x.w} W` : x.kwh ? `· ${x.kwh} kWh` : ""}{!(x.datasheet && x.conformity) ? " · documente lipsă" : ""}</option>)}
-      </select>
-      {selected[kind] && (() => { const x = options[kind].find((v) => v.id === selected[kind]); return x && <small className="block mt-1" style={{ color: "var(--muted)" }}>Date preluate din catalog{x.datasheet && x.conformity ? " · fișă și conformitate disponibile" : " · verifică fișa tehnică și conformitatea"}</small>; })()}
-    </label>
-  );
+  const catalogSelect = (kind, label) => {
+    const query = catalogSearch[kind] || "";
+    const matches = options[kind].filter((x) => `${x.brand_model} ${x.type || ""}`.toLowerCase().includes(query.trim().toLowerCase()));
+    return (
+      <label key={kind} className="den-field">
+        <span>{label}</span>
+        <input className="den-input mb-1" value={query} onChange={(e) => setCatalogSearch((prev) => ({ ...prev, [kind]: e.target.value }))}
+          placeholder="Caută după marcă sau model..." aria-label={`Caută ${label} în catalog`} data-testid={`catalog-search-${kind}`} />
+        <select className="den-input" style={selectStyle} value={selected[kind] || ""} onChange={(e) => { choose(kind, e.target.value); setCatalogSearch((prev) => ({ ...prev, [kind]: "" })); }}>
+          <option value="">Alege din catalog ({matches.length})...</option>
+          {matches.map((x) => <option key={x.id} value={x.id}>{x.brand_model} {x.p_nom_kw ? `· ${x.p_nom_kw} kW` : x.w ? `· ${x.w} W` : x.kwh ? `· ${x.kwh} kWh` : ""}{!(x.datasheet && x.conformity) ? " · documente lipsă" : ""}</option>)}
+        </select>
+        {query && matches.length === 0 && <small className="block mt-1 text-amber-700">Modelul nu este încă în catalog; adaugă-l împreună cu fișa tehnică și certificatul de conformitate.</small>}
+        {selected[kind] && (() => { const x = options[kind].find((v) => v.id === selected[kind]); return x && <small className="block mt-1" style={{ color: "var(--muted)" }}>Date preluate din catalog{x.datasheet && x.conformity ? " · fișă și conformitate disponibile" : " · verifică fișa tehnică și conformitatea"}</small>; })()}
+      </label>
+    );
+  };
 
   return <div className="space-y-5" data-testid="prosumator-quick-form">
     <section>
