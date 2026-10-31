@@ -80,7 +80,7 @@ export default function ModulePage({ moduleKey }) {
     // eslint-disable-next-line
   }, [key]);
 
-  const openNew = () => { setForm(key === "atr" ? { date: new Date().toISOString().slice(0, 10) } : {}); setEditId(null); setChecks({}); };
+  const openNew = () => { setForm(key === "atr" ? { date: new Date().toISOString().slice(0, 10), submission_mode: "Solicitantul depune direct" } : {}); setEditId(null); setChecks({}); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); };
   const setVal = (name, value) => {
     if (key === "atr" && name === "pod") {
@@ -111,6 +111,7 @@ export default function ModulePage({ moduleKey }) {
   const doSave = async () => {
     const required = (cfg.fields || []).filter((f) => f.required);
     for (const f of required) { if (!form[f.name]) { toast.error(`Completează: ${f.label.replace(" *", "")}`); return; } }
+    if (key === "atr" && /deer|distribuție energie electrică|distributie energie electrica/i.test(String(form.operator || "")) && !form.deer_case) { toast.error("Alege procedura DEER aplicabilă"); return; }
     const payload = { ...form };
     if (cfg.checklist) payload.checklist = checks;
     try {
