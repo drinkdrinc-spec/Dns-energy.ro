@@ -280,36 +280,46 @@ export default function ModulePage({ moduleKey }) {
     <div>
       <PageHeader eyebrow={cfg.eyebrow} title={cfg.title} sub={cfg.sub}
         action={<div className="flex gap-2 flex-wrap">
-          {key === "prosumator" && <DossierDocumentStart onCreated={(data) => { setForm({ ...data }); setEditId(data.id); setChecks(data.checklist || {}); load(); }} />}
           <Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>
         </div>} />
 
-      {key === "prosumator" && <section className="den-panel mb-6" aria-label="Flux dosar prosumator" data-testid="prosumer-workflow">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)" }}>Flux de lucru</div>
-            <h2 className="text-lg font-bold mt-1">Dosar de prosumator, în ordine</h2>
-            <p className="text-sm mt-1 max-w-3xl" style={{ color: "var(--muted)" }}>Pornește din actele clientului. Datele citite se verifică, apoi echipamentele și documentele se completează în dosar.</p>
+      {key === "prosumator" && <section className="mb-6 overflow-hidden rounded-2xl border shadow-sm" aria-label="Flux dosar prosumator" data-testid="prosumer-workflow" style={{ borderColor: "var(--line)", background: "#fff" }}>
+        <div className="grid lg:grid-cols-[1.35fr_1fr]">
+          <div className="p-5 sm:p-7 lg:p-8" style={{ background: "linear-gradient(135deg, #f0f6ff 0%, #ffffff 72%)" }}>
+            <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--blue)" }}>Dosar nou · prosumator</div>
+            <h2 className="mt-2 max-w-2xl text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: "#13243d" }}>Pornește din actele clientului</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "var(--muted)" }}>Încarcă CI, factura și cartea funciară. Aplicația extrage datele disponibile, le salvează la client și deschide dosarul pentru verificare.</p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <DossierDocumentStart onCreated={(data) => { setForm({ ...data }); setEditId(data.id); setChecks(data.checklist || {}); load(); }} />
+              <Btn variant="secondary" onClick={openNew} data-testid="prosumer-manual-start"><Plus size={15} /> Introducere manuală</Btn>
+            </div>
+            <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Datele extrase rămân de verificat. Sistemul nu completează măsurători reale în locul instalatorului.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <a className="inline-flex items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[12px] font-bold hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "#31425c" }} href="/catalog-echipamente">Catalog echipamente</a>
-            <a className="inline-flex items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[12px] font-bold hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "#31425c" }} href="/cerere-atr">Cerere ATR</a>
-            <a className="inline-flex items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[12px] font-bold hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "#31425c" }} href="/spor-putere">Spor de putere</a>
-            <a className="inline-flex items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[12px] font-bold hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "#31425c" }} href="/diu">Dosar DI-U</a>
+          <div className="border-t p-5 sm:p-7 lg:border-l lg:border-t-0" style={{ borderColor: "var(--line)", background: "#fbfcfe" }}>
+            <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--muted)" }}>Continuă un dosar</div>
+            <h3 className="mt-2 text-lg font-bold" style={{ color: "#13243d" }}>Acces direct la următorul pas</h3>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {[["/cerere-atr", "Cerere ATR"], ["/spor-putere", "Spor de putere"], ["/diu", "Dosar DI-U"], ["/catalog-echipamente", "Catalog echipamente"]].map(([href, label]) =>
+                <a key={href} href={href} className="flex min-h-11 items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-bold hover:border-blue-400" style={{ borderColor: "var(--line)", color: "#31425c" }}>
+                  {label}<span aria-hidden="true" style={{ color: "var(--blue)" }}>›</span>
+                </a>)}
+            </div>
+            <p className="mt-4 text-xs leading-5" style={{ color: "var(--muted)" }}>Alege clientul din formular pentru preluarea automată a datelor cunoscute în ATR, spor sau DI-U.</p>
           </div>
         </div>
-        <ol className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-5">
-          {[
-            ["01", "Documente client", "CI, factură și carte funciară. AI extrage datele tipărite; lipsurile rămân de verificat.", "Folosește «Începe dosarul din documente»."],
-            ["02", "Date și echipamente", "Confirmă clientul, POD-ul și operatorul. Alege invertorul, panourile și bateria din catalog.", "Datele lipsă nu se inventează."],
-            ["03", "Verificare și proiectare", "Verifică dimensionarea, protecțiile, cablurile și schema monofilară.", "Corectează alertele înainte de generare."],
-            ["04", "Documente pentru depunere", "Generează dosarul, schema și documentele PIF; continuă separat cu ATR, spor sau DI-U.", "Descarcă documentele din rândul dosarului."],
-          ].map(([n, title, body, note]) => <li key={n} className="rounded-xl border p-3.5" style={{ borderColor: "var(--line)", background: "var(--bg)" }}>
-            <div className="flex items-center gap-2"><span className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{n}</span><b className="text-sm">{title}</b></div>
-            <p className="text-xs mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>{body}</p>
-            <p className="text-[11px] mt-2 font-semibold">{note}</p>
-          </li>)}
-        </ol>
+        <div className="border-t px-5 py-4 sm:px-7" style={{ borderColor: "var(--line)" }}>
+          <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ["01", "Documente client", "CI → factură → carte funciară. Verifică datele citite."],
+              ["02", "Instalație", "Selectează echipamentele și confirmă datele locului de consum."],
+              ["03", "Control tehnic", "Verifică dimensionarea, protecțiile, cablurile și schema."],
+              ["04", "Depunere", "Descarcă separat dosarul, schema, PRAM și documentele PIF."],
+            ].map(([n, title, body]) => <li key={n} className="flex gap-3 rounded-xl px-3 py-3" style={{ background: "#f8fafd" }}>
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{n}</span>
+              <span><b className="block text-sm">{title}</b><span className="mt-1 block text-xs leading-5" style={{ color: "var(--muted)" }}>{body}</span></span>
+            </li>)}
+          </ol>
+        </div>
       </section>}
 
       {form && (
