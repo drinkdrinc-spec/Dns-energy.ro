@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { FileDown, RefreshCw, Download, FileType2 } from "lucide-react";
 import { toast } from "sonner";
-import { api, API } from "@/lib/api";
+import { api, API, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { DiuCircuits } from "./DiuCircuits";
 
@@ -36,7 +36,7 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
     try { const { data } = await api.post(`/diu/${id}/import-pros`, { pros_id: pid }); setForm({ ...form, ...data }); toast.success("Date preluate din dosarul de prosumator"); loadDocs(); }
     catch (e) { toast.error(e.response?.data?.detail || "Eroare"); }
   };
-  const pdf = (doc) => `${API}/diu/${id}/pdf?doc=${doc}&auth=${tok()}`;
+  const pdf = (doc) => `/diu/${id}/pdf?doc=${doc}`
 
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="diu-dossier">
@@ -61,7 +61,7 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
           {docs ? (docs.complete ? "Toate documentele sunt complete" : "Unele documente au date lipsă (export CIORNĂ)") : ""} · stările se actualizează după „Salvează”</div>
         <div className="flex gap-2">
           <Btn variant="secondary" onClick={loadDocs} data-testid="diu-docs-refresh"><RefreshCw size={14} /> Actualizează</Btn>
-          <a href={pdf("all")} target="_blank" rel="noopener noreferrer" data-testid="diu-export"><Btn><FileDown size={14} /> Dosar DI-U complet PDF</Btn></a>
+          <Btn onClick={() => openAuthenticatedFile(pdf("all"))} data-testid="diu-export"><FileDown size={14} /> Dosar DI-U complet PDF</Btn>
         </div>
       </div>
       <div className="mt-2 space-y-1">{(docs?.positions || []).map((p) => (
@@ -69,8 +69,8 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
           <div><b>{p.nr}. {p.title}</b>{p.missing.length > 0 && <div style={{ color: "#9b2c2c" }}>Lipsă: {p.missing.join(", ")}</div>}</div>
           <div className="flex items-center gap-2 shrink-0">
             <span className="font-bold rounded-full px-2 py-0.5" style={p.status === "semnat" ? { background: "#ecfdf3", color: "#166534" } : p.missing.length ? { background: "#fff0f0", color: "#9b2c2c" } : { background: "#eef4ff", color: "#1d4ed8" }} data-testid={`diu-doc-status-${p.key}`}>{p.status}{p.signed_at ? ` ${new Date(p.signed_at).toLocaleDateString("ro-RO")}` : ""}</span>
-            <a href={pdf(p.key)} target="_blank" rel="noopener noreferrer" title={p.signed_at ? "PDF semnat" : "PDF"} data-testid={`diu-doc-pdf-${p.key}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></a>
-            {p.docx && <a href={`${API}/diu/${id}/pdf?doc=${p.key}&fmt=docx&auth=${tok()}`} title="Word (editabil)" data-testid={`diu-doc-docx-${p.key}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></a>}
+            <button type="button" onClick={() => openAuthenticatedFile(pdf(p.key))} title={p.signed_at ? "PDF semnat" : "PDF"} data-testid={`diu-doc-pdf-${p.key}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></button>
+            {p.docx && <button type="button" onClick={() => openAuthenticatedFile(`/diu/${id}/pdf?doc=${p.key}&fmt=docx`)} title="Word (editabil)" data-testid={`diu-doc-docx-${p.key}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></button>}
           </div>
         </div>))}</div>
     </div>
