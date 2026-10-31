@@ -204,10 +204,20 @@ export default function ModulePage({ moduleKey }) {
     const payload = { ...form };
     if (cfg.checklist) payload.checklist = checks;
     try {
-      if (editId) await api.put(`/data/${key}/${editId}`, payload);
+      let savedId = editId;
+      if (editId) await api.put("/data/" + key + "/" + editId, payload);
       else if (key === "prosumator") await api.post("/import/prosumator", payload);
-      else await api.post(`/data/${key}`, payload);
-      toast.success("Salvat cu succes");
+      else {
+        const { data } = await api.post("/data/" + key, payload);
+        savedId = data?.id || null;
+      }
+      let importFailed = false;
+      if (!editId && key === "diu" && payload.pros_id && savedId) {
+        try { await api.post("/diu/" + encodeURIComponent(savedId) + "/import-pros", { pros_id: payload.pros_id }); }
+        catch { importFailed = true; }
+      }
+      if (importFailed) toast.warning("DI-U creat; nu s-au putut prelua automat toate datele din dosarul prosumator.");
+      else toast.success("Salvat cu succes");
       if (key === "diu" && editId) { setSavedAt(Date.now()); load(); return; }
       setForm(null); setEditId(null); setChecks({}); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Eroare la salvare"); throw e; }
