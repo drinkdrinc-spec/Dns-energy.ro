@@ -33,6 +33,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [problem, setProblem] = useState("");
   const [catalogSearch, setCatalogSearch] = useState({});
+  const [addingModel, setAddingModel] = useState({});
   useEffect(() => {
     api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setProblem("Catalogul nu s-a putut încărca. Poți salva datele de bază și selecta echipamentele ulterior.")).finally(() => setCatalogLoading(false));
   }, []);
@@ -96,8 +97,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
     if (id === "") setVal("catalog_selection", { ...selected, [kind]: "" });
   };
 
-  const choose = (kind, id) => {
-    const item = options[kind].find((x) => x.id === id);
+  const choose = (kind, id, providedItem = null) => {
+    const item = providedItem || options[kind].find((x) => x.id === id);
     setVal("catalog_selection", { ...selected, [kind]: id || "" });
     if (kind === "inverter") {
       setVal("inverter", item?.brand_model || ""); setVal("inverter_kw", item?.p_nom_kw || "");
@@ -113,6 +114,25 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       setVal("system_type", item ? "Hibrid cu baterie" : "On-grid");
     } else setVal("smart_meter_type", item?.brand_model || "");
     cefUpdate(kind, item, id);
+  };
+
+  const addCatalogModel = async (kind, rawName) => {
+    const brand_model = String(rawName || "").trim();
+    if (!brand_model) return;
+    const category = { inverter: "Invertor", panel: "Panou", battery: "Baterie", meter: "Smart meter" }[kind];
+    setAddingModel((prev) => ({ ...prev, [kind]: true }));
+    try {
+      const { data } = await api.post("/data/catalog", { category, brand_model,
+        notes: "Adăugat din dosar; completați datele numai din fișa tehnică oficială și declarația de conformitate." });
+      setCatalog((prev) => [data, ...prev.filter((item) => item.id !== data.id)]);
+      choose(kind, data.id, data);
+      setCatalogSearch((prev) => ({ ...prev, [kind]: "" }));
+      setProblem("");
+    } catch (error) {
+      setProblem(error.response?.data?.detail || `Modelul „${brand_model}” nu a putut fi adăugat în catalog.`);
+    } finally {
+      setAddingModel((prev) => ({ ...prev, [kind]: false }));
+    }
   };
 
   const input = (name, label, type = "text", opts) => (
@@ -160,7 +180,12 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
           <option value="">Alege din catalog ({matches.length})...</option>
           {matches.map((x) => <option key={x.id} value={x.id}>{x.brand_model} {x.p_nom_kw ? `· ${x.p_nom_kw} kW` : x.w ? `· ${x.w} W` : x.kwh ? `· ${x.kwh} kWh` : ""}{!(x.datasheet && x.conformity) ? " · documente lipsă" : ""}</option>)}
         </select>
-        {query && matches.length === 0 && <small className="block mt-1 text-amber-700">Modelul nu este încă în catalog; adaugă-l împreună cu fișa tehnică și certificatul de conformitate.</small>}
+        {query && matches.length === 0 && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+          <small className="block text-amber-900">Modelul nu există încă în catalog.</small>
+          <button type="button" className="mt-1 text-xs font-bold underline disabled:opacity-50" disabled={!!addingModel[kind]}
+            onClick={() => addCatalogModel(kind, query)}>{addingModel[kind] ? "Se adaugă…" : `Adaugă „${query.trim()}” în catalog`}</button>
+          <small className="mt-1 block text-amber-900">Parametrii și documentele rămân necompletate până la încărcarea fișei oficiale.</small>
+        </div>}
         {selected[kind] && (() => { const x = options[kind].find((v) => v.id === selected[kind]); return x && <small className="block mt-1" style={{ color: "var(--muted)" }}>Date preluate din catalog{x.datasheet && x.conformity ? " · fișă și conformitate disponibile" : " · verifică fișa tehnică și conformitatea"}</small>; })()}
       </label>
     );
