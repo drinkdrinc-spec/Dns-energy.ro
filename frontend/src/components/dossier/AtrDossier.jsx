@@ -69,6 +69,21 @@ export function AtrDossier({ id, form, setVal }) {
     return [...new Set(keys)];
   })();
   const fiseRequiredCount = catalogEquipmentKeys.length * 2;
+  const equipmentSummary = (() => {
+    const cef = selectedPros?.cef || {};
+    const items = [];
+    for (const [index, inv] of (cef.inverters || []).entries()) {
+      const quantity = inv.count || inv.quantity || 1;
+      const panelCount = (inv.strings || []).reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
+      items.push({ key: `inv-${index}`, label: `Invertor: ${inv.brand_model || "model necompletat"} · ${quantity} buc. · ${inv.p_nom_kw || "—"} kW` });
+      if (inv.panel_model || panelCount) items.push({ key: `panel-${index}`, label: `Panouri: ${inv.panel_model || "model necompletat"} · ${panelCount || "—"} buc. · ${inv.panel_w || "—"} Wp` });
+      if (inv.battery_mode === "own" && inv.battery?.model) items.push({ key: `battery-own-${index}`, label: `Baterie: ${inv.battery.model} · ${inv.battery.modules || 1} buc. · ${inv.battery.coupling || "cuplare nespecificată"}` });
+    }
+    for (const [index, battery] of (cef.shared_batteries || []).entries()) {
+      items.push({ key: `battery-${index}`, label: `Baterie: ${battery.model || "model necompletat"} · ${battery.modules || 1} buc. · ${battery.coupling || "cuplare nespecificată"}` });
+    }
+    return items;
+  })();
   const selectPros = (id) => {
     setVal("pros_id", id);
     const item = pros.find((p) => p.id === id);
@@ -120,6 +135,11 @@ export function AtrDossier({ id, form, setVal }) {
           <span className="rounded-full border bg-white px-3 py-1">Invertor: {selectedPros.inverter_kw || selectedPros.cef?.total_kw || "—"} kW</span>
           <span className="rounded-full border bg-white px-3 py-1">Evacuare: {selectedPros.power || selectedPros.cef?.total_export_kw || "—"} kW</span>
           <span className="rounded-full border bg-white px-3 py-1">Echipamente: {catalogEquipmentKeys.length}</span>
+        </div>}
+        {selectedPros && <div className="mt-3 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-equipment-summary">
+          <div className="text-xs font-bold">Echipamente preluate în cerere și anexe</div>
+          {equipmentSummary.length ? <ul className="mt-1 grid gap-1 text-xs sm:grid-cols-2">{equipmentSummary.map((item) => <li key={item.key}>{item.label}</li>)}</ul> : <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Nu există echipamente salvate în dosarul de prosumator selectat.</p>}
+          {selectedPros.cef?.inverters?.some((inv) => inv.battery_mode === "own" && inv.battery && !inv.battery.model) && <p className="mt-1 text-xs text-amber-700">Completați modelul bateriei în dosarul de prosumator pentru a-l include în anexă.</p>}
         </div>}
         {!selectedDeerForm && <a href={operatorSource.docs} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-sm font-semibold underline">Alege formularul pe pagina oficială DEER ↗</a>}
       </section>}
