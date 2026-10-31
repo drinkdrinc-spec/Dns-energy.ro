@@ -20,6 +20,8 @@ import { PowerDossier, SimpleDossierBtn } from "@/components/dossier/PowerDossie
 import { AtrDossier } from "@/components/dossier/AtrDossier";
 import { PifPanel } from "@/components/dossier/PifPanel";
 import { AiDossierCheck } from "@/components/ai/AiDossierCheck";
+import { AiRacordCheck } from "@/components/ai/AiRacordCheck";
+import { AiOdReview } from "@/components/ai/AiOdReview";
 import { AiDraft } from "@/components/ai/AiDraft";
 import { DiuDossier } from "@/components/dossier/DiuDossier";
 import { AiPrecheck } from "@/components/ai/AiPrecheck";
@@ -371,6 +373,8 @@ export default function ModulePage({ moduleKey }) {
           {key === "diu" && editId && <SignRequests dossierId={editId} module="diu" />}
           {key === "diu" && editId && <AiPrecheck id={editId} base="diu" open={diuPre} onClose={() => setDiuPre(false)} onFinalize={doSave} form={form}
             title="Verificare AI înainte de predarea către beneficiar" action="Salvează ca „Predat beneficiarului”" />}
+          {(key === "power" || key === "atr") && editId && <AiRacordCheck id={editId} module={key} />}
+          {["prosumator", "diu", "power", "atr"].includes(key) && editId && <AiOdReview id={editId} module={key} />}
           {key === "clients" && editId && <ClientDocs client={form} onChange={(docs) => setVal("docs", docs)} />}
           {key === "clients" && editId && <SignRequests clientName={form.name} />}
 
