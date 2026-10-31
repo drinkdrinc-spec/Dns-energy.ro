@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, API } from "@/lib/api";
 import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
 import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
@@ -53,7 +53,7 @@ export default function ModulePage({ moduleKey }) {
   const { user } = useAuth();
   const role = user?.role || "admin";
   const canDelete = role === "admin" || (role !== "limitat" && !["prosumator", "clients"].includes(key));
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState([]);\n  const [linkedProsumer, setLinkedProsumer] = useState([]);\n  const [showTestRecords, setShowTestRecords] = useState(false);
   const [form, setForm] = useState(null); // null=hidden, {} = open
   const [editId, setEditId] = useState(null);
   const [checks, setChecks] = useState({});
@@ -79,6 +79,21 @@ export default function ModulePage({ moduleKey }) {
       }).catch(() => {});
     });
     if (key === "atr") api.get("/data/prosumator").then((r) => setRefOptions((prev) => ({ ...prev, prosumator: r.data || [] }))).catch(() => {});
+    if (key === "clients") api.get("/data/prosumator").then((r) => setLinkedProsumer(r.data || [])).catch(() => []);
+    if (key === "diu") {
+      const params = new URLSearchParams(window.location.search);
+      const clientId = params.get("clientId");
+      if (params.get("new") === "diu" && clientId) {
+        api.get("/data/clients").then((r) => {
+          const client = (r.data || []).find((item) => item.id === clientId);
+          if (!client) return;
+          setForm({ client_name: client.name || "", client_id: client.id, address: client.address || "", operator: client.operator || "", status: "În lucru" });
+          setEditId(null);
+          setChecks({});
+          window.history.replaceState(null, "", window.location.pathname);
+        }).catch(() => {});
+      }
+    }
     // eslint-disable-next-line
   }, [key]);
 
@@ -258,7 +273,7 @@ export default function ModulePage({ moduleKey }) {
 
       <div className="den-panel">
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({items.length})</span></h2>
+          <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({visibleItems.length})</span></h2>
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
             <input data-testid="search-input" className="den-input w-[240px]" style={{ paddingLeft: 34 }} placeholder="Caută..." value={q} onChange={(e) => setQ(e.target.value)} />
