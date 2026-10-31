@@ -286,10 +286,11 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
     return out.getvalue()
 
 
-def mark_test(pdf: bytes) -> bytes:
+def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int = 38) -> bytes:
+    """Stamp generated PDFs so test content or missing real measurements cannot be mistaken for final evidence."""
     w = PdfWriter()
     for pg in PdfReader(io.BytesIO(pdf)).pages:
         w.add_page(pg)
-    watermark(w, "DOSAR DE TEST — NEOFICIAL", 38)
+    watermark(w, text, size)
     o = io.BytesIO(); w.write(o)
     return o.getvalue()
