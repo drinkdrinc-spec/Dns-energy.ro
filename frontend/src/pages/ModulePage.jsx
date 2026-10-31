@@ -284,6 +284,34 @@ export default function ModulePage({ moduleKey }) {
           <Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>
         </div>} />
 
+      {key === "prosumator" && <section className="den-panel mb-6" aria-label="Flux dosar prosumator" data-testid="prosumer-workflow">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)" }}>Flux de lucru</div>
+            <h2 className="text-lg font-bold mt-1">Dosar de prosumator, în ordine</h2>
+            <p className="text-sm mt-1 max-w-3xl" style={{ color: "var(--muted)" }}>Pornește din actele clientului. Datele citite se verifică, apoi echipamentele și documentele se completează în dosar.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a className="den-button den-button-secondary inline-flex items-center gap-2" href="/catalog-echipamente">Catalog echipamente</a>
+            <a className="den-button den-button-secondary inline-flex items-center gap-2" href="/cerere-atr">Cerere ATR</a>
+            <a className="den-button den-button-secondary inline-flex items-center gap-2" href="/spor-putere">Spor de putere</a>
+            <a className="den-button den-button-secondary inline-flex items-center gap-2" href="/diu">Dosar DI-U</a>
+          </div>
+        </div>
+        <ol className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-5">
+          {[
+            ["01", "Documente client", "CI, factură și carte funciară. AI extrage datele tipărite; lipsurile rămân de verificat.", "Folosește «Începe dosarul din documente»."],
+            ["02", "Date și echipamente", "Confirmă clientul, POD-ul și operatorul. Alege invertorul, panourile și bateria din catalog.", "Datele lipsă nu se inventează."],
+            ["03", "Verificare și proiectare", "Verifică dimensionarea, protecțiile, cablurile și schema monofilară.", "Corectează alertele înainte de generare."],
+            ["04", "Documente pentru depunere", "Generează dosarul, schema și documentele PIF; continuă separat cu ATR, spor sau DI-U.", "Descarcă documentele din rândul dosarului."],
+          ].map(([n, title, body, note]) => <li key={n} className="rounded-xl border p-3.5" style={{ borderColor: "var(--line)", background: "var(--bg)" }}>
+            <div className="flex items-center gap-2"><span className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{n}</span><b className="text-sm">{title}</b></div>
+            <p className="text-xs mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>{body}</p>
+            <p className="text-[11px] mt-2 font-semibold">{note}</p>
+          </li>)}
+        </ol>
+      </section>}
+
       {form && (
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
