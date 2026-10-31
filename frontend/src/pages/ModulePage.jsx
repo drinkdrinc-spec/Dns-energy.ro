@@ -96,9 +96,9 @@ export default function ModulePage({ moduleKey }) {
           if (!client) return;
           const kind = String(client.kind || "").toLowerCase();
           const caseName = params.get("case") || "";
-          const requestType = caseName.includes("spor")
+          const requestType = caseName.toLocaleLowerCase("ro-RO").includes("spor")
             ? "dezvoltarea unui utilizator existent (spor de putere)"
-            : pros ? "producere energie electrică (prosumator)" : "";
+            : "";
           setForm({
             date: new Date().toISOString().slice(0, 10),
             submission_mode: "Solicitantul depune direct",
