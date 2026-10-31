@@ -102,6 +102,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
             <F label="Model baterie" value={inv.battery?.model} onChange={sub("battery", "model")} testid={`${t}-bat-model`} />
             <F label="Cuplare" value={inv.battery?.coupling || "DC"} onChange={sub("battery", "coupling")} options={["DC", "AC"]} testid={`${t}-bat-coupling`} />
             <F label="kWh / modul" type="number" value={inv.battery?.kwh} onChange={sub("battery", "kwh")} testid={`${t}-bat-kwh`} />
+            <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Alte date baterie din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
             <F label="Ah" type="number" value={inv.battery?.ah} onChange={sub("battery", "ah")} testid={`${t}-bat-ah`} />
             <F label="Tensiune (V)" type="number" value={inv.battery?.voltage} onChange={sub("battery", "voltage")} testid={`${t}-bat-v`} />
             <F label="Nr. module" type="number" value={inv.battery?.modules} onChange={sub("battery", "modules")} testid={`${t}-bat-modules`} />
@@ -110,15 +111,16 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
             <F label="Siguranță DC baterie (A)" type="number" value={inv.battery?.fuse_a} onChange={sub("battery", "fuse_a")} testid={`${t}-bat-fuse`} />
             <F label="Cablu baterie: secțiune (mm²)" type="number" value={inv.battery?.cable_section} onChange={sub("battery", "cable_section")} testid={`${t}-bat-cable`} />
             <F label="Cablu baterie: lungime (m)" type="number" value={inv.battery?.cable_length} onChange={sub("battery", "cable_length")} testid={`${t}-bat-cable-len`} />
+            </div></details>
           </>}
         </div>
         <div className="mt-3"><Check label="Circuit de backup / EPS" value={inv.backup?.enabled} onChange={sub("backup", "enabled")} testid={`${t}-backup`} /></div>
         {inv.backup?.enabled && (
-          <div className="grid sm:grid-cols-3 gap-3 mt-2">
+          <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Setări avansate circuit backup</summary><div className="grid sm:grid-cols-3 gap-3 mt-3">
             <F label="Tip backup" value={inv.backup?.type} onChange={sub("backup", "type")} options={["parțial", "total"]} testid={`${t}-backup-type`} />
             <F label="Protecție backup" value={inv.backup?.breaker} onChange={sub("backup", "breaker")} testid={`${t}-backup-breaker`} />
             <F label="Circuite pe backup" value={inv.backup?.circuits} onChange={sub("backup", "circuits")} testid={`${t}-backup-circuits`} />
-          </div>
+          </div></details>
         )}
       </Section>
 
