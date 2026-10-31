@@ -1378,6 +1378,29 @@ async def dossier_simple(item_id: str, authorization: str = Header(None), auth: 
 import power_doc as PWR
 import atr_doc as ATR
 
+
+@api_router.get("/atr/{item_id}/official-docx")
+async def atr_official_docx(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "atr", item_id)
+    client = await get_client(user["id"], rec)
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros = None
+    if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
+        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
+        client = client or pclient
+    try:
+        payload = ATR.render_deer_official_docx(rec, client or {}, settings, pros or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:
+        logger.exception("DEER official DOCX generation failed")
+        raise HTTPException(status_code=500, detail="Nu am putut genera formularul DEER. Verificați dacă șablonul oficial este disponibil.")
+    safe_name = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in str((client or {}).get("name") or "client")).strip().replace(" ", "_")
+    filename = f"DEER_{str(rec.get('deer_case') or 'cerere').replace(' ', '_')}_{safe_name}.docx"
+    return Response(content=payload, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": disp("attachment", filename)})
+
 @api_router.get("/atr/{item_id}/pdf")
 async def atr_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
