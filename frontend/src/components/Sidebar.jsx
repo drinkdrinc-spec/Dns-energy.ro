@@ -10,14 +10,15 @@ import { can, isOff, ROUTE_FEATURE } from "@/lib/plan";
 const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles, Archive };
 
 const NAV = [
-  { label: "Flux de lucru", items: [
-    { to: "/clienti", icon: "Users", text: "Clienți", testid: "nav-clients" },
+  { label: "Flux dosare", items: [
+    { to: "/clienti", icon: "Users", text: "Clienți și documente", testid: "nav-clients" },
+    { to: "/prosumator", icon: "SunMedium", text: "Dosar prosumator", testid: "nav-prosumator" },
     { to: "/cerere-atr", icon: "FileCheck2", text: "Cerere ATR", testid: "nav-atr" },
     { to: "/spor-putere", icon: "PlugZap", text: "Spor de putere", testid: "nav-power" },
-    { to: "/prosumator", icon: "SunMedium", text: "Dosare de prosumator", testid: "nav-prosumator" },
     { to: "/diu", icon: "FolderOpen", text: "Dosar DIU", testid: "nav-diu" },
-    { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
+    { to: "/dosare-anre", icon: "Briefcase", text: "Dosare ANRE", testid: "nav-anre" },
     { to: "/mono", icon: "GitBranch", text: "Schema monofilară", testid: "nav-mono" },
+    { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
   ]},
   { label: "Principal", items: [
     { to: "/", icon: "LayoutDashboard", text: "Panou principal", testid: "nav-home" },
