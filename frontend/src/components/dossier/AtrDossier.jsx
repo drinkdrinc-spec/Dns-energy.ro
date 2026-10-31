@@ -34,6 +34,7 @@ const pdf = (id, full) => `${API}/atr/${id}/pdf?full=${full}&auth=${localStorage
 export function AtrDossier({ id, form, setVal }) {
   const [pros, setPros] = useState([]);
   const [officialForms, setOfficialForms] = useState([]);
+  const [catalogFiles, setCatalogFiles] = useState([]);
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     if (!form.operator) { setOfficialForms([]); return; }
@@ -44,6 +45,31 @@ export function AtrDossier({ id, form, setVal }) {
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
   const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
   const selectedPros = pros.find((p) => p.id === form.pros_id) || null;
+  useEffect(() => {
+    if (!form.pros_id) { setCatalogFiles([]); return; }
+    let active = true;
+    api.get(`/prosumator/${encodeURIComponent(form.pros_id)}/catalog-files`)
+      .then((r) => { if (active) setCatalogFiles(Array.isArray(r.data) ? r.data : []); })
+      .catch(() => { if (active) setCatalogFiles([]); });
+    return () => { active = false; };
+  }, [form.pros_id]);
+  const catalogEquipmentKeys = (() => {
+    const cef = selectedPros?.cef || {};
+    const keys = [];
+    const add = (kind, model, id) => {
+      const value = id || String(model || "").trim().toLocaleLowerCase("ro-RO");
+      if (value) keys.push(`${kind}:${value}`);
+    };
+    for (const inv of cef.inverters || []) {
+      add("invertor", inv.brand_model, inv.catalog_id);
+      add("panou", inv.panel_model, inv.panel_catalog_id);
+      if (inv.battery_mode === "own") add("baterie", inv.battery?.model, inv.battery?.catalog_id);
+    }
+    for (const battery of cef.shared_batteries || []) add("baterie", battery.model, battery.catalog_id);
+    return [...new Set(keys)];
+  })();
+  const fiseRequiredCount = catalogEquipmentKeys.length * 2;
+  const fiseAvailableCount = catalogFiles.length + (att?.fise || []).length;
   const selectPros = (id) => {
     setVal("pros_id", id);
     const item = pros.find((p) => p.id === id);
@@ -64,7 +90,12 @@ export function AtrDossier({ id, form, setVal }) {
         ...(caseKey === "existing" && prod ? ["schema", "fise"] : []), ...(caseKey === "large" ? ["memoriu", "schema", "fise"] : []),
         ...(form.applicant_type === "Persoană juridică" && prod ? ["constatator"] : [])])]
     : DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && caseKey === "spor")).map(([k]) => k);
-  const has = (k) => (att[k] || []).length > 0 || (!!form.pros_id && prod && AUTO[k]);
+  const autoAvailable = (k) => !!form.pros_id && prod && (k === "schema"
+    ? Boolean(selectedPros?.cef?.inverters?.length)
+    : k === "fise" ? fiseRequiredCount > 0 && catalogFiles.length >= fiseRequiredCount : false);
+  const has = (k) => k === "fise" && fiseRequiredCount > 0
+    ? fiseAvailableCount >= fiseRequiredCount
+    : (att[k] || []).length > 0 || autoAvailable(k);
   const missing = need.filter((k) => !has(k));
   const setR = (i, k, v) => setVal("receptors", recs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   return (
@@ -137,7 +168,7 @@ export function AtrDossier({ id, form, setVal }) {
       <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-documents-details">
         <summary className="cursor-pointer text-sm font-semibold">Documente anexate · {missing.length} obligatorii lipsă</summary>
         {operatorSource?.id === "deer" && <p className="text-xs mb-2"><a href={AUTH_DECLARATION_URL} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Descarcă declarația oficială de autenticitate DEER ↗</a></p>}
-        <div className="mt-3">{DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={!!form.pros_id && prod && AUTO[k]} autoLabel={AUTO[k]} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}</div>
+        <div className="mt-3">{DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={autoAvailable(k)} autoLabel={AUTO[k]} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}</div>
       </details>
       <div className="flex flex-wrap gap-2 mt-4">
         {id ? <>
