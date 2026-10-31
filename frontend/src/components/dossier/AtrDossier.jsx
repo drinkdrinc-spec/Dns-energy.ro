@@ -165,6 +165,7 @@ export function AtrDossier({ id, form, setVal }) {
           </div>
           {selectedDeerForm && <div className="flex flex-wrap gap-2"><Btn type="button" onClick={() => id && openAuthenticatedFile(`/atr/${encodeURIComponent(id)}/official-docx`)} disabled={!id} data-testid="atr-download-prefilled-deer">Descarcă anexa precompletată (DOCX)</Btn><a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold" style={{ borderColor: "var(--line)" }} data-testid="atr-download-official-annex">Model necompletat ↗</a></div>}
         </div>
+        {deerAnnexIssues.length > 0 && <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="alert" data-testid="atr-deer-annex-eligibility"><strong>Verifică încadrarea procedurii înainte de descărcare:</strong><ul className="mt-1 list-disc pl-4">{deerAnnexIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
         {selectedPros && <div className="mt-3 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full border bg-white px-3 py-1">POD: {selectedPros.pod || "de completat"}</span>
           <span className="rounded-full border bg-white px-3 py-1">Invertor: {selectedPros.inverter_kw || selectedPros.cef?.total_kw || "—"} kW</span>
