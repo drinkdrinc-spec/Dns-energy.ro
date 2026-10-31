@@ -292,10 +292,10 @@ export default function ModulePage({ moduleKey }) {
             <p className="text-sm mt-1 max-w-3xl" style={{ color: "var(--muted)" }}>Pornește din actele clientului. Datele citite se verifică, apoi echipamentele și documentele se completează în dosar.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <a className="den-button den-button-secondary inline-flex items-center gap-2" href="/catalog-echipamente">Catalog echipamente</a>
-            <a className="den-button den-button-secondary inline-flex items-center gap-2" href="/cerere-atr">Cerere ATR</a>
-            <a className="den-button den-button-secondary inline-flex items-center gap-2" href="/spor-putere">Spor de putere</a>
-            <a className="den-button den-button-secondary inline-flex items-center gap-2" href="/diu">Dosar DI-U</a>
+            <a className="inline-flex items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[12px] font-bold hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "#31425c" }} href="/catalog-echipamente">Catalog echipamente</a>
+            <a className="inline-flex items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[12px] font-bold hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "#31425c" }} href="/cerere-atr">Cerere ATR</a>
+            <a className="inline-flex items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[12px] font-bold hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "#31425c" }} href="/spor-putere">Spor de putere</a>
+            <a className="inline-flex items-center gap-2 rounded-[9px] border px-3 py-2.5 text-[12px] font-bold hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "#31425c" }} href="/diu">Dosar DI-U</a>
           </div>
         </div>
         <ol className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-5">
