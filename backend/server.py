@@ -517,7 +517,7 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
     host = (parsed.hostname or "").lower().rstrip(".")
     official = (
         "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "solis.com", "ginlong.com", "fronius.com", "sma.de",
-        "sma-solar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
+        "sma-solar.com", "aikosolar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
         "risenenergy.com", "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro",
     )
     if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in official):
