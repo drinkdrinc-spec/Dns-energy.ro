@@ -177,7 +177,7 @@ from gridfs_storage import init_storage, put_object, get_object
 APP_NAME = os.environ.get("APP_NAME", "dns-energy").strip("/") or "dns-energy"
 
 MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
-              "webp": "image/webp", "pdf": "application/pdf", "doc": "application/msword",
+              "webp": "image/webp", "heic": "image/heic", "heif": "image/heif", "pdf": "application/pdf", "doc": "application/msword",
               "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
               "xls": "application/vnd.ms-excel",
               "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
@@ -606,8 +606,8 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
     data = await file.read()
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "pdf"
     ct = file.content_type or MIME_TYPES.get(ext, "application/pdf")
-    if ct not in ("application/pdf", "image/jpeg", "image/png", "image/webp"):
-        raise HTTPException(status_code=400, detail="Sunt acceptate doar PDF sau imagini")
+    if ct not in ("application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"):
+        raise HTTPException(status_code=400, detail="Formate acceptate: PDF, JPEG, PNG, WEBP și fotografii HEIC/HEIF de pe iPhone")
     if doc_type not in {"auto", "ci", "factura", "cf", "other"}:
         raise HTTPException(status_code=400, detail="Tip de document invalid")
     stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
