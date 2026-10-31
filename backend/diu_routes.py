@@ -144,26 +144,41 @@ async def diu_import(item_id: str, request: Request, user: dict = Depends(get_cu
                        or cef.get("shared_batteries")
                        or any((inv.get("battery_mode") == "own" and (inv.get("battery") or {}).get("model"))
                               or (inv.get("battery_mode") == "shared" and inv.get("shared_battery_id")) for inv in inverters))
-    upd = {"pros_id": pid, "client_name": p.get("client_name"), "address": p.get("address"), "operator": p.get("operator"), "power": p.get("power"), "atr": p.get("atr")}
-    if p.get("client_id"):
-        upd["client_id"] = p["client_id"]
-    fill = {"supply": p.get("supply"), "earthing": g.get("earthing"), "tg_breaker_a": g.get("tg_breaker_a"), "bmp_a": g.get("bmp_a"),
-            "type": "Sistem fotovoltaic hibrid" if has_storage else "Sistem fotovoltaic on-grid",
+    switching = rec.get("pros_id") != pid
+    fill = {"client_name": p.get("client_name"), "client_id": p.get("client_id"), "address": p.get("address"),
+            "operator": p.get("operator"), "power": p.get("power"), "atr": p.get("atr"),
+            "supply": p.get("supply"), "earthing": g.get("earthing"), "tg_breaker_a": g.get("tg_breaker_a"),
+            "bmp_a": g.get("bmp_a"), "type": "Sistem fotovoltaic hibrid" if has_storage else "Sistem fotovoltaic on-grid",
             **{k: p.get(k) for k in ("receptie_date", "receptie_decision", "receptie_findings", "pif_date", "warranty_months")}}
-    upd.update({k: v for k, v in fill.items() if v not in (None, "") and rec.get(k) in (None, "")})
-    upd = {k: v for k, v in upd.items() if v not in (None, "")}
-    if not rec.get("circuits"):
-        upd["circuits"] = [{"name": f"INV{i + 1} — {inv.get('brand_model') or 'invertor'}", "breaker_a": (inv.get("ac") or {}).get("breaker_a"),
-                            "curve": (inv.get("ac") or {}).get("curve") or "C", "section": (inv.get("ac") or {}).get("section"),
-                            "cable": (inv.get("ac") or {}).get("cable_type"), "length": (inv.get("ac") or {}).get("length_m"),
-                            "rcd_ma": inv.get("rcd_ma"), "rcd_type": rcd(inv.get("rcd_type"))} for i, inv in enumerate(cef.get("inverters") or [])]
+    upd = {"pros_id": pid}
+    # Switching the linked installation is a source change: overwrite or clear
+    # every imported field so no client data leaks from the previous dossier.
+    # Re-importing the same source only fills empty fields to preserve DI-U edits.
+    if switching:
+        upd.update(fill)
+    else:
+        upd.update({k: v for k, v in fill.items() if v not in (None, "") and rec.get(k) in (None, "")})
+    upd["circuits"] = [{"name": f"INV{i + 1} — {inv.get('brand_model') or 'invertor'}", "breaker_a": (inv.get("ac") or {}).get("breaker_a"),
+                        "curve": (inv.get("ac") or {}).get("curve") or "C", "section": (inv.get("ac") or {}).get("section"),
+                        "cable": (inv.get("ac") or {}).get("cable_type"), "length": (inv.get("ac") or {}).get("length_m"),
+                        "rcd_ma": inv.get("rcd_ma"), "rcd_type": rcd(inv.get("rcd_type"))} for i, inv in enumerate(inverters)]
     gr = g.get("grounding_ohm") or p.get("grounding_ohm")
-    pm = dict(rec.get("pram_m") or {})
-    if gr and not pm.get("earth_ohm"):
-        pm["earth_ohm"] = gr
-    if p.get("grounding_limit") and not pm.get("earth_limit"):
-        pm["earth_limit"] = p["grounding_limit"]
-    upd["pram_m"] = pm
+    if switching:
+        # Measurements belong to the selected installation; clear old values
+        # and copy only actual measurements present in its source dossier.
+        pm = {}
+        if gr not in (None, ""):
+            pm["earth_ohm"] = gr
+        if p.get("grounding_limit") not in (None, ""):
+            pm["earth_limit"] = p["grounding_limit"]
+        upd["pram_m"] = pm
+    else:
+        pm = dict(rec.get("pram_m") or {})
+        if gr not in (None, "") and not pm.get("earth_ohm"):
+            pm["earth_ohm"] = gr
+        if p.get("grounding_limit") not in (None, "") and not pm.get("earth_limit"):
+            pm["earth_limit"] = p["grounding_limit"]
+        upd["pram_m"] = pm
     upd["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.diu.update_one({"id": item_id, "owner": user["id"]}, {"$set": upd})
     await S.audit(user, "preluare din prosumator", "diu", item_id, list(upd.keys()))
