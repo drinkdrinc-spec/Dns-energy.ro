@@ -31,8 +31,8 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
         stream.write(data)
         new_id = stream._id
     for old in _bucket.find({"filename": key}):
-        if old["_id"] != new_id:
-            _bucket.delete(old["_id"])
+        if old._id != new_id:
+            _bucket.delete(old._id)
     return {"path": key, "size": len(data)}
 
 
@@ -58,8 +58,9 @@ def get_object(path: str):
         raise ValueError("Invalid object key")
     stored = next(iter(_bucket.find({"filename": key}).sort("uploadDate", -1).limit(1)), None)
     if stored:
-        with _bucket.open_download_stream(stored["_id"]) as stream:
-            return stream.read(), (stored.get("metadata") or {}).get("contentType", "application/octet-stream")
+        with _bucket.open_download_stream(stored._id) as stream:
+            metadata = getattr(stored, "metadata", None) or {}
+            return stream.read(), metadata.get("contentType", "application/octet-stream")
 
     token = _legacy_storage_token()
     response = requests.get(f"{LEGACY_STORAGE_URL}/objects/{key}", headers={"X-Storage-Key": token}, timeout=60)
