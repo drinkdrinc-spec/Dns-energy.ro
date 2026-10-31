@@ -138,10 +138,17 @@ export default function ModulePage({ moduleKey }) {
           const hasStorage = Boolean(pros && (pros.battery || /hibrid/i.test(String(pros.system_type || ""))
             || (pros.cef?.shared_batteries || []).length
             || (pros.cef?.inverters || []).some((inv) => inv.battery_mode === "own" ? Boolean(inv.battery?.model) : inv.battery_mode === "shared" && Boolean(inv.shared_battery_id))));
+          const circuits = (pros?.cef?.inverters || []).map((inv, index) => {
+            const ac = inv.ac || {};
+            const count = Math.max(1, Number(inv.count) || 1);
+            return { name: `INV${index + 1} — ${inv.brand_model || "invertor"}${count > 1 ? ` × ${count} buc.` : ""}`,
+              breaker_a: ac.breaker_a || "", curve: ac.curve || "C", section: ac.section || "", cable: ac.cable_type || "",
+              length: ac.length_m || "", rcd_ma: inv.rcd_ma || "", rcd_type: inv.rcd_type || "" };
+          });
           setForm({
             client_name: pros?.client_name || client.name || "",
             client_id: client.id,
-            ...(pros ? { pros_id: pros.id } : {}),
+            ...(pros ? { pros_id: pros.id, circuits } : {}),
             address: pros?.address || client.address || "",
             operator: pros?.operator || client.operator || "",
             power: pros?.inverter_kw || pros?.power || "",
