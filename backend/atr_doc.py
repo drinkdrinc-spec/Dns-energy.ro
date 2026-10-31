@@ -220,11 +220,11 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
                           escape(string_text or M)])
     if not invs:
         equipment.append([M, M, M, M])
-    story.append(T(equipment, [52, 24, 68, 36]))
+    story.append(T(equipment, [50, 22, 70, 36]))
     batteries = storage_details(pros, rec)
     story.append(P("Sisteme de stocare: " + ("DA" if batteries else ("NU" if invs else "nespecificat")), "small"))
     if batteries:
-        story.append(T([["Model", "Buc.", "Capacitate", "Ah", "V", "Cuplare"]] + [storage_row(b) for b in batteries], [48, 18, 48, 18, 20, 28]))
+        story.append(T([["Model", "Buc.", "Capacitate", "Ah", "V", "Cuplare"]] + [storage_row(b) for b in batteries], [46, 16, 46, 18, 20, 30]))
     story.append(P("5. Documente anexate pentru această procedură", "b"))
     rows = [["Document solicitat", "Stare în dosar"]]
     for key, label, _ in DOCS:
@@ -319,7 +319,7 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
         storage_state = f"{box(True)} DA" if batteries else (f"{box(True)} NU" if configured else "nespecificat — confirmați prezența bateriei")
         story += [T(rows, [6, 40, 10, 14, 18, 12]),
                   P(f"Sisteme de stocare: {storage_state}"),
-                  *([T([["Model", "Buc.", "Capacitate", "Ah", "V", "Cuplare"]] + [storage_row(b) for b in batteries], [48, 18, 48, 18, 20, 28])] if batteries else []),
+                  *([T([["Model", "Buc.", "Capacitate", "Ah", "V", "Cuplare"]] + [storage_row(b) for b in batteries], [46, 16, 46, 18, 20, 30])] if batteries else []),
                   P(f"Data prevăzută pentru PIF a centralei: {escape(D.ro_date(rec.get('pif_date')) or M)}")]
     n = 5 if prod else 4
     story += [P(f"{n}. Alte informații", "b"), P(g(rec, "other") if rec.get("other") else M),
