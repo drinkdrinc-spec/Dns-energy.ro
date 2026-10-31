@@ -56,7 +56,82 @@ async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict
     return _parse(out)
 
 
+def _labeled_value(text: str, labels: str) -> str | None:
+    match = re.search(rf"(?:{labels})\\s*[:：-]\\s*([^\\r\\n]+)", text, re.I)
+    if not match:
+        return None
+    value = re.split(r"\\s{3,}|\\s+(?:POD|CNP|CUI|Furnizor|Operator|Telefon|E-mail|Email|Adresă|Adresa)\\s*[:：-]", match.group(1), maxsplit=1, flags=re.I)[0]
+    value = re.sub(r"\\s+", " ", value).strip(" .,:;-")
+    return value[:160] or None
+
+
+def _fallback_text_fields(text: str, doc_type: str) -> dict:
+    # Extract only explicitly labelled values from selectable PDF text. This
+    # intentionally leaves ambiguous name/address fields empty rather than guessing.
+    fields = {}
+    labels = {
+        "client_name": r"(?:titular(?:ul)?(?:\\s+(?:contractului|locului de consum))?|nume(?:le)?(?:\\s+(?:clientului|beneficiarului|titularului))?|beneficiar)",
+        "consumption_address": r"(?:adresa\\s+locului\\s+de\\s+consum|locul\\s+de\\s+consum|adresa\\s+de\\s+consum)",
+        "hq_address": r"(?:domiciliu(?:l)?(?:\\s+din\\s+actul\\s+de\\s+identitate)?)",
+        "pod": r"(?:POD|CLC|codul?\\s+punctului\\s+de\\s+consum)",
+        "supplier": r"(?:furnizor(?:ul)?\\s+(?:de\\s+)?energie)",
+        "operator": r"(?:operator(?:ul)?\\s+de\\s+distribuție|operator(?:ul)?\\s+de\\s+distributie)",
+        "cf_nr": r"(?:carte\\s+funciară(?:\\s+nr\\.?)?|număr(?:ul)?\\s+CF)",
+        "cadastral_nr": r"(?:număr(?:ul)?\\s+cadastral|nr\\.\\s+cadastral)",
+        "phone": r"(?:telefon|tel\\.?)",
+        "email": r"(?:e-mail|email)",
+    }
+    for key, pattern in labels.items():
+        value = _labeled_value(text, pattern)
+        if value:
+            fields[key] = value
+
+    if doc_type == "ci":
+        cnp = re.search(r"(?:CNP|cod\\s+numeric\\s+personal)\\s*[:：-]?\\s*(\\d{13})(?!\\d)", text, re.I)
+        series = re.search(r"(?:seria|serie)\\s*[:：-]?\\s*([A-Z]{2})\\b", text, re.I)
+        number = re.search(r"(?:nr\\.?|număr(?:ul)?)\\s*(?:CI|carte\\s+de\\s+identitate)?\\s*[:：-]?\\s*(\\d{6})\\b", text, re.I)
+        if cnp:
+            fields["cnp"] = cnp.group(1)
+        if series:
+            fields["id_series"] = series.group(1).upper()
+        if number:
+            fields["id_number"] = number.group(1)
+    elif doc_type == "factura":
+        cnp = re.search(r"(?:CNP|CUI|cod\\s+numeric\\s+personal|cod\\s+unic\\s+de\\s+înregistrare)\\s*[:：-]?\\s*(\\d{8,13})\\b", text, re.I)
+        if cnp:
+            fields["cnp"] = cnp.group(1)
+
+    operator_text = text.lower()
+    for key, needles in {
+        "DEER — Transilvania Nord": ("distribuție energie electrică românia - zona transilvania nord", "deer transilvania nord"),
+        "DEER — Transilvania Sud": ("deer transilvania sud",),
+        "DEER — Muntenia Nord": ("deer muntenia nord",),
+        "Delgaz Grid": ("delgaz grid",),
+        "Distribuție Energie Oltenia": ("distribuție energie oltenia", "distributie energie oltenia"),
+        "Rețele Electrice România": ("rețele electrice", "retele electrice"),
+    }.items():
+        if any(needle in operator_text for needle in needles):
+            fields.setdefault("operator", key)
+            break
+    if not fields:
+        raise ValueError("PDF-ul conține text, dar nu am găsit câmpuri cu etichete suficient de clare. Verifică documentul și completează manual.")
+    fields["doc_type"] = {"ci": "Carte de identitate", "factura": "Factură energie", "cf": "Carte funciară"}.get(doc_type, "Document PDF")
+    fields["summary"] = "Date extrase local din etichetele vizibile ale PDF-ului. Câmpurile neidentificate nu au fost deduse."
+    fields["_engine"] = "Extragere locală PDF"
+    return fields
+
+
 async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto") -> dict:
-    # OpenAI adapter receives rendered page images; this avoids private
-    # Emergent/Gemini file-upload integrations and keeps PDF extraction local.
-    return await extract_gpt(content, mime, doc_type)
+    # Prefer the configured vision model. If it is unavailable, selectable PDF
+    # text can still prefill unambiguous labelled fields without inventing data.
+    try:
+        return await extract_gpt(content, mime, doc_type)
+    except Exception:
+        if mime != "application/pdf":
+            raise
+        import pymupdf
+        doc = pymupdf.open(stream=content, filetype="pdf")
+        text = "\\n".join(page.get_text("text") for page in list(doc)[:12]).strip()
+        if not text:
+            raise
+        return _fallback_text_fields(text, doc_type)
