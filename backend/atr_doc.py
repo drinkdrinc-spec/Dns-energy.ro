@@ -56,9 +56,11 @@ def required(rec: dict) -> list:
     operator = op_key(rec.get("operator"))
     if operator == "deer":
         case = str(rec.get("deer_case") or "")
-        if "spor de putere" in case.lower() or "spor" in str(rec.get("request_type") or "").lower():
+        case_norm = case.lower().replace("ț", "t").replace("ș", "s")
+        request_norm = str(rec.get("request_type") or "").lower().replace("ț", "t").replace("ș", "s")
+        if "spor de putere" in case_norm or "spor" in request_norm:
             case_key = "spor"
-        elif "loc nou" in case.lower() or "program de finanțare" in case.lower():
+        elif "loc nou" in case_norm or "program de finantare" in case_norm:
             case_key = "new"
         elif ">400" in case:
             case_key = "large"
@@ -305,8 +307,8 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
     cef = pros.get("cef") or {}
     inverters = cef.get("inverters") or []
     batteries = storage_details(pros, rec)
-    case = str(rec.get("deer_case") or "").lower()
-    is_new = "loc nou" in case
+    case = str(rec.get("deer_case") or "").lower().replace("ț", "t").replace("ș", "s")
+    is_new = "loc nou" in case or "program de finantare" in case
     # Applicant details are substituted only where the official form has an unambiguous field.
     import re
     applicant = next((p for p in doc.paragraphs if "Utilizatorul" in p.text), None)
@@ -533,7 +535,8 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
         for i, inv in enumerate(invs):
             n = sum(int(D.num(x.get("panels"))) for x in inv.get("strings") or [])
             w = D.num(inv.get("panel_w"))
-            rows.append([str(i + 1), escape(inv.get("brand_model") or ""), "1", escape(str(inv.get("p_nom_kw") or "")), f"{n} × {w:g}" if n else "", D.fmt(n * w / 1000, 2) if n and w else ""])
+            quantity = inv.get("count") or inv.get("quantity") or 1
+            rows.append([str(i + 1), escape(inv.get("brand_model") or ""), escape(str(quantity)), escape(str(inv.get("p_nom_kw") or "")), f"{n} × {w:g}" if n else "", D.fmt(n * w / 1000, 2) if n and w else ""])
         if not invs:
             rows.append([""] * 6)
         batteries = storage_details(pros, rec)
