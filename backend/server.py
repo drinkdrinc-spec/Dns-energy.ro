@@ -549,7 +549,7 @@ async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> 
     return await finish_user(user)
 
 @api_router.post("/ai/extract")
-async def ai_extract(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"), user: dict = Depends(get_current_user)):
     guard("prosumator", user, write=True)
     need(user, "ai_extract", True)
     data = await file.read()
@@ -557,10 +557,12 @@ async def ai_extract(file: UploadFile = File(...), user: dict = Depends(get_curr
     ct = file.content_type or MIME_TYPES.get(ext, "application/pdf")
     if ct not in ("application/pdf", "image/jpeg", "image/png", "image/webp"):
         raise HTTPException(status_code=400, detail="Sunt acceptate doar PDF sau imagini")
+    if doc_type not in {"auto", "ci", "factura", "cf", "other"}:
+        raise HTTPException(status_code=400, detail="Tip de document invalid")
     stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
     use_gpt = has_feature(user, "ai_gpt") and "ai_gpt" not in user["plan"].get("disabled", [])
     try:
-        fields = await (extract_gpt if use_gpt else extract_pdf)(data, ct)
+        fields = await (extract_gpt if use_gpt else extract_pdf)(data, ct, doc_type)
     except Exception as e:
         logger.error(f"AI extract failed: {e}")
         raise HTTPException(status_code=502, detail="Nu am putut citi documentul. Încearcă din nou.")
