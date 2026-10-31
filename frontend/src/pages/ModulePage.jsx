@@ -54,7 +54,7 @@ export default function ModulePage({ moduleKey }) {
   const role = user?.role || "admin";
   const canDelete = role === "admin" || (role !== "limitat" && !["prosumator", "clients"].includes(key));
   const [items, setItems] = useState([]);
-  const [linkedProsumer, setLinkedProsumer] = useState([]);
+  const [linkedProsumer, setLinkedProsumer] = useState([]);\n  const [linkedDiu, setLinkedDiu] = useState([]);
   const [showTestRecords, setShowTestRecords] = useState(false);
   const [form, setForm] = useState(null); // null=hidden, {} = open
   const [editId, setEditId] = useState(null);
@@ -77,19 +77,40 @@ export default function ModulePage({ moduleKey }) {
     const refs = [...new Set((cfg.fields || []).filter((f) => f.type === "ref").map((f) => f.ref))];
     refs.forEach((ref) => {
       api.get(`/data/${ref}`).then((r) => {
-        setRefOptions((prev) => ({ ...prev, [ref]: r.data.map((x) => ({ ...x, id: x.id, label: MODULES[ref].display(x) })) }));
+        const rows = ref === "clients" ? r.data.filter((item) => !/\\bTEST\\b/i.test(String(item.name || ""))) : r.data;
+        setRefOptions((prev) => ({ ...prev, [ref]: rows.map((x) => ({ ...x, id: x.id, label: MODULES[ref].display(x) })) }));
       }).catch(() => {});
     });
     if (key === "atr") api.get("/data/prosumator").then((r) => setRefOptions((prev) => ({ ...prev, prosumator: r.data || [] }))).catch(() => {});
-    if (key === "clients") api.get("/data/prosumator").then((r) => setLinkedProsumer(r.data || [])).catch(() => []);
+    if (key === "clients" || key === "prosumator") {
+      api.get("/data/prosumator").then((r) => setLinkedProsumer(r.data || [])).catch(() => {});
+      api.get("/data/diu").then((r) => setLinkedDiu(r.data || [])).catch(() => {});
+    }
     if (key === "diu") {
       const params = new URLSearchParams(window.location.search);
       const clientId = params.get("clientId");
+      const prosId = params.get("prosId");
       if (params.get("new") === "diu" && clientId) {
-        api.get("/data/clients").then((r) => {
-          const client = (r.data || []).find((item) => item.id === clientId);
+        Promise.all([api.get("/data/clients"), prosId ? api.get("/data/prosumator") : Promise.resolve({ data: [] })]).then(([clientsRes, prosRes]) => {
+          const client = (clientsRes.data || []).find((item) => item.id === clientId);
+          const pros = (prosRes.data || []).find((item) => item.id === prosId);
           if (!client) return;
-          setForm({ client_name: client.name || "", client_id: client.id, address: client.address || "", operator: client.operator || "", status: "În lucru" });
+          const grid = pros?.cef?.grid || {};
+          setForm({
+            client_name: pros?.client_name || client.name || "",
+            client_id: client.id,
+            ...(pros ? { pros_id: pros.id } : {}),
+            address: pros?.address || client.address || "",
+            operator: pros?.operator || client.operator || "",
+            power: pros?.inverter_kw || pros?.power || "",
+            atr: pros?.atr || "",
+            type: pros ? (pros.battery || /hibrid/i.test(String(pros.system_type || "")) ? "Sistem fotovoltaic hibrid" : "Sistem fotovoltaic on-grid") : "",
+            supply: pros?.supply || "",
+            earthing: grid.earthing || "",
+            bmp_a: grid.bmp_a || "",
+            tg_breaker_a: grid.tg_breaker_a || "",
+            status: "În lucru",
+          });
           setEditId(null);
           setChecks({});
           window.history.replaceState(null, "", window.location.pathname);
@@ -302,26 +323,42 @@ export default function ModulePage({ moduleKey }) {
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       {key === "clients" && (() => {
-                        const normalize = (value) => String(value || "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
+                        const normalize = (value) => String(value || "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
                         const dossier = linkedProsumer.find((p) => (p.client_id && p.client_id === it.id) || normalize(p.client_name) === normalize(it.name));
+                        const diu = linkedDiu.find((d) => (d.client_id && d.client_id === it.id) || (d.pros_id && d.pros_id === dossier?.id) || normalize(d.client_name) === normalize(it.name));
                         const token = localStorage.getItem("den_token");
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
-                        return <span className="inline-flex items-center">
-                          <button type="button" className={linkClass} onClick={() => { window.location.href = `/diu?new=diu&clientId=${encodeURIComponent(it.id)}`; }}>Creează DI-U</button>
+                        const diuUrl = "/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "");
+                        return <span className="inline-flex items-center flex-wrap gap-y-1">
+                          <button type="button" className={linkClass} onClick={() => { window.location.href = diuUrl; }}>Creează DI-U</button>
                           {dossier && <>
-                            <a className={linkClass} href={`${API}/dossier/${dossier.id}/export?auth=${token}`} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
-                            <a className={linkClass} href={`${API}/sld/${dossier.id}/pdf?auth=${token}`} target="_blank" rel="noopener noreferrer">Schemă</a>
-                            <a className={linkClass} href={`${API}/dossier/${dossier.id}/pif/pdf?auth=${token}`} target="_blank" rel="noopener noreferrer">PRAM / PIF</a>
+                            <a className={linkClass} href={API + "/dossier/" + dossier.id + "/export?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
+                            <a className={linkClass} href={API + "/sld/" + dossier.id + "/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Schemă</a>
+                            <a className={linkClass} href={API + "/dossier/" + dossier.id + "/pif/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">PIF</a>
+                          </>}
+                          {diu && <>
+                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_priza&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">PRAM priză</a>
+                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_cont&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Continuitate</a>
+                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_izol&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Izolație</a>
+                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_ddr&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">DDR</a>
                           </>}
                         </span>;
                       })()}
                       {key === "prosumator" && (() => {
                         const token = localStorage.getItem("den_token");
+                        const normalize = (value) => String(value || "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+                        const diu = linkedDiu.find((d) => d.pros_id === it.id || ((d.client_id && d.client_id === it.client_id) && normalize(d.client_name) === normalize(it.client_name)));
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
-                        return <span className="inline-flex items-center">
-                          <a className={linkClass} href={`${API}/dossier/${it.id}/export?auth=${token}`} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
-                          <a className={linkClass} href={`${API}/sld/${it.id}/pdf?auth=${token}`} target="_blank" rel="noopener noreferrer">Schemă</a>
-                          <a className={linkClass} href={`${API}/dossier/${it.id}/pif/pdf?auth=${token}`} target="_blank" rel="noopener noreferrer">PRAM / PIF</a>
+                        return <span className="inline-flex items-center flex-wrap gap-y-1">
+                          <a className={linkClass} href={API + "/dossier/" + it.id + "/export?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
+                          <a className={linkClass} href={API + "/sld/" + it.id + "/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Schemă</a>
+                          <a className={linkClass} href={API + "/dossier/" + it.id + "/pif/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">PV PIF</a>
+                          {diu && <>
+                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_priza&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">PRAM priză</a>
+                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_cont&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Continuitate</a>
+                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_izol&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Izolație</a>
+                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_ddr&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">DDR</a>
+                          </>}
                         </span>;
                       })()}
                       <button onClick={() => openEdit(it)} data-testid={`edit-${it.id}`} className="p-1.5 rounded hover:bg-[#eef4ff]" title="Editează"><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
