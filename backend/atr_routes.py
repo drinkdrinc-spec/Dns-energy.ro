@@ -266,6 +266,43 @@ async def _fetch_registry_annex(form: dict, operator_key: str) -> tuple[bytes, s
         return data, f"{safe}.docx"
     raise ValueError("Linkul din registru nu a returnat un PDF sau un DOCX.")
 
+async def _registry_forms_for_request(operator_key: str, rec: dict) -> tuple[int | None, list[dict]]:
+    """Choose only official forms whose annex matches the selected ATR case."""
+    if operator_key not in OP_DOMAINS:
+        return None, []
+    case = " ".join(str(rec.get(k) or "") for k in ("deer_case", "request_type")).casefold().replace("ț", "t").replace("ș", "s")
+    request_type = ATR.rtype(rec)
+    if "finant" in case:
+        annex_no = 4
+    elif any(mark in case for mark in ("≤10,8", "<=10,8", "<=10.8", "≤ 10,8")):
+        annex_no = 5
+    else:
+        annex_no = {"nou": 1, "spor": 1, "mod_dep": 2, "mod_fara": 2, "admin": 3}.get(request_type)
+    if annex_no is None:
+        return None, []
+    rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
+    matches = []
+    annex_pattern = re.compile(rf"anexa\s*(?:nr\.?\s*)?{annex_no}\b", re.I)
+    for form in rows:
+        kind = str(form.get("kind") or "").casefold()
+        title = str(form.get("title") or "").casefold()
+        if ATR.op_key(form.get("operator")) != operator_key:
+            continue
+        if "prosumator" not in kind and "prosumator" not in title:
+            continue
+        if not annex_pattern.search(title) and not annex_pattern.search(kind):
+            continue
+        if form.get("status") == "link invalid":
+            continue
+        parsed = urlparse(str(form.get("url") or ""))
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if parsed.scheme != "https" or not any(host == domain or host.endswith("." + domain) for domain in OP_DOMAINS[operator_key]):
+            continue
+        matches.append(form)
+    matches.sort(key=lambda row: (bool(row.get("confirmed_at")), row.get("status") == "valid", str(row.get("title") or "")), reverse=True)
+    return annex_no, matches[:3]
+
+
 # ---------------- complete downloadable package ----------------
 @api.get("/atr/{item_id}/package.zip")
 async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
@@ -292,29 +329,29 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
             label = re.sub(r"[^A-Za-z0-9_-]+", "_", (info or ("Anexa_DEER",))[0]).strip("_")
             archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
         else:
-            eligible_annex1 = ATR.rtype(rec) in ("nou", "spor")
-            form = await _registry_annex1(op_key) if eligible_annex1 else None
+            annex_no, forms = await _registry_forms_for_request(op_key, rec)
             note = [
                 "Pachet ATR — formular oficial pentru operator",
                 f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
                 f"Tip solicitare: {ATR.rtype(rec) or 'neselectat'}",
+                f"Anexă căutată în registrul oficial: {annex_no or 'nedeterminată'}",
                 "",
-                "Formularul oficial inclus mai jos este original și rămâne necompletat. Datele introduse și anexele generate de aplicație sunt în PDF-ul principal al acestui pachet.",
-                "Verificați versiunea curentă în portalul operatorului înainte de depunere. Valorile lipsă nu sunt inventate.",
+                "Formularele oficiale atașate sunt originale și rămân necompletate. Datele cunoscute și anexele generate de aplicație sunt în PDF-ul principal al pachetului.",
+                "Verificați versiunea și eligibilitatea în portalul operatorului înainte de depunere. Valorile lipsă nu sunt inventate.",
             ]
-            if form:
-                note.extend(["", f"Sursă oficială: {form.get('url')}", f"Titlu în registru: {form.get('title')}", f"Stare verificare link: {form.get('status') or 'neverificat'}"])
-                try:
-                    annex, official_name = await _fetch_registry_annex(form, op_key)
-                    archive.writestr(f"Anexe oficiale/{official_name}", annex)
-                    note.append("Formular oficial descărcat în acest pachet.")
-                except (httpx.HTTPError, ValueError) as exc:
-                    note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
+            if forms:
+                for form in forms:
+                    note.extend(["", f"Sursă oficială: {form.get('url')}", f"Titlu în registru: {form.get('title')}", f"Stare verificare link: {form.get('status') or 'neverificat'}"])
+                    try:
+                        annex, official_name = await _fetch_registry_annex(form, op_key)
+                        archive.writestr(f"Anexe oficiale/{official_name}", annex)
+                        note.append("Formular oficial descărcat în acest pachet.")
+                    except (httpx.HTTPError, ValueError) as exc:
+                        note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
+            elif annex_no:
+                note.append(f"Nu există în registru un formular oficial Anexa {annex_no} verificabil pentru operatorul și tipul cererii selectate.")
             else:
-                if eligible_annex1:
-                    note.append("Nu există în registru un formular oficial Anexa 1 verificabil pentru operatorul selectat.")
-                else:
-                    note.append("Anexa 1 nu a fost atașată automat deoarece tipul cererii nu este «utilizator nou» sau «spor de putere».")
+                note.append("Tipul cererii curente nu are încă o mapare automată la o anexă oficială în registrul aplicației.")
             archive.writestr("Anexe oficiale/INFO_completare.txt", "\n".join(note))
     name = re.sub(r"[^A-Za-z0-9_.-]+", "_", pdf_name.rsplit(".", 1)[0]) + "_pachet.zip"
     return Response(content=bundle.getvalue(), media_type="application/zip",
