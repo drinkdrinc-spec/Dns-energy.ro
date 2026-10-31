@@ -240,7 +240,7 @@ def doc_angajament_delgaz(ctx, r, pos):
         B("sub", "Accesul personalului autorizat ANRE la instalația de utilizare"),
         B("p", f"Subsemnatul/Subsemnata <b>{ctx.name}</b>, beneficiar al instalației de utilizare situate la {ctx.loc}, în relație cu operatorul de distribuție Delgaz Grid,"),
         B("p", "mă angajez să permit accesul personalului autorizat ANRE la instalația de utilizare, în condițiile legale și pentru operațiunile de verificare sau intervenție care îi revin."),
-        B("p", f"POD / cod loc de consum: {e(r.get(\"pod\"))}"),
+        B("p", f"POD / cod loc de consum: {e(r.get('pod'))}"),
         B("p", "Data: ____________________"),
         sign(ben_sig(ctx)),
         B("p", "Ciornă precompletată pentru verificare. Confirmă textul și condițiile aplicabile în formularul/cerința curentă Delgaz Grid înainte de semnare și depunere."),
