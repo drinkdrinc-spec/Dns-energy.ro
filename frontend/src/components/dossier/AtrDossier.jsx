@@ -101,6 +101,28 @@ export function AtrDossier({ id, form, setVal }) {
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="atr-dossier">
       <FormAlert operator={form.operator} scope="atr" />
+      {operatorSource?.id === "deer" && <section className="mb-4 rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "linear-gradient(135deg, #f2f7ff 0%, #fff 72%)" }} data-testid="atr-next-actions">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)" }}>Pachet de depunere · DEER</div>
+            <h3 className="mt-1 text-base font-bold">{selectedDeerForm ? selectedDeerForm.title : "Selectează procedura DEER aplicabilă"}</h3>
+            <p className="mt-1 text-xs leading-5" style={{ color: "var(--muted)" }}>
+              {selectedPros
+                ? `Datele POD, puterea și echipamentele sunt legate de dosarul ${selectedPros.number || selectedPros.client_name || "prosumator"}.`
+                : "Alege clientul și dosarul de prosumator pentru preluarea automată a datelor tehnice."}
+              {" "}PDF-ul DNS Energy este o precompletare de lucru; formularul oficial trebuie verificat și depus în portalul distribuitorului.
+            </p>
+          </div>
+          {selectedDeerForm && <a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-bold text-white" style={{ background: "var(--blue)" }} data-testid="atr-download-official-annex">Descarcă anexa oficială ↗</a>}
+        </div>
+        {selectedPros && <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border bg-white px-3 py-1">POD: {selectedPros.pod || "de completat"}</span>
+          <span className="rounded-full border bg-white px-3 py-1">Invertor: {selectedPros.inverter_kw || selectedPros.cef?.total_kw || "—"} kW</span>
+          <span className="rounded-full border bg-white px-3 py-1">Evacuare: {selectedPros.power || selectedPros.cef?.total_export_kw || "—"} kW</span>
+          <span className="rounded-full border bg-white px-3 py-1">Echipamente: {catalogEquipmentKeys.length}</span>
+        </div>}
+        {!selectedDeerForm && <a href={operatorSource.docs} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-sm font-semibold underline">Alege formularul pe pagina oficială DEER ↗</a>}
+      </section>}
       <details className="mb-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-official-details">
         <summary className="cursor-pointer text-sm font-semibold">Formulare oficiale, GDPR și anexă</summary>
         <div className="mt-3">
