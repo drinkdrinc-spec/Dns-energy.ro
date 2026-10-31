@@ -54,6 +54,30 @@ export function AtrDossier({ id, form, setVal }) {
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
   const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
   const selectedPros = pros.find((p) => p.id === form.pros_id) || null;
+  const deerAnnexIssues = (() => {
+    if (operatorSource?.id !== "deer" || !selectedDeerForm) return [];
+    const issues = [];
+    const kind = String(form.request_type || "").toLocaleLowerCase("ro-RO");
+    if (selectedDeerForm.key === "new" && selectedDeerForm.value.includes("loc nou") && !kind.includes("utilizator nou")) issues.push("Anexa 1 pentru loc nou cere tipul de solicitare «utilizator nou definitiv».");
+    if (selectedDeerForm.key === "spor" && !kind.includes("spor de putere")) issues.push("Anexa 1 selectată pentru spor trebuie să corespundă tipului solicitării «spor de putere».");
+    if (selectedDeerForm.key === "existing" && selectedDeerForm.value.includes("actualizare CRR") && !kind.includes("administrativ")) issues.push("Anexa 3 pentru actualizare CRR cere tipul solicitării administrative.");
+    if (selectedDeerForm.value.includes("≤10,8")) {
+      const invs = selectedPros?.cef?.inverters || [];
+      const stringsPower = invs.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, st) => n + (Number(st.panels) || 0), 0) * (Number(inv.panel_w) || 0) / 1000 * (Number(inv.count) || 1), 0);
+      const power = Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower || Number(selectedPros?.inverter_kw);
+      if (!power) issues.push("Completează puterea instalată de producere pentru verificarea Anexei 5.");
+      else if (power > 10.8) issues.push("Anexa 5 este pentru putere instalată de maximum 10,8 kW.");
+      const supply = String(form.supply || selectedPros?.supply || selectedPros?.cef?.grid?.supply || "").toLowerCase();
+      if (!supply) issues.push("Selectează tipul branșamentului pentru verificarea Anexei 5.");
+      else if (supply.includes("trifaz") || supply.includes("400")) issues.push("Anexa 5 selectată cere conexiune diferită de trifazic.");
+    }
+    if (selectedDeerForm.key === "large") {
+      const power = Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || Number(selectedPros?.inverter_kw);
+      if (!power) issues.push("Completează puterea instalată de producere pentru procedura dedicată.");
+      else if (power <= 400) issues.push("Procedura dedicată DEER selectată este pentru putere instalată mai mare de 400 kW.");
+    }
+    return issues;
+  })();
   const normClientName = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
   const clientPros = form.client_name ? pros.filter((p) => normClientName(p.client_name) === normClientName(form.client_name)) : [];
   useEffect(() => {
@@ -183,6 +207,7 @@ export function AtrDossier({ id, form, setVal }) {
         <div className="font-bold mb-1">Formular DEER selectat</div>
         <div className="text-sm">{selectedDeerForm.title}</div>
         <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Verifică dacă acest caz corespunde situației locului de consum, puterii și lucrărilor cerute de operator. Documentul oficial se descarcă din DEER.</div>
+        {deerAnnexIssues.length > 0 && <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="alert" data-testid="atr-deer-annex-warning"><strong>Verifică încadrarea procedurii:</strong><ul className="mt-1 list-disc pl-4">{deerAnnexIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
         <a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex underline font-semibold text-sm mt-2">Deschide formularul oficial selectat ↗</a>
       </div>}
         </div>
