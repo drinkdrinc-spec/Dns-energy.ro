@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, API } from "@/lib/api";
+import { api, API, openAuthenticatedFile } from "@/lib/api";
 import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
 import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
@@ -402,7 +402,6 @@ export default function ModulePage({ moduleKey }) {
                         const normalize = (value) => String(value || "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
                         const dossier = linkedProsumer.find((p) => (p.client_id && p.client_id === it.id) || normalize(p.client_name) === normalize(it.name));
                         const diu = linkedDiu.find((d) => (d.client_id && d.client_id === it.id) || (d.pros_id && d.pros_id === dossier?.id) || normalize(d.client_name) === normalize(it.name));
-                        const token = localStorage.getItem("den_token");
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
                         const diuUrl = "/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "");
                         return <span className="inline-flex max-w-[204px] items-center flex-wrap gap-1">
@@ -410,15 +409,15 @@ export default function ModulePage({ moduleKey }) {
                           <a className={linkClass} href={"/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "")}>Cerere ATR</a>
                           <a className={linkClass} href={"/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "") + "&case=" + encodeURIComponent("Loc existent — spor de putere — Anexa 1")}>Spor de putere</a>
                           {dossier && <>
-                            <a className={linkClass} href={API + "/dossier/" + dossier.id + "/export?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
-                            <a className={linkClass} href={API + "/sld/" + dossier.id + "/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Schemă</a>
-                            <a className={linkClass} href={API + "/dossier/" + dossier.id + "/pif/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">PIF</a>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${dossier.id}/export`)}>Dosar PDF</button>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/sld/${dossier.id}/pdf`)}>Schemă</button>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${dossier.id}/pif/pdf`)}>PIF</button>
                           </>}
                           {diu && <>
-                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_priza&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">PRAM priză</a>
-                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_cont&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Continuitate</a>
-                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_izol&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Izolație</a>
-                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_ddr&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">DDR</a>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`)}>PRAM priză</button>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_cont`)}>Continuitate</button>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_izol`)}>Izolație</button>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_ddr`)}>DDR</button>
                           </>}
                         </span>;
                       })()}
@@ -434,14 +433,14 @@ export default function ModulePage({ moduleKey }) {
                           {diuUrl && <a className={linkClass} href={diuUrl}>Creează DI-U</a>}
                           {it.client_id && <a className={linkClass} href={atrUrl}>Cerere ATR</a>}
                           {it.client_id && <a className={linkClass} href={atrUrl + "&case=" + encodeURIComponent("Loc existent — spor de putere — Anexa 1")}>Spor de putere</a>}
-                          <a className={linkClass} href={API + "/dossier/" + it.id + "/export?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
-                          <a className={linkClass} href={API + "/sld/" + it.id + "/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Schemă</a>
-                          <a className={linkClass} href={API + "/dossier/" + it.id + "/pif/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">PV PIF</a>
+                          <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/export`)}>Dosar PDF</button>
+                          <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/sld/${it.id}/pdf`)}>Schemă</button>
+                          <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/pif/pdf`)}>PV PIF</button>
                           {diu && <>
-                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_priza&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">PRAM priză</a>
-                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_cont&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Continuitate</a>
-                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_izol&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Izolație</a>
-                            <a className={linkClass} href={API + "/diu/" + diu.id + "/pdf?doc=pram_ddr&auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">DDR</a>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`)}>PRAM priză</button>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_cont`)}>Continuitate</button>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_izol`)}>Izolație</button>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_ddr`)}>DDR</button>
                           </>}
                         </span>;
                       })()}
