@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FileDown, Wand2, RefreshCw, ShieldCheck, Upload, X, Eye, Send } from "lucide-react";
-import { api, API, fileUrl } from "@/lib/api";
+import { api, API, fileUrl, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { SldChecks } from "./SldChecks";
@@ -26,7 +26,7 @@ export function SldPanel({ id, form, setVal }) {
     setVal("cef", r.data.cef); await load();
     toast.success(r.data.filled.length ? `${r.data.filled.length} câmpuri completate cu valori calculate — de confirmat` : "Nu există câmpuri goale de completat");
   });
-  const open = (path) => run(async () => { await persist(); window.open(`${API}${path}${path.includes("?") ? "&" : "?"}auth=${tok()}`, "_blank"); await load(); });
+  const open = (path) => run(async () => { await persist(); await openAuthenticatedFile(path); await load(); });
   const approve = (role) => run(async () => { await persist(); await api.post(`/sld/${id}/approve`, { role }); await load(); toast.success("Schema a fost aprobată"); });
   const unapprove = () => run(async () => { await api.post(`/sld/${id}/unapprove`); await load(); });
   const requestApproval = () => run(async () => { await persist(); const r = await api.post(`/sld/${id}/request-approval`, { origin: window.location.origin }); await load(); toast.success(r.data.recipients.some((x) => x.sent) ? "Cerere de aprobare trimisă" : "Cerere înregistrată — e-mail netrimis (dosar TEST fără e-mail de test)"); });
@@ -56,7 +56,7 @@ export function SldPanel({ id, form, setVal }) {
         <Btn onClick={() => open(`/sld/${id}/pdf`)} disabled={busy} data-testid="sld-preview"><Eye size={14} /> Previzualizare schemă generată ({d.format})</Btn>
         <Btn variant="secondary" onClick={() => open(`/sld/${id}/pdf?fmt=${d.format === "A3" ? "A4" : "A3"}`)} disabled={busy} data-testid="sld-preview-alt"><FileDown size={14} /> PDF {d.format === "A3" ? "A4" : "A3"}</Btn>
         <Btn variant="secondary" onClick={() => open(`/sld/${id}/report`)} disabled={busy} data-testid="sld-report"><FileDown size={14} /> Raport de calcul</Btn>
-        <Btn variant="secondary" onClick={() => window.open(`${API}/sld/demo/pdf?auth=${tok()}`, "_blank")} data-testid="sld-demo"><Eye size={14} /> Schemă demonstrativă</Btn>
+        <Btn variant="secondary" onClick={() => openAuthenticatedFile("/sld/demo/pdf")} data-testid="sld-demo"><Eye size={14} /> Schemă demonstrativă</Btn>
       </div>
       <SldChecks d={d} />
       <div className="grid sm:grid-cols-2 gap-4 mt-4">
