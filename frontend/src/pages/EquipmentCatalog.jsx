@@ -78,7 +78,7 @@ export default function EquipmentCatalog() {
   const [form, setForm] = useState(null);
   const load = () => api.get("/data/catalog").then((r) => setItems(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
-  const rows = useMemo(() => items.filter((i) => i.category === cat && !/\\bTEST\\b/i.test(String(i.brand_model || "")) && (!q || i.brand_model?.toLowerCase().includes(q.toLowerCase()))), [items, cat, q]);
+  const rows = useMemo(() => items.filter((i) => i.category === cat && !/\bTEST\b/i.test(String(i.brand_model || "")) && (!q || i.brand_model?.toLowerCase().includes(q.toLowerCase()))), [items, cat, q]);
 
   const save = async () => {
     if (!form.brand_model) return toast.error("Completează marca și modelul");
