@@ -419,9 +419,9 @@ export default function ModulePage({ moduleKey }) {
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
                     <td className="px-2 py-3 text-left whitespace-normal sticky right-0 z-10 bg-white shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.45)] max-w-[220px]">
                       {key === "clients" && (() => {
-                        const normalize = (value) => String(value || "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
-                        const dossier = linkedProsumer.find((p) => (p.client_id && p.client_id === it.id) || normalize(p.client_name) === normalize(it.name));
-                        const diu = linkedDiu.find((d) => (d.client_id && d.client_id === it.id) || (d.pros_id && d.pros_id === dossier?.id) || normalize(d.client_name) === normalize(it.name));
+                        const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
+                        const dossier = linkedProsumer.find((p) => p.client_id ? p.client_id === it.id : normalize(p.client_name) === normalize(it.name));
+                        const diu = linkedDiu.find((d) => (d.client_id ? d.client_id === it.id : normalize(d.client_name) === normalize(it.name)) || (d.pros_id && d.pros_id === dossier?.id));
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
                         const diuUrl = "/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "");
                         return <span className="inline-flex max-w-[204px] items-center flex-wrap gap-1">
@@ -432,7 +432,7 @@ export default function ModulePage({ moduleKey }) {
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${dossier.id}/export`)}>Dosar PDF</button>
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/sld/${dossier.id}/pdf`)}>Schemă</button>
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${dossier.id}/pif/pdf`)}>PIF</button>
-                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${dossier.id}/file/priza`)}>PRAM dosar</button>
+                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${dossier.id}/file/priza`)}>Buletin PRAM</button>
                           </>}
                           {diu && <>
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`)}>PRAM priză</button>
@@ -444,8 +444,8 @@ export default function ModulePage({ moduleKey }) {
                       })()}
                       {key === "prosumator" && (() => {
                         const token = localStorage.getItem("den_token");
-                        const normalize = (value) => String(value || "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
-                        const diu = linkedDiu.find((d) => d.pros_id === it.id || ((d.client_id && d.client_id === it.client_id) && normalize(d.client_name) === normalize(it.client_name)));
+                        const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
+                        const diu = linkedDiu.find((d) => d.pros_id === it.id || (d.client_id ? d.client_id === it.client_id : normalize(d.client_name) === normalize(it.client_name)));
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
                         const atrUrl = "/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.client_id || "")
                           + "&prosId=" + encodeURIComponent(it.id);
@@ -457,7 +457,7 @@ export default function ModulePage({ moduleKey }) {
                           <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/export`)}>Dosar PDF</button>
                           <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/sld/${it.id}/pdf`)}>Schemă</button>
                           <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/pif/pdf`)}>PV PIF</button>
-                          <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/file/priza`)}>PRAM dosar</button>
+                          <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/file/priza`)}>Buletin PRAM</button>
                           {diu && <>
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`)}>PRAM DI-U</button>
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_cont`)}>Continuitate</button>
