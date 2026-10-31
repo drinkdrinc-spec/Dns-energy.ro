@@ -98,7 +98,7 @@ def box(v):
 DEER_ANNEXES = [
     ("program de finanțare", "Anexa nr. 4", "Cerere de racordare prosumator prin programe de finanțare",
      "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Cerere-de-racordare-prosumator-%E2%80%93-prin-programe-de-finantare-Anexa-4.docx"),
-    (">10,8 kw", "Anexa nr. 5", "Notificare prosumator / proiect demonstrativ ≤ 10,8 kW",
+    ("≤10,8", "Anexa nr. 5", "Notificare prosumator / proiect demonstrativ ≤ 10,8 kW",
      "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Loc-consum-si_sau-producere-existent-prevazut_cu_instalatii_de_producere_Anexa-nr-5.docx"),
     (">400", "Procedură dedicată", "Cerere pentru instalații de producere cu putere > 400 kW",
      "https://www.distributie-energie.ro/wp-content/uploads/2024/04/Persoane-fizice-si-juridice-care-au-puterea-instalata-pe-producere-mai-mare-de-400kW.doc"),
