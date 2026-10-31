@@ -27,14 +27,27 @@ def _parse(text: str) -> dict:
 
 
 def _images(content: bytes, mime: str) -> list:
-    import pymupdf
-    doc = pymupdf.open(stream=content, filetype="pdf" if "pdf" in mime else mime.split("/")[-1])
-    out = []
-    for page in list(doc)[:4]:
-        r = page.rect
-        zoom = min(1600 / max(r.width, r.height), 2.5)
-        out.append(ImageContent(image_base64=base64.b64encode(page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")).decode()))
-    return out
+    if mime == "application/pdf":
+        import pymupdf
+        doc = pymupdf.open(stream=content, filetype="pdf")
+        out = []
+        for page in list(doc)[:4]:
+            r = page.rect
+            zoom = min(1600 / max(r.width, r.height), 2.5)
+            out.append(ImageContent(image_base64=base64.b64encode(page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")).decode()))
+        return out
+
+    from io import BytesIO
+    from PIL import Image, ImageOps
+    if mime in {"image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"}:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+    with Image.open(BytesIO(content)) as source:
+        image = ImageOps.exif_transpose(source).convert("RGB")
+        image.thumbnail((2000, 2000))
+        png = BytesIO()
+        image.save(png, format="PNG", optimize=True)
+    return [ImageContent(image_base64=base64.b64encode(png.getvalue()).decode())]
 
 
 async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict:
