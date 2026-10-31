@@ -25,3 +25,20 @@ export function formatApiErrorDetail(detail) {
 }
 
 export { API };
+
+export async function openAuthenticatedFile(path) {
+  const tab = window.open("about:blank", "_blank");
+  if (!tab) { window.alert("Permite deschiderea ferestrei pentru a vedea documentul."); return; }
+  tab.document.title = "Se pregătește documentul…";
+  try {
+    const response = await api.get(path, { responseType: "blob" });
+    const blob = response.data.type ? response.data : new Blob([response.data], { type: response.headers["content-type"] || "application/pdf" });
+    const objectUrl = URL.createObjectURL(blob);
+    tab.location.replace(objectUrl);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch (error) {
+    tab.close();
+    const detail = error.response?.data?.detail;
+    window.alert(typeof detail === "string" ? detail : "Nu am putut genera documentul. Verifică datele și încearcă din nou.");
+  }
+}
