@@ -23,6 +23,7 @@ import { AiDraft } from "@/components/ai/AiDraft";
 import { DiuDossier } from "@/components/dossier/DiuDossier";
 import { AiPrecheck } from "@/components/ai/AiPrecheck";
 import { can } from "@/lib/plan";
+import { ProsumatorQuickForm } from "@/components/dossier/ProsumatorQuickForm";
 
 function Field({ f, value, onChange, refOptions, ai }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -147,28 +148,22 @@ export default function ModulePage({ moduleKey }) {
       {form && (
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => {
-              if (key === "atr" && name === "client_name") {
-                const client = (refOptions.clients || []).find((x) => x.label === value);
-                setForm((prev) => ({
-                  ...prev,
-                  client_name: value,
-                  ...(client ? {
-                    pod: prev.pod || client.pod || "",
-                    operator: client.operator || prev.operator || "",
-                    address: prev.address || client.address || "",
-                    cf_nr: prev.cf_nr || client.cf_nr || "",
-                    cadastral_nr: prev.cadastral_nr || client.cadastral_nr || "",
-                    object_name: prev.object_name || client.name || value,
-                  } : {}),
-                }));
-              } else setVal(name, value);
-            }} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
-          </div>
+          {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
+            <div className="grid sm:grid-cols-2 gap-4">
+              {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => {
+                if (key === "atr" && name === "client_name") {
+                  const client = (refOptions.clients || []).find((x) => x.label === value);
+                  setForm((prev) => ({
+                    ...prev, client_name: value,
+                    ...(client ? { pod: prev.pod || client.pod || "", operator: client.operator || prev.operator || "", address: prev.address || client.address || "", cf_nr: prev.cf_nr || client.cf_nr || "", cadastral_nr: prev.cadastral_nr || client.cadastral_nr || "", object_name: prev.object_name || client.name || value } : {}),
+                  }));
+                } else setVal(name, value);
+              }} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
+            </div>
+          )}
           {key === "atr" && form.pod_check_note && <div className="mt-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>{form.pod_check_note}</div>}
 
-          {cfg.checklist && (
+          {cfg.checklist && key !== "prosumator" && (
             <div className="mt-6">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-sm">Checklist documente — {cfg.title}</h3>
@@ -185,13 +180,21 @@ export default function ModulePage({ moduleKey }) {
             </div>
           )}
 
-          {key === "prosumator" && <AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} />}
-          {key === "prosumator" && <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />}
-          {key === "prosumator" && editId && <SldPanel id={editId} form={form} setVal={setVal} />}
-          {key === "prosumator" && <DossierExtras form={form} setVal={setVal} />}
-          {key === "prosumator" && editId && <DossierOpis id={editId} />}
-          {key === "prosumator" && editId && <SimpleDossierBtn id={editId} />}
-          {key === "prosumator" && editId && <PifPanel id={editId} />}
+          {key === "prosumator" && <details className="mt-5 rounded-xl border p-4" style={{ borderColor: "var(--line)" }}>
+            <summary className="cursor-pointer text-sm font-bold">Avansat: dimensionare, schemă și documente</summary>
+            <div className="mt-4 space-y-4">
+              <AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} />
+              <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />
+              {editId && <SldPanel id={editId} form={form} setVal={setVal} />}
+              <DossierExtras form={form} setVal={setVal} />
+              {editId && <DossierOpis id={editId} />}
+              {editId && <SimpleDossierBtn id={editId} />}
+              {editId && <PifPanel id={editId} />}
+              {editId && <AiDossierCheck id={editId} />}
+              {editId && <SignRequests dossierId={editId} />}
+              <GeneratedDocs id={editId} files={form.files} form={form} />
+            </div>
+          </details>
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
           {key === "diu" && <DossierExtras form={form} setVal={setVal} compact />}
@@ -199,9 +202,6 @@ export default function ModulePage({ moduleKey }) {
           {key === "diu" && editId && <SignRequests dossierId={editId} module="diu" />}
           {key === "diu" && editId && <AiPrecheck id={editId} base="diu" open={diuPre} onClose={() => setDiuPre(false)} onFinalize={doSave} form={form}
             title="Verificare AI înainte de predarea către beneficiar" action="Salvează ca „Predat beneficiarului”" />}
-          {key === "prosumator" && editId && <AiDossierCheck id={editId} />}
-          {key === "prosumator" && editId && <SignRequests dossierId={editId} />}
-          {key === "prosumator" && <GeneratedDocs id={editId} files={form.files} form={form} />}
           {key === "clients" && editId && <ClientDocs client={form} onChange={(docs) => setVal("docs", docs)} />}
           {key === "clients" && editId && <SignRequests clientName={form.name} />}
 
