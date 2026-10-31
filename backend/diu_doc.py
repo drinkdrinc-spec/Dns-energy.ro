@@ -236,12 +236,49 @@ def doc_garantie(ctx, r, pos):
                     sign(ex_sig(ctx), ben_sig(ctx))]
 
 
-def generic(fn):
-    return lambda ctx, r, pos: fn(ctx)
+def doc_receptie(ctx, r, pos):
+    return hdr() + [
+        B("title", "PROCES-VERBAL DE RECEPȚIE LA TERMINAREA LUCRĂRILOR"),
+        B("sub", f"Dosar DI-U nr. {e(r.get('number'))}"),
+        B("p", f"Încheiat la data de <b>{ro_date(r.get('receptie_date')) or M}</b> pentru lucrările executate la {ctx.loc}, în beneficiul {ctx.name}."),
+        B("b", "Datele lucrării"),
+        B("p", f"Obiect: {ctx.v('type')}; putere instalată: {ctx.v('power')} kW; alimentare: {ctx.v('supply')}; operator de distribuție: {ctx.v('operator')}."),
+        B("b", "Hotărârea comisiei"),
+        B("p", f"<b>{e(r.get('receptie_decision'))}</b>"),
+        B("p", f"Observații consemnate: {e(r.get('receptie_findings'))}"),
+        B("p", "Prezentul proces-verbal consemnează hotărârea și observațiile introduse pentru recepție. Valorile măsurate se consemnează în buletinele de verificare aferente."),
+        sign(ex_sig(ctx, "Executant,"), ben_sig(ctx))
+    ]
+
+
+def doc_pif(ctx, r, pos):
+    return hdr() + [
+        B("title", "PROCES-VERBAL DE PUNERE ÎN FUNCȚIUNE"),
+        B("sub", f"Dosar DI-U nr. {e(r.get('number'))}"),
+        B("p", f"Încheiat la data de <b>{ro_date(r.get('pif_date')) or M}</b> pentru instalația de la {ctx.loc}, beneficiar {ctx.name}."),
+        B("b", "Datele instalației"),
+        B("p", f"Tip: {ctx.v('type')}; putere instalată: {ctx.v('power')} kW; alimentare: {ctx.v('supply')}; operator de distribuție: {ctx.v('operator')}."),
+        B("b", "Hotărârea privind punerea în funcțiune"),
+        B("p", f"<b>{e(r.get('pif_decision'))}</b>"),
+        B("p", f"Observații consemnate: {e(r.get('pif_findings'))}"),
+        B("p", "Procesul-verbal nu completează automat rezultate de măsurare; acestea trebuie preluate din buletinele de verificare efectiv întocmite."),
+        sign(ex_sig(ctx, "Executant,"), ben_sig(ctx))
+    ]
+
+
+def doc_conformitate(ctx, r, pos):
+    return hdr() + [
+        B("title", "DECLARAȚIE DE CONFORMITATE A EXECUTANTULUI"),
+        B("sub", f"Dosar DI-U nr. {e(r.get('number'))}"),
+        B("p", f"Executantul <b>{ctx.company}</b>, reprezentat prin {ctx.rep}, declară că lucrările de instalații electrice executate la {ctx.loc}, pentru beneficiarul {ctx.name}, au fost realizate conform documentației tehnice aplicabile lucrării."),
+        B("p", f"Tip instalație: {ctx.v('type')}; putere instalată: {ctx.v('power')} kW; alimentare: {ctx.v('supply')}."),
+        B("p", f"Data declarației: {ro_date(r.get('doc_date') or r.get('date')) or M}. Rezultatele verificărilor sunt cele înscrise în buletinele de măsurare efectiv completate și anexate dosarului."),
+        sign(ex_sig(ctx, "Executant,"), ben_sig(ctx))
+    ]
 
 
 RENDER = {"opis": doc_opis, "memoriu": doc_memoriu, "schema_tg": doc_schema, "pram_priza": doc_priza, "pram_cont": doc_cont, "pram_izol": doc_izol,
-          "pram_ddr": doc_ddr, "receptie": generic(D.doc_pv_receptie), "pif": generic(D.doc_pv_pif), "conformitate": generic(D.doc_decl_conformitate), "garantie": doc_garantie}
+          "pram_ddr": doc_ddr, "receptie": doc_receptie, "pif": doc_pif, "conformitate": doc_conformitate, "garantie": doc_garantie}
 
 
 def render(keys, r, s, client):
