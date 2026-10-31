@@ -92,6 +92,7 @@ export function AtrDossier({ id, form, setVal }) {
         <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Verifică dacă acest caz corespunde situației locului de consum, puterii și lucrărilor cerute de operator. Documentul oficial se descarcă din DEER.</div>
         <a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex underline font-semibold text-sm mt-2">Deschide formularul oficial selectat ↗</a>
       </div>}
+        </div>
       </details>
       <details className="mb-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-technical-questionnaire">
         <summary className="cursor-pointer text-sm font-semibold">Chestionar tehnic ATR și lista receptoarelor</summary>
