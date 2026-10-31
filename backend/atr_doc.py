@@ -134,7 +134,9 @@ def storage_details(pros: dict, rec: dict) -> list:
         if inv.get("battery_mode") == "own":
             battery = inv.get("battery") or {}
             if battery:
-                details.append(battery)
+                quantity = max(1, int(D.num(inv.get("count")) or 1))
+                modules = max(1, int(D.num(battery.get("modules")) or 1))
+                details.append({**battery, "modules": modules * quantity})
     details.extend(cef.get("shared_batteries") or [])
     if not details and ((rec or {}).get("battery") or (rec or {}).get("storage")):
         value = (rec or {}).get("battery") or (rec or {}).get("storage")
@@ -214,7 +216,10 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
     equipment = [["Invertor", "Putere", "Panou / număr / Wp", "Stringuri"]]
     for inv in invs:
         strings = inv.get("strings") or []
-        panel_count = sum(int(D.num(x.get("panels"))) for x in strings)
+        quantity = max(1, int(D.num(inv.get("count")) or 1))
+        panel_count = sum(int(D.num(x.get("panels"))) for x in strings) * quantity
+        if not panel_count and inv is invs[0]:
+            panel_count = int(D.num(p.get("panel_count")) or 0)
         panel_w = D.num(inv.get("panel_w"))
         string_text = ", ".join(str(int(D.num(x.get("panels")))) for x in strings if D.num(x.get("panels")))
         equipment.append([escape(str(inv.get("brand_model") or M)), escape(str(inv.get("p_nom_kw") or M)) + " kW",
@@ -367,9 +372,11 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         for idx, inv in enumerate(inverters, 1):
             strings = inv.get("strings") or []
             try:
-                panels = sum(int(D.num(x.get("panels"))) for x in strings)
+                panels = sum(int(D.num(x.get("panels"))) for x in strings) * max(1, int(D.num(inv.get("count")) or 1))
             except (TypeError, ValueError):
                 panels = 0
+            if not panels and idx == 1:
+                panels = int(D.num(rec.get("panel_count") or pros.get("panel_count") or CEF.flatten(pros).get("panel_count")) or 0)
             watts = D.num(inv.get("panel_w"))
             model = inv.get("panel_model")
             total_kw = panels * watts / 1000 if panels and watts else None
@@ -533,10 +540,13 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
                   Spacer(1, 3), P("Invertoare / unități generatoare:")]
         rows = [["Nr.", "Tip invertor", "Nr. buc.", "Pn (kW c.a.)", "Panouri (nr. × Wp)", "Pi c.c. (kWp)"]]
         for i, inv in enumerate(invs):
-            n = sum(int(D.num(x.get("panels"))) for x in inv.get("strings") or [])
+            quantity = max(1, int(D.num(inv.get("count") or inv.get("quantity")) or 1))
+            if any(sum(int(D.num(x.get("panels"))) for x in entry.get("strings") or []) for entry in invs):
+                n = sum(int(D.num(x.get("panels"))) for x in inv.get("strings") or []) * quantity
+            else:
+                n = D.num(p.get("panel_count")) if i == 0 else 0
             w = D.num(inv.get("panel_w"))
-            quantity = inv.get("count") or inv.get("quantity") or 1
-            rows.append([str(i + 1), escape(inv.get("brand_model") or ""), escape(str(quantity)), escape(str(inv.get("p_nom_kw") or "")), f"{n} × {w:g}" if n else "", D.fmt(n * w / 1000, 2) if n and w else ""])
+            rows.append([str(i + 1), escape(inv.get("brand_model") or ""), escape(str(quantity)), escape(str(inv.get("p_nom_kw") or "")), f"{n:g} × {w:g}" if n else "", D.fmt(n * w / 1000, 2) if n and w else ""])
         if not invs:
             rows.append([""] * 6)
         batteries = storage_details(pros, rec)
