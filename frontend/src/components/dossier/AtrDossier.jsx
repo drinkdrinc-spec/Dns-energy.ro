@@ -106,7 +106,7 @@ export function AtrDossier({ id, form, setVal }) {
       <details className="mb-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-technical-questionnaire">
         <summary className="cursor-pointer text-sm font-semibold">Chestionar tehnic ATR și lista receptoarelor</summary>
         <div className="mt-3">
-      <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (peste 27 kW)" : "loc de consum"}</h3>
+      <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (prosumator)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
           <div className="den-field"><label>Dosar de prosumator / CEF asociat (date PV, schemă, fișe)</label><select className="den-input" value={form.pros_id || ""} onChange={(e) => selectPros(e.target.value)} data-testid="atr-pros">
