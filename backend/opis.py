@@ -1,4 +1,8 @@
 import io
+from html import escape
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib import colors
@@ -225,22 +229,55 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
     return out
 
 
+def _incomplete_report(positions_info, unavailable):
+    rows = []
+    for position in positions_info.get("positions", []):
+        missing = position.get("missing") or []
+        if missing:
+            rows.append((position.get("title") or position.get("key") or "Document", missing))
+    if positions_info.get("common_missing"):
+        rows.insert(0, ("Date comune ale dosarului", positions_info["common_missing"]))
+    if unavailable:
+        rows.append(("Fișiere atașate care nu au putut fi citite", unavailable))
+    if not rows:
+        return None
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
+                            topMargin=20 * mm, bottomMargin=18 * mm, title="Verificare dosar DNS Energy")
+    story = [
+        Paragraph("LISTĂ DE VERIFICARE — DOSAR INCOMPLET", docgen.S["h"]),
+        Paragraph("Acest PDF este o ciornă. Lista de mai jos arată ce lipsește sau ce nu a putut fi inclus. Nu confirmă conformitatea și nu înlocuiește verificarea tehnică ori cerințele operatorului.", docgen.S["p"]),
+        Spacer(1, 5 * mm),
+    ]
+    for title, items in rows:
+        story.append(Paragraph(escape(str(title)), docgen.S["b"]))
+        for item in items:
+            story.append(Paragraph("• " + escape(str(item)), docgen.S["li"]))
+    doc.build(story)
+    return buf.getvalue()
+
+
 async def export_bundle(positions_info, rec, client, settings, get_object, logger):
     titles = positions_info["titles"]
     w = PdfWriter()
     parts = [docgen.render(["declaratie_autenticitate"], rec, settings, client, titles)]
+    unavailable = []
     for p in positions_info["positions"]:
         try:
             parts += await position_pdf(p, rec, client, settings, titles, get_object)
         except Exception as e:
             logger.error(f"bundle skip {p['key']}: {e}")
+            unavailable.append(p.get("title") or p.get("key") or "Document atașat")
+    report = _incomplete_report(positions_info, unavailable)
+    if report:
+        parts.append(report)
     for b in parts:
         try:
             for pg in PdfReader(io.BytesIO(b)).pages:
                 w.add_page(pg)
         except Exception as e:
             logger.error(f"bundle merge skip: {e}")
-    if not positions_info["complete"]:
+    if not positions_info["complete"] or unavailable:
         watermark(w)
     if rec.get("is_test"):
         watermark(w, "DOSAR DE TEST — NEOFICIAL", 38)
