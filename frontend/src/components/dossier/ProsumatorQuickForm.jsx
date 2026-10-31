@@ -92,7 +92,9 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
           if (name === "bransament_kw") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), bransament_kw: Number(v) || "" } });
           if (name === "inverter_count" && form.cef?.inverters?.length) {
             const count = Math.max(1, Number(v) || 1);
-            setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : { ...x, count }) });
+            setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : {
+              ...x, count, ...(Number(form.power) > 0 ? { p_limit_kw: Number(form.power) / count } : {}),
+            }) });
           }
           if (name === "battery_count" && form.cef?.inverters?.[0]?.battery_mode === "own") {
             const modules = Math.max(1, Number(v) || 1);
