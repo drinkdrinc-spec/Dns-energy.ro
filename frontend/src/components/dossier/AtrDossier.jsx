@@ -37,6 +37,16 @@ export function AtrDossier({ id, form, setVal }) {
   const [catalogFiles, setCatalogFiles] = useState([]);
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
   useEffect(() => {
+    if (!String(form.kind || "").includes("producere") || !form.client_name || !pros.length) return;
+    const norm = (value) => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
+    const current = pros.find((p) => p.id === form.pros_id);
+    if (current && norm(current.client_name) === norm(form.client_name)) return;
+    const match = pros.filter((p) => norm(p.client_name) === norm(form.client_name))
+      .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0];
+    if (match) selectPros(match.id);
+    else if (current) setVal("pros_id", "");
+  }, [form.client_name, form.kind, form.pros_id, pros.length]);
+  useEffect(() => {
     if (!form.operator) { setOfficialForms([]); return; }
     api.get(`/forms/operator-links?operator=${encodeURIComponent(form.operator)}&scope=atr`)
       .then((r) => setOfficialForms(r.data || []))
@@ -182,8 +192,11 @@ export function AtrDossier({ id, form, setVal }) {
       <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (prosumator)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
-          <div className="den-field"><label>Dosar de prosumator / CEF asociat (date PV, schemă, fișe)</label><select className="den-input" value={form.pros_id || ""} onChange={(e) => selectPros(e.target.value)} data-testid="atr-pros">
-            <option value="">— fără —</option>{pros.map((p) => <option key={p.id} value={p.id}>{p.number} · {p.client_name}</option>)}</select></div>
+          <div className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="atr-pros">
+            {selectedPros
+              ? <>Dosar prosumator asociat automat după client: <strong style={{ color: "var(--ink)" }}>{selectedPros.number} · {selectedPros.client_name}</strong></>
+              : <>Nu există dosar de prosumator asociat pentru acest client. Creează întâi dosarul prosumator pentru preluarea automată a schemei și echipamentelor.</>}
+          </div>
           {selectedPros && <div className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="atr-linked-equipment">
             <strong className="text-sm" style={{ color: "var(--ink)" }}>Date tehnice preluate din dosarul prosumator</strong>
             <div className="mt-1">POD {selectedPros.pod || "—"} · {selectedPros.operator || "operator necompletat"} · Putere invertor {selectedPros.inverter_kw || selectedPros.cef?.total_kw || "—"} kW · Evacuare {selectedPros.power || selectedPros.cef?.total_export_kw || "—"} kW</div>
