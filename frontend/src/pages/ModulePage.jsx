@@ -154,7 +154,7 @@ export default function ModulePage({ moduleKey }) {
               const client = (refOptions.clients || []).find((x) => x.label === value);
               setForm((prev) => ({
                 ...prev, client_name: value,
-                ...(client ? { pod: prev.pod || client.pod || "", operator: client.operator || prev.operator || "", address: prev.address || client.address || "", cf_nr: prev.cf_nr || client.cf_nr || "", cadastral_nr: prev.cadastral_nr || client.cadastral_nr || "", object_name: prev.object_name || client.name || value } : {}),
+                ...(client ? { pod: prev.pod || client.pod || "", operator: client.operator || prev.operator || "", address: prev.address || client.address || "", cf_nr: prev.cf_nr || client.cf_nr || "", cadastral_nr: prev.cadastral_nr || client.cadastral_nr || "", applicant_type: prev.applicant_type || client.kind || "", object_name: prev.object_name || client.name || value } : {}),
               }));
             } else setVal(name, value);
           }} refOptions={refOptions} /> : (
