@@ -5,6 +5,29 @@ const field = (cfg, name) => (cfg.fields || []).find((f) => f.name === name);
 const title = (f, fallback) => f?.label?.replace(/\s*\*$/, "") || fallback;
 const selectStyle = { borderColor: "var(--line)" };
 
+// Propose strings only when both catalog datasheets provide the limits needed to check them.
+function proposeStrings(inv, totalPanels) {
+  const count = Math.floor(Number(totalPanels) || 0);
+  const mppts = Math.floor(Number(inv.mppt_count) || 0);
+  const voc = Number(inv.panel_voc), vmp = Number(inv.panel_vmp), isc = Number(inv.panel_isc);
+  const vocCoef = Number(inv.panel_coef_voc), vmpCoef = Number(inv.panel_coef_vmp);
+  const maxDc = Number(inv.vdc_max), mpptMin = Number(inv.mppt_min), mpptMax = Number(inv.mppt_max);
+  const maxCurrent = Number(inv.imax_mppt);
+  if (!count || !mppts || !voc || !vmp || !isc || !Number.isFinite(vocCoef) || !Number.isFinite(vmpCoef)
+      || !maxDc || !mpptMin || !mpptMax || !maxCurrent || vocCoef >= 0 || vmpCoef >= 0 || isc > maxCurrent) return null;
+  const stringCount = Math.min(count, mppts);
+  const base = Math.floor(count / stringCount), remainder = count % stringCount;
+  const panelCounts = Array.from({ length: stringCount }, (_, i) => base + (i < remainder ? 1 : 0));
+  const valid = panelCounts.every((n) => {
+    const vocCold = n * voc * (1 + (vocCoef / 100) * (-10 - 25));
+    const vmpHot = n * vmp * (1 + (vmpCoef / 100) * (70 - 25));
+    const vmpStc = n * vmp;
+    return vocCold <= maxDc && vmpHot >= mpptMin && vmpStc <= mpptMax;
+  });
+  if (!valid) return null;
+  return panelCounts.map((panels, i) => ({ panels, mppt: i + 1, auto_generated: true }));
+}
+
 export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
   const [catalog, setCatalog] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -47,6 +70,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
     const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] };
     const old = cef.inverters?.[0] || { id: "main", strings: [], ac: { material: "Cu", install: "C" }, dc: { material: "Cu", cable_type: "H1Z2Z2-K" }, battery_mode: "none" };
     const inv = { ...old };
+    const existingStrings = inv.strings || [];
+    const canReplaceStrings = existingStrings.length === 0 || existingStrings.every((x) => x.auto_generated);
     if (kind === "inverter") Object.assign(inv, item ? {
       catalog_id: item.id, brand_model: item.brand_model, type: item.type, phases: item.phases, p_nom_kw: item.p_nom_kw, p_max_kw: item.p_max_kw,
       vdc_max: item.vdc_max, mppt_min: item.mppt_min, mppt_max: item.mppt_max, mppt_count: item.mppt_count, imax_mppt: item.imax_mppt,
@@ -60,7 +85,14 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       battery_mode: "own", battery: { ...(inv.battery || {}), catalog_id: item.id, model: item.brand_model, kwh: item.kwh, ah: item.ah, voltage: item.voltage, coupling: item.coupling || "DC", modules: Number(form.battery_count || 1) },
     } : { battery_mode: "none", battery: {} });
     if (kind === "meter") setVal("cef", { ...cef, grid: { ...(cef.grid || {}), meter: item?.brand_model || "", meter_catalog_id: item?.id || "" } });
-    else setVal("cef", { ...cef, grid: { ...(cef.grid || {}), ...(form.supply ? { supply: form.supply } : {}), ...(form.bransament_kw ? { bransament_kw: Number(form.bransament_kw) } : {}) }, inverters: [inv, ...(cef.inverters || []).slice(1)] });
+    else {
+      if (canReplaceStrings) {
+        const proposal = proposeStrings(inv, form.panel_count);
+        if (proposal) inv.strings = proposal;
+        else if (existingStrings.every((x) => x.auto_generated)) inv.strings = [];
+      }
+      setVal("cef", { ...cef, grid: { ...(cef.grid || {}), ...(form.supply ? { supply: form.supply } : {}), ...(form.bransament_kw ? { bransament_kw: Number(form.bransament_kw) } : {}) }, inverters: [inv, ...(cef.inverters || []).slice(1)] });
+    }
     if (id === "") setVal("catalog_selection", { ...selected, [kind]: "" });
   };
 
@@ -90,6 +122,15 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
         : <input className="den-input" type={type} step={type === "number" ? "any" : undefined} value={form[name] ?? ""} onChange={(e) => {
           const v = e.target.value; setVal(name, v);
           if (name === "bransament_kw") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), bransament_kw: Number(v) || "" } });
+          if (name === "panel_count" && form.cef?.inverters?.length) {
+            const inv = { ...form.cef.inverters[0] };
+            const strings = inv.strings || [];
+            if (!strings.length || strings.every((x) => x.auto_generated)) {
+              const proposal = proposeStrings(inv, v);
+              inv.strings = proposal || [];
+              setVal("cef", { ...form.cef, inverters: [inv, ...form.cef.inverters.slice(1)] });
+            }
+          }
           if (name === "inverter_count" && form.cef?.inverters?.length) {
             const count = Math.max(1, Number(v) || 1);
             setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : {
@@ -173,6 +214,13 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
         {catalogSelect("meter", "Smart meter (opțional)")}
         <label className="den-field"><span>Backup</span><span className="flex items-center gap-2 min-h-10"><input type="checkbox" checked={form.backup === true || form.backup === "Da"} onChange={(e) => { const on = e.target.checked; setVal("backup", on); setVal("anti_relay_present", on ? "DA" : "NU"); const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] }; setVal("cef", { ...cef, grid: { ...(cef.grid || {}), anti_required: on }, inverters: (cef.inverters || []).map((x, i) => i ? x : { ...x, backup: { ...(x.backup || {}), enabled: on } }) }); }} /> Instalația include ieșire backup</span></label>
       </div>
+      {(() => {
+        const inv = form.cef?.inverters?.[0];
+        const strings = inv?.strings || [];
+        return strings.some((x) => x.auto_generated)
+          ? <p className="text-xs mt-2 rounded-lg bg-blue-50 px-3 py-2 text-blue-900">Stringuri propuse din fișele tehnice: {strings.filter((x) => x.auto_generated).map((x, i) => String(i + 1) + "(" + x.panels + ")").join(", ")}. Verifică configurația și limitele din manualul echipamentului înainte de proiectare.</p>
+          : null;
+      })()}
       <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Datele tehnice sunt preluate din catalog și folosite de configuratorul schemei. Valorile calculate sunt propuneri pentru verificare; măsurătorile și rezultatele testelor trebuie introduse din documentele reale.</p>
       {problem && <p className="text-xs mt-2 text-amber-700">{problem}</p>}
       {catalogLoading && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Se încarcă modelele din catalog…</p>}
