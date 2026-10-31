@@ -94,6 +94,96 @@ def box(v):
     return "<b>[X]</b>" if v else "[  ]"
 
 
+
+DEER_ANNEXES = [
+    ("program de finanțare", "Anexa nr. 4", "Cerere de racordare prosumator prin programe de finanțare",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Cerere-de-racordare-prosumator-%E2%80%93-prin-programe-de-finantare-Anexa-4.docx"),
+    ("≤10,8", "Anexa nr. 5", "Notificare prosumator / proiect demonstrativ ≤ 10,8 kW",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Loc-consum-si_sau-producere-existent-prevazut_cu_instalatii_de_producere_Anexa-nr-5.docx"),
+    (">400", "Procedură dedicată", "Cerere pentru instalații de producere cu putere > 400 kW",
+     "https://www.distributie-energie.ro/wp-content/uploads/2024/04/Persoane-fizice-si-juridice-care-au-puterea-instalata-pe-producere-mai-mare-de-400kW.doc"),
+    ("actualizare crr", "Anexa nr. 3", "Notificare loc existent — actualizare CRR",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/3.-Loc-de-consum-si-producere-existent-actualizare-CRR_Anexa-nr-3.docx"),
+    ("spor de putere", "Anexa nr. 1", "Cerere loc existent — spor de putere",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/4.-Loc-consum-si_sau-producere-existent-Spor-Putere_Anexa-nr-1.docx"),
+    ("loc nou", "Anexa nr. 1", "Cerere loc nou de consum și producere",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/1.-Loc-consum-si-producere-nou-_Anexa-nr-1.docx"),
+    ("anexa 2", "Anexa nr. 2", "Notificare loc existent",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx"),
+    ("", "Anexa nr. 2", "Notificare loc existent",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx"),
+]
+
+
+def deer_annex_info(rec: dict):
+    case = str(rec.get("deer_case") or "").strip().lower()
+    if not case:
+        return None
+    for marker, annex, title, url in DEER_ANNEXES:
+        if marker == "" or marker in case:
+            return annex, title, url
+    return None
+
+
+def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attached: set) -> bytes:
+    """Create a clearly-labeled work prefill sheet for the selected DEER annex."""
+    info = deer_annex_info(rec)
+    if not info or op_key(rec.get("operator"), (pros or {}).get("operator"), (client or {}).get("operator")) != "deer":
+        return b""
+    annex, title, url = info
+    c = client or {}
+    p = CEF.flatten(pros) if pros else {}
+    g = lambda d, k: escape(str(d.get(k))) if d.get(k) not in (None, "") else M
+    P = lambda t, k="p": Paragraph(t, D.S[k])
+    T = lambda rows, w: D.pdf_table(rows, w, True, 8, 178)
+    address = rec.get("address") or c.get("address")
+    pod = rec.get("pod") or c.get("pod")
+    cf = rec.get("cf_nr") or c.get("cf_nr")
+    cadastral = rec.get("cadastral_nr") or c.get("cadastral_nr")
+    story = [
+        P(f"{annex.upper()} — {escape(title)}", "h"),
+        P("FIȘĂ DE PRECOMPLETARE PENTRU DOSARUL ATR", "sub"),
+        P("Document de lucru generat din datele salvate în DNS Energy. Nu este formularul oficial DEER și trebuie verificat și transcris în formularul curent al operatorului înainte de depunere.", "small"),
+        Spacer(1, 4),
+        P("1. Solicitant și reprezentare", "b"),
+        T([["Câmp", "Date din client / dosar"],
+           ["Solicitant", g(c, "name")], ["Categorie solicitant", g(rec, "applicant_type")],
+           ["CNP / CUI", g(c, "idcode")], ["Telefon", g(c, "phone")], ["E-mail", g(c, "email")],
+           ["Reprezentant", g(c, "rep_name")], ["Modalitate depunere", g(rec, "submission_mode")]], [52, 126]),
+        Spacer(1, 4),
+        P("2. Loc de consum / obiectiv", "b"),
+        T([["Câmp", "Date din cerere"],
+           ["Denumire obiectiv", g(rec, "object_name")], ["Adresă", g({"address": address}, "address")],
+           ["POD", g({"pod": pod}, "pod")], ["Carte funciară", g({"cf": cf}, "cf")],
+           ["Număr cadastral", g({"cadastral": cadastral}, "cadastral")],
+           ["Operator", g(rec, "operator")], ["Tip loc", g(rec, "kind")]], [52, 126]),
+        Spacer(1, 4),
+        P("3. Cerere și puteri solicitate", "b"),
+        T([["Câmp", "Date din cerere"],
+           ["Procedură DEER selectată", escape(str(rec.get("deer_case") or annex))],
+           ["Tip solicitare", g(rec, "request_type")], ["Tip racord", g(rec, "supply")],
+           ["Putere absorbită", f"{g(rec, 'p_abs_kw')} kW / {g(rec, 'p_abs_kva')} kVA"],
+           ["Putere instalată producere", f"{g(rec, 'pv_kw') if rec.get('pv_kw') else g(p, 'power')} kW"],
+           ["Putere maximă evacuată", f"{g(rec, 'p_evac_kw')} kW / {g(rec, 'p_evac_kva')} kVA"],
+           ["Descriere modificări", g(rec, "current_supply_desc")]], [52, 126]),
+        Spacer(1, 4),
+        P("4. Documente anexate pentru această procedură", "b"),
+    ]
+    rows = [["Document solicitat", "Stare în dosar"]]
+    for key, label, _ in DOCS:
+        if key in required(rec):
+            rows.append([escape(label), "Atașat" if key in attached else "Lipsește"])
+    story += [T(rows, [138, 40]), Spacer(1, 5),
+              P("Formularul oficial selectat trebuie descărcat și verificat la sursa DEER:", "small"),
+              P(f'<link href="{escape(url)}" color="blue">{escape(url)}</link>', "small"),
+              Spacer(1, 5),
+              P("Câmpurile care lipsesc din datele clientului sau din cerere rămân necompletate aici; nu se estimează și nu se inventează valori.", "small")]
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
+                            title=f"Precompletare {annex} — {title}")
+    doc.build(story)
+    return buf.getvalue()
+
 def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> bytes:
     st, c = D.S, client or {}
     p = CEF.flatten(pros) if pros else {}

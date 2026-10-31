@@ -1303,6 +1303,10 @@ async def atr_pack(user: dict, rec: dict, full: int):
         auto = {"schema": [bykey.get("schema")], "fise": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
     attached = {k for k, v in att.items() if v} | {k for k, v in auto.items() if any(v)}
     parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
+    if full and ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) == "deer":
+        annex_pdf = ATR.render_deer_annex(rec, client, base, pros or {}, attached)
+        if annex_pdf:
+            parts.append(annex_pdf)
     if full:
         for k, _, _ in ATR.DOCS:
             for f in att.get(k) or []:
