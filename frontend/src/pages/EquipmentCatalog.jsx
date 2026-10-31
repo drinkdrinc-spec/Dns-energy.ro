@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, fileUrl } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { F } from "@/components/cef/F";
-import { Plus, Pencil, Trash2, Upload, FileText, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileText, X, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 const CATS = ["Invertor", "Panou", "Baterie", "Smart meter"];
@@ -19,6 +19,7 @@ function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
   const [sourceUrl, setSourceUrl] = useState("");
   const [importing, setImporting] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const f = item[k];
   const importUrl = async () => {
     setImporting(true);
@@ -31,6 +32,19 @@ function DocSlot({ item, k, label, onUploaded }) {
       toast.error(e.response?.data?.detail || "Importul documentului a eșuat");
     } finally {
       setImporting(false);
+    }
+  };
+  const extract = async () => {
+    setExtracting(true);
+    try {
+      const { data } = await api.post(`/ai/catalog/${item.id}/extract`);
+      const count = Object.keys(data.filled || {}).length;
+      toast.success(count ? `${count} valori extrase din fișă; verifică-i înainte de folosire` : "Nu au fost găsite valori noi de completat");
+      onUploaded();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Extragerea AI a eșuat");
+    } finally {
+      setExtracting(false);
     }
   };
   const up = async (e) => {
@@ -50,6 +64,7 @@ function DocSlot({ item, k, label, onUploaded }) {
       <button onClick={() => ref.current.click()} className="p-1 rounded hover:bg-[#eef4ff]" title={`Încarcă ${label}`} data-testid={`btn-upload-${k}-${item.id}`}><Upload size={13} style={{ color: "var(--blue)" }} /></button>
       <input className="den-input text-[11px] py-1" style={{ width: 220 }} type="url" placeholder="Link PDF oficial HTTPS" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} aria-label={`Link oficial ${label}`} />
       <button onClick={importUrl} disabled={importing || !sourceUrl} className="text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Preia PDF de pe site-ul oficial" data-testid={`import-url-${k}-${item.id}`}>{importing ? "Se preia…" : "Preia link"}</button>
+      {k === "datasheet" && f && <button onClick={extract} disabled={extracting} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Extrage numai specificațiile care apar în fișa PDF" data-testid={`ai-extract-${item.id}`}><Sparkles size={12} /> {extracting ? "Se citește…" : "AI extrage"}</button>}
     </span>
   );
 }
