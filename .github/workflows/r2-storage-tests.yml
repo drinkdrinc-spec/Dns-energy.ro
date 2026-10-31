@@ -1,0 +1,60 @@
+name: DNS Energy R2 adapter tests
+
+on:
+  pull_request:
+    paths:
+      - "backend/r2_storage.py"
+      - "backend/server.py"
+      - "backend/tests/test_r2_storage.py"
+      - "backend/ai_provider.py"
+      - "backend/ai_routes.py"
+      - "backend/ai_extract.py"
+      - "backend/mailer.py"
+      - "backend/requirements.txt"
+      - "frontend/**"
+      - ".github/workflows/r2-storage-tests.yml"
+      - "backend/.python-version"
+      - "render.yaml"
+  push:
+    branches: [main, migration/render-integration-audit]
+    paths:
+      - "backend/r2_storage.py"
+      - "backend/tests/test_r2_storage.py"
+      - ".github/workflows/r2-storage-tests.yml"
+
+jobs:
+  r2-adapter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest pytest-xdist boto3 openai fastapi httpx python-dotenv
+      - name: Install complete backend requirements
+        run: python -m pip install -r requirements.txt
+      - name: Compile backend modules
+        run: python -m py_compile server.py r2_storage.py ai_provider.py ai_routes.py ai_extract.py mailer.py
+      - name: Run isolated R2 adapter tests
+        run: python -m pytest -q tests/test_r2_storage.py
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+      - name: Build independent frontend
+        run: yarn build

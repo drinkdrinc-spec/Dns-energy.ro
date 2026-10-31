@@ -1,5 +1,5 @@
-# Render Blueprint for a separate staging deployment.
-# This does NOT change dns-energy.ro or the current Emergent deployment.
+# DNS Energy independent staging deployment.
+# Production domain and current Emergent instance remain unchanged until validation.
 services:
   - type: web
     name: dns-energy-api
@@ -11,6 +11,8 @@ services:
     startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
       - key: MONGO_URL
         sync: false
       - key: DB_NAME
@@ -25,16 +27,34 @@ services:
         value: https://dns-energy-web.onrender.com
       - key: ADMIN_PASSWORD
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: OBJECT_STORAGE_BACKEND
+        value: mongodb-gridfs
       - key: EMERGENT_LLM_KEY
         sync: false
-      - key: INTEGRATION_PROXY_URL
-        value: https://integrations.emergentagent.com
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: DNS Energy
+      - key: EMAIL_REPLY_TO
+        sync: false
 
   - type: web
     name: dns-energy-web
     runtime: static
     rootDir: frontend
-    buildCommand: yarn install --frozen-lockfile && DISABLE_VISUAL_EDITS=true DISABLE_EMERGENT_OVERLAY=true yarn build
+    buildCommand: yarn install --frozen-lockfile && yarn build
     staticPublishPath: ./build
     envVars:
       - key: REACT_APP_BACKEND_URL
