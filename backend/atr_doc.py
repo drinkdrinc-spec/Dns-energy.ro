@@ -412,6 +412,27 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         if amp_hours:
             _deer_cell(detail.cell(1, 1), ", ".join(amp_hours))
 
+    # Populate the official location line for Anexa 1 variants using only stored values.
+    if not is_annex2:
+        location_request = next((p for p in doc.paragraphs if "obţinerea avizului tehnic de racordare" in p.text.lower()), None)
+        if location_request:
+            import re
+            address_fields = {
+                0: c.get("county"), 1: c.get("locality"),
+                2: rec.get("address") or c.get("address"),
+                8: rec.get("cf_nr") or c.get("cf_nr"),
+                9: rec.get("cadastral_nr") or c.get("cadastral_nr"),
+            }
+            address_count = 0
+            def replace_address_field(match):
+                nonlocal address_count
+                value = address_fields.get(address_count)
+                address_count += 1
+                return _deer_value(value) or match.group(0)
+            original = location_request.text
+            location_request.clear()
+            location_request.add_run(re.sub(r"\.{4,}", replace_address_field, original))
+
     # Anexa 2 puts client/location/POD/export data in its request sentence.
     if is_annex2:
         request = next((p for p in doc.paragraphs if "notific prin prezenta racordarea" in p.text.lower()), None)
