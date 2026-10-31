@@ -69,7 +69,6 @@ export function AtrDossier({ id, form, setVal }) {
     return [...new Set(keys)];
   })();
   const fiseRequiredCount = catalogEquipmentKeys.length * 2;
-  const fiseAvailableCount = catalogFiles.length + (att?.fise || []).length;
   const selectPros = (id) => {
     setVal("pros_id", id);
     const item = pros.find((p) => p.id === id);
@@ -79,6 +78,7 @@ export function AtrDossier({ id, form, setVal }) {
     Object.entries(values).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== "") setVal(key, value); });
   };
   const att = form.attachments || {};
+  const fiseAvailableCount = catalogFiles.length + (att.fise || []).length;
   const recs = form.receptors || [];
   const prod = String(form.kind || "").includes("producere");
   const caseKey = selectedDeerForm?.key || (String(form.request_type || "").toLowerCase().includes("spor") ? "spor" : String(form.request_type || "").startsWith("utilizator nou") ? "new" : "existing");
