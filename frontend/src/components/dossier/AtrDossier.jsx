@@ -10,18 +10,24 @@ const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schi
   ["prop", "Act de proprietate / drept de folosință", "req"], ["id", "Act de identitate / CUI / acte de funcționare", "req"], ["cu", "Certificat de urbanism", "new"],
   ["ac", "Autorizație de construire", ""], ["puz", "PUZ / PUD (dacă e cerut prin CU)", ""], ["acord", "Acord notarial proprietar (dacă nu e proprietar)", ""],
   ["imp", "Împuternicire reprezentant / proiectant", ""], ["gdpr", "Notă DEER privind prelucrarea datelor personale (persoane fizice, după caz)", ""],
-  ["memoriu", "Memoriu tehnic — date tehnice și energetice", ""],
-  ["schema", "Schemă monofilară instalație de producere + racordare", "prod"], ["fise", "Fișe tehnice / certificate invertoare", "prod"], ["atr_prev", "ATR / certificat de racordare anterior", "spor"]];
+  ["authenticity", "Declarație DEER privind autenticitatea datelor (obligatorie pentru toate cererile)", "deer"], ["memoriu", "Memoriu tehnic — date tehnice și energetice", ""],
+  ["schema", "Schemă monofilară instalație de producere + racordare", "prod"], ["fise", "Fișe tehnice / certificate invertoare", "prod"], ["pram", "Buletin de încercare a prizei de pământ", "spor"], ["receptie", "Proces-verbal de recepție a instalației de producere", "spor"], ["constatator", "Certificat constatator ONRC (persoană juridică prosumator)", "pj"], ["atr_prev", "ATR / certificat de racordare anterior", "existing"]];
 const OFFICIAL_SOURCES = [
   { id: "deer", match: /deer|distribuție energie electrică|distributie energie electrica/i, name: "DEER — formulare și documente de racordare", docs: "https://www.distributie-energie.ro/racordare-la-retea-2/", portal: "https://avize.distributie-energie.ro/" },
   { id: "delgaz", match: /delgaz/i, name: "Delgaz Grid — documente pentru prosumatori", docs: "https://delgaz.ro/energie-electrica/prosumatori", portal: "https://delgaz.ro/" },
   { id: "oltenia", match: /oltenia|deo connect|distribuție oltenia|distributie oltenia/i, name: "Distribuție Oltenia — formulare pentru prosumatori", docs: "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html", portal: "https://portal.distributieoltenia.ro/" },
   { id: "rer", match: /rețele electrice|retele electrice|e-distribu/i, name: "Rețele Electrice România — cereri și documente", docs: "https://www.reteleelectrice.ro/cereri-documente/", portal: "https://www.reteleelectrice.ro/" },
 ];
-const DEER_ANNEXES = {
-  anexa1: { title: "Cerere — loc de consum existent cu spor de putere (Anexa 1)", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/4.-Loc-consum-si_sau-producere-existent-Spor-Putere_Anexa-nr-1.docx", note: "Se selectează când OD solicită procedura de spor de putere; verifică formularul curent și indicațiile OD." },
-  anexa2: { title: "Notificare — loc de consum existent (Anexa 2)", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx", note: "Se folosește numai dacă situația și cerințele OD permit notificarea pentru loc existent, fără procedură de spor de putere." },
-};
+const DEER_FORMS = [
+  { value: "Loc nou de consum și producere — Anexa 1", title: "Cerere loc de consum și producere nou — Anexa 1", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/1.-Loc-consum-si-producere-nou-_Anexa-nr-1.docx", key: "new" },
+  { value: "Loc existent — notificare — Anexa 2", title: "Notificare loc de consum existent — Anexa 2", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx", key: "existing" },
+  { value: "Loc existent prosumator — actualizare CRR — Anexa 3", title: "Notificare loc consum și producere existent, actualizare CRR — Anexa 3", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/3.-Loc-de-consum-si-producere-existent-actualizare-CRR_Anexa-nr-3.docx", key: "existing" },
+  { value: "Loc existent — spor de putere — Anexa 1", title: "Cerere loc existent cu spor de putere — Anexa 1", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/4.-Loc-consum-si_sau-producere-existent-Spor-Putere_Anexa-nr-1.docx", key: "spor" },
+  { value: "Prosumator prin program de finanțare — Anexa 4", title: "Cerere de racordare prosumator prin programe de finanțare — Anexa 4", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Cerere-de-racordare-prosumator-%E2%80%93-prin-programe-de-finantare-Anexa-4.docx", key: "new" },
+  { value: "Loc existent ≤10,8 kW — notificare simplificată — Anexa 5", title: "Notificare prosumator / proiect demonstrativ ≤10,8 kW — Anexa 5", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Loc-consum-si_sau-producere-existent-prevazut_cu_instalatii_de_producere_Anexa-nr-5.docx", key: "existing" },
+  { value: "Producere >400 kW — procedură dedicată", title: "Cerere pentru instalații de producere >400 kW — procedură dedicată", url: "https://www.distributie-energie.ro/wp-content/uploads/2024/04/Persoane-fizice-si-juridice-care-au-puterea-instalata-pe-producere-mai-mare-de-400kW.doc", key: "large" },
+];
+const AUTH_DECLARATION_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/";
 const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
 const pdf = (id, full) => `${API}/atr/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
 
@@ -36,13 +42,19 @@ export function AtrDossier({ id, form, setVal }) {
       .catch(() => setOfficialForms([]));
   }, [form.operator]);
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
-  const annexChoice = form.annex_choice || (String(form.request_type || "").toLowerCase().includes("spor") ? "anexa1" : "anexa2");
-  const annexInfo = DEER_ANNEXES[annexChoice];
+  const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
   const att = form.attachments || {};
   const recs = form.receptors || [];
   const prod = String(form.kind || "").includes("producere");
-  const isNew = !form.request_type || String(form.request_type).startsWith("utilizator nou");
-  const need = DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && !isNew) || (r === "gdpr" && operatorSource?.id === "deer")).map(([k]) => k);
+  const caseKey = selectedDeerForm?.key || (String(form.request_type || "").toLowerCase().includes("spor") ? "spor" : String(form.request_type || "").startsWith("utilizator nou") ? "new" : "existing");
+  const isNew = caseKey === "new";
+  const need = operatorSource?.id === "deer"
+    ? [...new Set(["authenticity", ...(form.applicant_type === "Persoană fizică" ? ["gdpr"] : []), ...(form.submission_mode === "Prin împuternicit" ? ["imp"] : []),
+        ...(["new", "spor", "existing", "large"].includes(caseKey) ? ["id", "cf", "prop"] : []),
+        ...(caseKey === "new" ? ["plan"] : []), ...(caseKey === "spor" ? ["plan", "atr_prev", ...(prod ? ["pram", "receptie", "schema", "fise"] : [])] : []),
+        ...(caseKey === "existing" && prod ? ["schema", "fise"] : []), ...(caseKey === "large" ? ["memoriu", "schema", "fise"] : []),
+        ...(form.applicant_type === "Persoană juridică" && prod ? ["constatator"] : [])])]
+    : DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && caseKey === "spor")).map(([k]) => k);
   const has = (k) => (att[k] || []).length > 0 || (!!form.pros_id && prod && AUTO[k]);
   const missing = need.filter((k) => !has(k));
   const setR = (i, k, v) => setVal("receptors", recs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
@@ -74,19 +86,12 @@ export function AtrDossier({ id, form, setVal }) {
         </div>) : <div style={{ color: "var(--muted)" }}>Nu există încă un link ATR înregistrat pentru acest operator. Verificați formularul pe site-ul oficial înainte de depunere.</div>}
         <div className="mt-2" style={{ color: "var(--muted)" }}>PDF-ul generat de DNS Energy este un model completat pentru lucru și verificare; nu este garantat ca reproducere identică a formularului oficial curent.</div>
       </div>}
-      {operatorSource?.id === "deer" && !isNew && <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--line)" }} data-testid="atr-annex-selector">
-        <div className="font-bold mb-1">Anexă pentru dosarul existent — DEER</div>
-        <div className="text-xs mb-3" style={{ color: "var(--muted)" }}>Schimbi numai anexa. Datele clientului, echipamentele, documentele încărcate și restul dosarului se păstrează.</div>
-        <label className="block text-xs font-semibold mb-1" htmlFor="atr-annex-choice">Anexa cerută de operator</label>
-        <select id="atr-annex-choice" className="den-input w-full" value={annexChoice} onChange={(e) => setVal("annex_choice", e.target.value)}>
-          <option value="anexa2">Anexa 2 — Notificare loc de consum existent</option>
-          <option value="anexa1">Anexa 1 — Cerere pentru loc existent cu spor de putere</option>
-        </select>
-        <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>{annexInfo.note}</div>
-        <a href={annexInfo.url} target="_blank" rel="noopener noreferrer" className="inline-flex underline font-semibold text-sm mt-2">Deschide formularul oficial selectat ↗</a>
-        <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Alegerea se salvează în datele cererii când salvezi dosarul. Formularul oficial trebuie completat cu datele existente înainte de export; confirmă cu OD ce anexă se aplică.</div>
+      {operatorSource?.id === "deer" && selectedDeerForm && <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--line)" }} data-testid="atr-deer-form-selected">
+        <div className="font-bold mb-1">Formular DEER selectat</div>
+        <div className="text-sm">{selectedDeerForm.title}</div>
+        <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Verifică dacă acest caz corespunde situației locului de consum, puterii și lucrărilor cerute de operator. Documentul oficial se descarcă din DEER.</div>
+        <a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex underline font-semibold text-sm mt-2">Deschide formularul oficial selectat ↗</a>
       </div>}
-        </div>
       </details>
       <details className="mb-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-technical-questionnaire">
         <summary className="cursor-pointer text-sm font-semibold">Chestionar tehnic ATR și lista receptoarelor</summary>
