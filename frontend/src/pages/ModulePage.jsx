@@ -88,8 +88,13 @@ export default function ModulePage({ moduleKey }) {
     if (key === "atr" && name === "client_name") {
       const client = (refOptions.clients || []).find((c) => c.label === value);
       if (!client) { setForm((p) => ({ ...p, client_name: value, client_id: "" })); return; }
-      const matches = (refOptions.prosumator || []).filter((p) => p.client_id === client.id || (!p.client_id && p.client_name === client.name));
-      const linked = matches.length === 1 ? matches[0] : null;
+      const normalize = (v) => String(v || "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+      const linkedPros = (refOptions.prosumator || []).filter((p) => {
+        if (p.client_id && p.client_id === client.id) return true;
+        const pName = normalize(p.client_name);
+        return [client.name, client.label].some((name) => pName && pName === normalize(name));
+      });
+      const linked = linkedPros.length === 1 ? linkedPros[0] : null;
       const clientKind = String(client.kind || "").toLowerCase();
       const applicantType = /jurid/.test(clientKind) ? "Persoană juridică" : /fiz|persoan/.test(clientKind) ? "Persoană fizică" : "";
       const next = {
