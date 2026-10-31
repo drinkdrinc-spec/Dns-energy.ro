@@ -347,6 +347,9 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
             archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
         else:
             annex_no, forms = await _registry_forms_for_request(op_key, rec, pros)
+            if annex_no:
+                worksheet = ATR.render_operator_annex_prep(rec, client, pros, op_key, annex_no, forms[0].get("title", "") if forms else "")
+                archive.writestr(f"Anexe oficiale/Fisa_precompletare_Anexa_{annex_no}.pdf", worksheet)
             note = [
                 "Pachet ATR — formular oficial pentru operator",
                 f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
