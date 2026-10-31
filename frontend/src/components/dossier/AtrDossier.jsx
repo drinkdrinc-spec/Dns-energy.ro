@@ -41,9 +41,8 @@ export function AtrDossier({ id, form, setVal }) {
     const norm = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
     const current = pros.find((p) => p.id === form.pros_id);
     if (current && norm(current.client_name) === norm(form.client_name)) return;
-    const match = pros.filter((p) => norm(p.client_name) === norm(form.client_name))
-      .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0];
-    if (match) selectPros(match.id);
+    const matches = pros.filter((p) => norm(p.client_name) === norm(form.client_name));
+    if (matches.length === 1) selectPros(matches[0].id);
     else if (current) setVal("pros_id", "");
   }, [form.client_name, form.kind, form.pros_id, pros.length]);
   useEffect(() => {
@@ -55,6 +54,8 @@ export function AtrDossier({ id, form, setVal }) {
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
   const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
   const selectedPros = pros.find((p) => p.id === form.pros_id) || null;
+  const normClientName = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
+  const clientPros = form.client_name ? pros.filter((p) => normClientName(p.client_name) === normClientName(form.client_name)) : [];
   useEffect(() => {
     if (!form.pros_id) { setCatalogFiles([]); return; }
     let active = true;
@@ -193,9 +194,11 @@ export function AtrDossier({ id, form, setVal }) {
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
           <div className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="atr-pros">
-            {selectedPros
-              ? <>Dosar prosumator asociat automat după client: <strong style={{ color: "var(--ink)" }}>{selectedPros.number} · {selectedPros.client_name}</strong></>
-              : <>Nu există dosar de prosumator asociat pentru acest client. Creează întâi dosarul prosumator pentru preluarea automată a schemei și echipamentelor.</>}
+            {clientPros.length > 1
+              ? <label className="den-field"><span>Alege locul de consum pentru acest client</span><select className="den-input" value={form.pros_id || ""} onChange={(e) => selectPros(e.target.value)}><option value="">Alege dosarul prosumator...</option>{clientPros.map((p) => <option key={p.id} value={p.id}>{p.number} · POD {p.pod || "necompletat"} · {p.address || p.client_name}</option>)}</select></label>
+              : selectedPros
+                ? <>Dosar prosumator asociat automat după client: <strong style={{ color: "var(--ink)" }}>{selectedPros.number} · {selectedPros.client_name}</strong></>
+                : <>Nu există dosar de prosumator asociat pentru acest client. Creează întâi dosarul prosumator pentru preluarea automată a schemei și echipamentelor.</>}
           </div>
           {selectedPros && <div className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="atr-linked-equipment">
             <strong className="text-sm" style={{ color: "var(--ink)" }}>Date tehnice preluate din dosarul prosumator</strong>
