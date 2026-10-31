@@ -624,3 +624,78 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
                               "Verificați în Registrul formularelor oficiale versiunea curentă publicată de operator.", "small")]
     doc.build(story)
     return buf.getvalue()
+
+
+
+def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key: str, annex_no: int, form_title: str = "") -> bytes:
+    """Render a data worksheet to help complete the selected operator's official annex.
+
+    This is explicitly a work sheet, never represented as the operator's official form.
+    Only values present in the client/ATR/prosumer records are printed.
+    """
+    rec, client, pros = rec or {}, client or {}, pros or {}
+    cef = pros.get("cef") or {}
+    inverters = cef.get("inverters") or []
+    p = CEF.flatten(pros) if pros else {}
+    v = lambda value: escape(str(value)) if value not in (None, "") else M
+    P = lambda text, style="p": Paragraph(text, D.S[style])
+    T = lambda rows, widths: D.pdf_table(rows, widths, True, 7.6, 178)
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
+                            title=f"Fișă precompletare Anexa {annex_no}")
+    operator = OP_NAMES.get(operator_key, rec.get("operator") or "Operatorul de distribuție")
+    story = [
+        P(f"FIȘĂ DE PRECOMPLETARE — ANEXA {int(annex_no)}", "h"),
+        P(escape(operator), "sub"),
+        P("DOCUMENT DE LUCRU — NU ESTE FORMULARUL OFICIAL AL OPERATORULUI. Folosiți datele pentru completarea formularului oficial atașat și verificați fiecare câmp înainte de depunere. Valorile lipsă nu sunt deduse sau inventate.", "small"),
+        Spacer(1, 5),
+    ]
+    if form_title:
+        story.append(P(f"Formular din registru: {escape(form_title)}", "small"))
+    story += [
+        P("1. Solicitant", "b"),
+        T([["Câmp", "Date disponibile"], ["Nume / denumire", v(client.get("name") or rec.get("client_name"))],
+           ["Tip solicitant", v(rec.get("applicant_type"))], ["CNP / CUI", v(client.get("idcode") or client.get("cui"))],
+           ["Telefon", v(client.get("phone"))], ["E-mail", v(client.get("email"))],
+           ["Reprezentant", v(client.get("rep_name"))]], [48, 130]),
+        Spacer(1, 4),
+        P("2. Loc de consum / racordare", "b"),
+        T([["Câmp", "Date disponibile"], ["Adresă loc de consum", v(rec.get("address") or client.get("address"))],
+           ["Localitate / județ", v(rec.get("locality") or client.get("locality")) + " / " + v(rec.get("county") or client.get("county"))],
+           ["POD", v(rec.get("pod") or client.get("pod"))], ["Nr. carte funciară", v(rec.get("cf_nr") or client.get("cf_nr"))],
+           ["Nr. cadastral", v(rec.get("cadastral_nr") or client.get("cadastral_nr"))],
+           ["Operator", v(rec.get("operator") or operator)], ["Procedură", v(rec.get("deer_case") or rec.get("request_type"))],
+           ["Tip branșament", v(rec.get("supply") or pros.get("supply"))]], [48, 130]),
+        Spacer(1, 4),
+        P("3. Puteri și parametri solicitați", "b"),
+        T([["Câmp", "Valoare disponibilă"], ["Putere absorbită solicitată", v(rec.get("p_abs_kw")) + " kW / " + v(rec.get("p_abs_kva")) + " kVA"],
+           ["Putere instalată fotovoltaică", v(rec.get("pv_kw") or p.get("power") or pros.get("power")) + " kW"],
+           ["Putere evacuată solicitată", v(rec.get("p_evac_kw") or pros.get("power")) + " kW / " + v(rec.get("p_evac_kva")) + " kVA"],
+           ["Limită injectare invertor", v(rec.get("p_evac_kw") or pros.get("power")) + " kW"]], [48, 130]),
+        Spacer(1, 4),
+        P("4. Echipamente declarate", "b"),
+    ]
+    pv_rows = [["Invertor", "Buc.", "Putere (kW)", "Panouri / stringuri"]]
+    for inv in inverters:
+        count = max(1, int(D.num(inv.get("count")) or 1))
+        strings = inv.get("strings") or []
+        panels = sum(int(D.num(x.get("panels"))) for x in strings) * count
+        string_text = ", ".join(str(int(D.num(x.get("panels")))) for x in strings if D.num(x.get("panels")))
+        panel = str(inv.get("panel_model") or p.get("panels") or "")
+        watts = D.num(inv.get("panel_w") or p.get("panel_w"))
+        pv_rows.append([v(inv.get("brand_model")), str(count), v(inv.get("p_nom_kw")),
+                        v(panel) + (f" — {panels} × {watts:g} Wp" if panels and watts else "") + (f"; șiruri {string_text}" if string_text else "")])
+    if not inverters and (pros.get("inverter") or rec.get("inverter")):
+        pv_rows.append([v(pros.get("inverter") or rec.get("inverter")), v(pros.get("inverter_count") or 1),
+                        v(pros.get("inverter_kw") or rec.get("inverter_kw")), v(pros.get("panels") or rec.get("panels"))])
+    if len(pv_rows) == 1:
+        pv_rows.append([M, M, M, M])
+    story.append(T(pv_rows, [54, 12, 24, 88]))
+    batteries = storage_details(pros, rec)
+    story.append(P("Stocare: " + ("DA" if batteries else ("NU" if inverters else "nespecificat")), "small"))
+    if batteries:
+        story.append(T([["Model baterie", "Module", "Capacitate", "Ah", "V", "Cuplare"]] + [storage_row(x) for x in batteries], [48, 14, 46, 16, 18, 36]))
+    story += [Spacer(1, 4), P("5. Verificare înainte de depunere", "b"),
+              P("Comparați această fișă cu formularul oficial atașat. Confirmați datele de identificare, POD, tipul cererii, puterile aprobate/solicitate și cerințele specifice operatorului. Fișa nu înlocuiește semnătura solicitantului, documentele justificative sau verificarea proiectantului.", "small")]
+    doc.build(story)
+    return buf.getvalue()
