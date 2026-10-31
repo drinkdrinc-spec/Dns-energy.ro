@@ -17,6 +17,7 @@ const NAV = [
     { to: "/spor-putere", icon: "PlugZap", text: "Spor de putere", testid: "nav-power" },
     { to: "/diu", icon: "FolderOpen", text: "Dosar DIU", testid: "nav-diu" },
     { to: "/dosare-anre", icon: "Briefcase", text: "Dosare ANRE", testid: "nav-anre" },
+    { to: "/catalog-echipamente", icon: "Cpu", text: "Catalog echipamente", testid: "nav-equipment-catalog" },
     { to: "/mono", icon: "GitBranch", text: "Schema monofilară", testid: "nav-mono" },
     { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
   ]},
@@ -33,7 +34,6 @@ const NAV = [
     { to: "/echipamente", icon: "Cpu", text: "Echipamente", testid: "nav-equipment" },
     { to: "/semnare", icon: "PenLine", text: "Semnare la distanță", testid: "nav-remote-signing" },
     { to: "/setari-baza", icon: "ShieldCheck", text: "Setări de bază", testid: "nav-base-settings" },
-    { to: "/catalog-echipamente", icon: "Cpu", text: "Catalog echipamente", testid: "nav-equipment-catalog" },
     { to: "/catalog", icon: "BookOpen", text: "Catalog tehnic (linkuri)", testid: "nav-catalog" },
   ]},
   { label: "Racordare și resurse", items: [
