@@ -90,7 +90,8 @@ export default function ModulePage({ moduleKey }) {
       if (!client) { setForm((p) => ({ ...p, client_name: value, client_id: "" })); return; }
       const matches = (refOptions.prosumator || []).filter((p) => p.client_id === client.id || (!p.client_id && p.client_name === client.name));
       const linked = matches.length === 1 ? matches[0] : null;
-      const isCompany = /jurid/i.test(String(client.kind || ""));
+      const clientKind = String(client.kind || "").toLowerCase();
+      const applicantType = /jurid/.test(clientKind) ? "Persoană juridică" : /fiz|persoan/.test(clientKind) ? "Persoană fizică" : "";
       const next = {
         client_name: value, client_id: client.id,
         pod: client.pod || linked?.pod || "",
@@ -98,7 +99,7 @@ export default function ModulePage({ moduleKey }) {
         address: client.address || linked?.address || "",
         cf_nr: client.cf_nr || linked?.cf_nr || "",
         cadastral_nr: client.cadastral_nr || linked?.cadastral_nr || "",
-        applicant_type: isCompany ? "Persoană juridică" : "Persoană fizică",
+        applicant_type: applicantType,
         pros_id: linked?.id || "",
       };
       if (linked) {
@@ -116,14 +117,14 @@ export default function ModulePage({ moduleKey }) {
       return;
     }
     if (key === "atr" && name === "pod") {
-      const pod = String(value || "").trim().toUpperCase().replace(/\\s+/g, "");
+      const pod = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
       let detected = "";
       let note = "";
       if (/^RO001E/.test(pod)) detected = "Rețele Electrice Muntenia S.A.";
       else if (/^RO002E/.test(pod)) detected = "Rețele Electrice Dobrogea S.A.";
       else if (/^RO005E/.test(pod)) detected = "Rețele Electrice Banat S.A.";
       else if (/^EMO3/.test(pod)) detected = "Delgaz Grid S.A.";
-      else if (/^5940\\d{14}$/.test(pod)) {
+      else if (/^5940\d{14}$/.test(pod)) {
         detected = "DEER — sucursală de confirmat";
         note = "POD-ul indică DEER; sucursala trebuie confirmată după județ/localitate.";
       } else if (pod) {
