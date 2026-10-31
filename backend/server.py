@@ -1350,14 +1350,16 @@ async def atr_pack(user: dict, rec: dict, full: int):
         annex_pdf = ATR.render_deer_annex(rec, client, base, pros or {}, attached)
         if annex_pdf:
             parts.append(annex_pdf)
+    unavailable = []
     if full:
-        for k, _, _ in ATR.DOCS:
+        for k, title, _ in ATR.DOCS:
             for f in att.get(k) or []:
                 try:
                     data, ct = get_object(f["storage_path"])
                     parts.append(OPIS.file_pdf(data, ct))
                 except Exception as e:
                     logger.error(f"atr attach {k}: {e}")
+                    unavailable.append(f"{title} — {f.get('original_filename') or 'fișier atașat'}")
             if not att.get(k):
                 for p in auto.get(k) or []:
                     try:
@@ -1365,6 +1367,13 @@ async def atr_pack(user: dict, rec: dict, full: int):
                             parts += await OPIS.position_pdf(p, pros, client, base, info["titles"], get_object)
                     except Exception as e:
                         logger.error(f"atr auto {k}: {e}")
+                        unavailable.append(p.get("title") or title)
+    miss = [k for k in ATR.required(rec) if k not in attached]
+    doc_titles = {k: title for k, title, _ in ATR.DOCS}
+    missing_titles = [f"Document obligatoriu lipsă: {doc_titles.get(k, k)}" for k in miss]
+    report = OPIS._incomplete_report({"positions": [], "common_missing": missing_titles}, unavailable)
+    if full and report:
+        parts.append(report)
     w = PdfWriter()
     for b in parts:
         try:
@@ -1373,8 +1382,8 @@ async def atr_pack(user: dict, rec: dict, full: int):
         except Exception as e:
             logger.error(f"atr merge: {e}")
     o = io.BytesIO(); w.write(o)
-    miss = [k for k in ATR.required(rec) if k not in attached]
-    name = f"{'DOSAR_ATR' if full else 'CERERE_ATR'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and miss else ''}.pdf"
+    incomplete = bool(miss or unavailable)
+    name = f"{'DOSAR_ATR' if full else 'CERERE_ATR'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and incomplete else ''}.pdf"
     return o.getvalue(), name
 
 @api_router.get("/power/{item_id}/pdf")
@@ -1394,14 +1403,38 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
     att = rec.get("attachments") or {}
     attached = {k for k, v in att.items() if v} | {k for k, v in auto.items() if any(v)}
     parts = [PWR.render_anexa1(rec, client, base, pros or {}, attached, ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")))]
+    unavailable = []
+    if pros and not rec.get("is_test"):
+        expected_models = set()
+        cef = pros.get("cef") or {}
+        for inv in cef.get("inverters") or []:
+            for kind, model, cid in (("invertor", inv.get("brand_model"), inv.get("catalog_id")),
+                                     ("panou", inv.get("panel_model"), inv.get("panel_catalog_id"))):
+                key = f"{kind}:{cid or str(model or '').strip().casefold()}"
+                if key.split(":", 1)[1]:
+                    expected_models.add(key)
+            if inv.get("battery_mode") == "own":
+                battery = inv.get("battery") or {}
+                key = f"baterie:{battery.get('catalog_id') or str(battery.get('model') or '').strip().casefold()}"
+                if key.split(":", 1)[1]:
+                    expected_models.add(key)
+        for battery in cef.get("shared_batteries") or []:
+            key = f"baterie:{battery.get('catalog_id') or str(battery.get('model') or '').strip().casefold()}"
+            if key.split(":", 1)[1]:
+                expected_models.add(key)
+        if expected_models and len(att.get("j") or []) + len(auto.get("j") or []) < 2 * len(expected_models):
+            attached.discard("j")
+            parts[0] = PWR.render_anexa1(rec, client, base, pros, attached,
+                ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator")))
     if full:
-        for k, _ in PWR.DOCS:
+        for k, title in PWR.DOCS:
             for f in att.get(k) or []:
                 try:
                     data, ct = get_object(f["storage_path"])
                     parts.append(OPIS.file_pdf(data, ct))
                 except Exception as e:
                     logger.error(f"power attach {k}: {e}")
+                    unavailable.append(f"{title} — {f.get('original_filename') or 'fișier atașat'}")
             if not att.get(k):
                 for p in auto.get(k) or []:
                     try:
@@ -1409,6 +1442,16 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
                             parts += await OPIS.position_pdf(p, pros, client, base, info["titles"], get_object)
                     except Exception as e:
                         logger.error(f"power auto {k}: {e}")
+                        unavailable.append(p.get("title") or title)
+    new_request = rec.get("request_kind") == "nou"
+    juridical = "jurid" in str((client or {}).get("kind") or "").lower()
+    required_keys = {"a"} | ({"b"} if juridical else set()) | ({"c", "d", "e", "f", "g"} if new_request else {"h", "i", "j", "k"})
+    missing_keys = sorted(k for k in required_keys if k not in attached)
+    pwr_titles = dict(PWR.DOCS)
+    missing_titles = [f"Document obligatoriu lipsă: {pwr_titles.get(k, k)}" for k in missing_keys]
+    report = OPIS._incomplete_report({"positions": [], "common_missing": missing_titles}, unavailable)
+    if full and report:
+        parts.append(report)
     w = PdfWriter()
     for b in parts:
         try:
@@ -1417,7 +1460,8 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
         except Exception as e:
             logger.error(f"power merge: {e}")
     o = io.BytesIO(); w.write(o)
-    name = f"{'DOSAR_SPOR_PUTERE' if full else 'ANEXA1_DEER'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}.pdf"
+    incomplete = bool(missing_keys or unavailable)
+    name = f"{'DOSAR_SPOR_PUTERE' if full else 'ANEXA1_DEER'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and incomplete else ''}.pdf"
     return Response(content=o.getvalue(), media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
 
 # ---------------- Semnare la distanță (semnătură electronică simplă) ----------------
