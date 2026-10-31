@@ -526,15 +526,22 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
     if not item:
         raise HTTPException(status_code=404, detail="Modelul nu există în catalog")
     try:
+        chunks, total = [], 0
         async with httpx.AsyncClient(timeout=25, follow_redirects=False) as client:
-            response = await client.get(url, headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"})
-        if response.status_code != 200:
-            raise HTTPException(status_code=400, detail=f"Sursa a răspuns cu HTTP {response.status_code}; folosește linkul direct către PDF.")
-        data = response.content
+            async with client.stream("GET", url, headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"}) as response:
+                if response.status_code != 200:
+                    raise HTTPException(status_code=400, detail=f"Sursa a răspuns cu HTTP {response.status_code}; folosește linkul direct către PDF.")
+                length = response.headers.get("content-length")
+                if length and length.isdigit() and int(length) > 25 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Documentul depășește limita de 25 MB")
+                async for chunk in response.aiter_bytes(64 * 1024):
+                    total += len(chunk)
+                    if total > 25 * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail="Documentul depășește limita de 25 MB")
+                    chunks.append(chunk)
+        data = b"".join(chunks)
     except httpx.HTTPError:
         raise HTTPException(status_code=400, detail="Documentul nu a putut fi preluat de la sursa oficială.")
-    if len(data) > 25 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Documentul depășește limita de 25 MB")
     if not data.startswith(b"%PDF-"):
         raise HTTPException(status_code=415, detail="Linkul nu a returnat un PDF valid")
     stored = put_object(f"{APP_NAME}/catalog/{user['id']}/{item_id}/{kind}_{uuid.uuid4().hex}.pdf", data, "application/pdf")
