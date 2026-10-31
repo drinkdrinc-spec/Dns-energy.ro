@@ -241,6 +241,207 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
     doc.build(story)
     return buf.getvalue()
 
+
+def _deer_docx_template(rec: dict) -> str:
+    case = str((rec or {}).get("deer_case") or "").strip().lower()
+    if "program de finanțare" in case or "program de finantare" in case:
+        return "anexa4_funding.docx.b64"
+    if "≤10,8" in case or "≤ 10,8" in case or "<=10,8" in case:
+        return "anexa5_simple.docx.b64"
+    if "actualizare crr" in case or "anexa nr. 3" in case:
+        return "anexa3_update.docx.b64"
+    if "spor" in case:
+        return "anexa1_spor.docx.b64"
+    if "loc nou" in case:
+        return "anexa1_new.docx.b64"
+    if ">400" in case:
+        return None
+    if "anexa 2" in case or "existent" in case:
+        return "anexa2_existing.docx.b64"
+    return "anexa2_existing.docx.b64"
+
+
+def _deer_value(value):
+    if value in (None, ""):
+        return ""
+    return str(value).strip()
+
+
+def _deer_cell(cell, value):
+    value = _deer_value(value)
+    if value:
+        cell.text = value
+
+
+def _deer_table_row(table, index, values):
+    while len(table.rows) <= index:
+        table.add_row()
+    for col, value in enumerate(values):
+        if col < len(table.columns):
+            _deer_cell(table.cell(index, col), value)
+
+
+def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dict) -> bytes:
+    """Fill the official DEER DOCX template with known dossier values; never infer missing facts."""
+    from base64 import b64decode
+    from pathlib import Path
+    from docx import Document
+
+    if op_key((rec or {}).get("operator"), (pros or {}).get("operator"), (client or {}).get("operator")) != "deer":
+        raise ValueError("Precompletarea formularului oficial este disponibilă doar pentru DEER.")
+    filename = _deer_docx_template(rec)
+    if not filename:
+        raise ValueError("Procedura DEER pentru instalații de peste 400 kW este disponibilă pe site-ul operatorului în format DOC; descărcați formularul oficial de acolo.")
+    template_path = Path(__file__).parent / "templates" / "deer" / filename
+    try:
+        raw = b64decode(template_path.read_text(encoding="ascii"), validate=True)
+        doc = Document(io.BytesIO(raw))
+    except Exception as exc:
+        raise RuntimeError(f"Șablonul oficial DEER nu a putut fi încărcat: {exc}") from exc
+
+    c = client or {}
+    rec = rec or {}
+    pros = pros or {}
+    cef = pros.get("cef") or {}
+    inverters = cef.get("inverters") or []
+    batteries = storage_details(pros, rec)
+    case = str(rec.get("deer_case") or "").lower()
+    is_new = "loc nou" in case
+    # Applicant details are substituted only where the official form has an unambiguous field.
+    import re
+    applicant = next((p for p in doc.paragraphs if "Utilizatorul" in p.text), None)
+    if applicant:
+        fields = {
+            0: c.get("name"),
+            1: c.get("county"),
+            2: c.get("locality"),
+            10: c.get("phone"),
+            13: c.get("email"),
+            14: c.get("cui") or (c.get("idcode") if str(rec.get("applicant_type") or "").lower() in ("pj", "persoană juridică", "persoana juridica") else None),
+            15: c.get("idcode") if str(rec.get("applicant_type") or "").lower() not in ("pj", "persoană juridică", "persoana juridica") else None,
+            16: c.get("registration_no"),
+            17: c.get("rep_name"),
+            18: c.get("rep_role"),
+        }
+        counter = 0
+        def replace_field(match):
+            nonlocal counter
+            value = fields.get(counter)
+            counter += 1
+            return _deer_value(value) or match.group(0)
+        original = applicant.text
+        applicant.clear()
+        applicant.add_run(re.sub(r"\.{4,}", replace_field, original))
+
+    # Select the request type without touching unrelated declaration checkboxes.
+    for paragraph in doc.paragraphs:
+        if "Loc de consum şi de producere nou" in paragraph.text and "existent" not in paragraph.text.lower():
+            paragraph.text = paragraph.text.replace("[]", "[X]" if is_new else "[]", 1)
+        elif "Loc de consum existent/Loc de consum şi de producere existent" in paragraph.text:
+            paragraph.text = paragraph.text.replace("[]", "[X]" if not is_new else "[]", 1)
+
+    # Official DEER Anexa 1 and 4/5 technical tables share this ordering; Anexa 2 has fewer tables.
+    tables = doc.tables
+    is_annex2 = filename == "anexa2_existing.docx.b64"
+    power_table = 0
+    if not is_annex2 and filename != "anexa3_update.docx.b64" and len(tables) > power_table:
+        _deer_cell(tables[power_table].cell(0, 1), rec.get("p_abs_kw") or pros.get("bransament_kw"))
+        _deer_cell(tables[power_table].cell(1, 1), rec.get("p_abs_kva"))
+
+    if is_annex2:
+        export_table, panel_table, inverter_table, detail_table = 0, 2, 3, 5
+    else:
+        export_table, panel_table, inverter_table, detail_table = 2, 5, 6, 8
+    if len(tables) > export_table and not is_annex2 and filename != "anexa3_update.docx.b64":
+        _deer_cell(tables[export_table].cell(0, 1), rec.get("p_evac_kw") or pros.get("power"))
+        _deer_cell(tables[export_table].cell(1, 1), rec.get("p_evac_kva"))
+    elif is_annex2 and len(tables) > 0:
+        # Anexa 2 does not have an export power table; its power is printed in the request sentence.
+        pass
+
+    if len(tables) > panel_table:
+        table = tables[panel_table]
+        row = 2
+        for idx, inv in enumerate(inverters, 1):
+            strings = inv.get("strings") or []
+            try:
+                panels = sum(int(D.num(x.get("panels"))) for x in strings)
+            except (TypeError, ValueError):
+                panels = 0
+            watts = D.num(inv.get("panel_w"))
+            model = inv.get("panel_model")
+            total_kw = panels * watts / 1000 if panels and watts else None
+            _deer_table_row(table, row, [str(idx), panels or "", model,
+                (f"{watts / 1000:g}" if watts else ""), (f"{total_kw:g}" if total_kw else ""),
+                "", (f"{total_kw:g}" if total_kw else ""), ""])
+            row += 1
+
+    if len(tables) > inverter_table:
+        table = tables[inverter_table]
+        row = 2
+        for idx, inv in enumerate(inverters, 1):
+            model = inv.get("brand_model")
+            rated = inv.get("p_nom_kw")
+            limit = rec.get("p_evac_kw") or pros.get("power")
+            note = "Limitare evacuare: " + str(limit) + " kW" if limit not in (None, "") else ""
+            if inv.get("battery_mode") == "own" and inv.get("battery", {}).get("model"):
+                note = (note + "; " if note else "") + "Baterie: " + str(inv["battery"]["model"])
+            _deer_table_row(table, row, [str(idx), inv.get("count") or 1, model, "",
+                rated, limit, rated, note])
+            row += 1
+        if inverters and len(table.rows) > row:
+            total = sum(D.num(inv.get("p_nom_kw")) * D.num(inv.get("count") or 1) for inv in inverters)
+            _deer_cell(table.cell(len(table.rows) - 1, 4), f"{total:g}" if total else "")
+
+    if len(tables) > detail_table:
+        detail = tables[detail_table]
+        supply_details = []
+        for inv in inverters:
+            if inv.get("brand_model"):
+                supply_details.append("Invertor: " + str(inv["brand_model"]))
+        for battery in batteries:
+            desc = "Baterie: " + str(battery.get("model") or "model necompletat")
+            if battery.get("modules"):
+                desc += " × " + str(battery["modules"])
+            if battery.get("coupling"):
+                desc += " (" + str(battery["coupling"]) + ")"
+            supply_details.append(desc)
+        if supply_details:
+            _deer_cell(detail.cell(0, 1), "; ".join(supply_details))
+        amp_hours = [str(b.get("ah")) for b in batteries if b.get("ah") not in (None, "")]
+        if amp_hours:
+            _deer_cell(detail.cell(1, 1), ", ".join(amp_hours))
+
+    # Anexa 2 puts client/location/POD/export data in its request sentence.
+    if is_annex2:
+        request = next((p for p in doc.paragraphs if "notific prin prezenta racordarea" in p.text.lower()), None)
+        if request:
+            # Replace only explicit fields; never split or reinterpret a free-form address.
+            import re
+            field_values = {
+                0: c.get("county"), 1: c.get("locality"),
+                8: rec.get("cf_nr") or c.get("cf_nr"),
+                9: rec.get("cadastral_nr") or c.get("cadastral_nr"),
+                10: rec.get("pod") or c.get("pod"),
+                11: rec.get("p_evac_kw") or pros.get("power"),
+                12: rec.get("p_evac_kva"),
+            }
+            count = 0
+            def replace_request_field(match):
+                nonlocal count
+                value = field_values.get(count)
+                count += 1
+                return _deer_value(value) or match.group(0)
+            original = request.text
+            request.clear()
+            request.add_run(re.sub(r"\.{4,}", replace_request_field, original))
+
+    doc.add_paragraph("Precompletat automat din datele salvate în dosar. Câmpurile fără date au rămas necompletate; verificați formularul și semnați-l înainte de depunere.")
+    output = io.BytesIO()
+    doc.save(output)
+    return output.getvalue()
+
+
 def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> bytes:
     st, c = D.S, client or {}
     p = CEF.flatten(pros) if pros else {}
