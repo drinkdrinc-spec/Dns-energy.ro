@@ -22,6 +22,26 @@ OK, CHANGED, BROKEN, BLOCKED, NEW = "valid", "versiune nouă detectată", "link 
 SEED = [
     ("DEER", "Cerere de racordare prosumator — loc existent / spor de putere (Anexa 1, Ord. ANRE 69/2020)", "prosumator / spor putere",
      "https://www.distributie-energie.ro/wp-content/uploads/2021/01/10-Cerere-loc-consum-existent-Spor-de-putere-Anexa-1.pdf"),
+    ("DEER", "Cerere Anexa 1 — loc existent cu spor de putere (sursa curentă, formular DOCX)", "prosumator / spor putere",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/4.-Loc-consum-si_sau-producere-existent-Spor-Putere_Anexa-nr-1.docx"),
+    ("DEER", "Cerere Anexa 1 — loc nou de consum și producere (formular DOCX)", "prosumator / racordare",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/1.-Loc-consum-si-producere-nou-_Anexa-nr-1.docx"),
+    ("DEER", "Anexa 2 — notificare loc de consum existent (formular DOCX)", "prosumator / notificare",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx"),
+    ("DEER", "Anexa 3 — actualizare CRR loc de consum și producere existent (formular DOCX)", "prosumator / notificare",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/3.-Loc-de-consum-si-producere-existent-actualizare-CRR_Anexa-nr-3.docx"),
+    ("DEER", "Anexa 4 — cerere prosumator cu finanțare (formular DOCX)", "prosumator / finanțare",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Cerere-de-racordare-prosumator-%E2%80%93-prin-programe-de-finantare-Anexa-4.docx"),
+    ("DEER", "Anexa 5 — notificare prosumator până la 10,8 kW, conform portalului DEER", "prosumator / notificare",
+     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Loc-consum-si_sau-producere-existent-prevazut_cu_instalatii_de_producere_Anexa-nr-5.docx"),
+    ("Delgaz Grid", "Cerere prosumator — Anexa 1 (fișier publicat în portalul Delgaz)", "prosumator / spor putere",
+     "https://delgaz.ro/getattachment/91755a0d-890c-4357-917a-ac5128ec735a/Cerere_de_racordare_prosumator-Anexa-1.pdf"),
+    ("Rețele Electrice România", "Anexa 1 — cerere prosumator (link publicat pe pagina oficială)", "prosumator / spor putere",
+     "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-1-cerere-racordare.pdf"),
+    ("Distribuție Energie Oltenia", "Anexa 1 rev06 — cerere prosumator, loc nou sau spor de putere", "prosumator / spor putere",
+     "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2024%2F26.01.2024%2F&fileName=01-03-01_P03-F16_Cerere+racordare+prosumatori_LC+noi+sau+spor+putere_anexa+1_rev06.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files"),
+    ("Distribuție Energie Oltenia", "Anexa 4 rev04 — cerere prosumator cu finanțare AFM", "prosumator / finanțare",
+     "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2023%2F&fileName=01-03-01_P03-F15_Cerere+de+racordare+prosumator+pt+LC+existent+care+acceseaza+programul+AFM_anexa+4_rev04.doc.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files"),
     ("DEER", "Cerere tip de racordare loc de producere / consum și producere (autoproducător)", "ATR producere",
      "https://www.distributie-energie.ro/wp-content/uploads/2020/12/4-Producator.pdf"),
     ("DEER", "Documentație prosumatori — listă documente și date tehnice", "prosumator", "https://www.distributie-energie.ro/wp-content/uploads/2020/12/5.pdf"),
@@ -61,12 +81,25 @@ def detect_version(data: bytes, ct: str) -> str:
         if "pdf" in ct or data[:4] == b"%PDF":
             import pymupdf
             d = pymupdf.open(stream=data, filetype="pdf")
-            txt = d[0].get_text()[:3000] if d.page_count else ""
+            txt = d[0].get_text()[:5000] if d.page_count else ""
             meta = d.metadata or {}
             m = VER_RE.search(txt)
             return (m.group(1).strip() if m else "") or (meta.get("modDate") or "")[2:10]
-    except Exception:
-        pass
+        if "wordprocessingml" in ct or data[:2] == b"PK":
+            from docx import Document
+            document = Document(io.BytesIO(data))
+            chunks = [p.text for p in document.paragraphs]
+            for table in document.tables:
+                for row in table.rows:
+                    chunks.append(" | ".join(cell.text for cell in row.cells))
+            txt = "\n".join(chunks)[:12000]
+            m = VER_RE.search(txt)
+            if m:
+                return m.group(1).strip()
+            modified = document.core_properties.modified
+            return modified.strftime("%Y-%m-%d") if modified else ""
+    except Exception as exc:
+        logger.debug("Official form version extraction failed: %s", exc)
     return ""
 
 
