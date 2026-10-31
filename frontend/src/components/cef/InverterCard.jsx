@@ -1,4 +1,5 @@
 import { Trash2, Plus, Wand2 } from "lucide-react";
+import { useEffect } from "react";
 import { F, Check, CatalogPick, INSTALL, SECTIONS } from "./F";
 import { Issues } from "./CefResults";
 
@@ -18,6 +19,20 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
     ac: { ...(inv.ac || {}), breaker_a: inv.ac?.breaker_a || pa.breaker_a, section: inv.ac?.section || pa.section },
     dc: { ...(inv.dc || {}), section: inv.dc?.section || pd.section, spd_ucpv: inv.dc?.spd_ucpv || pd.spd_ucpv, fuse_a: inv.dc?.fuse_a || pd.fuse || "" },
   });
+  useEffect(() => {
+    const nextAc = { ...(inv.ac || {}) };
+    const nextDc = { ...(inv.dc || {}) };
+    if (!nextAc.breaker_a && pa.breaker_a) nextAc.breaker_a = pa.breaker_a;
+    if (!nextAc.section && pa.section) nextAc.section = pa.section;
+    if (!nextAc.cable_type && inv.p_nom_kw) nextAc.cable_type = "RV-K";
+    if (!nextDc.section && pd.section) nextDc.section = pd.section;
+    if (!nextDc.spd_ucpv && pd.spd_ucpv) nextDc.spd_ucpv = pd.spd_ucpv;
+    if (!nextDc.fuse_a && pd.fuse) nextDc.fuse_a = pd.fuse;
+    if (!nextDc.cable_type && strings.length) nextDc.cable_type = "H1Z2Z2-K";
+    if (JSON.stringify(nextAc) !== JSON.stringify(inv.ac || {}) || JSON.stringify(nextDc) !== JSON.stringify(inv.dc || {})) {
+      set({ ...inv, ac: nextAc, dc: nextDc });
+    }
+  }, [pa.breaker_a, pa.section, pd.section, pd.spd_ucpv, pd.fuse, inv.p_nom_kw, strings.length, inv.ac, inv.dc]);
   return (
     <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid={t}>
       <div className="flex items-center justify-between gap-2 mb-2">
