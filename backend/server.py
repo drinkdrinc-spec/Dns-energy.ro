@@ -582,7 +582,7 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
 
 # ---------------- AI extraction & document generation ----------------
 import docgen
-from ai_extract import extract_pdf, extract_gpt
+from ai_extract import extract_pdf, extract_gpt, extract_office_text, extract_gpt_text, extract_office_local
 
 async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> dict:
     token = authorization[7:] if authorization and authorization.startswith("Bearer ") else auth
@@ -604,16 +604,31 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
     guard("prosumator", user, write=True)
     need(user, "ai_extract", True)
     data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Fișierul este gol")
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "pdf"
     ct = file.content_type or MIME_TYPES.get(ext, "application/pdf")
-    if ct not in ("application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"):
-        raise HTTPException(status_code=400, detail="Formate acceptate: PDF, JPEG, PNG, WEBP și fotografii HEIC/HEIF de pe iPhone")
+    office_types = {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+    image_types = ("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence")
+    if ct != "application/pdf" and ct not in image_types and ct not in office_types:
+        raise HTTPException(status_code=400, detail="Citire automată pentru PDF, imagini, DOCX și XLSX. Alte formate pot fi atașate și verificate manual.")
     if doc_type not in {"auto", "ci", "factura", "cf", "other"}:
         raise HTTPException(status_code=400, detail="Tip de document invalid")
     stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
     use_gpt = has_feature(user, "ai_gpt") and "ai_gpt" not in user["plan"].get("disabled", [])
     try:
-        fields = await (extract_gpt if use_gpt else extract_pdf)(data, ct, doc_type)
+        if ct in office_types:
+            if use_gpt:
+                fields = await extract_gpt_text(extract_office_text(data, ct), doc_type)
+            else:
+                fields = extract_office_local(data, ct, doc_type)
+        else:
+            fields = await (extract_gpt if use_gpt else extract_pdf)(data, ct, doc_type)
     except Exception as e:
         logger.error(f"AI extract failed: {e}")
         if ct == "application/pdf" and not os.environ.get("OPENAI_API_KEY") and not isinstance(e, ValueError):
