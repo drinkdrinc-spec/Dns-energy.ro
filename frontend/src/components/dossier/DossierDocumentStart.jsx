@@ -37,7 +37,7 @@ export function DossierDocumentStart({ onCreated }) {
       let mergedValues = values;
       const summaries = [];
       for (const file of list) {
-        const officeExtractable = /\\.(docx|xlsx)$/i.test(file.name);
+        const officeExtractable = /\.(docx|xlsx)$/i.test(file.name);
         const extractable = file.type === "application/pdf" || file.type.startsWith("image/") || officeExtractable;
         let x = {};
         if (kind === "altele" && !extractable) {
