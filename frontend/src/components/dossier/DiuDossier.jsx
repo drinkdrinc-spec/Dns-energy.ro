@@ -32,14 +32,25 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
   const [pros, setPros] = useState([]);
   const [pid, setPid] = useState(form.pros_id || "");
   const [docs, setDocs] = useState(null);
+  const [importing, setImporting] = useState(false);
   const availablePros = pros.filter((item) => !/\bTEST\b/i.test([item.number, item.client_name].filter(Boolean).join(" ")));
   const loadDocs = () => api.get(`/diu/${id}/docs`).then((r) => setDocs(r.data)).catch(() => {});
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); loadDocs(); }, [id]); // eslint-disable-line
   useEffect(() => { if (savedAt) loadDocs(); }, [savedAt]); // eslint-disable-line
 
-  const importPros = async () => {
-    try { const { data } = await api.post(`/diu/${id}/import-pros`, { pros_id: pid }); setForm({ ...form, ...data }); toast.success("Date preluate din dosarul de prosumator"); loadDocs(); }
-    catch (e) { toast.error(e.response?.data?.detail || "Eroare"); }
+  const importPros = async (selectedPid = pid) => {
+    if (!selectedPid || importing) return;
+    setImporting(true);
+    try {
+      const { data } = await api.post(`/diu/${id}/import-pros`, { pros_id: selectedPid });
+      setPid(selectedPid);
+      setForm((current) => ({ ...current, ...data }));
+      toast.success("Datele dosarului au fost preluate automat");
+      loadDocs();
+    } catch (e) {
+      setPid(form.pros_id || "");
+      toast.error(e.response?.data?.detail || "Nu am putut prelua dosarul");
+    } finally { setImporting(false); }
   };
   const pdf = (doc) => `/diu/${id}/pdf?doc=${doc}`
 
@@ -48,13 +59,13 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
       <h3 className="font-bold">Dosarul instalației de utilizare — documente automate</h3>
       <div className="flex flex-wrap items-end gap-2 mt-3">
         <div className="den-field min-w-[260px]"><label>Pornește din dosarul de prosumator</label>
-          <select className="den-input" value={pid} onChange={(e) => setPid(e.target.value)} data-testid="diu-pros-select">
+          <select className="den-input" value={pid} onChange={(e) => importPros(e.target.value)} disabled={importing} data-testid="diu-pros-select">
             <option value="">Alege dosarul...</option>
             {availablePros.map((p) => <option key={p.id} value={p.id}>{p.client_name || "fără nume"} — {p.address || p.pod || p.id.slice(0, 6)}</option>)}
           </select></div>
-        <Btn variant="secondary" onClick={importPros} disabled={!pid} data-testid="diu-import-btn"><Download size={14} /> Preia datele</Btn>
+        <Btn variant="secondary" onClick={() => importPros()} disabled={!pid || importing} data-testid="diu-import-btn"><Download size={14} /> {importing ? "Se preiau..." : "Reîncarcă datele"}</Btn>
       </div>
-      <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Se preiau clientul, adresa, puterea, operatorul, ATR, protecțiile TG și circuitele invertoarelor. Circuitele existente nu se suprascriu.</p>
+      <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>La selectarea clientului se preiau automat datele disponibile, protecțiile și circuitele din dosarul ales. La schimbarea sursei, măsurătorile vechi sunt eliminate; se copiază numai valori măsurate existente.</p>
       <div className="mt-4 rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="diu-operator-requirements">
         <div className="font-bold text-sm">Dosar adaptat operatorului de distribuție</div>
         <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Operator selectat: <b>{form.operator || "neselectat"}</b>. Lista de mai jos ajută la pregătirea dosarului; cerințele finale și formularele condiționale se confirmă din sursa oficială.</p>
