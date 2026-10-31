@@ -21,6 +21,44 @@ DOCS = [("a", "copia actului de identitate / certificatului de înregistrare la 
 EXISTING_ONLY, NEW_ONLY = set("hijk"), set("cdefg")
 
 
+def _battery_items(pros: dict, rec: dict, flat: dict) -> list:
+    cef = (pros or {}).get("cef") or {}
+    items = []
+    for inv in cef.get("inverters") or []:
+        if inv.get("battery_mode") == "own" and isinstance(inv.get("battery"), dict):
+            items.append(inv["battery"])
+    items.extend(b for b in cef.get("shared_batteries") or [] if isinstance(b, dict))
+    if not items and (flat.get("battery") or rec.get("battery") or rec.get("storage")):
+        model = flat.get("battery") or rec.get("battery") or rec.get("storage")
+        items.append({
+            "model": model if isinstance(model, str) else model.get("model"),
+            "modules": (model.get("modules") if isinstance(model, dict) else None) or rec.get("battery_count"),
+            "kwh": (model.get("kwh") if isinstance(model, dict) else None) or flat.get("battery_kwh") or rec.get("battery_kwh"),
+            "ah": (model.get("ah") if isinstance(model, dict) else None) or rec.get("battery_ah"),
+            "voltage": (model.get("voltage") if isinstance(model, dict) else None) or rec.get("battery_v"),
+            "coupling": (model.get("coupling") if isinstance(model, dict) else None) or rec.get("battery_coupling"),
+        })
+    return items
+
+
+def _battery_table(items: list) -> list:
+    rows = [["Model baterie", "Buc.", "Capacitate totală", "Ah / unitate", "Tensiune", "Cuplare"]]
+    for b in items:
+        modules, kwh = b.get("modules"), b.get("kwh")
+        total = M
+        try:
+            if modules not in (None, "") and kwh not in (None, ""):
+                total = f"{D.fmt(float(str(modules).replace(',', '.')) * float(str(kwh).replace(',', '.')), 2)} kWh ({modules} × {kwh} kWh)"
+            elif kwh not in (None, ""):
+                total = f"{kwh} kWh / unitate"
+        except (TypeError, ValueError):
+            total = f"{kwh} kWh / unitate" if kwh not in (None, "") else M
+        rows.append([escape(str(b.get("model") or M)), escape(str(modules or M)), escape(total),
+                     escape(str(b.get("ah") or M)), escape(str(b.get("voltage") or M)),
+                     escape(str(b.get("coupling") or M)).upper()])
+    return rows
+
+
 def box(v):
     return "<b>[X]</b>" if v else "[  ]"
 
@@ -84,10 +122,12 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, o
     for k, t in DOCS:
         na = (k in NEW_ONLY and not new) or (k in EXISTING_ONLY and new) or (k == "b" and "jurid" not in str(c.get("kind") or "").lower())
         story.append(P(f"{box(k in attached)} {k}) {t}{' — nu este cazul' if na and k not in attached else ''}", "li"))
-    bat = p.get("battery") or (pros or {}).get("battery")
+    batteries = _battery_items(pros or {}, rec, p)
+    bat = bool(batteries)
     story += [P("În sprijinul solicitării mele transmit următoarele informaţii privind:"),
-              P(f"a) deţinerea de sisteme de stocare a energiei electrice: {box(not bat)} NU {box(bat)} DA. Detalii schemă alimentare: {escape(str(bat)) if bat else '—'}; "
-                f"capacitate baterii de acumulatoare: {g(p, 'battery_ah') if bat else '—'} Ah"),
+              P(f"a) deţinerea de sisteme de stocare a energiei electrice: {box(not bat)} NU {box(bat)} DA."
+                + (f" Detalii scheme de alimentare: {', '.join(str(b.get('coupling') or 'nespecificată').upper() for b in batteries)}." if bat else "")),
+              *([T(_battery_table(batteries), [52, 12, 42, 20, 22, 30])] if bat else []),
               P(f"b) echipamente de măsurare montate în instalaţiile de utilizare, altele decât ale operatorului: {box(not p.get('smart_meter_type'))} NU {box(p.get('smart_meter_type'))} DA"),
               T([["Nr. crt.", "Serie contor", "Tip contor", "Date tehnice"], ["1", g(p, "smart_meter_serial") if p.get("smart_meter_type") else "", g(p, "smart_meter_type") if p.get("smart_meter_type") else "",
                  g(p, "smart_meter_data") if p.get("smart_meter_type") else ""]], [8, 30, 30, 32]),
