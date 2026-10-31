@@ -14,7 +14,8 @@ DOCS = [("opis", "Opis documente — dosar instalație de utilizare"), ("memoriu
         ("pram_priza", "Buletin PRAM — rezistența de dispersie a prizei de pământ"), ("pram_cont", "Buletin PRAM — continuitatea conductoarelor de protecție"),
         ("pram_izol", "Buletin PRAM — rezistența de izolație"), ("pram_ddr", "Buletin PRAM — verificarea dispozitivelor diferențiale (DDR)"),
         ("receptie", "Proces-verbal de recepție la terminarea lucrărilor"), ("pif", "Proces-verbal de punere în funcțiune"),
-        ("conformitate", "Declarație de conformitate a executantului"), ("garantie", "Certificat de garanție")]
+        ("conformitate", "Declarație de conformitate a executantului"), ("garantie", "Certificat de garanție"),
+        ("angajament_delgaz", "Angajament consumator — acces personal autorizat ANRE")]
 TITLES = dict(DOCS)
 RISO_MIN, DDR_MAX_MS = 1.0, 300.0
 
@@ -63,16 +64,27 @@ def missing(key, r, s):
         m = need([(r.get("date") or r.get("doc_date"), "Data finalizării")])
     elif key == "garantie":
         m = need([(r.get("warranty_months") or s.get("warranty_months"), "Durata garanției (luni)"), (r.get("warranty_start") or r.get("receptie_date"), "Data începerii garanției")])
-    if key != "opis":
+    elif key == "angajament_delgaz":
+        m = need([(r.get("client_name") or r.get("name"), "Beneficiar"), (r.get("address"), "Adresă obiectiv")])
+    if key not in ("opis", "angajament_delgaz"):
         m = need([(r.get("client_name") or r.get("name"), "Beneficiar"), (r.get("address"), "Adresă obiectiv")]) + \
             need([(s.get("company"), "Denumire executant"), (s.get("anre_attest"), "Atestat ANRE executant"), (s.get("rep"), "Reprezentant executant")]) + m
     return list(dict.fromkeys(m))
 
 
+def applicable_docs(r):
+    """Return the DI-U documents relevant to the selected distribution operator."""
+    operator = str(r.get("operator") or "").lower()
+    docs = [item for item in DOCS if item[0] != "angajament_delgaz"]
+    if "delgaz" in operator:
+        docs.append(next(item for item in DOCS if item[0] == "angajament_delgaz"))
+    return docs
+
+
 def positions(r, s):
     out = []
     sg = r.get("signed") or {}
-    for i, (k, t) in enumerate(DOCS):
+    for i, (k, t) in enumerate(applicable_docs(r)):
         m = missing(k, r, s)
         out.append({"nr": i + 1, "key": k, "title": t, "missing": m, "status": "semnat" if sg.get(k) else ("de completat" if m else "generat"),
                     "signed_at": (sg.get(k) or {}).get("signed_at"), "docx": k != "schema_tg"})
@@ -80,7 +92,7 @@ def positions(r, s):
 
 
 def render_docx(key, r, s, client):
-    ctx = D.Ctx(r, s, client, [t for k, t in DOCS])
+    ctx = D.Ctx(r, s, client, [t for k, t in applicable_docs(r)])
     return D.render_docx(None, {}, s, client, blocks=RENDER[key](ctx, r, positions(r, s)), ctx=ctx)
 
 
@@ -222,6 +234,19 @@ def doc_ddr(ctx, r, pos):
         B("table", rows, [6, 30, 18, 16, 16, 14], True), pram_sign(ctx, r)]
 
 
+def doc_angajament_delgaz(ctx, r, pos):
+    return hdr() + [
+        B("title", "ANGAJAMENTUL CONSUMATORULUI"),
+        B("sub", "Accesul personalului autorizat ANRE la instalația de utilizare"),
+        B("p", f"Subsemnatul/Subsemnata <b>{ctx.name}</b>, beneficiar al instalației de utilizare situate la {ctx.loc}, în relație cu operatorul de distribuție Delgaz Grid,"),
+        B("p", "mă angajez să permit accesul personalului autorizat ANRE la instalația de utilizare, în condițiile legale și pentru operațiunile de verificare sau intervenție care îi revin."),
+        B("p", f"POD / cod loc de consum: {e(r.get(\"pod\"))}"),
+        B("p", "Data: ____________________"),
+        sign(ben_sig(ctx)),
+        B("p", "Ciornă precompletată pentru verificare. Confirmă textul și condițiile aplicabile în formularul/cerința curentă Delgaz Grid înainte de semnare și depunere."),
+    ]
+
+
 def doc_garantie(ctx, r, pos):
     months = r.get("warranty_months") or ctx.s.get("warranty_months")
     start = ro_date(r.get("warranty_start") or r.get("receptie_date"))
@@ -278,11 +303,11 @@ def doc_conformitate(ctx, r, pos):
 
 
 RENDER = {"opis": doc_opis, "memoriu": doc_memoriu, "schema_tg": doc_schema, "pram_priza": doc_priza, "pram_cont": doc_cont, "pram_izol": doc_izol,
-          "pram_ddr": doc_ddr, "receptie": doc_receptie, "pif": doc_pif, "conformitate": doc_conformitate, "garantie": doc_garantie}
+          "pram_ddr": doc_ddr, "receptie": doc_receptie, "pif": doc_pif, "conformitate": doc_conformitate, "garantie": doc_garantie, "angajament_delgaz": doc_angajament_delgaz}
 
 
 def render(keys, r, s, client):
-    ctx = D.Ctx(r, s, client, [t for k, t in DOCS])
+    ctx = D.Ctx(r, s, client, [t for k, t in applicable_docs(r)])
     pos = positions(r, s)
     buf = io.BytesIO()
     pw, ph = A4
