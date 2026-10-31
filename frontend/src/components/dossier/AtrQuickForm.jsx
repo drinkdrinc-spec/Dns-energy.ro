@@ -63,7 +63,6 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
       <h3 className="text-sm font-bold mb-1">Datele de bază ale cererii</h3>
       <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Alege clientul; datele cunoscute din fișa clientului se preiau automat. Completează POD-ul de pe factură și confirmă tipul solicitării.</p>
       <div className="grid sm:grid-cols-2 gap-3">{basic.map(renderField)}</div>
-      {annexIssues.length > 0 && <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="alert" data-testid="atr-deer-annex-warning"><strong>Verifică încadrarea procedurii:</strong><ul className="mt-1 list-disc pl-4">{annexIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
     </div>
     <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-extra-fields">
       <summary className="cursor-pointer text-sm font-semibold">Alte date pentru formularul ATR</summary>
