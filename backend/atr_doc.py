@@ -129,6 +129,55 @@ def deer_annex_info(rec: dict):
     return None
 
 
+def deer_annex_issues(rec: dict, pros: dict = None) -> list:
+    """Return hard validation issues for DEER cases that have objective eligibility rules."""
+    if op_key(rec.get("operator"), (pros or {}).get("operator")) != "deer":
+        return []
+    case = str(rec.get("deer_case") or "").strip().casefold()
+    if not case:
+        return ["Selectați procedura DEER aplicabilă înainte de generarea sau depunerea dosarului."]
+    issues = []
+    request = rtype(rec)
+    if "loc nou" in case and request != "nou":
+        issues.append("Procedura selectată este Anexa 1 pentru loc nou, dar tipul solicitării nu este «utilizator nou definitiv».")
+    elif "spor de putere" in case and request != "spor":
+        issues.append("Procedura selectată este Anexa 1 pentru spor de putere, dar tipul solicitării nu este spor de putere.")
+    elif "actualizare crr" in case and request != "admin":
+        issues.append("Procedura selectată este Anexa 3 pentru actualizare CRR, dar tipul solicitării nu este modificare administrativă.")
+    elif "program de finanțare" in case and request != "nou":
+        issues.append("Procedura selectată este Anexa 4 pentru program de finanțare, dar tipul solicitării nu este utilizator nou.")
+    if "≤10,8" in case or "<=10,8" in case or "<=10.8" in case:
+        cef = (pros or {}).get("cef") or {}
+        calculated = CEF.check(cef).get("totals", {}).get("kwp") if cef else None
+        raw_power = rec.get("pv_kw") or (pros or {}).get("_kwp") or calculated or (pros or {}).get("inverter_kw")
+        try:
+            power = float(str(raw_power).replace(",", ".")) if raw_power not in (None, "") else None
+        except (TypeError, ValueError):
+            power = None
+        if power is None:
+            issues.append("Pentru Anexa 5 trebuie confirmată puterea instalată de producere (Pi) din fișa tehnică / proiect.")
+        elif power > 10.8:
+            issues.append(f"Anexa 5 se aplică pentru Pi ≤ 10,8 kW; puterea introdusă este {power:g} kW.")
+        supply = str(rec.get("supply") or (pros or {}).get("supply") or ((pros or {}).get("cef") or {}).get("grid", {}).get("supply") or "").casefold()
+        if not supply:
+            issues.append("Pentru verificarea eligibilității Anexei 5 trebuie selectat tipul branșamentului.")
+        elif "trifaz" in supply or "400" in supply:
+            issues.append("Anexa 5 selectată este pentru conexiune diferită de trifazic; branșamentul este trifazat.")
+    if ">400" in case:
+        cef = (pros or {}).get("cef") or {}
+        calculated = CEF.check(cef).get("totals", {}).get("kwp") if cef else None
+        raw_power = rec.get("pv_kw") or (pros or {}).get("_kwp") or calculated or (pros or {}).get("inverter_kw")
+        try:
+            power = float(str(raw_power).replace(",", ".")) if raw_power not in (None, "") else None
+        except (TypeError, ValueError):
+            power = None
+        if power is None:
+            issues.append("Procedura dedicată pentru >400 kW necesită puterea instalată de producere.")
+        elif power <= 400:
+            issues.append(f"Procedura dedicată se aplică pentru putere instalată >400 kW; puterea introdusă este {power:g} kW.")
+    return issues
+
+
 def storage_details(pros: dict, rec: dict) -> list:
     cef = (pros or {}).get("cef") or {}
     details = []
