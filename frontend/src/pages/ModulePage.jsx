@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, API, openAuthenticatedFile } from "@/lib/api";
+import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
 import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
@@ -452,7 +452,7 @@ export default function ModulePage({ moduleKey }) {
                           </>}
                         </span>;
                       })()}
-                      {key === "atr" && <button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1" style={{ borderColor: "var(--line)" }} onClick={() => openAuthenticatedFile("/atr/" + it.id + "/package.zip")} title="Dosar PDF și, pentru DEER, anexa oficială precompletată">Pachet ATR ZIP</button>}
+                      {key === "atr" && <button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/package.zip", "Pachet_ATR.zip")} title="Dosar PDF și, pentru DEER, anexa oficială precompletată">Pachet ATR ZIP</button>}
                       {key === "prosumator" && (() => {
                         const token = localStorage.getItem("den_token");
                         const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
