@@ -73,7 +73,7 @@ def extract_office_text(content: bytes, mime: str) -> str:
         workbook.close()
     else:
         raise ValueError("Citirea automată este disponibilă pentru DOCX și XLSX; fișierul poate rămâne atașat pentru verificare manuală.")
-    text = "\\n".join(chunks).strip()
+    text = "\n".join(chunks).strip()
     if not text:
         raise ValueError("Fișierul Office nu conține text lizibil.")
     return text[:24000]
@@ -89,7 +89,7 @@ async def extract_gpt_text(text: str, doc_type: str = "other") -> dict:
         "cf": "Extrage proprietarul, numărul CF și numărul cadastral.",
         "other": "Identifică documentul și rezumă-l; extrage doar datele relevante care apar explicit.",
     }.get(doc_type, "Identifică documentul și extrage datele vizibile.")
-    prompt = PROMPT + "\\n\\n" + hint + "\\n\\nTEXT EXTRAS DIN DOCUMENT (poate conține erori de OCR; nu deduce valori lipsă):\\n" + text
+    prompt = PROMPT + "\n\n" + hint + "\n\nTEXT EXTRAS DIN DOCUMENT (poate conține erori de OCR; nu deduce valori lipsă):\n" + text
     async for ev in chat.stream_message(UserMessage(text=prompt)):
         if isinstance(ev, TextDelta):
             out += ev.content
