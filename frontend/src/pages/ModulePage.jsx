@@ -197,11 +197,14 @@ export default function ModulePage({ moduleKey }) {
     toast.success("Șters"); load();
   };
 
+  const isTestRecord = (item) => /\bTEST\b/i.test([item.number, item.name, item.client_name, item.idcode].filter(Boolean).join(" "));
+  const hiddenTestCount = ["clients", "prosumator"].includes(key) ? items.filter(isTestRecord).length : 0;
+  const visibleItems = showTestRecords ? items : (["clients", "prosumator"].includes(key) ? items.filter((item) => !isTestRecord(item)) : items);
   const filtered = useMemo(() => {
-    if (!q) return items;
+    if (!q) return visibleItems;
     const ql = q.toLowerCase();
-    return items.filter((i) => JSON.stringify(i).toLowerCase().includes(ql));
-  }, [items, q]);
+    return visibleItems.filter((i) => JSON.stringify(i).toLowerCase().includes(ql));
+  }, [visibleItems, q]);
 
   const checkedCount = cfg.checklist ? cfg.checklist.filter((c) => checks[c]).length : 0;
 
@@ -298,6 +301,29 @@ export default function ModulePage({ moduleKey }) {
                   <tr key={it.id} className="border-t hover:bg-[#fafcff]" style={{ borderColor: "var(--line)" }}>
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
                     <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {key === "clients" && (() => {
+                        const normalize = (value) => String(value || "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
+                        const dossier = linkedProsumer.find((p) => (p.client_id && p.client_id === it.id) || normalize(p.client_name) === normalize(it.name));
+                        const token = localStorage.getItem("den_token");
+                        const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
+                        return <span className="inline-flex items-center">
+                          <button type="button" className={linkClass} onClick={() => { window.location.href = \`/diu?new=diu&clientId=\${encodeURIComponent(it.id)}\`; }}>Creează DI-U</button>
+                          {dossier && <>
+                            <a className={linkClass} href={\`\${API}/dossier/\${dossier.id}/export?auth=\${token}\`} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
+                            <a className={linkClass} href={\`\${API}/sld/\${dossier.id}/pdf?auth=\${token}\`} target="_blank" rel="noopener noreferrer">Schemă</a>
+                            <a className={linkClass} href={\`\${API}/dossier/\${dossier.id}/pif/pdf?auth=\${token}\`} target="_blank" rel="noopener noreferrer">PRAM / PIF</a>
+                          </>}
+                        </span>;
+                      })()}
+                      {key === "prosumator" && (() => {
+                        const token = localStorage.getItem("den_token");
+                        const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
+                        return <span className="inline-flex items-center">
+                          <a className={linkClass} href={\`\${API}/dossier/\${it.id}/export?auth=\${token}\`} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
+                          <a className={linkClass} href={\`\${API}/sld/\${it.id}/pdf?auth=\${token}\`} target="_blank" rel="noopener noreferrer">Schemă</a>
+                          <a className={linkClass} href={\`\${API}/dossier/\${it.id}/pif/pdf?auth=\${token}\`} target="_blank" rel="noopener noreferrer">PRAM / PIF</a>
+                        </span>;
+                      })()}
                       <button onClick={() => openEdit(it)} data-testid={`edit-${it.id}`} className="p-1.5 rounded hover:bg-[#eef4ff]" title="Editează"><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
                       {canDelete && <button onClick={() => remove(it.id)} data-testid={`delete-${it.id}`} className="p-1.5 rounded hover:bg-[#fff0f0] ml-1" title="Șterge"><Trash2 size={15} style={{ color: "#b33333" }} /></button>}
                     </td>
