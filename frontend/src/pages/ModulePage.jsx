@@ -452,7 +452,7 @@ export default function ModulePage({ moduleKey }) {
                           </>}
                         </span>;
                       })()}
-                      {key === "atr" && <button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/package.zip", "Pachet_ATR.zip")} title="PDF ATR și formularul oficial al operatorului în pachet ZIP; DEER se precompletează">Pachet ATR ZIP</button>}
+                      {key === "atr" && <button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/package.zip", "Pachet_ATR.zip")} title="Descarcă PDF-ul ATR și anexa operatorului potrivită cererii; formularul DEER este precompletat">PDF + anexa operatorului</button>}
                       {key === "prosumator" && (() => {
                         const token = localStorage.getItem("den_token");
                         const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
