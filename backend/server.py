@@ -584,6 +584,12 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     if not name:
         raise HTTPException(status_code=400, detail="Lipsește numele beneficiarului")
     check_inverters(user, d)
+    files = d.get("files") or []
+    if not isinstance(files, list):
+        raise HTTPException(status_code=400, detail="Lista de documente este invalidă")
+    for f in files:
+        if not isinstance(f, dict) or not str(f.get("storage_path") or "").startswith(APP_NAME + "/uploads/" + str(user["id"]) + "/"):
+            raise HTTPException(status_code=400, detail="Document invalid sau neîncărcat în contul curent")
     client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
     if d.get("pod") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "client_name": name, "pod": d["pod"]}):
         raise HTTPException(status_code=409, detail="Există deja un dosar pentru acest client și acest POD")
@@ -593,7 +599,9 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
                              "pod": d.get("pod", ""), "operator": d.get("operator", ""), "cadastral_nr": d.get("cadastral_nr", ""),
                              "cf_nr": d.get("cf_nr", ""), "supplier": d.get("supplier", ""), "rep_name": d.get("rep_name", ""),
                              "regcom": d.get("regcom", ""), "kind": d.get("kind", "")})
+        client["docs"] = client.get("docs") or {}
         await db.clients.insert_one(dict(client))
+    client.setdefault("docs", {})
     d["client_id"] = client["id"]
     if not d.get("number"):
         year = datetime.now().year
@@ -610,19 +618,22 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     await db.works.insert_one(_new(user, {"title": f"Sistem fotovoltaic {docgen.fmt(sz['kwp'] or docgen.num(d.get('power')))} kWp — {name}",
         "client_name": name, "type": "Sistem fotovoltaic", "status": "Finalizat" if d.get("status") == "Prosumator activ" else "În execuție",
         "start_date": d.get("date", ""), "responsible": d.get("executant_rep", ""), "notes": f"Generat din dosar {pros['number']}", "pros_ref": pros["id"]}))
-    await db.mono.insert_one(_new(user, {"code": f"SM-{pros['number']} / rev. 0", "type": "Sistem fotovoltaic", "voltage": "230/400 V AC",
-        "dc_voltage": "conform MPPT invertor", "fuses": f"BMP {sz['main']} A {sz['poles']}P C · invertor {sz['invb']} A {sz['poles']}P C · gPV 15 A DC",
-        "spd_ac": "Tip 1+2", "spd_dc": "Tip 2", "grounding": f"{d.get('grounding_ohm', '')} Ω",
-        "battery_type": "Low Voltage (LV)" if d.get("battery") else "Fără baterie", "bess_kwh": d.get("battery_kwh", ""),
-        "battery_ah": d.get("battery_ah", ""), "notes": f"Generată automat pentru {pros['number']} ({name})", "pros_ref": pros["id"]}))
-    for nm, model, rating in [("Invertor", d.get("inverter"), f"{d.get('inverter_kw', '')} kW"),
-                              ("Module fotovoltaice", d.get("panels"), f"{d.get('panel_count', '')} × {d.get('panel_w', '')} W"),
-                              ("Sistem de stocare", d.get("battery"), f"{d.get('battery_kwh', '')} kWh")]:
-        if model:
-            await db.equipment.insert_one(_new(user, {"name": nm, "model": model, "rating": rating, "serial": "", "client_name": name, "pros_ref": pros["id"]}))
+    changed_slots = False
     for f in files:
-        await db.documents.insert_one(_new(user, {"client_id": client["id"], "client_name": name, "kind": "Dosar prosumator",
-                                                  "doc_type": "Dosar prosumator (import)", **f}))
+        kind = f.get("kind")
+        slot = {"ci": "ci", "factura": "factura", "cf": "cf"}.get(kind)
+        clean_file = {k: f.get(k) for k in ("storage_path", "original_filename", "content_type", "size")}
+        if slot:
+            existing = client["docs"].setdefault(slot, [])
+            if not any(x.get("storage_path") == clean_file["storage_path"] for x in existing if isinstance(x, dict)):
+                existing.append(clean_file)
+                changed_slots = True
+        await db.documents.insert_one(_new(user, {"client_id": client["id"], "client_name": name,
+            "kind": "Dosar prosumator", "doc_type": f.get("doc_type") or "Document importat",
+            **clean_file, "pros_ref": pros["id"]}))
+    if changed_slots:
+        await db.clients.update_one({"id": client["id"], "owner": user["id"]}, {"$set": {
+            "docs": client["docs"], "updated_at": datetime.now(timezone.utc).isoformat()}})
     return clean(pros)
 
 @api_router.get("/docs/types")
