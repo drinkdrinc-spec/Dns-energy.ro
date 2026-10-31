@@ -256,7 +256,7 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
     story = [P(f"Către: <b>{escape(OP_NAMES[op])}</b>" + (f" — {g(rec, 'operator')}" if rec.get("operator") else ""), "small"),
              P("Nr. înregistrare ____________ / Data ____________", "small"),
              P("CERERE ȘI CHESTIONAR", "h"),
-             P("pentru obținerea avizului tehnic de racordare — " + ("loc de consum și de producere (centrală fotovoltaică peste 27 kW)" if prod else "loc de consum"), "sub"),
+             P("pentru obținerea avizului tehnic de racordare — " + ("loc de consum și de producere (prosumator)" if prod else "loc de consum"), "sub"),
              P("Tip solicitare:<br/>" + "<br/>".join(f"{box(rt == k)} {t}" for k, t in TYPES)),
              *([P("Formular DEER selectat — precompletare cu datele clientului", "b"),
                 P(escape(deer_case), "sub"),
