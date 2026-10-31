@@ -14,7 +14,7 @@ function proposeStrings(inv, totalPanels) {
   const maxDc = Number(inv.vdc_max), mpptMin = Number(inv.mppt_min), mpptMax = Number(inv.mppt_max);
   const maxCurrent = Number(inv.imax_mppt);
   if (!count || !mppts || !voc || !vmp || !isc || !Number.isFinite(vocCoef) || !Number.isFinite(vmpCoef)
-      || !maxDc || !mpptMin || !mpptMax || !maxCurrent || vocCoef >= 0 || vmpCoef >= 0 || isc > maxCurrent) return null;
+      || !maxDc || !mpptMin || !mpptMax || !maxCurrent || isc > maxCurrent) return null;
   const stringCount = Math.min(count, mppts);
   const base = Math.floor(count / stringCount), remainder = count % stringCount;
   const panelCounts = Array.from({ length: stringCount }, (_, i) => base + (i < remainder ? 1 : 0));
