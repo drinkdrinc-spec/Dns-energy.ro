@@ -68,7 +68,7 @@ def doc_pdf(k, r, s, client, signed_ok=True):
 async def diu_pdf(item_id: str, doc: str = "all", fmt: str = "pdf", orig: int = 0, authorization: str = Header(None), auth: str = Query(None)):
     user = await S.user_from_token(authorization, auth)
     rec, r, client, s = await diu_ctx(user, item_id)
-    if doc != "all" and doc not in DD.TITLES:
+    if doc != "all" and doc not in {k for k, _ in DD.applicable_docs(r)}:
         raise HTTPException(status_code=404, detail="Document inexistent")
     base = f"DIU_{doc}_{(client.get('name') or r.get('client_name') or 'dosar').replace(' ', '_')}"
     if fmt == "docx":
@@ -76,7 +76,7 @@ async def diu_pdf(item_id: str, doc: str = "all", fmt: str = "pdf", orig: int = 
             raise HTTPException(status_code=400, detail="Exportul Word este disponibil pe fiecare document, cu excepția schemei desenate")
         return Response(content=DD.render_docx(doc, r, s, client), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         headers={"Content-Disposition": S.disp("attachment", base + ".docx")})
-    keys = [k for k, _ in DD.DOCS] if doc == "all" else [doc]
+    keys = [k for k, _ in DD.applicable_docs(r)] if doc == "all" else [doc]
     signed = r.get("signed") or {}
     pos = {p["key"]: p for p in DD.positions(r, s)}
     draft = any(pos[k]["missing"] for k in keys if not signed.get(k))
@@ -104,7 +104,7 @@ async def diu_sign(item_id: str, request: Request, user: dict = Depends(get_curr
     rec, r, client, s = await diu_ctx(user, item_id)
     b = await request.json()
     keys, sg = b.get("pos_keys") or [], b.get("signer") or {}
-    if not keys or any(k not in DD.TITLES for k in keys):
+    if not keys or any(k not in {key for key, _ in DD.applicable_docs(r)} for k in keys):
         raise HTTPException(status_code=400, detail="Alege documentele DI-U de semnat")
     if not (sg.get("name") or "").strip() or "@" not in (sg.get("email") or ""):
         raise HTTPException(status_code=400, detail="Clientul are nevoie de nume și e-mail valid (pentru codul de verificare)")
