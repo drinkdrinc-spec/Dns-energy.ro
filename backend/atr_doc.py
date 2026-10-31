@@ -23,6 +23,9 @@ DOCS = [("plan", "Plan de situație la scară, cu viza emitentului certificatulu
         ("memoriu", "Date tehnice și energetice (memoriu explicativ)", False),
         ("schema", "Schema electrică monofilară a instalației de producere și modul de racordare (loc de consum și producere)", "prod"),
         ("fise", "Fișe tehnice / certificate de conformitate ale invertoarelor și unităților generatoare (loc de consum și producere)", "prod"),
+        ("pram", "Buletin de încercare a prizei de pământ", False),
+        ("receptie", "Proces-verbal de recepție a instalației de producere", False),
+        ("constatator", "Certificat constatator ONRC (prosumator persoană juridică)", False),
         ("atr_prev", "Copie aviz tehnic / certificat de racordare obținut anterior (spor de putere)", False)]
 TYPES = [("nou", "utilizator nou definitiv"), ("temp", "utilizator nou temporar"), ("spor", "dezvoltarea unui utilizator existent (spor de putere)"),
          ("mod_dep", "modificarea elementelor de natură tehnică cu depășirea puterii aprobate anterior"),
