@@ -125,6 +125,44 @@ def deer_annex_info(rec: dict):
     return None
 
 
+def storage_details(pros: dict, rec: dict) -> list:
+    cef = (pros or {}).get("cef") or {}
+    details = []
+    for inv in cef.get("inverters") or []:
+        if inv.get("battery_mode") == "own":
+            battery = inv.get("battery") or {}
+            if battery:
+                details.append(battery)
+    details.extend(cef.get("shared_batteries") or [])
+    if not details and ((rec or {}).get("battery") or (rec or {}).get("storage")):
+        value = (rec or {}).get("battery") or (rec or {}).get("storage")
+        details.append({
+            "model": value if isinstance(value, str) else value.get("model"),
+            "modules": (rec or {}).get("battery_count"),
+            "kwh": (rec or {}).get("battery_kwh"),
+            "ah": (rec or {}).get("battery_ah"),
+            "voltage": (rec or {}).get("battery_v"),
+            "coupling": (rec or {}).get("battery_coupling"),
+        })
+    return details
+
+
+def storage_row(battery: dict) -> list:
+    modules = battery.get("modules")
+    kwh = battery.get("kwh")
+    if kwh not in (None, "") and modules not in (None, ""):
+        try:
+            capacity = f"{D.fmt(float(str(kwh).replace(',', '.')) * float(str(modules).replace(',', '.')), 2)} kWh total ({modules} × {kwh} kWh)"
+        except (TypeError, ValueError):
+            capacity = f"{kwh} kWh"
+    else:
+        capacity = f"{kwh} kWh" if kwh not in (None, "") else M
+    coupling = battery.get("coupling")
+    return [escape(str(battery.get("model") or M)), escape(str(modules or M)), escape(capacity),
+            escape(str(battery.get("ah") or M)), escape(str(battery.get("voltage") or M)),
+            escape(str(coupling).upper() if coupling else "Nespecificată")]
+
+
 def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attached: set) -> bytes:
     """Create a clearly-labeled work prefill sheet for the selected DEER annex."""
     info = deer_annex_info(rec)
@@ -167,8 +205,27 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
            ["Putere maximă evacuată", f"{g(rec, 'p_evac_kw')} kW / {g(rec, 'p_evac_kva')} kVA"],
            ["Descriere modificări", g(rec, "current_supply_desc")]], [52, 126]),
         Spacer(1, 4),
-        P("4. Documente anexate pentru această procedură", "b"),
+        P("4. Echipamente din dosarul tehnic asociat", "b"),
     ]
+    cef = (pros or {}).get("cef") or {}
+    invs = cef.get("inverters") or []
+    equipment = [["Invertor", "Putere", "Panou / număr / Wp", "Stringuri"]]
+    for inv in invs:
+        strings = inv.get("strings") or []
+        panel_count = sum(int(D.num(x.get("panels"))) for x in strings)
+        panel_w = D.num(inv.get("panel_w"))
+        string_text = ", ".join(str(int(D.num(x.get("panels")))) for x in strings if D.num(x.get("panels")))
+        equipment.append([escape(str(inv.get("brand_model") or M)), escape(str(inv.get("p_nom_kw") or M)) + " kW",
+                          escape(str(inv.get("panel_model") or M)) + (f" / {panel_count} × {panel_w:g} Wp" if panel_count and panel_w else ""),
+                          escape(string_text or M)])
+    if not invs:
+        equipment.append([M, M, M, M])
+    story.append(T(equipment, [52, 24, 68, 36]))
+    batteries = storage_details(pros, rec)
+    story.append(P("Sisteme de stocare: " + ("DA" if batteries else ("NU" if invs else "nespecificat")), "small"))
+    if batteries:
+        story.append(T([["Model", "Buc.", "Capacitate", "Ah", "V", "Cuplare"]] + [storage_row(b) for b in batteries], [48, 18, 48, 18, 20, 28]))
+    story.append(P("5. Documente anexate pentru această procedură", "b"))
     rows = [["Document solicitat", "Stare în dosar"]]
     for key, label, _ in DOCS:
         if key in required(rec):
@@ -257,9 +314,12 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
             rows.append([str(i + 1), escape(inv.get("brand_model") or ""), "1", escape(str(inv.get("p_nom_kw") or "")), f"{n} × {w:g}" if n else "", D.fmt(n * w / 1000, 2) if n and w else ""])
         if not invs:
             rows.append([""] * 6)
-        bat = p.get("battery") or rec.get("storage")
+        batteries = storage_details(pros, rec)
+        configured = bool((pros or {}).get("cef", {}).get("inverters") or (pros or {}).get("inverter"))
+        storage_state = f"{box(True)} DA" if batteries else (f"{box(True)} NU" if configured else "nespecificat — confirmați prezența bateriei")
         story += [T(rows, [6, 40, 10, 14, 18, 12]),
-                  P(f"Sisteme de stocare: {box(not bat)} NU {box(bat)} DA {escape(str(bat)) if bat else ''}; sursa: centrală fotovoltaică racordată prin invertoare (fără regim cu șocuri)."),
+                  P(f"Sisteme de stocare: {storage_state}"),
+                  *([T([["Model", "Buc.", "Capacitate", "Ah", "V", "Cuplare"]] + [storage_row(b) for b in batteries], [48, 18, 48, 18, 20, 28])] if batteries else []),
                   P(f"Data prevăzută pentru PIF a centralei: {escape(D.ro_date(rec.get('pif_date')) or M)}")]
     n = 5 if prod else 4
     story += [P(f"{n}. Alte informații", "b"), P(g(rec, "other") if rec.get("other") else M),
