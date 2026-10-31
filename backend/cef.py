@@ -88,6 +88,7 @@ def check(cef: dict) -> dict:
 
     for idx, inv in enumerate(invs):
         tag = f"Invertor {idx + 1}"
+        unit_count = max(1, min(100, int(n(inv.get("count"), 1) or 1)))
         e, w, prop = [], [], {}
         tri = "mono" not in str(inv.get("phases") or ("Trifazat" if tri_grid else "Monofazat")).lower()
         p_nom, p_max = n(inv.get("p_nom_kw")), n(inv.get("p_max_kw")) or n(inv.get("p_nom_kw"))
@@ -96,7 +97,8 @@ def check(cef: dict) -> dict:
         mppt_count, imax = int(n(inv.get("mppt_count"))), n(inv.get("imax_mppt"))
         strings = [string_calc(s, inv, tmin) for s in (inv.get("strings") or []) if n(s.get("panels")) > 0]
         kwp = sum(s["kwp"] for s in strings)
-        tot_kwp += kwp; tot_kw += p_nom; tot_kwmax += p_max; tot_export += min(p_lim, p_max or p_lim)
+        tot_kwp += kwp * unit_count; tot_kw += p_nom * unit_count; tot_kwmax += p_max * unit_count
+        tot_export += min(p_lim, p_max or p_lim) * unit_count
         if p_lim > p_nom > 0:
             w.append(f"{tag}: limitarea configurată ({p_lim} kW) depășește puterea nominală ({p_nom} kW).")
         if tri and not tri_grid:
@@ -149,7 +151,7 @@ def check(cef: dict) -> dict:
             b_kwh = n(bat.get("kwh")) * (int(n(bat.get("modules"), 1)) or 1)
             if not b_kwh and n(bat.get("ah")) and n(bat.get("voltage")):
                 b_kwh = n(bat.get("ah")) * n(bat.get("voltage")) / 1000 * (int(n(bat.get("modules"), 1)) or 1)
-            tot_kwh += b_kwh
+            tot_kwh += b_kwh * unit_count
             if inv.get("type") == "On-grid" and bat.get("coupling", "DC") == "DC":
                 e.append(f"{tag}: invertor on-grid cu baterie cuplată DC — necesită invertor hibrid sau cuplare AC.")
             bv, vmin_, vmax_ = n(bat.get("voltage")), n(inv.get("bat_v_min")), n(inv.get("bat_v_max"))
@@ -225,7 +227,7 @@ def check(cef: dict) -> dict:
         if spd and voc_cold_max and spd < voc_cold_max:
             e.append(f"{tag}: SPD DC Ucpv {spd:g} V sub Voc la rece ({voc_cold_max:.0f} V).")
 
-        out_inv.append({"index": idx + 1, "tri": tri, "kwp": round(kwp, 3), "p_nom": p_nom, "p_max": p_max, "p_limit": p_lim,
+        out_inv.append({"index": idx + 1, "count": unit_count, "tri": tri, "kwp": round(kwp, 3), "p_nom": p_nom, "p_max": p_max, "p_limit": p_lim,
                         "dc_ac_ratio": round(ratio, 2), "battery_kwh": round(b_kwh, 2), "strings": [{k2: (round(v, 1) if isinstance(v, float) else v) for k2, v in s.items()} for s in strings],
                         "isc_mppt_max": round(isc_max, 1), "voc_cold_max": round(voc_cold_max, 0), "proposals": prop, "errors": e, "warnings": w})
         errors += e; warnings += w
@@ -251,8 +253,9 @@ def check(cef: dict) -> dict:
     anti = bool(grid.get("anti_required")) or anti_auto
     i_br = (br_kw * 1000 / (math.sqrt(3) * 400 * 0.95)) if tri_grid else (br_kw * 1000 / (230 * 0.95))
     return {"totals": {"kwp": round(tot_kwp, 3), "inverters_kw": round(tot_kw, 2), "inverters_kw_max": round(tot_kwmax, 2),
-                       "export_kw": round(tot_export, 2), "storage_kwh": round(tot_kwh, 2), "panels": sum(s["panels"] for i in out_inv for s in i["strings"]),
-                       "inverters": len(invs)},
+                       "export_kw": round(tot_export, 2), "storage_kwh": round(tot_kwh, 2),
+                       "panels": sum(s["panels"] * i.get("count", 1) for i in out_inv for s in i["strings"]),
+                       "inverters": sum(i.get("count", 1) for i in out_inv)},
             "grid": {"tri": tri_grid, "bransament_kw": br_kw, "i_br": round(i_br, 1) if br_kw else 0,
                      "main_proposal": up(BREAKERS, i_br) if br_kw else None, "anti": anti, "anti_auto": anti_auto},
             "inverters": out_inv, "errors": errors, "warnings": warnings, "tmin": tmin,
@@ -269,10 +272,10 @@ def flatten(rec: dict) -> dict:
     out = dict(rec)
     out["inverter"] = "; ".join(f"{i.get('brand_model') or '—'}" for i in invs)
     out["inverter_kw"] = t["inverters_kw"]
-    out["inverter_count"] = len(invs)
+    out["inverter_count"] = sum(max(1, min(100, int(n(i.get("count"), 1) or 1))) for i in invs)
     models = {i.get("panel_model") for i in invs if i.get("panel_model")}
     out["panels"] = "; ".join(models)
-    out["panel_count"] = t["panels"]
+    out["panel_count"] = t["panels"] or rec.get("panel_count", 0)
     ws = {n(i.get("panel_w")) for i in invs if n(i.get("panel_w"))}
     out["panel_w"] = next(iter(ws)) if len(ws) == 1 else "/".join(f"{w:g}" for w in ws)
     out["_kwp"] = t["kwp"]
