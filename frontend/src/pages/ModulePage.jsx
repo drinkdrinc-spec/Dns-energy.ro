@@ -164,8 +164,12 @@ export default function ModulePage({ moduleKey }) {
   const setVal = (name, value) => {
     if (key === "atr" && name === "client_name") {
       const client = (refOptions.clients || []).find((c) => c.label === value);
-      if (!client) { setForm((p) => ({ ...p, client_name: value, client_id: "" })); return; }
-      const normalize = (v) => String(v || "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+      if (!client) {
+        setForm((p) => ({ ...p, client_name: value, client_id: "", pros_id: "", pod: "", operator: "", address: "",
+          cf_nr: "", cadastral_nr: "", kind: "", supply: "", p_abs_kw: "", pv_kw: "", p_evac_kw: "", request_type: "", deer_case: "" }));
+        return;
+      }
+      const normalize = (v) => String(v || "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
       const linkedPros = (refOptions.prosumator || []).filter((p) => {
         if (p.client_id && p.client_id === client.id) return true;
         const pName = normalize(p.client_name);
@@ -183,6 +187,7 @@ export default function ModulePage({ moduleKey }) {
         cadastral_nr: client.cadastral_nr || linked?.cadastral_nr || "",
         applicant_type: applicantType,
         pros_id: linked?.id || "",
+        kind: "", supply: "", p_abs_kw: "", pv_kw: "", p_evac_kw: "", request_type: "", deer_case: "",
       };
       if (linked) {
         next.kind = "Loc de consum și de producere (prosumator)";
