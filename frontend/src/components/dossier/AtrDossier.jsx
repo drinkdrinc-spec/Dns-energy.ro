@@ -38,7 +38,7 @@ export function AtrDossier({ id, form, setVal }) {
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     if (!String(form.kind || "").includes("producere") || !form.client_name || !pros.length) return;
-    const norm = (value) => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
+    const norm = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
     const current = pros.find((p) => p.id === form.pros_id);
     if (current && norm(current.client_name) === norm(form.client_name)) return;
     const match = pros.filter((p) => norm(p.client_name) === norm(form.client_name))
