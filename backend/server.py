@@ -1333,6 +1333,8 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         o = io.BytesIO(); w.write(o); pdf = o.getvalue()
     if rec.get("is_test") and key != "schema":
         pdf = OPIS.mark_test(pdf)
+    elif p.get("source") == "generat" and (p.get("missing") or info.get("common_missing")):
+        pdf = OPIS.mark_test(pdf, "CIORNĂ — DATE / MĂSURĂTORI DE COMPLETAT", 28)
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}.pdf")})
 
 @api_router.get("/dossier/{item_id}/export")
