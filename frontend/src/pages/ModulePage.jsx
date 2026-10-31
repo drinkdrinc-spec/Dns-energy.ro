@@ -78,21 +78,52 @@ export default function ModulePage({ moduleKey }) {
         setRefOptions((prev) => ({ ...prev, [ref]: r.data.map((x) => ({ ...x, id: x.id, label: MODULES[ref].display(x) })) }));
       }).catch(() => {});
     });
+    if (key === "atr") api.get("/data/prosumator").then((r) => setRefOptions((prev) => ({ ...prev, prosumator: r.data || [] }))).catch(() => {});
     // eslint-disable-next-line
   }, [key]);
 
   const openNew = () => { setForm(key === "atr" ? { date: new Date().toISOString().slice(0, 10), submission_mode: "Solicitantul depune direct" } : {}); setEditId(null); setChecks({}); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); };
   const setVal = (name, value) => {
+    if (key === "atr" && name === "client_name") {
+      const client = (refOptions.clients || []).find((c) => c.label === value);
+      if (!client) { setForm((p) => ({ ...p, client_name: value, client_id: "" })); return; }
+      const matches = (refOptions.prosumator || []).filter((p) => p.client_id === client.id || (!p.client_id && p.client_name === client.name));
+      const linked = matches.length === 1 ? matches[0] : null;
+      const isCompany = /jurid/i.test(String(client.kind || ""));
+      const next = {
+        client_name: value, client_id: client.id,
+        pod: client.pod || linked?.pod || "",
+        operator: client.operator || linked?.operator || "",
+        address: client.address || linked?.address || "",
+        cf_nr: client.cf_nr || linked?.cf_nr || "",
+        cadastral_nr: client.cadastral_nr || linked?.cadastral_nr || "",
+        applicant_type: isCompany ? "Persoană juridică" : "Persoană fizică",
+        pros_id: linked?.id || "",
+      };
+      if (linked) {
+        next.kind = "Loc de consum și de producere (prosumator)";
+        if (linked.supply) next.supply = linked.supply;
+        if (linked.bransament_kw) next.p_abs_kw = linked.bransament_kw;
+        if (linked.inverter_kw) next.pv_kw = linked.inverter_kw;
+        if (linked.power) next.p_evac_kw = linked.power;
+        if (/spor/i.test(String(linked.request_type || ""))) {
+          next.request_type = "dezvoltarea unui utilizator existent (spor de putere)";
+          next.deer_case = "Loc existent — spor de putere — Anexa 1";
+        }
+      }
+      setForm((p) => ({ ...p, ...next }));
+      return;
+    }
     if (key === "atr" && name === "pod") {
-      const pod = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+      const pod = String(value || "").trim().toUpperCase().replace(/\\s+/g, "");
       let detected = "";
       let note = "";
       if (/^RO001E/.test(pod)) detected = "Rețele Electrice Muntenia S.A.";
       else if (/^RO002E/.test(pod)) detected = "Rețele Electrice Dobrogea S.A.";
       else if (/^RO005E/.test(pod)) detected = "Rețele Electrice Banat S.A.";
       else if (/^EMO3/.test(pod)) detected = "Delgaz Grid S.A.";
-      else if (/^5940\d{14}$/.test(pod)) {
+      else if (/^5940\\d{14}$/.test(pod)) {
         detected = "DEER — sucursală de confirmat";
         note = "POD-ul indică DEER; sucursala trebuie confirmată după județ/localitate.";
       } else if (pod) {
