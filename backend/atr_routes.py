@@ -179,6 +179,8 @@ async def contacts_set(op: str, request: Request, user: dict = Depends(get_curre
 @api.get("/forms/alerts")
 async def form_alerts(operator: str = "", scope: str = "atr", user: dict = Depends(get_current_user)):
     op = ATR.op_key(operator)
+    if not op:
+        return []
     want = ("atr",) if scope == "atr" else ("spor", "prosumator")
     out = []
     for f in await db.official_forms.find({"status": {"$in": ["versiune nouă detectată", "link invalid"]}}, {"_id": 0, "history": 0}).to_list(200):
@@ -243,9 +245,11 @@ async def atr_submit(item_id: str, request: Request, user: dict = Depends(get_cu
     rec = await get_rec(user, item_id)
     b = await request.json()
     op = ATR.op_key(rec.get("operator"))
+    if not op:
+        raise HTTPException(status_code=400, detail="Selectați operatorul de distribuție înainte de trimiterea cererii ATR.")
     to = (b.get("to") or "").strip().lower()
     if not valid_operator_email(op, to):
-        raise HTTPException(status_code=400, detail=f"Destinatarul trebuie să fie o adresă oficială {ATR.OP_NAMES[op]} ({', '.join(OP_DOMAINS[op])})")
+        raise HTTPException(status_code=400, detail=f"Destinatarul trebuie să fie o adresă oficială {ATR.OP_NAMES.get(op, 'operatorului selectat')} ({', '.join(OP_DOMAINS.get(op, ()))})")
     att = rec.get("attachments") or {}
     pdf, name = await S.atr_pack(user, rec, 1)
     if "_INCOMPLET" in name:
