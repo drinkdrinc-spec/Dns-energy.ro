@@ -6,6 +6,8 @@ import secrets
 import logging
 import io
 import zipfile
+import httpx
+from urllib.parse import urlparse
 from datetime import datetime, timezone, timedelta, date
 from html import escape as hesc
 from typing import Optional
@@ -210,10 +212,64 @@ async def operator_form_links(operator: str = "", scope: str = "atr", user: dict
 
 
 
+# ---------------- official operator form retrieval ----------------
+async def _registry_annex1(operator_key: str) -> dict | None:
+    """Select an official prosumer Annex 1 from the operator registry, never an arbitrary user URL."""
+    if operator_key not in OP_DOMAINS:
+        return None
+    rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
+    matches = []
+    for form in rows:
+        kind = str(form.get("kind") or "").casefold()
+        title = str(form.get("title") or "").casefold()
+        if ATR.op_key(form.get("operator")) != operator_key:
+            continue
+        if "prosumator" not in kind or "anexa 1" not in title:
+            continue
+        if form.get("status") == "link invalid":
+            continue
+        parsed = urlparse(str(form.get("url") or ""))
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if parsed.scheme != "https" or not any(host == domain or host.endswith("." + domain) for domain in OP_DOMAINS[operator_key]):
+            continue
+        matches.append(form)
+    if not matches:
+        return None
+    # Prefer a version confirmed in the official forms register.
+    return max(matches, key=lambda row: (bool(row.get("confirmed_at")), row.get("status") == "valid", str(row.get("title") or "")))
+
+
+async def _fetch_registry_annex(form: dict, operator_key: str) -> tuple[bytes, str]:
+    """Fetch a bounded public form only from the configured operator's official domains."""
+    async with httpx.AsyncClient(
+        headers={"User-Agent": "DNS-Energy/1.0 (official form package)"},
+        follow_redirects=True,
+        timeout=httpx.Timeout(25.0, connect=7.0),
+    ) as client:
+        async with client.stream("GET", form["url"]) as response:
+            host = (urlparse(str(response.url)).hostname or "").lower().rstrip(".")
+            if not any(host == domain or host.endswith("." + domain) for domain in OP_DOMAINS[operator_key]):
+                raise ValueError("Redirecționarea formularului a părăsit domeniul oficial al operatorului.")
+            if response.status_code != 200:
+                raise ValueError(f"Formularul oficial a răspuns cu HTTP {response.status_code}.")
+            chunks, size = [], 0
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > 20 * 1024 * 1024:
+                    raise ValueError("Formularul oficial depășește limita de 20 MB.")
+                chunks.append(chunk)
+            data = b"".join(chunks)
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", str(form.get("title") or "Anexa_1")).strip("_")[:100] or "Anexa_1"
+    if data.startswith(b"%PDF"):
+        return data, f"{safe}.pdf"
+    if data.startswith(b"PK"):
+        return data, f"{safe}.docx"
+    raise ValueError("Linkul din registru nu a returnat un PDF sau un DOCX.")
+
 # ---------------- complete downloadable package ----------------
 @api.get("/atr/{item_id}/package.zip")
 async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
-    """Bundle the generated ATR dossier with the selected official DEER annex as editable DOCX."""
+    """Bundle the ATR PDF and the official operator form; DEER templates are prefilled when available."""
     rec = await get_rec(user, item_id, write=False)
     client = await S.get_client(user["id"], rec) or {}
     settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
@@ -226,7 +282,8 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
     bundle = io.BytesIO()
     with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(pdf_name, pdf)
-        if ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) == "deer":
+        op_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
+        if op_key == "deer":
             try:
                 annex = ATR.render_deer_official_docx(rec, client, settings, pros or {})
             except (ValueError, RuntimeError) as exc:
@@ -234,6 +291,27 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
             info = ATR.deer_annex_info(rec)
             label = re.sub(r"[^A-Za-z0-9_-]+", "_", (info or ("Anexa_DEER",))[0]).strip("_")
             archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
+        else:
+            form = await _registry_annex1(op_key)
+            note = [
+                "Pachet ATR — formular oficial pentru operator",
+                f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
+                f"Tip solicitare: {ATR.rtype(rec) or 'neselectat'}",
+                "",
+                "Formularul oficial inclus mai jos este original și rămâne necompletat. Datele introduse și anexele generate de aplicație sunt în PDF-ul principal al acestui pachet.",
+                "Verificați versiunea curentă în portalul operatorului înainte de depunere. Valorile lipsă nu sunt inventate.",
+            ]
+            if form:
+                note.extend(["", f"Sursă oficială: {form.get('url')}", f"Titlu în registru: {form.get('title')}", f"Stare verificare link: {form.get('status') or 'neverificat'}"])
+                try:
+                    annex, official_name = await _fetch_registry_annex(form, op_key)
+                    archive.writestr(f"Anexe oficiale/{official_name}", annex)
+                    note.append("Formular oficial descărcat în acest pachet.")
+                except (httpx.HTTPError, ValueError) as exc:
+                    note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
+            else:
+                note.append("Nu există în registru un formular oficial Anexa 1 verificabil pentru operatorul selectat.")
+            archive.writestr("Anexe oficiale/INFO_completare.txt", "\n".join(note))
     name = re.sub(r"[^A-Za-z0-9_.-]+", "_", pdf_name.rsplit(".", 1)[0]) + "_pachet.zip"
     return Response(content=bundle.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": S.disp("attachment", name), "Cache-Control": "no-store"})
