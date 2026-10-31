@@ -1,9 +1,10 @@
-const BASIC = new Set(["client_name", "pod", "operator", "kind", "request_type", "address", "supply", "p_abs_kw"]);
+const BASIC = new Set(["client_name", "pod", "operator", "kind", "request_type", "deer_case", "applicant_type", "submission_mode", "address", "supply", "p_abs_kw"]);
 const label = (f) => (f.label || "").replace(/\s*\*$/, "");
 
 export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
   const fields = cfg.fields || [];
-  const basic = fields.filter((f) => BASIC.has(f.name));
+  const isDeer = /deer|distribuție energie electrică|distributie energie electrica/i.test(String(form.operator || ""));
+  const basic = fields.filter((f) => BASIC.has(f.name) && (f.name !== "deer_case" || isDeer));
   const advanced = fields.filter((f) => !BASIC.has(f.name));
   const clients = refOptions.clients || [];
 
