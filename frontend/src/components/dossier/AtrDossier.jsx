@@ -208,7 +208,6 @@ export function AtrDossier({ id, form, setVal }) {
         <div className="font-bold mb-1">Formular DEER selectat</div>
         <div className="text-sm">{selectedDeerForm.title}</div>
         <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Verifică dacă acest caz corespunde situației locului de consum, puterii și lucrărilor cerute de operator. Documentul oficial se descarcă din DEER.</div>
-        {deerAnnexIssues.length > 0 && <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="alert" data-testid="atr-deer-annex-warning"><strong>Verifică încadrarea procedurii:</strong><ul className="mt-1 list-disc pl-4">{deerAnnexIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
         <a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex underline font-semibold text-sm mt-2">Deschide formularul oficial selectat ↗</a>
       </div>}
         </div>
