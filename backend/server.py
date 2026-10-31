@@ -565,8 +565,11 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
         fields = await (extract_gpt if use_gpt else extract_pdf)(data, ct, doc_type)
     except Exception as e:
         logger.error(f"AI extract failed: {e}")
-        raise HTTPException(status_code=502, detail="Nu am putut citi documentul. Încearcă din nou.")
-    return {"data": fields, "engine": "ChatGPT (GPT 6 Sol)" if use_gpt else "Gemini", "file": {"storage_path": stored["path"], "original_filename": file.filename,
+        if ct == "application/pdf" and not os.environ.get("OPENAI_API_KEY"):
+            raise HTTPException(status_code=503, detail="PDF-ul pare scanat sau nu are etichete text recunoscute. Pentru citirea AI a scanurilor trebuie configurată cheia OPENAI_API_KEY în serviciul API.")
+        raise HTTPException(status_code=502, detail=str(e) if isinstance(e, ValueError) else "Nu am putut citi documentul. Încearcă din nou.")
+    engine = fields.pop("_engine", "OpenAI (GPT-4.1 mini)")
+    return {"data": fields, "engine": engine, "file": {"storage_path": stored["path"], "original_filename": file.filename,
                                       "content_type": ct, "size": len(data)}}
 
 def _new(user, extra):
