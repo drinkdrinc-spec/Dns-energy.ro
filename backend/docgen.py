@@ -783,8 +783,6 @@ def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
     pdf = BaseDocTemplate(buf, pageTemplates=[land, port] if first_land else [port, land], title=f"D-ENERGY — {ctx.raw('name') or ''}")
     story = []
     keys = list(doc_keys)
-    if keys and not (len(keys) == 1 and keys[0] in ("schema_cef", "schema")) and "gdpr" not in keys:
-        keys.append("gdpr")
     for i, k in enumerate(keys):
         if k in ("schema_cef", "schema"):
             draw, tbl = schema_cef.story(ctx, lambda t, st="p": Paragraph(t, S[st]), lambda rows, w, head=True: pdf_table(rows, [x / mm for x in w], head, None, 273), S)
