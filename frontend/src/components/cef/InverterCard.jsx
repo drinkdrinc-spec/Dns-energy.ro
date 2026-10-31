@@ -49,6 +49,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
         <F label="Putere maximă (kW)" type="number" value={inv.p_max_kw} onChange={s("p_max_kw")} testid={`${t}-pmax`} />
         <F label="Limitare putere în RED" value={inv.red_limit_mode || "Nu este declarată"} onChange={s("red_limit_mode")} options={["Nu este declarată", "Limitare putere evacuată", "Zero export"]} testid={`${t}-red-limit-mode`} />
         <F label="Pmax evacuată în RED (kW)" type="number" value={inv.p_limit_kw} onChange={s("p_limit_kw")} testid={`${t}-plim`} />
+        <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Parametri tehnici invertor · completare din fișa modelului</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
         <F label="Udc max (V)" type="number" value={inv.vdc_max} onChange={s("vdc_max")} testid={`${t}-vdc`} />
         <F label="MPPT min (V)" type="number" value={inv.mppt_min} onChange={s("mppt_min")} testid={`${t}-mpptmin`} />
         <F label="MPPT max (V)" type="number" value={inv.mppt_max} onChange={s("mppt_max")} testid={`${t}-mpptmax`} />
@@ -59,6 +60,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           <F label="Baterie: I max încărcare/descărcare invertor (A)" type="number" value={inv.bat_i_max} onChange={s("bat_i_max")} testid={`${t}-batimax`} />
         </>}
         <F label="Curent max/MPPT (A)" type="number" value={inv.imax_mppt} onChange={s("imax_mppt")} testid={`${t}-imax`} />
+        </div></details>
       </div>
       <div className="mt-2"><Check label="Echipament existent (extindere)" value={inv.existing} onChange={s("existing")} testid={`${t}-existing`} /></div>
 
@@ -67,10 +69,12 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           <CatalogPick items={catalog} category="Panou" testid={`${t}-panel-pick`} onPick={(it) => set({ ...inv, panel_catalog_id: it.id, panel_model: it.brand_model, panel_w: it.w, panel_voc: it.voc, panel_vmp: it.vmp, panel_isc: it.isc, panel_coef_voc: it.coef_voc })} />
           <F label="Model panou" value={inv.panel_model} onChange={s("panel_model")} testid={`${t}-panel-model`} />
           <F label="Putere panou (W)" type="number" value={inv.panel_w} onChange={s("panel_w")} testid={`${t}-panel-w`} />
+          <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Parametri panou din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
           <F label="Coef. Voc (%/°C)" type="number" value={inv.panel_coef_voc} onChange={s("panel_coef_voc")} testid={`${t}-panel-coef`} />
           <F label="Voc (V)" type="number" value={inv.panel_voc} onChange={s("panel_voc")} testid={`${t}-panel-voc`} />
           <F label="Vmp (V)" type="number" value={inv.panel_vmp} onChange={s("panel_vmp")} testid={`${t}-panel-vmp`} />
           <F label="Isc (A)" type="number" value={inv.panel_isc} onChange={s("panel_isc")} testid={`${t}-panel-isc`} />
+          </div></details>
         </div>
         <div className="mt-3 space-y-2">
           {strings.map((st, i) => {
@@ -118,6 +122,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
         )}
       </Section>
 
+      <details className="mt-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Detalii tehnice · cabluri, protecții și valori calculate</summary>
       <Section title="Cabluri și protecții">
         <div className="grid sm:grid-cols-4 gap-3">
           <F label="AC: tip cablu" value={inv.ac?.cable_type} onChange={sub("ac", "cable_type")} testid={`${t}-ac-type`} />
@@ -144,6 +149,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           {pd.fuse_note && <span className="text-xs" style={{ color: "var(--muted)" }}>Siguranțe gPV: {pd.fuse_note}</span>}
         </div>
       </Section>
+      </details>
       <Issues errors={res?.errors} warnings={res?.warnings} testid={`${t}-issues`} />
     </div>
   );
