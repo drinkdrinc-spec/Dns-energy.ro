@@ -50,8 +50,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
     if (kind === "inverter") Object.assign(inv, item ? {
       catalog_id: item.id, brand_model: item.brand_model, type: item.type, phases: item.phases, p_nom_kw: item.p_nom_kw, p_max_kw: item.p_max_kw,
       vdc_max: item.vdc_max, mppt_min: item.mppt_min, mppt_max: item.mppt_max, mppt_count: item.mppt_count, imax_mppt: item.imax_mppt,
-      red_limit_mode: item.red_limit_mode || "Nu este declarată",
-    } : { catalog_id: "", brand_model: "", p_nom_kw: "", p_max_kw: "", type: "", phases: "" });
+      red_limit_mode: item.red_limit_mode || "Nu este declarată", count: Math.max(1, Number(form.inverter_count) || 1),
+    } : { catalog_id: "", brand_model: "", p_nom_kw: "", p_max_kw: "", type: "", phases: "", count: 1 });
     if (kind === "panel") Object.assign(inv, item ? {
       panel_catalog_id: item.id, panel_model: item.brand_model, panel_w: item.w, panel_voc: item.voc, panel_vmp: item.vmp,
       panel_isc: item.isc, panel_coef_voc: item.coef_voc, panel_coef_vmp: item.coef_vmp,
@@ -87,7 +87,22 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
     <label key={name} className="den-field">
       <span>{label}</span>
       {opts ? <select className="den-input" value={form[name] ?? ""} onChange={(e) => { const v = e.target.value; setVal(name, v); if (name === "supply") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), supply: v } }); }}><option value="">Alege...</option>{opts.map((o) => <option key={o} value={o}>{o}</option>)}</select>
-        : <input className="den-input" type={type} step={type === "number" ? "any" : undefined} value={form[name] ?? ""} onChange={(e) => { const v = e.target.value; setVal(name, v); if (name === "bransament_kw") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), bransament_kw: Number(v) || "" } }); if (name === "power" && form.cef?.inverters?.[0]) setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : { ...x, p_limit_kw: Number(v) || "" }) }); }} />}
+        : <input className="den-input" type={type} step={type === "number" ? "any" : undefined} value={form[name] ?? ""} onChange={(e) => {
+          const v = e.target.value; setVal(name, v);
+          if (name === "bransament_kw") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), bransament_kw: Number(v) || "" } });
+          if (name === "inverter_count" && form.cef?.inverters?.length) {
+            const count = Math.max(1, Number(v) || 1);
+            setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : { ...x, count }) });
+          }
+          if (name === "battery_count" && form.cef?.inverters?.[0]?.battery_mode === "own") {
+            const modules = Math.max(1, Number(v) || 1);
+            setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : { ...x, battery: { ...(x.battery || {}), modules } }) });
+          }
+          if (name === "power" && form.cef?.inverters?.length) {
+            const count = Math.max(1, Number(form.inverter_count) || form.cef.inverters.reduce((n, x) => n + (Number(x.count) || 1), 0));
+            setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : { ...x, p_limit_kw: Number(v) ? Number(v) / count : "" }) });
+          }
+        }} />}
     </label>
   );
   const catalogSelect = (kind, label) => {
