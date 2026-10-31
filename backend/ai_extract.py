@@ -50,6 +50,67 @@ def _images(content: bytes, mime: str) -> list:
     return [ImageContent(image_base64=base64.b64encode(png.getvalue()).decode())]
 
 
+def extract_office_text(content: bytes, mime: str) -> str:
+    """Read text from supported Office files without evaluating formulas or macros."""
+    from io import BytesIO
+    chunks = []
+    if mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        from docx import Document
+        document = Document(BytesIO(content))
+        chunks.extend(p.text for p in document.paragraphs if p.text.strip())
+        for table in document.tables:
+            for row in table.rows:
+                chunks.append(" | ".join(cell.text.strip() for cell in row.cells))
+    elif mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+        from openpyxl import load_workbook
+        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+        for sheet in workbook.worksheets[:10]:
+            chunks.append(f"[Foaia: {sheet.title}]")
+            for row in sheet.iter_rows(max_row=150, values_only=True):
+                cells = [str(value).strip() for value in row if value is not None and str(value).strip()]
+                if cells:
+                    chunks.append(" | ".join(cells))
+        workbook.close()
+    else:
+        raise ValueError("Citirea automată este disponibilă pentru DOCX și XLSX; fișierul poate rămâne atașat pentru verificare manuală.")
+    text = "\\n".join(chunks).strip()
+    if not text:
+        raise ValueError("Fișierul Office nu conține text lizibil.")
+    return text[:24000]
+
+
+async def extract_gpt_text(text: str, doc_type: str = "other") -> dict:
+    chat = LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=f"extract-{uuid.uuid4()}",
+                   system_message="Extragi date structurate din documente românești. Răspunzi doar JSON.").with_model("openai", "gpt-4.1-mini")
+    out = ""
+    hint = {
+        "ci": "Extrage titularul, CNP, seria/numărul și domiciliul din CI.",
+        "factura": "Extrage titularul, POD-ul, operatorul, furnizorul, adresa locului de consum și puterea aprobată.",
+        "cf": "Extrage proprietarul, numărul CF și numărul cadastral.",
+        "other": "Identifică documentul și rezumă-l; extrage doar datele relevante care apar explicit.",
+    }.get(doc_type, "Identifică documentul și extrage datele vizibile.")
+    prompt = PROMPT + "\\n\\n" + hint + "\\n\\nTEXT EXTRAS DIN DOCUMENT (poate conține erori de OCR; nu deduce valori lipsă):\\n" + text
+    async for ev in chat.stream_message(UserMessage(text=prompt)):
+        if isinstance(ev, TextDelta):
+            out += ev.content
+        elif isinstance(ev, StreamDone):
+            break
+    data = _parse(out)
+    if not data:
+        raise ValueError("AI nu a putut identifica date structurate în acest document.")
+    return data
+
+
+def extract_office_local(content: bytes, mime: str, doc_type: str = "other") -> dict:
+    text = extract_office_text(content, mime)
+    try:
+        fields = _fallback_text_fields(text, doc_type)
+    except ValueError:
+        fields = {"doc_type": "Document Office", "summary": "Textul documentului a fost citit local; nu s-au găsit etichete clare pentru extragerea automată a câmpurilor."}
+        fields["_engine"] = "Citire locală Office"
+    return fields
+
+
 async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict:
     chat = LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=f"extract-{uuid.uuid4()}",
                    system_message="Extragi date structurate din documente tehnice românești. Răspunzi doar JSON.").with_model("openai", "gpt-4.1-mini")
