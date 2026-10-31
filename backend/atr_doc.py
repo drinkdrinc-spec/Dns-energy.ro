@@ -19,9 +19,13 @@ DOCS = [("plan", "Plan de situație la scară, cu viza emitentului certificatulu
         ("acord", "Acordul notarial al proprietarului, dacă solicitantul nu este proprietar", False),
         ("imp", "Împuternicire pentru reprezentant / proiectant (dacă cererea se depune prin împuternicit)", False),
         ("gdpr", "Notă oficială DEER privind prelucrarea datelor personale (după caz)", False),
+        ("authenticity", "Declarație DEER privind autenticitatea datelor (obligatorie pentru toate tipurile de cereri)", "deer"),
         ("memoriu", "Date tehnice și energetice (memoriu explicativ)", False),
         ("schema", "Schema electrică monofilară a instalației de producere și modul de racordare (loc de consum și producere)", "prod"),
         ("fise", "Fișe tehnice / certificate de conformitate ale invertoarelor și unităților generatoare (loc de consum și producere)", "prod"),
+        ("pram", "Buletin de încercare a prizei de pământ", False),
+        ("receptie", "Proces-verbal de recepție a instalației de producere", False),
+        ("constatator", "Certificat constatator ONRC (prosumator persoană juridică)", False),
         ("atr_prev", "Copie aviz tehnic / certificat de racordare obținut anterior (spor de putere)", False)]
 TYPES = [("nou", "utilizator nou definitiv"), ("temp", "utilizator nou temporar"), ("spor", "dezvoltarea unui utilizator existent (spor de putere)"),
          ("mod_dep", "modificarea elementelor de natură tehnică cu depășirea puterii aprobate anterior"),
@@ -49,14 +53,40 @@ def is_prod(rec: dict) -> bool:
 
 def required(rec: dict) -> list:
     prod = is_prod(rec)
+    operator = op_key(rec.get("operator"))
+    if operator == "deer":
+        case = str(rec.get("deer_case") or "")
+        if "spor de putere" in case.lower() or "spor" in str(rec.get("request_type") or "").lower():
+            case_key = "spor"
+        elif "loc nou" in case.lower() or "program de finanțare" in case.lower():
+            case_key = "new"
+        elif ">400" in case:
+            case_key = "large"
+        else:
+            case_key = "existing"
+        out = ["authenticity", "id", "cf", "prop"]
+        if rec.get("applicant_type") == "Persoană fizică":
+            out.append("gdpr")
+        if rec.get("submission_mode") == "Prin împuternicit":
+            out.append("imp")
+        if case_key in ("new", "spor"):
+            out.append("plan")
+        if case_key == "spor":
+            out.append("atr_prev")
+            if prod:
+                out.extend(["pram", "receptie", "schema", "fise"])
+        elif case_key == "existing" and prod:
+            out.extend(["schema", "fise"])
+        elif case_key == "large":
+            out.extend(["memoriu", "schema", "fise"])
+        if rec.get("applicant_type") == "Persoană juridică" and prod:
+            out.append("constatator")
+        return list(dict.fromkeys(out))
     new = rtype(rec) in ("nou", "temp")
     out = []
     for k, _, req in DOCS:
         if req is True or (req == "prod" and prod) or (k == "cu" and new) or (k == "atr_prev" and not new):
             out.append(k)
-    operator_name = str(rec.get("operator") or "").lower()
-    if "deer" in operator_name or "distributie energie electrica romania" in operator_name or "distribuție energie electrică românia" in operator_name:
-        out.append("gdpr")
     return out
 
 
@@ -73,6 +103,7 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
     prod = is_prod(rec)
     op = op_key(rec.get("operator"), (pros or {}).get("operator"), c.get("operator"))
     rt = rtype(rec)
+    deer_case = str(rec.get("deer_case") or "").strip()
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title="Cerere ATR")
     story = [P(f"Către: <b>{escape(OP_NAMES[op])}</b>" + (f" — {g(rec, 'operator')}" if rec.get("operator") else ""), "small"),
@@ -80,6 +111,18 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
              P("CERERE ȘI CHESTIONAR", "h"),
              P("pentru obținerea avizului tehnic de racordare — " + ("loc de consum și de producere (centrală fotovoltaică peste 27 kW)" if prod else "loc de consum"), "sub"),
              P("Tip solicitare:<br/>" + "<br/>".join(f"{box(rt == k)} {t}" for k, t in TYPES)),
+             *([P("Formular DEER selectat — precompletare cu datele clientului", "b"),
+                P(escape(deer_case), "sub"),
+                T([["Date preluate din dosarul clientului", "Valoare"],
+                   ["Solicitant", g(c, "name")], ["Persoană", g(rec, "applicant_type")],
+                   ["CNP / CUI", g(c, "idcode")], ["Telefon / e-mail", f"{g(c, 'phone')} / {g(c, 'email')}"],
+                   ["Adresă loc de consum", f"{g(c, 'county')}, {g(c, 'locality')}, {g(rec, 'address') if rec.get('address') else g(c, 'address')}"],
+                   ["POD", g(rec, "pod") if rec.get("pod") else g(c, "pod")],
+                   ["CF / cadastral", f"{g(rec, 'cf_nr') if rec.get('cf_nr') else g(c, 'cf_nr')} / {g(rec, 'cadastral_nr') if rec.get('cadastral_nr') else g(c, 'cadastral_nr')}"],
+                   ["Putere absorbită solicitată", f"{g(rec, 'p_abs_kw')} kW / {g(rec, 'p_abs_kva')} kVA"],
+                   ["Tip racord", g(rec, "supply")]], [54, 124]),
+                P("Câmpurile fără date în dosar rămân necompletate pentru verificare. Acest PDF este o precompletare de lucru și trebuie confruntat cu formularul DEER curent înainte de depunere.", "small")]
+                if deer_case else []),
              P("1. Date de identificare ale solicitantului și ale consultantului de specialitate", "b"),
              P(f"1.1 Numele solicitantului: <b>{g(c, 'name')}</b>; adresa: județ {g(c, 'county')}, localitatea {g(c, 'locality')}, {g(c, 'address')}; telefon {g(c, 'phone')}, "
                f"e-mail {g(c, 'email')}; nr. O.R.C. {g(c, 'regcom') if c.get('regcom') else '—'}; cod fiscal / CNP {g(c, 'idcode')}; cont {g(c, 'iban')} deschis la {g(c, 'bank')}; "

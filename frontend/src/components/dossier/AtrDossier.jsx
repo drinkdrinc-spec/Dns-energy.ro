@@ -126,7 +126,7 @@ export function AtrDossier({ id, form, setVal }) {
       </details>
       <div className="flex flex-wrap gap-2 mt-4">
         {id ? <>
-          <a href={pdf(id, 0)} target="_blank" rel="noopener noreferrer" data-testid="atr-cerere-pdf"><Btn type="button" variant="secondary">Cererea ATR completată (PDF)</Btn></a>
+          <a href={pdf(id, 0)} target="_blank" rel="noopener noreferrer" data-testid="atr-cerere-pdf"><Btn type="button" variant="secondary">Precompletare ATR (PDF)</Btn></a>
           <a href={pdf(id, 1)} target="_blank" rel="noopener noreferrer" data-testid="atr-full-pdf"><Btn type="button">Dosar ATR — PDF unic</Btn></a>
           <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>
         </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați cererea pentru a genera documentele.</span>}
