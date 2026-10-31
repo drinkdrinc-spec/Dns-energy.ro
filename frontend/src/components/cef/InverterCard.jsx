@@ -11,7 +11,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   const s = (k) => (v) => set({ ...inv, [k]: v });
   const sub = (obj, k) => (v) => set({ ...inv, [obj]: { ...(inv[obj] || {}), [k]: v } });
   const strings = inv.strings || [];
-  const setStr = (i, k, v) => set({ ...inv, strings: strings.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
+  const setStr = (i, k, v) => set({ ...inv, strings: strings.map((x, j) => (j === i ? { ...x, [k]: v, auto_generated: false } : x)) });
   const t = `inv-${idx}`;
   const pa = res?.proposals?.ac || {}, pd = res?.proposals?.dc || {};
   const apply = () => set({
