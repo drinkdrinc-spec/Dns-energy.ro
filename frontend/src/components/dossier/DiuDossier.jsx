@@ -26,7 +26,8 @@ const operatorDocsFor = (operator) => {
 export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
   const [pros, setPros] = useState([]);
   const [pid, setPid] = useState(form.pros_id || "");
-  const [docs, setDocs] = useState(null);\n  const availablePros = pros.filter((item) => !/\\bTEST\\b/i.test([item.number, item.client_name].filter(Boolean).join(" ")));
+  const [docs, setDocs] = useState(null);
+  const availablePros = pros.filter((item) => !/\bTEST\b/i.test([item.number, item.client_name].filter(Boolean).join(" ")));
   const loadDocs = () => api.get(`/diu/${id}/docs`).then((r) => setDocs(r.data)).catch(() => {});
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); loadDocs(); }, [id]); // eslint-disable-line
   useEffect(() => { if (savedAt) loadDocs(); }, [savedAt]); // eslint-disable-line
