@@ -116,6 +116,18 @@ export default function ModulePage({ moduleKey }) {
       setForm((p) => ({ ...p, ...next }));
       return;
     }
+    if (key === "atr" && name === "deer_case") {
+      const mappedRequest = {
+        "Loc nou de consum și producere — Anexa 1": "utilizator nou definitiv",
+        "Loc existent — notificare — Anexa 2": "modificarea elementelor de natură tehnică fără depășirea puterii aprobate anterior",
+        "Loc existent prosumator — actualizare CRR — Anexa 3": "modificarea elementelor de natură administrativă fără depășirea puterii aprobate anterior",
+        "Loc existent — spor de putere — Anexa 1": "dezvoltarea unui utilizator existent (spor de putere)",
+        "Prosumator prin program de finanțare — Anexa 4": "utilizator nou definitiv",
+        "Loc existent ≤10,8 kW — notificare simplificată — Anexa 5": "modificarea elementelor de natură tehnică fără depășirea puterii aprobate anterior",
+      }[value];
+      setForm((p) => ({ ...p, deer_case: value, ...(mappedRequest ? { request_type: mappedRequest } : {}) }));
+      return;
+    }
     if (key === "atr" && name === "pod") {
       const pod = String(value || "").trim().toUpperCase().replace(/\s+/g, "");
       let detected = "";
@@ -182,25 +194,7 @@ export default function ModulePage({ moduleKey }) {
       {form && (
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
-          {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={(name, value) => {
-            if (name === "client_name") {
-              const client = (refOptions.clients || []).find((x) => x.label === value);
-              setForm((prev) => ({
-                ...prev, client_name: value,
-                ...(client ? { pod: prev.pod || client.pod || "", operator: client.operator || prev.operator || "", address: prev.address || client.address || "", cf_nr: prev.cf_nr || client.cf_nr || "", cadastral_nr: prev.cadastral_nr || client.cadastral_nr || "", applicant_type: prev.applicant_type || client.kind || "", object_name: prev.object_name || client.name || value } : {}),
-              }));
-            } else if (name === "deer_case") {
-              const mappedRequest = {
-                "Loc nou de consum și producere — Anexa 1": "utilizator nou definitiv",
-                "Loc existent — notificare — Anexa 2": "modificarea elementelor de natură tehnică fără depășirea puterii aprobate anterior",
-                "Loc existent prosumator — actualizare CRR — Anexa 3": "modificarea elementelor de natură administrativă fără depășirea puterii aprobate anterior",
-                "Loc existent — spor de putere — Anexa 1": "dezvoltarea unui utilizator existent (spor de putere)",
-                "Prosumator prin program de finanțare — Anexa 4": "utilizator nou definitiv",
-                "Loc existent ≤10,8 kW — notificare simplificată — Anexa 5": "modificarea elementelor de natură tehnică fără depășirea puterii aprobate anterior",
-              }[value];
-              setForm((prev) => ({ ...prev, deer_case: value, ...(mappedRequest ? { request_type: mappedRequest } : {}) }));
-            } else setVal(name, value);
-          }} refOptions={refOptions} /> : (
+          {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
             </div>
