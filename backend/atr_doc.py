@@ -39,7 +39,7 @@ def op_key(*vals) -> str:
                  ("deer", "distribuție energie electrică"), ("deer", "transilvania"), ("deer", "muntenia nord")):
         if w in t:
             return k
-    return "deer"
+    return ""
 
 
 def rtype(rec: dict) -> str:
