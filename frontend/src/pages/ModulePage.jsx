@@ -53,7 +53,9 @@ export default function ModulePage({ moduleKey }) {
   const { user } = useAuth();
   const role = user?.role || "admin";
   const canDelete = role === "admin" || (role !== "limitat" && !["prosumator", "clients"].includes(key));
-  const [items, setItems] = useState([]);\n  const [linkedProsumer, setLinkedProsumer] = useState([]);\n  const [showTestRecords, setShowTestRecords] = useState(false);
+  const [items, setItems] = useState([]);
+  const [linkedProsumer, setLinkedProsumer] = useState([]);
+  const [showTestRecords, setShowTestRecords] = useState(false);
   const [form, setForm] = useState(null); // null=hidden, {} = open
   const [editId, setEditId] = useState(null);
   const [checks, setChecks] = useState({});
