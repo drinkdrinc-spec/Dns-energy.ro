@@ -292,7 +292,8 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
             label = re.sub(r"[^A-Za-z0-9_-]+", "_", (info or ("Anexa_DEER",))[0]).strip("_")
             archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
         else:
-            form = await _registry_annex1(op_key)
+            eligible_annex1 = ATR.rtype(rec) in ("nou", "spor")
+            form = await _registry_annex1(op_key) if eligible_annex1 else None
             note = [
                 "Pachet ATR — formular oficial pentru operator",
                 f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
@@ -310,7 +311,10 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                 except (httpx.HTTPError, ValueError) as exc:
                     note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
             else:
-                note.append("Nu există în registru un formular oficial Anexa 1 verificabil pentru operatorul selectat.")
+                if eligible_annex1:
+                    note.append("Nu există în registru un formular oficial Anexa 1 verificabil pentru operatorul selectat.")
+                else:
+                    note.append("Anexa 1 nu a fost atașată automat deoarece tipul cererii nu este «utilizator nou» sau «spor de putere».")
             archive.writestr("Anexe oficiale/INFO_completare.txt", "\n".join(note))
     name = re.sub(r"[^A-Za-z0-9_.-]+", "_", pdf_name.rsplit(".", 1)[0]) + "_pachet.zip"
     return Response(content=bundle.getvalue(), media_type="application/zip",
