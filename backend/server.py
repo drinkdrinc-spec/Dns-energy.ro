@@ -1476,6 +1476,8 @@ async def atr_pack(user: dict, rec: dict, full: int):
     missing_titles = [f"Document obligatoriu lipsă: {doc_titles.get(k, k)}" for k in miss]
     if request_type_missing:
         missing_titles.insert(0, "Tipul solicitării ATR nu este selectat sau nu este recunoscut")
+    annex_issues = ATR.deer_annex_issues(rec, pros or {})
+    missing_titles.extend(annex_issues)
     report = OPIS._incomplete_report({"positions": [], "common_missing": missing_titles}, unavailable)
     if full and report:
         parts.append(report)
@@ -1487,7 +1489,7 @@ async def atr_pack(user: dict, rec: dict, full: int):
         except Exception as e:
             logger.error(f"atr merge: {e}")
     o = io.BytesIO(); w.write(o)
-    incomplete = bool(miss or unavailable or request_type_missing)
+    incomplete = bool(miss or unavailable or request_type_missing or annex_issues)
     name = f"{'DOSAR_ATR' if full else 'CERERE_ATR'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and incomplete else ''}.pdf"
     return o.getvalue(), name
 
