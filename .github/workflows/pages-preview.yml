@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - deployment-prep
+      - dns-energy-mobile-dashboard
+  pull_request:
+    branches:
+      - deployment-prep
   workflow_dispatch:
 
 permissions:
@@ -36,6 +40,12 @@ jobs:
           REACT_APP_BACKEND_URL: ""
           VITE_GITHUB_PAGES: "true"
         run: yarn build
+      - name: Setup Python for backend syntax validation
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate backend Python syntax
+        run: python -m compileall -q backend
       - name: Save frontend preview files as downloadable artifact
         uses: actions/upload-artifact@v4
         with:

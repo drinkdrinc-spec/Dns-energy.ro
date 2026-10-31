@@ -18,6 +18,7 @@ DOCS = [("plan", "Plan de situație la scară, cu viza emitentului certificatulu
         ("puz", "PUZ / PUD aprobat, dacă a fost solicitat prin certificatul de urbanism", False),
         ("acord", "Acordul notarial al proprietarului, dacă solicitantul nu este proprietar", False),
         ("imp", "Împuternicire pentru reprezentant / proiectant (dacă cererea se depune prin împuternicit)", False),
+        ("gdpr", "Notă oficială DEER privind prelucrarea datelor personale (după caz)", False),
         ("memoriu", "Date tehnice și energetice (memoriu explicativ)", False),
         ("schema", "Schema electrică monofilară a instalației de producere și modul de racordare (loc de consum și producere)", "prod"),
         ("fise", "Fișe tehnice / certificate de conformitate ale invertoarelor și unităților generatoare (loc de consum și producere)", "prod"),
@@ -53,6 +54,9 @@ def required(rec: dict) -> list:
     for k, _, req in DOCS:
         if req is True or (req == "prod" and prod) or (k == "cu" and new) or (k == "atr_prev" and not new):
             out.append(k)
+    operator_name = str(rec.get("operator") or "").lower()
+    if "deer" in operator_name or "distributie energie electrica romania" in operator_name or "distribuție energie electrică românia" in operator_name:
+        out.append("gdpr")
     return out
 
 

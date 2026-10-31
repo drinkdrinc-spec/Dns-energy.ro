@@ -3,7 +3,7 @@ import { Outlet, Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
-import { Menu } from "lucide-react";
+import { Menu, Home, FolderOpen, Receipt, Cpu, MoreHorizontal } from "lucide-react";
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
@@ -11,17 +11,36 @@ export default function Layout() {
     <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
       <Sidebar open={open} onClose={() => setOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 bg-white border-b" style={{ borderColor: "var(--line)" }}>
-          <button data-testid="menu-btn" onClick={() => setOpen(true)}><Menu size={22} /></button>
+        <header className="mobile-app-header md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 border-b">
+          <button data-testid="menu-btn" onClick={() => setOpen(true)} aria-label="Deschide meniul"><Menu size={22} /></button>
           <BrandMark size={30} />
-          <span className="font-extrabold tracking-wide">D-ENERGY</span>
+          <span className="font-extrabold tracking-wide">DNS ENERGY</span>
         </header>
-        <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto">
+        <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto pb-24 md:pb-8">
           <PlanBanner />
           <Outlet />
         </main>
+        <nav aria-label="Navigare rapidă" className="mobile-bottom-nav md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-5 border-t bg-white/95 backdrop-blur px-1 pt-2 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(20,35,70,0.08)]">
+          <MobileNavItem to="/" icon={Home} label="Acasă" />
+          <MobileNavItem to="/prosumator" icon={FolderOpen} label="Dosare" />
+          <MobileNavItem to="/oferte" icon={Receipt} label="Oferte" />
+          <MobileNavItem to="/catalog-echipamente" icon={Cpu} label="Catalog" />
+          <button type="button" onClick={() => setOpen(true)} aria-label="Mai multe module" className="flex flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={{ color: "var(--muted)" }}>
+            <MoreHorizontal size={20} />
+            <span>Mai mult</span>
+          </button>
+        </nav>
       </div>
     </div>
+  );
+}
+
+function MobileNavItem({ to, icon: Icon, label }) {
+  return (
+    <Link to={to} className="flex flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={{ color: "var(--muted)" }}>
+      <Icon size={20} />
+      <span className="truncate max-w-full">{label}</span>
+    </Link>
   );
 }
 

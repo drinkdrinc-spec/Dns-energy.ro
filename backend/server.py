@@ -22,8 +22,18 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-app = FastAPI()
+PRIVATE_MODE = os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
+app = FastAPI(
+    docs_url=None if PRIVATE_MODE else "/docs",
+    redoc_url=None if PRIVATE_MODE else "/redoc",
+    openapi_url=None if PRIVATE_MODE else "/openapi.json",
+)
 api_router = APIRouter(prefix="/api")
+
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    return {"status": "ok"}
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("d-energy")
@@ -58,6 +68,10 @@ async def get_current_user(request: Request) -> dict:
         user = await db.users.find_one({"id": payload["sub"]})
         if not user:
             raise HTTPException(status_code=401, detail="Utilizator inexistent")
+        if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
+            admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+            if not admin_email or user.get("email", "").lower() != admin_email or user.get("role") != "admin":
+                raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
         user.pop("password_hash", None)
         user.pop("_id", None)
         if user.get("status", "active") != "active":
@@ -216,7 +230,13 @@ def pub_user(u: dict) -> dict:
 
 @api_router.post("/auth/register")
 async def register(body: RegisterReq, request: Request):
+    # Private test mode: only permit one-time bootstrap for the configured admin email.
+    # Once any platform admin exists, public self-registration is permanently closed.
     email = body.email.lower()
+    configured_admin = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    existing_admin = await db.users.find_one({"role": "admin", "tenant": {"$in": [None, ""]}})
+    if not configured_admin or email != configured_admin or existing_admin:
+        raise HTTPException(status_code=403, detail="Înregistrarea publică este dezactivată. Accesul este permis numai administratorului DNS Energy.")
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email deja înregistrat")
     if len(body.password or "") < 8:
@@ -242,6 +262,10 @@ async def login(body: LoginReq, request: Request):
     att = await db.login_attempts.find_one({"identifier": ident})
     if att and att.get("count", 0) >= 5 and att.get("until", "") > datetime.now(timezone.utc).isoformat():
         raise HTTPException(status_code=429, detail="Prea multe încercări eșuate. Încercați din nou peste 15 minute.")
+    private_mode = os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    if private_mode and (not admin_email or email != admin_email):
+        raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(body.password, user["password_hash"]):
         await db.login_attempts.update_one({"identifier": ident}, {"$inc": {"count": 1}, "$set": {"until": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()}}, upsert=True)
@@ -1798,8 +1822,21 @@ async def startup():
     await db.users.create_index("email", unique=True)
     for m in MODULES:
         await db[m].create_index("owner")
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    jwt_secret = os.environ.get("JWT_SECRET", "")
+    if PRIVATE_MODE:
+        # Never boot a private staging service with fallback/default credentials.
+        if not admin_email or not admin_password:
+            raise RuntimeError("Private mode requires ADMIN_EMAIL and ADMIN_PASSWORD environment secrets")
+        if len(admin_password) < 16:
+            raise RuntimeError("Private mode requires ADMIN_PASSWORD with at least 16 characters")
+        if len(jwt_secret) < 32:
+            raise RuntimeError("Private mode requires JWT_SECRET with at least 32 characters")
+    else:
+        # Local development still needs explicit credentials; do not silently create admin123.
+        if not admin_email or not admin_password or not jwt_secret:
+            raise RuntimeError("Set ADMIN_EMAIL, ADMIN_PASSWORD and JWT_SECRET in backend/.env before startup")
     existing = await db.users.find_one({"email": admin_email})
     if not existing:
         await db.users.insert_one({"id": str(uuid.uuid4()), "email": admin_email,
@@ -1837,10 +1874,14 @@ import operator_routes  # noqa: E402
 import anre_routes  # noqa: E402
 import anre_templates  # noqa: E402
 app.include_router(api_router)
+# Restrict browser access to explicitly configured frontend origins.
+# Comma-separated list, e.g. https://dns-energy-web.onrender.com
+_cors_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+_cors_origins = [origin.strip().rstrip("/") for origin in _cors_raw.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=False,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )

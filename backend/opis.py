@@ -107,6 +107,13 @@ async def build_positions(db, owner, rec, client, settings):
         pos.append({"key": key, "title": title, "source": "client", "slots": slots, "files": files,
                     "missing": [] if files else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
 
+    # DEER requires the applicable personal-data information notice for natural-person cases.
+    # Keep it as an official, user-attached document; never generate a fake consent form.
+    operator_name = str(rec.get("operator") or client.get("operator") or "").lower()
+    if "deer" in operator_name or "distributie energie electrica romania" in operator_name or "distribuție energie electrică românia" in operator_name:
+        pos.append({"key": "gdpr", "title": "Notă oficială DEER privind prelucrarea datelor personale (GDPR)", "source": "manual",
+                    "files": [], "missing": ["Atașează nota oficială DEER aplicabilă dosarului"]})
+
     inv, pan, bat, met = catalog_refs(rec)
 
     async def cat(cid, kind):
@@ -124,6 +131,20 @@ async def build_positions(db, owner, rec, client, settings):
                 pos.append({"key": k, "title": f"{prefix} {label} — {model}", "source": "catalog", "files": files,
                             "missing": [] if files else [f"Încarcă {prefix.lower()} în Catalog echipamente ({model})" + ("" if cid else " și alege modelul din catalog în CEF")]})
 
+    # Put the bundle in a predictable submission order, not in the order features were added.
+    def dossier_order(p):
+        key = p.get("key", "")
+        priority = {
+            "notificare": 10, "certificat": 20, "factura": 22, "cf": 24, "gdpr": 30,
+            "afm": 40, "schema": 50, "fisa_tehnica": 60, "reglaj": 80,
+            "priza": 90, "pif_pv": 100, "pif": 110, "receptie": 120,
+            "executant": 130, "conformitate": 140, "imputernicire": 150,
+        }
+        if key.startswith("cat_"):
+            return (70, p.get("title", "").lower())
+        return (priority.get(key, 500), p.get("title", "").lower())
+
+    pos.sort(key=dossier_order)
     for i, p in enumerate(pos):
         p["nr"] = i + 1
         o = opis.get(p["key"]) or {}
@@ -140,7 +161,10 @@ async def build_positions(db, owner, rec, client, settings):
         elif p["key"] in ("schema", "fisa_tehnica") and st_sld["status"] != "approved":
             o = {k: v for k, v in o.items() if k != "status"}
         gen_missing = p["missing"] or (p["source"] == "generat" and common)
-        auto = "atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else ("de completat" if gen_missing else "generat")
+        if p["source"] == "manual":
+            auto = "atașat" if o.get("upload") else "de completat"
+        else:
+            auto = "atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else ("de completat" if gen_missing else "generat")
         p["auto_status"] = auto
         p["status"] = o.get("status") or auto
         if o.get("upload"):
