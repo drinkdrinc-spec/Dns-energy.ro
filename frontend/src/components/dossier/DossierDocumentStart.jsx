@@ -9,7 +9,7 @@ const TYPES = [
   ["ci", "1. Carte de identitate", "Actul clientului; se extrag numele, CNP-ul și domiciliul."],
   ["factura", "2. Factură de energie", "Se extrag POD-ul, operatorul și adresa locului de consum."],
   ["cf", "3. Carte funciară", "Se extrag numărul CF și numărul cadastral."],
-  ["altele", "4. Alte documente", "Se atașează în dosar; AI face doar un rezumat."],
+  ["altele", "4. Alte documente", "PDF, imagini, DOCX și XLSX pot fi citite și rezumate; DOC/XLS și alte formate se atașează pentru verificare manuală."],
 ];
 
 const EMPTY = { client_name: "", cnp: "", hq_address: "", county: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "" };
@@ -37,16 +37,17 @@ export function DossierDocumentStart({ onCreated }) {
       let mergedValues = values;
       const summaries = [];
       for (const file of list) {
-        const extractable = file.type === "application/pdf" || file.type.startsWith("image/");
+        const officeExtractable = /\\.(docx|xlsx)$/i.test(file.name);
+        const extractable = file.type === "application/pdf" || file.type.startsWith("image/") || officeExtractable;
         let x = {};
         if (kind === "altele" && !extractable) {
           const fd = new FormData(); fd.append("file", file);
           const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
           mergedFiles.push(data);
-          summaries.push(`${file.name}: atașat pentru verificare manuală`);
+          summaries.push(`${file.name}: atașat; formatul nu are citire automată, necesită verificare manuală`);
           continue;
         }
-        if (!extractable) throw new Error("Pentru extragere AI folosește PDF sau imagine. Alte documente pot fi atașate la secțiunea «Alte documente».");
+        if (!extractable) throw new Error("Pentru citire automată folosește PDF, imagine, DOCX sau XLSX. DOC/XLS și alte formate se atașează pentru verificare manuală.");
         const fd = new FormData(); fd.append("file", file); fd.append("doc_type", kind === "altele" ? "other" : kind);
         const { data } = await api.post("/ai/extract", fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 240000 });
         mergedFiles.push(data.file);
