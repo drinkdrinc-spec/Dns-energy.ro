@@ -217,8 +217,7 @@ async def atr_submit(item_id: str, request: Request, user: dict = Depends(get_cu
     att = rec.get("attachments") or {}
     pdf, name = await S.atr_pack(user, rec, 1)
     if "_INCOMPLET" in name:
-        miss = [t for k, t, _ in ATR.DOCS if k in ATR.required(rec) and not att.get(k)]
-        raise HTTPException(status_code=400, detail="Dosarul este incomplet — atașați înainte de trimitere: " + "; ".join(miss[:6]))
+        raise HTTPException(status_code=400, detail="Dosarul ATR este incomplet sau conține fișiere indisponibile. Verifică pagina «Listă de verificare» din PDF, completează lipsurile și încearcă din nou.")
     origin = (request.headers.get("origin") or "").rstrip("/")
     host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
     if not origin.startswith("https://") or (host and origin[8:] != host):
