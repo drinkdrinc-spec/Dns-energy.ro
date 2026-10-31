@@ -173,6 +173,22 @@ def B(kind, *a):
     return (kind, *a)
 
 
+# Compatibility helpers used by the DI-U document renderer.
+def hdr():
+    return [B("hdr")]
+
+
+def sign(left, right):
+    return B("sign", left, right)
+
+
+def ex_sig(ctx, label="Instalator/Executant"):
+    return [label, ctx.company, f"Reprezentant: {ctx.rep}", "semnătura și ștampila"]
+
+
+def ben_sig(ctx):
+    return ["Beneficiar", ctx.name, "semnătura"]
+
 
 # ---------- PDF renderer ----------
 def pdf_header(ctx):
