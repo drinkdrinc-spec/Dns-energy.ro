@@ -602,6 +602,14 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         client["docs"] = client.get("docs") or {}
         await db.clients.insert_one(dict(client))
     client.setdefault("docs", {})
+    client_values = {"idcode": d.get("cnp"), "phone": d.get("phone"), "email": d.get("email"),
+                     "address": d.get("address"), "hq_address": d.get("hq_address"), "county": d.get("county"),
+                     "pod": d.get("pod"), "operator": d.get("operator"), "cadastral_nr": d.get("cadastral_nr"),
+                     "cf_nr": d.get("cf_nr"), "supplier": d.get("supplier"), "rep_name": d.get("rep_name"),
+                     "regcom": d.get("regcom"), "kind": d.get("kind")}
+    for key, value in client_values.items():
+        if value not in (None, ""):
+            client[key] = value
     d["client_id"] = client["id"]
     if not d.get("number"):
         year = datetime.now().year
@@ -631,9 +639,9 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         await db.documents.insert_one(_new(user, {"client_id": client["id"], "client_name": name,
             "kind": "Dosar prosumator", "doc_type": f.get("doc_type") or "Document importat",
             **clean_file, "pros_ref": pros["id"]}))
-    if changed_slots:
-        await db.clients.update_one({"id": client["id"], "owner": user["id"]}, {"$set": {
-            "docs": client["docs"], "updated_at": datetime.now(timezone.utc).isoformat()}})
+    await db.clients.update_one({"id": client["id"], "owner": user["id"]}, {"$set": {
+        **{k: v for k, v in client_values.items() if v not in (None, "")},
+        "docs": client["docs"], "updated_at": datetime.now(timezone.utc).isoformat()}})
     return clean(pros)
 
 @api_router.get("/docs/types")
