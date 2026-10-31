@@ -631,6 +631,8 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
             fields = await (extract_gpt if use_gpt else extract_pdf)(data, ct, doc_type)
     except Exception as e:
         logger.error(f"AI extract failed: {e}")
+        if ct in image_types and not os.environ.get("OPENAI_API_KEY"):
+            raise HTTPException(status_code=503, detail="Pentru citirea fotografiilor și a documentelor scanate este necesară configurarea serviciului AI în API.")
         if ct == "application/pdf" and not os.environ.get("OPENAI_API_KEY") and not isinstance(e, ValueError):
             raise HTTPException(status_code=503, detail="PDF-ul pare scanat sau nu are etichete text recunoscute. Pentru citirea AI a scanurilor trebuie configurată cheia OPENAI_API_KEY în serviciul API.")
         raise HTTPException(status_code=502, detail=str(e) if isinstance(e, ValueError) else "Nu am putut citi documentul. Încearcă din nou.")
