@@ -88,11 +88,44 @@ export default function EquipmentCatalog() {
   };
   const remove = async (id) => { if (!window.confirm("Ștergi modelul din catalog?")) return; await api.delete(`/data/catalog/${id}`); load(); };
 
+  const [importingOfficial, setImportingOfficial] = useState(false);
+  const importOfficialDocuments = async () => {
+    const jobs = items.flatMap((item) => ["datasheet", "conformity"]
+      .filter((kind) => !item[kind] && (item[`${kind}_source_url`] || item[`${kind}_url`]))
+      .map((kind) => ({ item, kind, url: item[`${kind}_source_url`] || item[`${kind}_url`] })));
+    if (!jobs.length) return toast.info("Nu există PDF-uri oficiale noi de preluat; poți adăuga linkuri HTTPS în catalog.");
+    setImportingOfficial(true);
+    let imported = 0;
+    const failed = [];
+    try {
+      for (const job of jobs) {
+        try {
+          await api.post(`/catalog/${job.item.id}/import-document`, { kind: job.kind, url: job.url });
+          imported += 1;
+        } catch (e) {
+          failed.push(`${job.item.brand_model}: ${e.response?.data?.detail || "sursa nu a returnat un PDF valid"}`);
+        }
+      }
+      await load();
+      if (failed.length) {
+        toast.warning(`Preluate ${imported} PDF-uri; ${failed.length} nu au putut fi importate. Verifică linkurile oficiale.`);
+        console.warn("Importuri oficiale nereușite:", failed);
+      } else {
+        toast.success(`Preluate ${imported} PDF-uri oficiale în catalog`);
+      }
+    } finally { setImportingOfficial(false); }
+  };
+
   return (
     <div>
       <PageHeader eyebrow="Bibliotecă echipamente" title="Catalog echipamente"
         sub="Modele cu date electrice, fișe tehnice și declarații de conformitate, reutilizate în configurarea CEF și în dosarele clienților."
-        action={<Btn onClick={() => setForm(form ? null : { category: cat })} data-testid="catalog-add-btn">{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> Model nou</>}</Btn>} />
+        action={<div className="flex flex-wrap gap-2">
+          <Btn variant="secondary" onClick={importOfficialDocuments} disabled={importingOfficial} data-testid="catalog-import-official-btn">
+            <Upload size={14} /> {importingOfficial ? "Se preiau PDF-urile…" : "Preia PDF-urile oficiale"}
+          </Btn>
+          <Btn onClick={() => setForm(form ? null : { category: cat })} data-testid="catalog-add-btn">{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> Model nou</>}</Btn>
+        </div>} />
       <div className="flex flex-wrap gap-2 mb-4">
         {CATS.map((c) => <button key={c} onClick={() => { setCat(c); setForm(null); }} data-testid={`catalog-tab-${c}`}
           className="rounded-full px-4 py-2 text-[12px] font-bold border transition-colors" style={c === cat ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>{c}</button>)}
