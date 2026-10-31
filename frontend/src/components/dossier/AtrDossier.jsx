@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, API } from "@/lib/api";
+import { api, API, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Slot } from "@/components/dossier/PowerDossier";
 import { Plus, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
@@ -29,7 +29,7 @@ const DEER_FORMS = [
 ];
 const AUTH_DECLARATION_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/";
 const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
-const pdf = (id, full) => `${API}/atr/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
+const pdf = (id, full) => `/atr/${id}/pdf?full=${full}`
 
 export function AtrDossier({ id, form, setVal }) {
   const [pros, setPros] = useState([]);
@@ -172,8 +172,8 @@ export function AtrDossier({ id, form, setVal }) {
       </details>
       <div className="flex flex-wrap gap-2 mt-4">
         {id ? <>
-          <a href={pdf(id, 0)} target="_blank" rel="noopener noreferrer" data-testid="atr-cerere-pdf"><Btn type="button" variant="secondary">Precompletare ATR (PDF)</Btn></a>
-          <a href={pdf(id, 1)} target="_blank" rel="noopener noreferrer" data-testid="atr-full-pdf"><Btn type="button">Dosar ATR — PDF unic</Btn></a>
+          <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(pdf(id, 0))} data-testid="atr-cerere-pdf">Precompletare ATR (PDF)</Btn>
+          <Btn type="button" onClick={() => openAuthenticatedFile(pdf(id, 1))} data-testid="atr-full-pdf">Dosar ATR — PDF unic</Btn>
           <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>
         </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați cererea pentru a genera documentele.</span>}
       </div>
