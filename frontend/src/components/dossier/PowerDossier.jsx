@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, API, fileUrl } from "@/lib/api";
+import { api, API, fileUrl, openAuthenticatedFile } from "@/lib/api";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { Btn } from "@/components/Layout";
 import { FileText, Plus, Trash2, Upload } from "lucide-react";
@@ -10,7 +10,7 @@ const DOCS = [["a", "Act de identitate / CUI / autorizații de funcționare"], [
   ["d", "Plan de situație (loc nou)"], ["e", "PUZ / PUD (loc nou, dacă e cerut)"], ["f", "Act de proprietate / drept de folosință (loc nou)"], ["g", "Autorizație de construire (loc nou)"],
   ["h", "PV recepție instalație de producere"], ["i", "Buletin priză de pământ"], ["j", "Certificate conformitate + fișe tehnice invertoare"], ["k", "Schema monofilară + racordare, protecții, reglaje"]];
 const AUTO = { h: "PV recepție", i: "buletin priză", j: "fișe catalog", k: "schemă aprobată" };
-const pdf = (id, full) => `${API}/power/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
+const pdf = (id, full) => `/power/${id}/pdf?full=${full}`;
 
 export function Slot({ k, label, files, onChange, auto, autoLabel, testPrefix = "power" }) {
   const ref = useRef();
@@ -59,8 +59,8 @@ export function PowerDossier({ id, form, setVal }) {
       {DOCS.map(([k, l]) => <Slot key={k} k={k} label={l} files={att[k] || []} auto={!!form.pros_id && AUTO[k]} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}
       <div className="flex flex-wrap gap-2 mt-4">
         {id ? <>
-          <a href={pdf(id, 0)} target="_blank" rel="noopener noreferrer" data-testid="power-anexa1-pdf"><Btn type="button" variant="secondary">Anexa 1 completată (PDF)</Btn></a>
-          <a href={pdf(id, 1)} target="_blank" rel="noopener noreferrer" data-testid="power-full-pdf"><Btn type="button">Dosar spor de putere — PDF unic</Btn></a>
+          <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(pdf(id, 0))} data-testid="power-anexa1-pdf">Anexa 1 completată (PDF)</Btn>
+          <Btn type="button" onClick={() => openAuthenticatedFile(pdf(id, 1))} data-testid="power-full-pdf">Dosar spor de putere — PDF unic</Btn>
         </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați fișa pentru a genera Anexa 1 și dosarul.</span>}
         {id && <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>}
       </div>
@@ -69,12 +69,12 @@ export function PowerDossier({ id, form, setVal }) {
 }
 
 export function SimpleDossierBtn({ id }) {
-  const url = `${API}/dossier/${id}/simple?auth=${localStorage.getItem("den_token")}`;
+  const url = `/dossier/${id}/simple`;
   return (
     <div className="sm:col-span-2 den-panel mt-3 flex flex-wrap items-center gap-3" data-testid="simple-dossier">
       <div className="flex-1 min-w-[240px]"><b className="text-sm">Dosar de prosumator simplu — PDF unic</b>
         <div className="text-xs" style={{ color: "var(--muted)" }}>Opis + Anexa 2, declarații, împuternicire, buletin PRAM (priză de pământ), schema monofilară, fișa tehnică și fișele echipamentelor. Rămâne CIORNĂ până la completarea datelor și aprobarea schemei.</div></div>
-      <a href={url} target="_blank" rel="noopener noreferrer" onClick={() => toast.info("Se generează PDF-ul…")} data-testid="simple-dossier-pdf"><Btn type="button">Generează dosarul simplu</Btn></a>
+      <Btn type="button" onClick={() => { toast.info("Se generează PDF-ul…"); openAuthenticatedFile(url); }} data-testid="simple-dossier-pdf">Generează dosarul simplu</Btn>
     </div>
   );
 }
