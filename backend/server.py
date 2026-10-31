@@ -35,6 +35,13 @@ async def healthz():
     return {"status": "ok"}
 
 
+# Existing Render service was provisioned with /docs as its health check.
+# In private mode FastAPI's interactive docs are disabled, so keep this path
+# as a harmless health alias until the service configuration is updated.
+if PRIVATE_MODE:
+    app.add_api_route("/docs", healthz, methods=["GET"], include_in_schema=False, name="render_health_compat")
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("d-energy")
 
