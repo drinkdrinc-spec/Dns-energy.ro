@@ -141,7 +141,7 @@ export default function ModulePage({ moduleKey }) {
       <PageHeader eyebrow={cfg.eyebrow} title={cfg.title} sub={cfg.sub}
         action={<div className="flex gap-2 flex-wrap">
           {key === "prosumator" && <TestDossierButtons onDone={load} />}
-          {key === "prosumator" && <AiImportButton onExtracted={(d) => { setForm(d); setEditId(null); setChecks({}); }} />}
+          {key === "prosumator" && <AiImportButton onExtracted={(d) => { setForm((prev) => { if (!prev || editId) return d; const next = { ...prev }; for (const [k, v] of Object.entries(d || {})) { if (k === "files" || v == null || v === "") continue; if (next[k] == null || next[k] === "") next[k] = v; } next.files = [...(prev.files || []), ...(d.files || [])].filter((x, i, a) => a.findIndex((y) => (y.storage_path || y.original_filename) === (x.storage_path || x.original_filename)) === i); return next; }); setEditId(null); setChecks({}); }} />}
           <Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>
         </div>} />
 
