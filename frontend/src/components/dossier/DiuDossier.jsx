@@ -8,18 +8,23 @@ import { DiuCircuits } from "./DiuCircuits";
 const tok = () => localStorage.getItem("den_token");
 
 const OPERATOR_DOCS = {
-  "DEER — Transilvania Nord": ["Formularul / cererea DI-U aplicabilă DEER", "ATR / certificatul de racordare și condițiile din soluție", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare cerute pentru lucrare", "Declarații, certificate și fișe tehnice ale echipamentelor"],
-  "DEER — Transilvania Sud": ["Formularul / cererea DI-U aplicabilă DEER", "ATR / certificatul de racordare și condițiile din soluție", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare cerute pentru lucrare", "Declarații, certificate și fișe tehnice ale echipamentelor"],
-  "Delgaz Grid": ["Formularul și anexele curente pentru instalația de utilizare", "ATR / certificatul de racordare și condițiile tehnice", "Schema monofilară finală și documentația instalației", "Buletine de verificări și procese-verbale aplicabile", "Documentele echipamentelor și ale executantului"],
-  "Distribuție Energie Oltenia": ["Formularul și anexele curente DI-U", "ATR / certificatul de racordare și condițiile de punere în funcțiune", "Schema monofilară finală și documentația tehnică", "Procese-verbale / buletine de verificare aplicabile", "Documentele executantului și certificatele echipamentelor"],
-  "Rețele Electrice Muntenia": ["Formularul și anexele curente ale operatorului", "ATR / certificatul de racordare", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare aplicabile", "Declarații și fișe tehnice ale echipamentelor"],
-  "Rețele Electrice Banat": ["Formularul și anexele curente ale operatorului", "ATR / certificatul de racordare", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare aplicabile", "Declarații și fișe tehnice ale echipamentelor"],
-  "Rețele Electrice Dobrogea": ["Formularul și anexele curente ale operatorului", "ATR / certificatul de racordare", "Schema monofilară și documentația tehnică finală", "Procese-verbale și buletine de verificare aplicabile", "Declarații și fișe tehnice ale echipamentelor"],
+  deer: ["Dosar instalației de utilizare și documentația tehnică a instalației de producere", "Proces-verbal de recepție și punere în funcțiune, după caz", "Buletin de încercare a prizei de pământ", "Fișe tehnice și certificate pentru invertor, module și stocare", "Schema monofilară cu tabloul general și protecțiile prevăzute"],
+  delgaz: ["Formular DIU DEGR E P46-A38, după caz", "Declarația executantului privind ATR-ul și proiectul verificat", "Proces-verbal de recepție cu rezultate corespunzătoare", "Buletin de verificare a instalației și buletine PRAM", "Schema monofilară cu TG, protecții și reglaje", "Angajamentul consumatorului privind accesul personalului autorizat ANRE", "Proiect tehnic verificat ANRE pentru instalații complexe"],
+  retele: ["Declarația executantului privind respectarea ATR-ului și proiectului verificat", "Proces-verbal de recepție cu rezultate corespunzătoare", "Documente de verificare, probe și teste conform normelor", "Schema monofilară, cel puțin până la interfață/TG, cu protecții și reglaje", "Schema surselor proprii avizată de operator, dacă există"],
+  oltenia: ["Lista DI-U și formularele curente publicate de operator", "ATR / certificatul de racordare și condițiile tehnice", "Proces-verbal de recepție și buletinele de verificare aplicabile", "Schema monofilară cu tabloul general, protecțiile și reglajele", "Declarațiile executantului și documentele tehnice ale echipamentelor"],
+};
+const operatorInfoFor = (operator) => {
+  const value = String(operator || "").toLowerCase();
+  if (!value) return { key: "", label: "Selectează operatorul pentru lista și formularul aplicabil." };
+  if (/deer|distributie energie electrica/.test(value)) return { key: "deer", label: "DEER — ghid de racordare pentru prosumatori", url: "https://www.distributie-energie.ro/racordare-la-retea-prosumator/" };
+  if (/delgaz/.test(value)) return { key: "delgaz", label: "Delgaz Grid — opis oficial DI-U (DEGR E P46-A38)", url: "https://delgaz.ro/getattachment/52b58b1b-a66a-4a79-888a-4b9ad5990fa0/Opis_Dosar_Instalatie_de_utilizare.pdf" };
+  if (/retele electrice|e-distribu/.test(value)) return { key: "retele", label: "Rețele Electrice — lista oficială a documentelor DIU", url: "https://www.reteleelectrice.ro/cereri-documente/" };
+  if (/oltenia|deo connect/.test(value)) return { key: "oltenia", label: "Distribuție Oltenia — portalul oficial de documente", url: "https://www.distributieoltenia.ro/" };
+  return { key: "", label: "Lista este orientativă. Confirmă formularul și cerințele actuale pe site-ul operatorului." };
 };
 const operatorDocsFor = (operator) => {
-  if (!operator) return ["Selectează operatorul pentru a pregăti lista de verificare."];
-  const match = Object.keys(OPERATOR_DOCS).find((name) => operator.toLowerCase().includes(name.toLowerCase().split(" — ")[0].toLowerCase()) && (name.includes("DEER") ? operator.includes(name.split(" — ")[1]) : true));
-  return OPERATOR_DOCS[match] || ["Formularul oficial actual al operatorului", "ATR / certificatul de racordare", "Schema monofilară și documentația tehnică finală", "Buletine și procese-verbale aplicabile", "Fișe tehnice și declarații de conformitate"];
+  const info = operatorInfoFor(operator);
+  return OPERATOR_DOCS[info.key] || ["Formularul oficial DI-U și anexele aplicabile", "ATR / certificatul de racordare și condițiile tehnice", "Schema monofilară și documentația tehnică", "Procese-verbale și buletine de verificare", "Declarații și fișe tehnice ale echipamentelor"];
 };
 
 
@@ -52,8 +57,9 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
       <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Se preiau clientul, adresa, puterea, operatorul, ATR, protecțiile TG și circuitele invertoarelor. Circuitele existente nu se suprascriu.</p>
       <div className="mt-4 rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="diu-operator-requirements">
         <div className="font-bold text-sm">Dosar adaptat operatorului de distribuție</div>
-        <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Operator selectat: <b>{form.operator || "neselectat"}</b>. Lista de mai jos este o listă de verificare orientativă; formularele oficiale și cerințele exacte trebuie confirmate din versiunea curentă publicată de operator.</p>
-        <ul className="mt-2 grid sm:grid-cols-2 gap-2 text-xs">{operatorDocsFor(form.operator).map((item, i) => <li key={item} className="rounded border px-3 py-2" style={{ borderColor: "var(--line)" }}>□ {item}</li>)}</ul>
+        <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Operator selectat: <b>{form.operator || "neselectat"}</b>. Lista de mai jos ajută la pregătirea dosarului; cerințele finale și formularele condiționale se confirmă din sursa oficială.</p>
+        {operatorInfoFor(form.operator).url && <a className="mt-2 inline-flex text-xs font-semibold underline" href={operatorInfoFor(form.operator).url} target="_blank" rel="noopener noreferrer" data-testid="diu-official-requirements">Deschide {operatorInfoFor(form.operator).label} ↗</a>}
+        <ul className="mt-2 grid sm:grid-cols-2 gap-2 text-xs">{operatorDocsFor(form.operator).map((item) => <li key={item} className="rounded border px-3 py-2" style={{ borderColor: "var(--line)" }}>□ {item}</li>)}</ul>
       </div>
       <DiuCircuits form={form} setVal={setVal} />
       <div className="flex items-center justify-between flex-wrap gap-2 mt-5">
