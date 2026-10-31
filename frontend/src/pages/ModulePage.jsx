@@ -83,6 +83,42 @@ export default function ModulePage({ moduleKey }) {
       }).catch(() => {});
     });
     if (key === "atr") api.get("/data/prosumator").then((r) => setRefOptions((prev) => ({ ...prev, prosumator: r.data || [] }))).catch(() => {});
+    if (key === "atr") {
+      const params = new URLSearchParams(window.location.search);
+      const clientId = params.get("clientId");
+      if (params.get("new") === "atr" && clientId) {
+        Promise.all([api.get("/data/clients"), api.get("/data/prosumator")]).then(([clientsRes, prosRes]) => {
+          const pros = (prosRes.data || []).find((item) => item.id === params.get("prosId") || item.client_id === clientId);
+          const client = (clientsRes.data || []).find((item) => item.id === clientId)
+            || (pros && (clientsRes.data || []).find((item) => String(item.name || "").trim().toLowerCase() === String(pros.client_name || "").trim().toLowerCase()));
+          if (!client) return;
+          const kind = String(client.kind || "").toLowerCase();
+          const caseName = params.get("case") || "";
+          const requestType = caseName.includes("spor")
+            ? "dezvoltarea unui utilizator existent (spor de putere)"
+            : pros ? "producere energie electrică (prosumator)" : "";
+          setForm({
+            date: new Date().toISOString().slice(0, 10),
+            submission_mode: "Solicitantul depune direct",
+            client_name: MODULES.clients.display(client),
+            client_id: client.id,
+            ...(pros ? { pros_id: pros.id, kind: "Loc de consum și de producere (prosumator)",
+              supply: pros.supply || "", p_abs_kw: pros.bransament_kw || "",
+              pv_kw: pros.inverter_kw || "", p_evac_kw: pros.power || "" } : {}),
+            applicant_type: /jurid/.test(kind) ? "Persoană juridică" : /fiz|persoan/.test(kind) ? "Persoană fizică" : "",
+            pod: client.pod || pros?.pod || "",
+            operator: client.operator || pros?.operator || "",
+            address: client.address || pros?.address || "",
+            cf_nr: client.cf_nr || pros?.cf_nr || "",
+            cadastral_nr: client.cadastral_nr || pros?.cadastral_nr || "",
+            request_type: requestType,
+            ...(caseName ? { deer_case: caseName } : {}),
+          });
+          setEditId(null); setChecks({});
+          window.history.replaceState(null, "", window.location.pathname);
+        }).catch(() => {});
+      }
+    }
     if (key === "clients" || key === "prosumator") {
       api.get("/data/prosumator").then((r) => setLinkedProsumer(r.data || [])).catch(() => {});
       api.get("/data/diu").then((r) => setLinkedDiu(r.data || [])).catch(() => {});
@@ -343,6 +379,8 @@ export default function ModulePage({ moduleKey }) {
                         const diuUrl = "/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "");
                         return <span className="inline-flex items-center flex-wrap gap-y-1">
                           <button type="button" className={linkClass} onClick={() => { window.location.href = diuUrl; }}>Creează DI-U</button>
+                          <a className={linkClass} href={"/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "")}>Cerere ATR</a>
+                          <a className={linkClass} href={"/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "") + "&case=" + encodeURIComponent("Loc existent — spor de putere — Anexa 1")}>Spor de putere</a>
                           {dossier && <>
                             <a className={linkClass} href={API + "/dossier/" + dossier.id + "/export?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
                             <a className={linkClass} href={API + "/sld/" + dossier.id + "/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Schemă</a>
@@ -361,7 +399,13 @@ export default function ModulePage({ moduleKey }) {
                         const normalize = (value) => String(value || "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
                         const diu = linkedDiu.find((d) => d.pros_id === it.id || ((d.client_id && d.client_id === it.client_id) && normalize(d.client_name) === normalize(it.client_name)));
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
+                        const atrUrl = "/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.client_id || "")
+                          + "&prosId=" + encodeURIComponent(it.id);
+                        const diuUrl = it.client_id ? "/diu?new=diu&clientId=" + encodeURIComponent(it.client_id) + "&prosId=" + encodeURIComponent(it.id) : "";
                         return <span className="inline-flex items-center flex-wrap gap-y-1">
+                          {diuUrl && <a className={linkClass} href={diuUrl}>Creează DI-U</a>}
+                          {it.client_id && <a className={linkClass} href={atrUrl}>Cerere ATR</a>}
+                          {it.client_id && <a className={linkClass} href={atrUrl + "&case=" + encodeURIComponent("Loc existent — spor de putere — Anexa 1")}>Spor de putere</a>}
                           <a className={linkClass} href={API + "/dossier/" + it.id + "/export?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Dosar PDF</a>
                           <a className={linkClass} href={API + "/sld/" + it.id + "/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">Schemă</a>
                           <a className={linkClass} href={API + "/dossier/" + it.id + "/pif/pdf?auth=" + encodeURIComponent(token)} target="_blank" rel="noopener noreferrer">PV PIF</a>
