@@ -24,6 +24,7 @@ import { DiuDossier } from "@/components/dossier/DiuDossier";
 import { AiPrecheck } from "@/components/ai/AiPrecheck";
 import { can } from "@/lib/plan";
 import { ProsumatorQuickForm } from "@/components/dossier/ProsumatorQuickForm";
+import { AtrQuickForm } from "@/components/dossier/AtrQuickForm";
 
 function Field({ f, value, onChange, refOptions, ai }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -79,7 +80,7 @@ export default function ModulePage({ moduleKey }) {
     // eslint-disable-next-line
   }, [key]);
 
-  const openNew = () => { setForm({}); setEditId(null); setChecks({}); };
+  const openNew = () => { setForm(key === "atr" ? { date: new Date().toISOString().slice(0, 10) } : {}); setEditId(null); setChecks({}); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); };
   const setVal = (name, value) => {
     if (key === "atr" && name === "pod") {
@@ -148,17 +149,17 @@ export default function ModulePage({ moduleKey }) {
       {form && (
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
-          {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
+          {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={(name, value) => {
+            if (name === "client_name") {
+              const client = (refOptions.clients || []).find((x) => x.label === value);
+              setForm((prev) => ({
+                ...prev, client_name: value,
+                ...(client ? { pod: prev.pod || client.pod || "", operator: client.operator || prev.operator || "", address: prev.address || client.address || "", cf_nr: prev.cf_nr || client.cf_nr || "", cadastral_nr: prev.cadastral_nr || client.cadastral_nr || "", object_name: prev.object_name || client.name || value } : {}),
+              }));
+            } else setVal(name, value);
+          }} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
-              {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => {
-                if (key === "atr" && name === "client_name") {
-                  const client = (refOptions.clients || []).find((x) => x.label === value);
-                  setForm((prev) => ({
-                    ...prev, client_name: value,
-                    ...(client ? { pod: prev.pod || client.pod || "", operator: client.operator || prev.operator || "", address: prev.address || client.address || "", cf_nr: prev.cf_nr || client.cf_nr || "", cadastral_nr: prev.cadastral_nr || client.cadastral_nr || "", object_name: prev.object_name || client.name || value } : {}),
-                  }));
-                } else setVal(name, value);
-              }} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
+              {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
             </div>
           )}
           {key === "atr" && form.pod_check_note && <div className="mt-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>{form.pod_check_note}</div>}
