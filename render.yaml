@@ -28,16 +28,8 @@ services:
       - key: OPENAI_MODEL
         value: gpt-4.1-mini
       - key: OBJECT_STORAGE_BACKEND
-        value: r2
-      - key: R2_ACCOUNT_ID
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_BUCKET_NAME
-        value: dns-energy-files
-      - key: R2_ENDPOINT_URL
+        value: mongodb-gridfs
+      - key: EMERGENT_LLM_KEY
         sync: false
       - key: SMTP_HOST
         sync: false
