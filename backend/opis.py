@@ -88,13 +88,11 @@ async def build_positions(db, owner, rec, client, settings):
             m[:] = [x for x in m if x]
         if key == "reglaj":
             rg = rec.get("reglaj") or {}
-            if any(not (rg.get(k) or {}).get("val") for k, _ in docgen.REGLAJ):
+            values = [x for x in rg.values() if isinstance(x, dict)]
+            if not values or any(not x.get("val") for x in values):
                 m.append("Valori reglaje protecții")
-        if key == "pif":
-            t = rec.get("tests") or {}
-            ids = [f"a{i}" for i in range(len(docgen.TESTS_A))] + [f"f{i}" for i in range(len(docgen.FREQ))] + [f"c{i}" for i in range(len(docgen.CHECKS))]
-            if any(not (t.get(i) or {}).get("ok") for i in ids):
-                m.append("Rezultate teste și verificări (DA/NU)")
+        if key == "pif" and not PIFDOC.filled(rec):
+            m.append("Rezultate PIF măsurate efectiv — completați data și valorile reale")
         pos.append({"key": key, "title": title, "source": "generat", "docs": docs, "missing": m, "files": []})
         if key == "priza" and PIFDOC.filled(rec):
             pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
