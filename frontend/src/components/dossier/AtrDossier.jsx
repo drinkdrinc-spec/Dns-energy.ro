@@ -43,6 +43,15 @@ export function AtrDossier({ id, form, setVal }) {
   }, [form.operator]);
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
   const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
+  const selectedPros = pros.find((p) => p.id === form.pros_id) || null;
+  const selectPros = (id) => {
+    setVal("pros_id", id);
+    const item = pros.find((p) => p.id === id);
+    if (!item) return;
+    const values = { pod: item.pod, operator: item.operator, address: item.address, supply: item.supply,
+      p_abs_kw: item.bransament_kw, pv_kw: item.inverter_kw || item.cef?.total_kw, p_evac_kw: item.power || item.cef?.total_export_kw };
+    Object.entries(values).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== "") setVal(key, value); });
+  };
   const att = form.attachments || {};
   const recs = form.receptors || [];
   const prod = String(form.kind || "").includes("producere");
@@ -100,8 +109,13 @@ export function AtrDossier({ id, form, setVal }) {
       <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (peste 27 kW)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
-          <div className="den-field"><label>Dosar de prosumator / CEF asociat (date PV, schemă, fișe)</label><select className="den-input" value={form.pros_id || ""} onChange={(e) => setVal("pros_id", e.target.value)} data-testid="atr-pros">
+          <div className="den-field"><label>Dosar de prosumator / CEF asociat (date PV, schemă, fișe)</label><select className="den-input" value={form.pros_id || ""} onChange={(e) => selectPros(e.target.value)} data-testid="atr-pros">
             <option value="">— fără —</option>{pros.map((p) => <option key={p.id} value={p.id}>{p.number} · {p.client_name}</option>)}</select></div>
+          {selectedPros && <div className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="atr-linked-equipment">
+            <strong className="text-sm" style={{ color: "var(--ink)" }}>Date tehnice preluate din dosarul prosumator</strong>
+            <div className="mt-1">POD {selectedPros.pod || "—"} · {selectedPros.operator || "operator necompletat"} · Putere invertor {selectedPros.inverter_kw || selectedPros.cef?.total_kw || "—"} kW · Evacuare {selectedPros.power || selectedPros.cef?.total_export_kw || "—"} kW</div>
+            {(selectedPros.cef?.inverters || []).length > 0 && <ul className="mt-1 list-disc pl-4">{selectedPros.cef.inverters.map((inv, i) => <li key={inv.id || i}>{inv.brand_model || `Invertor ${i + 1}`} — {inv.p_nom_kw || "putere nespecificată"} kW; panou {inv.panel_model || "nespecificat"}{inv.strings?.length ? `; stringuri ${inv.strings.map((s) => s.panels).filter(Boolean).join(" + ")}` : ""}{inv.battery?.brand_model ? `; baterie ${inv.battery.brand_model}` : ""}</li>)}</ul>}
+          </div>}
           <div className="den-field"><label>Putere instalată centrală (kW)</label><input className="den-input" value={form.pv_kw || ""} onChange={(e) => setVal("pv_kw", e.target.value)} data-testid="atr-pv-kw" /></div>
           <div className="den-field"><label>Putere max. evacuată (kW)</label><input className="den-input" value={form.p_evac_kw || ""} onChange={(e) => setVal("p_evac_kw", e.target.value)} data-testid="atr-evac-kw" /></div>
           <div className="den-field"><label>Data PIF centrală</label><input type="date" className="den-input" value={form.pif_date || ""} onChange={(e) => setVal("pif_date", e.target.value)} /></div>
