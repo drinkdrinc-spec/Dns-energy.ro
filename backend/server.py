@@ -150,7 +150,7 @@ def check_inverters(user: dict, d: dict):
 
 # ---------------- Object storage ----------------
 # DNS Energy uses Cloudflare R2 directly. No Emergent proxy or fallback.
-from r2_storage import init_storage, put_object, get_object
+from gridfs_storage import init_storage, put_object, get_object
 
 MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
               "webp": "image/webp", "pdf": "application/pdf", "doc": "application/msword",
