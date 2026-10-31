@@ -7,10 +7,11 @@ const selectStyle = { borderColor: "var(--line)" };
 
 export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
   const [catalog, setCatalog] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [problem, setProblem] = useState("");
   const [catalogSearch, setCatalogSearch] = useState({});
   useEffect(() => {
-    api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setProblem("Catalogul nu s-a putut încărca. Poți salva datele de bază și selecta echipamentele ulterior."));
+    api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setProblem("Catalogul nu s-a putut încărca. Poți salva datele de bază și selecta echipamentele ulterior.")).finally(() => setCatalogLoading(false));
   }, []);
   const clients = refOptions.clients || [];
   const selected = form.catalog_selection || {};
@@ -23,12 +24,24 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
     }
     if (JSON.stringify(inferred) !== JSON.stringify(selected)) setVal("catalog_selection", inferred);
   }, [catalog.length, form.inverter, form.panels, form.battery, form.smart_meter_type]);
-  const options = useMemo(() => ({
-    inverter: catalog.filter((x) => x.category === "Invertor"),
-    panel: catalog.filter((x) => x.category === "Panou"),
-    battery: catalog.filter((x) => x.category === "Baterie"),
-    meter: catalog.filter((x) => x.category === "Smart meter"),
-  }), [catalog]);
+  const options = useMemo(() => {
+    const unique = (category) => {
+      const seen = new Set();
+      return catalog.filter((item) => {
+        if (item.category !== category || /\bTEST\b/i.test(String(item.brand_model || ""))) return false;
+        const key = String(item.brand_model || "").trim().toLocaleLowerCase("ro-RO");
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    return {
+      inverter: unique("Invertor"),
+      panel: unique("Panou"),
+      battery: unique("Baterie"),
+      meter: unique("Smart meter"),
+    };
+  }, [catalog]);
 
   const cefUpdate = (kind, item, id) => {
     const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] };
@@ -145,7 +158,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       </div>
       <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Datele tehnice sunt preluate din catalog și folosite de configuratorul schemei. Valorile calculate sunt propuneri pentru verificare; măsurătorile și rezultatele testelor trebuie introduse din documentele reale.</p>
       {problem && <p className="text-xs mt-2 text-amber-700">{problem}</p>}
-      {catalog.length === 0 && !problem && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Catalog gol. Adaugă modelele și fișele lor în Catalog echipamente.</p>}
+      {catalogLoading && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Se încarcă modelele din catalog…</p>}
+      {!catalogLoading && catalog.length === 0 && !problem && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Catalog gol. Adaugă modelele și fișele lor în Catalog echipamente.</p>}
     </section>
   </div>;
 }
