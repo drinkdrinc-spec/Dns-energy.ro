@@ -43,8 +43,8 @@ def op_key(*vals) -> str:
 
 
 def rtype(rec: dict) -> str:
-    v = rec.get("request_type") or "nou"
-    return next((k for k, t in TYPES if v in (k, t)), "nou")
+    v = str((rec or {}).get("request_type") or "").strip().casefold()
+    return next((k for k, t in TYPES if v in (k.casefold(), t.casefold())), "")
 
 
 def is_prod(rec: dict) -> bool:
@@ -84,10 +84,12 @@ def required(rec: dict) -> list:
         if rec.get("applicant_type") == "Persoană juridică" and prod:
             out.append("constatator")
         return list(dict.fromkeys(out))
-    new = rtype(rec) in ("nou", "temp")
+    request_kind = rtype(rec)
+    new = request_kind in ("nou", "temp")
+    existing = request_kind in ("spor", "mod_dep", "mod_fara", "admin")
     out = []
     for k, _, req in DOCS:
-        if req is True or (req == "prod" and prod) or (k == "cu" and new) or (k == "atr_prev" and not new):
+        if req is True or (req == "prod" and prod) or (k == "cu" and new) or (k == "atr_prev" and existing):
             out.append(k)
     return out
 
@@ -489,6 +491,7 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
              P("CERERE ȘI CHESTIONAR", "h"),
              P("pentru obținerea avizului tehnic de racordare — " + ("loc de consum și de producere (prosumator)" if prod else "loc de consum"), "sub"),
              P("Tip solicitare:<br/>" + "<br/>".join(f"{box(rt == k)} {t}" for k, t in TYPES)),
+             *([P("<b>ATENȚIE:</b> selectați tipul solicitării înainte de depunere; cererea nu poate fi clasificată automat din datele prosumatorului.", "small")] if not rt else []),
              *([P("Formular DEER selectat — precompletare cu datele clientului", "b"),
                 P(escape(deer_case), "sub"),
                 T([["Date preluate din dosarul clientului", "Valoare"],
