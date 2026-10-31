@@ -54,7 +54,8 @@ export default function ModulePage({ moduleKey }) {
   const role = user?.role || "admin";
   const canDelete = role === "admin" || (role !== "limitat" && !["prosumator", "clients"].includes(key));
   const [items, setItems] = useState([]);
-  const [linkedProsumer, setLinkedProsumer] = useState([]);\n  const [linkedDiu, setLinkedDiu] = useState([]);
+  const [linkedProsumer, setLinkedProsumer] = useState([]);
+  const [linkedDiu, setLinkedDiu] = useState([]);
   const [showTestRecords, setShowTestRecords] = useState(false);
   const [form, setForm] = useState(null); // null=hidden, {} = open
   const [editId, setEditId] = useState(null);
@@ -77,7 +78,7 @@ export default function ModulePage({ moduleKey }) {
     const refs = [...new Set((cfg.fields || []).filter((f) => f.type === "ref").map((f) => f.ref))];
     refs.forEach((ref) => {
       api.get(`/data/${ref}`).then((r) => {
-        const rows = ref === "clients" ? r.data.filter((item) => !/\\bTEST\\b/i.test(String(item.name || ""))) : r.data;
+        const rows = ref === "clients" ? r.data.filter((item) => !/\bTEST\b/i.test(String(item.name || ""))) : r.data;
         setRefOptions((prev) => ({ ...prev, [ref]: rows.map((x) => ({ ...x, id: x.id, label: MODULES[ref].display(x) })) }));
       }).catch(() => {});
     });
@@ -220,7 +221,7 @@ export default function ModulePage({ moduleKey }) {
 
   const isTestRecord = (item) => /\bTEST\b/i.test([item.number, item.name, item.client_name, item.idcode].filter(Boolean).join(" "));
   const hiddenTestCount = ["clients", "prosumator", "diu"].includes(key) ? items.filter(isTestRecord).length : 0;
-  const visibleItems = showTestRecords ? items : (["clients", "prosumator"].includes(key) ? items.filter((item) => !isTestRecord(item)) : items);
+  const visibleItems = showTestRecords ? items : (["clients", "prosumator", "diu"].includes(key) ? items.filter((item) => !isTestRecord(item)) : items);
   const filtered = useMemo(() => {
     if (!q) return visibleItems;
     const ql = q.toLowerCase();
