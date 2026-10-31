@@ -13,6 +13,15 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
   }, []);
   const clients = refOptions.clients || [];
   const selected = form.catalog_selection || {};
+  useEffect(() => {
+    const inferred = { ...selected };
+    for (const [kind, value] of [["inverter", form.inverter], ["panel", form.panels], ["battery", form.battery], ["meter", form.smart_meter_type]]) {
+      if (inferred[kind] || !value) continue;
+      const hit = options[kind].find((x) => x.brand_model === value);
+      if (hit) inferred[kind] = hit.id;
+    }
+    if (JSON.stringify(inferred) !== JSON.stringify(selected)) setVal("catalog_selection", inferred);
+  }, [catalog.length, form.inverter, form.panels, form.battery, form.smart_meter_type]);
   const options = useMemo(() => ({
     inverter: catalog.filter((x) => x.category === "Invertor"),
     panel: catalog.filter((x) => x.category === "Panou"),
@@ -87,7 +96,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
             const v = e.target.value; setVal("client_name", v);
             const c = clients.find((x) => x.label === v);
             if (c) for (const [k, source] of [["cnp", c.cnp || c.idcode], ["phone", "phone"], ["email", "email"], ["hq_address", "hq_address"], ["address", "address"], ["county", "county"], ["pod", "pod"], ["operator", "operator"], ["cf_nr", "cf_nr"], ["cadastral_nr", "cadastral_nr"]]) if (!form[k] && c[source]) setVal(k, c[source]);
-          }}><option value="">Alege client...</option>{clients.map((c) => <option key={c.id} value={c.label}>{c.label}</option>)}</select>
+          }}><option value="">Alege client...</option>{form.client_name && !clients.some((x) => x.label === form.client_name) && <option value={form.client_name}>{form.client_name} · extras din document</option>}{clients.map((c) => <option key={c.id} value={c.label}>{c.label}</option>)}</select>
         </label>
         {input("cnp", "CNP / CUI")}
         {input("phone", "Telefon")}
