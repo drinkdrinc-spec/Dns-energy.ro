@@ -1,5 +1,26 @@
+import { useEffect, useState } from "react";
+
 const BASIC = new Set(["client_name", "pod", "operator", "kind", "request_type", "deer_case", "applicant_type", "submission_mode", "address", "supply", "p_abs_kw"]);
-const label = (f) => (f.label || "").replace(/\s*\*$/, "");
+const label = (f) => (f.label || "").replace(/\\s*\\*$/, "");
+
+function equipmentSummary(pros) {
+  const cef = pros?.cef || {};
+  const inverters = cef.inverters || [];
+  const panels = inverters.filter((x) => x.panel_model).map((x) => x.panel_model);
+  const batteries = [
+    ...inverters.filter((x) => x.battery_mode === "own" && x.battery?.model).map((x) => ({ ...x.battery, modules: (Number(x.battery.modules) || 1) * (Number(x.count) || 1) })),
+    ...(cef.shared_batteries || []),
+  ];
+  const strings = inverters.flatMap((x) => x.strings || []);
+  const panelCount = strings.length ? strings.reduce((n, x) => n + (Number(x.panels) || 0), 0) : Number(pros?.panel_count) || 0;
+  return {
+    inverters: inverters.length ? inverters.map((x) => [x.brand_model, x.count > 1 ? `× ${x.count}` : "", x.p_nom_kw ? `${x.p_nom_kw} kW` : ""].filter(Boolean).join(" · ")).filter(Boolean) : [pros?.inverter, pros?.inverter_kw ? `${pros.inverter_kw} kW` : ""].filter(Boolean),
+    panels: [...new Set(panels)].map((model) => `${model}${panelCount ? ` · ${panelCount} buc.` : ""}`).concat(!panels.length && pros?.panels ? [`${pros.panels}${panelCount ? ` · ${panelCount} buc.` : ""}`] : []),
+    batteries: batteries.map((x) => [x.model, x.modules ? `× ${x.modules}` : "", x.kwh ? `${Number(x.kwh) * (Number(x.modules) || 1)} kWh` : "", x.ah ? `${x.ah} Ah` : "", x.voltage ? `${x.voltage} V` : "", x.coupling ? `cuplare ${x.coupling}` : ""].filter(Boolean).join(" · ")).concat(!batteries.length && pros?.battery ? [`${pros.battery}${pros.battery_kwh ? ` · ${pros.battery_kwh} kWh` : ""}`] : []),
+    power: pros?.power || pros?.p_evac_kw || pros?.inverter_kw || "",
+    strings: strings.map((x, i) => `${i + 1}(${x.panels || "?"})`).join(", "),
+  };
+}
 
 export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
   const fields = cfg.fields || [];
@@ -8,10 +29,28 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
   const advanced = fields.filter((f) => !BASIC.has(f.name));
   const clients = refOptions.clients || [];
   const pros = refOptions.prosumator || [];
-  const norm = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
+  const norm = (v) => String(v || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
   const linkedPros = pros.filter((p) => (form.pros_id && p.id === form.pros_id) || (form.client_id && p.client_id === form.client_id)
     || (form.client_name && norm(p.client_name) === norm(form.client_name)));
-  const selectedPros = linkedPros.length === 1 ? linkedPros[0] : null;
+  const [selectedProsId, setSelectedProsId] = useState(form.pros_id || (linkedPros.length === 1 ? linkedPros[0].id : ""));
+  useEffect(() => {
+    if (form.pros_id) setSelectedProsId(form.pros_id);
+    else if (linkedPros.length === 1) setSelectedProsId(linkedPros[0].id);
+  }, [form.pros_id, form.client_id]);
+  const selectedPros = linkedPros.find((p) => p.id === selectedProsId) || (linkedPros.length === 1 ? linkedPros[0] : null);
+  const equipment = equipmentSummary(selectedPros);
+  const choosePros = (id) => {
+    const record = linkedPros.find((p) => p.id === id);
+    setSelectedProsId(id);
+    setVal("pros_id", id);
+    if (!record) return;
+    setVal("kind", "Loc de consum și de producere (prosumator)");
+    setVal("supply", record.supply || record.cef?.grid?.supply || form.supply || "");
+    setVal("pv_kw", record._kwp || record.power || record.inverter_kw || "");
+    setVal("p_evac_kw", record.power || record.p_evac_kw || record.inverter_kw || "");
+    setVal("p_abs_kw", record.bransament_kw || form.p_abs_kw || "");
+    setVal("current_supply_desc", [record.request_type, record.inverter ? `Invertor: ${record.inverter}` : "", record.panels ? `Panouri: ${record.panels}` : "", record.battery ? `Baterie: ${record.battery}` : ""].filter(Boolean).join("; "));
+  };
   const renderField = (f) => {
     const common = {
       className: "den-input w-full",
@@ -37,6 +76,25 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
       <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Alege clientul; datele cunoscute din fișa clientului se preiau automat. Completează POD-ul de pe factură și confirmă tipul solicitării.</p>
       <div className="grid sm:grid-cols-2 gap-3">{basic.map(renderField)}</div>
     </div>
+    {form.client_id && linkedPros.length > 0 && <section className="rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-linked-equipment">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h3 className="text-sm font-bold">Echipamente transferate în cererea ATR</h3>
+          <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Date preluate din dosarul prosumator ales; apar și în pachetul de anexe unde formularul operatorului le cere.</p></div>
+        {linkedPros.length > 1 && <label className="den-field min-w-[240px]"><span>Alege dosarul prosumator</span>
+          <select className="den-input" value={selectedProsId} onChange={(e) => choosePros(e.target.value)}>
+            <option value="">Alege dosarul...</option>{linkedPros.map((p) => <option key={p.id} value={p.id}>{p.number || p.client_name || "Dosar"} · {p.operator || "operator neconfirmat"}</option>)}
+          </select></label>}
+      </div>
+      {!selectedPros ? <p className="mt-3 text-sm text-amber-800">Selectează dosarul prosumator pentru a transfera echipamentele și puterile în cererea ATR.</p>
+        : <div className="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
+          {[["Invertor(e)", equipment.inverters], ["Panouri", equipment.panels], ["Baterie / BESS", equipment.batteries], ["Putere evacuată", equipment.power ? [`${equipment.power} kW`] : []], ["Stringuri", equipment.strings ? [equipment.strings] : []], ["Branșament", [selectedPros.supply || selectedPros.cef?.grid?.supply].filter(Boolean)]].map(([name, values]) =>
+            <div key={name} className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
+              <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{name}</div>
+              <div className="mt-1 font-semibold">{values.length ? values.join(", ") : "Nu este completat în dosarul prosumator"}</div>
+            </div>)}
+          <p className="sm:col-span-2 text-xs" style={{ color: "var(--muted)" }}>Confirmați modelul și puterile cu fișele tehnice. Dacă documentul operatorului nu are câmp pentru baterie, aceasta rămâne listată în anexa tehnică a pachetului.</p>
+        </div>}
+    </section>}
     <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-extra-fields">
       <summary className="cursor-pointer text-sm font-semibold">Alte date pentru formularul ATR</summary>
       <div className="grid sm:grid-cols-2 gap-3 mt-3">{advanced.map(renderField)}</div>
