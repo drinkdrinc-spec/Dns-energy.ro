@@ -17,7 +17,7 @@ from mailer import send_email
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
 logger = logging.getLogger("d-energy.forms")
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"}
-OK, CHANGED, BROKEN, BLOCKED, NEW = "valid", "versiune nouă detectată", "link invalid", "neverificabil automat", "neverificat"
+OK, CHANGED, BROKEN, BLOCKED, NEW, ACCESSIBLE = "valid", "versiune nouă detectată", "link invalid", "neverificabil automat", "neverificat", "link accesibil — neconfirmat"
 
 SEED = [
     ("DEER", "Cerere de racordare prosumator — loc existent / spor de putere (Anexa 1, Ord. ANRE 69/2020)", "prosumator / spor putere",
@@ -126,7 +126,7 @@ async def check_one(f: dict) -> dict:
                 res["detected_version"] = detect_version(body, ct)
             res["hash"] = digest
             prev = (f.get("last_check") or {}).get("hash")
-            res["status"] = CHANGED if prev and prev != digest else OK
+            res["status"] = CHANGED if prev and prev != digest else (OK if f.get("confirmed_at") and prev == digest else ACCESSIBLE)
     except Exception as e:
         res.update({"status": BROKEN, "error": str(e)[:200]})
     upd = {"last_check": res, "status": res["status"] if res["status"] != CHANGED else CHANGED}
