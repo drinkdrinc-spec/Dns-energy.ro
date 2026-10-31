@@ -135,6 +135,9 @@ export default function ModulePage({ moduleKey }) {
           const pros = (prosRes.data || []).find((item) => item.id === prosId);
           if (!client) return;
           const grid = pros?.cef?.grid || {};
+          const hasStorage = Boolean(pros && (pros.battery || /hibrid/i.test(String(pros.system_type || ""))
+            || (pros.cef?.shared_batteries || []).length
+            || (pros.cef?.inverters || []).some((inv) => inv.battery_mode === "own" ? Boolean(inv.battery?.model) : inv.battery_mode === "shared" && Boolean(inv.shared_battery_id))));
           setForm({
             client_name: pros?.client_name || client.name || "",
             client_id: client.id,
@@ -143,7 +146,7 @@ export default function ModulePage({ moduleKey }) {
             operator: pros?.operator || client.operator || "",
             power: pros?.inverter_kw || pros?.power || "",
             atr: pros?.atr || "",
-            type: pros ? (pros.battery || /hibrid/i.test(String(pros.system_type || "")) ? "Sistem fotovoltaic hibrid" : "Sistem fotovoltaic on-grid") : "",
+            type: pros ? (hasStorage ? "Sistem fotovoltaic hibrid" : "Sistem fotovoltaic on-grid") : "",
             supply: pros?.supply || "",
             earthing: grid.earthing || "",
             bmp_a: grid.bmp_a || "",
