@@ -173,6 +173,9 @@ def check_inverters(user: dict, d: dict):
 # DNS Energy uses Cloudflare R2 directly. No Emergent proxy or fallback.
 from gridfs_storage import init_storage, put_object, get_object
 
+# Namespace used for uploaded file keys in MongoDB GridFS.
+APP_NAME = os.environ.get("APP_NAME", "dns-energy").strip("/") or "dns-energy"
+
 MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
               "webp": "image/webp", "pdf": "application/pdf", "doc": "application/msword",
               "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
