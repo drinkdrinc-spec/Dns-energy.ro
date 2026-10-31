@@ -10,7 +10,7 @@ OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER �
              "Distribuție Energie Oltenia", "Rețele Electrice România", "Alt operator"]
 
 PROMPT = f"""Ești expert în dosare de racordare prosumatori din România. Extrage datele din documentul atașat și răspunde DOAR cu un obiect JSON valid, fără text suplimentar, cu cheile:
-client_name (nume beneficiar), cnp (CNP sau CUI), address (adresa loc de consum completă), county (județ), pod (cod loc de consum / POD), phone, email,
+client_name (nume beneficiar/titular), owner_name (proprietar CF), cnp (CNP sau CUI), address (adresa loc de consum), hq_address (domiciliu din CI), consumption_address (adresa de pe factură), id_series (serie CI), id_number (număr CI), cf_nr (număr carte funciară), cadastral_nr (număr cadastral), county (județ), pod (cod loc de consum / POD), supplier (furnizor energie), phone, email, doc_type (tip document), summary (rezumat scurt),
 operator (alege EXACT una dintre: {OPERATORS}; Bihor/Cluj/Satu Mare/Sălaj/Maramureș/Bistrița => "DEER — Transilvania Nord"; Alba/Brașov/Covasna/Harghita/Mureș/Sibiu => "DEER — Transilvania Sud"; Prahova/Buzău/Brăila/Galați/Vrancea/Focșani => "DEER — Muntenia Nord"),
 power (putere instalată/evacuată kW, număr), apparent_kva (număr), supply ("Monofazat" sau "Trifazat"), bransament_kw (putere aprobată loc consum, număr sau null),
 system_type ("On-grid", "Hibrid cu baterie" sau "Off-grid"), inverter (marcă și model), inverter_kw (număr), inverter_count (număr),
