@@ -219,7 +219,7 @@ export default function ModulePage({ moduleKey }) {
   };
 
   const isTestRecord = (item) => /\bTEST\b/i.test([item.number, item.name, item.client_name, item.idcode].filter(Boolean).join(" "));
-  const hiddenTestCount = ["clients", "prosumator"].includes(key) ? items.filter(isTestRecord).length : 0;
+  const hiddenTestCount = ["clients", "prosumator", "diu"].includes(key) ? items.filter(isTestRecord).length : 0;
   const visibleItems = showTestRecords ? items : (["clients", "prosumator"].includes(key) ? items.filter((item) => !isTestRecord(item)) : items);
   const filtered = useMemo(() => {
     if (!q) return visibleItems;
