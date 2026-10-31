@@ -8,7 +8,7 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
   const advanced = fields.filter((f) => !BASIC.has(f.name));
   const clients = refOptions.clients || [];
   const pros = refOptions.prosumator || [];
-  const norm = (v) => String(v || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
+  const norm = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
   const linkedPros = pros.filter((p) => (form.pros_id && p.id === form.pros_id) || (form.client_id && p.client_id === form.client_id)
     || (form.client_name && norm(p.client_name) === norm(form.client_name)));
   const selectedPros = linkedPros.length === 1 ? linkedPros[0] : null;
