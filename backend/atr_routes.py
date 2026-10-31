@@ -266,7 +266,7 @@ async def _fetch_registry_annex(form: dict, operator_key: str) -> tuple[bytes, s
         return data, f"{safe}.docx"
     raise ValueError("Linkul din registru nu a returnat un PDF sau un DOCX.")
 
-async def _registry_forms_for_request(operator_key: str, rec: dict) -> tuple[int | None, list[dict]]:
+async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict | None = None) -> tuple[int | None, list[dict]]:
     """Choose only official forms whose annex matches the selected ATR case."""
     if operator_key not in OP_DOMAINS:
         return None, []
@@ -276,8 +276,25 @@ async def _registry_forms_for_request(operator_key: str, rec: dict) -> tuple[int
         annex_no = 4
     elif any(mark in case for mark in ("≤10,8", "<=10,8", "<=10.8", "≤ 10,8")):
         annex_no = 5
+    elif request_type == "mod_fara":
+        pros = pros or {}
+        cef = pros.get("cef") or {}
+        panel_kwp = sum(
+            sum(float(str(string.get("panels") or 0).replace(",", ".")) for string in (inv.get("strings") or []))
+            * float(str(inv.get("panel_w") or 0).replace(",", ".")) / 1000
+            * max(1, int(float(str(inv.get("count") or 1).replace(",", "."))))
+            for inv in (cef.get("inverters") or [])
+        )
+        raw_kwp = panel_kwp or pros.get("_kwp") or pros.get("panel_kwp") or cef.get("total_kwp")
+        try:
+            kwp = float(str(raw_kwp).replace(",", ".")) if raw_kwp not in (None, "") else None
+        except (TypeError, ValueError):
+            kwp = None
+        supply = str(rec.get("supply") or pros.get("supply") or (cef.get("grid") or {}).get("supply") or "").casefold()
+        single_phase = bool(supply) and not any(mark in supply for mark in ("trifaz", "400", "three-phase", "3 phase"))
+        annex_no = 5 if kwp is not None and kwp <= 10.8 and single_phase else 2
     else:
-        annex_no = {"nou": 1, "spor": 1, "mod_dep": 2, "mod_fara": 2, "admin": 3}.get(request_type)
+        annex_no = {"nou": 1, "spor": 1, "mod_dep": 2, "admin": 3}.get(request_type)
     if annex_no is None:
         return None, []
     rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
@@ -329,7 +346,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
             label = re.sub(r"[^A-Za-z0-9_-]+", "_", (info or ("Anexa_DEER",))[0]).strip("_")
             archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
         else:
-            annex_no, forms = await _registry_forms_for_request(op_key, rec)
+            annex_no, forms = await _registry_forms_for_request(op_key, rec, pros)
             note = [
                 "Pachet ATR — formular oficial pentru operator",
                 f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
