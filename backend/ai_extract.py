@@ -57,11 +57,11 @@ async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict
 
 
 def _labeled_value(text: str, labels: str) -> str | None:
-    match = re.search(rf"(?:{labels})\\s*[:：-]\\s*([^\\r\\n]+)", text, re.I)
+    match = re.search(rf"(?:{labels})\s*[:：-]\s*([^\r\n]+)", text, re.I)
     if not match:
         return None
-    value = re.split(r"\\s{3,}|\\s+(?:POD|CNP|CUI|Furnizor|Operator|Telefon|E-mail|Email|Adresă|Adresa)\\s*[:：-]", match.group(1), maxsplit=1, flags=re.I)[0]
-    value = re.sub(r"\\s+", " ", value).strip(" .,:;-")
+    value = re.split(r"\s{3,}|\s+(?:POD|CNP|CUI|Furnizor|Operator|Telefon|E-mail|Email|Adresă|Adresa)\s*[:：-]", match.group(1), maxsplit=1, flags=re.I)[0]
+    value = re.sub(r"\s+", " ", value).strip(" .,:;-")
     return value[:160] or None
 
 
@@ -70,15 +70,15 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
     # intentionally leaves ambiguous name/address fields empty rather than guessing.
     fields = {}
     labels = {
-        "client_name": r"(?:titular(?:ul)?(?:\\s+(?:contractului|locului de consum))?|nume(?:le)?(?:\\s+(?:clientului|beneficiarului|titularului))?|beneficiar)",
-        "consumption_address": r"(?:adresa\\s+locului\\s+de\\s+consum|locul\\s+de\\s+consum|adresa\\s+de\\s+consum)",
-        "hq_address": r"(?:domiciliu(?:l)?(?:\\s+din\\s+actul\\s+de\\s+identitate)?)",
-        "pod": r"(?:POD|CLC|codul?\\s+punctului\\s+de\\s+consum)",
-        "supplier": r"(?:furnizor(?:ul)?\\s+(?:de\\s+)?energie)",
-        "operator": r"(?:operator(?:ul)?\\s+de\\s+distribuție|operator(?:ul)?\\s+de\\s+distributie)",
-        "cf_nr": r"(?:carte\\s+funciară(?:\\s+nr\\.?)?|număr(?:ul)?\\s+CF)",
-        "cadastral_nr": r"(?:număr(?:ul)?\\s+cadastral|nr\\.\\s+cadastral)",
-        "phone": r"(?:telefon|tel\\.?)",
+        "client_name": r"(?:titular(?:ul)?(?:\s+(?:contractului|locului de consum))?|nume(?:le)?(?:\s+(?:clientului|beneficiarului|titularului))?|beneficiar)",
+        "consumption_address": r"(?:adresa\s+locului\s+de\s+consum|locul\s+de\s+consum|adresa\s+de\s+consum)",
+        "hq_address": r"(?:domiciliu(?:l)?(?:\s+din\s+actul\s+de\s+identitate)?)",
+        "pod": r"(?:POD|CLC|codul?\s+punctului\s+de\s+consum)",
+        "supplier": r"(?:furnizor(?:ul)?\s+(?:de\s+)?energie)",
+        "operator": r"(?:operator(?:ul)?\s+de\s+distribuție|operator(?:ul)?\s+de\s+distributie)",
+        "cf_nr": r"(?:carte\s+funciară(?:\s+nr\.?)?|număr(?:ul)?\s+CF)",
+        "cadastral_nr": r"(?:număr(?:ul)?\s+cadastral|nr\.\s+cadastral)",
+        "phone": r"(?:telefon|tel\.?)",
         "email": r"(?:e-mail|email)",
     }
     for key, pattern in labels.items():
@@ -87,9 +87,9 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
             fields[key] = value
 
     if doc_type == "ci":
-        cnp = re.search(r"(?:CNP|cod\\s+numeric\\s+personal)\\s*[:：-]?\\s*(\\d{13})(?!\\d)", text, re.I)
-        series = re.search(r"(?:seria|serie)\\s*[:：-]?\\s*([A-Z]{2})\\b", text, re.I)
-        number = re.search(r"(?:nr\\.?|număr(?:ul)?)\\s*(?:CI|carte\\s+de\\s+identitate)?\\s*[:：-]?\\s*(\\d{6})\\b", text, re.I)
+        cnp = re.search(r"(?:CNP|cod\s+numeric\s+personal)\s*[:：-]?\s*(\d{13})(?!\d)", text, re.I)
+        series = re.search(r"(?:seria|serie)\s*[:：-]?\s*([A-Z]{2})\b", text, re.I)
+        number = re.search(r"(?:nr\.?|număr(?:ul)?)\s*(?:CI|carte\s+de\s+identitate)?\s*[:：-]?\s*(\d{6})\b", text, re.I)
         if cnp:
             fields["cnp"] = cnp.group(1)
         if series:
@@ -97,7 +97,7 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
         if number:
             fields["id_number"] = number.group(1)
     elif doc_type == "factura":
-        cnp = re.search(r"(?:CNP|CUI|cod\\s+numeric\\s+personal|cod\\s+unic\\s+de\\s+înregistrare)\\s*[:：-]?\\s*(\\d{8,13})\\b", text, re.I)
+        cnp = re.search(r"(?:CNP|CUI|cod\s+numeric\s+personal|cod\s+unic\s+de\s+înregistrare)\s*[:：-]?\s*(\d{8,13})\b", text, re.I)
         if cnp:
             fields["cnp"] = cnp.group(1)
 
