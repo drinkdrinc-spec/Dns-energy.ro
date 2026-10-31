@@ -4,6 +4,8 @@ import hmac
 import uuid
 import secrets
 import logging
+import io
+import zipfile
 from datetime import datetime, timezone, timedelta, date
 from html import escape as hesc
 from typing import Optional
@@ -203,6 +205,36 @@ async def operator_form_links(operator: str = "", scope: str = "atr", user: dict
         out.append({k: f.get(k) for k in ("id", "operator", "title", "url", "status", "version")} |
                    {"checked": (f.get("last_check") or {}).get("at")})
     return sorted(out, key=lambda f: (f.get("status") in ("link invalid", "versiune nouă detectată"), str(f.get("title") or "")))
+
+
+
+# ---------------- complete downloadable package ----------------
+@api.get("/atr/{item_id}/package.zip")
+async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
+    """Bundle the generated ATR dossier with the selected official DEER annex as editable DOCX."""
+    rec = await get_rec(user, item_id, write=False)
+    client = await S.get_client(user["id"], rec) or {}
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros = {}
+    if rec.get("pros_id") and await db.prosumator.find_one({**S.scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
+        pros, pros_client, settings, _ = await S.dossier_ctx(user, rec["pros_id"])
+        client = client or pros_client or {}
+
+    pdf, pdf_name = await S.atr_pack(user, rec, 1)
+    bundle = io.BytesIO()
+    with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(pdf_name, pdf)
+        if ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) == "deer":
+            try:
+                annex = ATR.render_deer_official_docx(rec, client, settings, pros or {})
+            except (ValueError, RuntimeError) as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            info = ATR.deer_annex_info(rec)
+            label = re.sub(r"[^A-Za-z0-9_-]+", "_", (info or ("Anexa_DEER",))[0]).strip("_")
+            archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", pdf_name.rsplit(".", 1)[0]) + "_pachet.zip"
+    return Response(content=bundle.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": S.disp("attachment", name), "Cache-Control": "no-store"})
 
 
 # ---------------- submission ----------------
