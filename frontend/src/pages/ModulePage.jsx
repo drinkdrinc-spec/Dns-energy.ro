@@ -194,7 +194,7 @@ export default function ModulePage({ moduleKey }) {
               {editId && <SignRequests dossierId={editId} />}
               <GeneratedDocs id={editId} files={form.files} form={form} />
             </div>
-          </details>
+          </details>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
           {key === "diu" && <DossierExtras form={form} setVal={setVal} compact />}
