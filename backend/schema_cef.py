@@ -110,7 +110,9 @@ class CefDrawing(Flowable):
             cable = f"{ac.get('cable_type') or 'CYY-F'} {v(ac.get('section') or pa.get('section'))} mm² {ac.get('material') or 'Cu'}, {v(ac.get('length_m'), ' m')}"
             self.line(mid, ty, mid, iy + ih, label=cable)
             ph = "3F" if r.get("tri") else ("1F" + (f" pe {inv.get('phase')}" if inv.get("phase") else ""))
-            self.box(bx + 3 * mm, iy, lw, ih, f"INV {i + 1} — {inv.get('brand_model') or '—'}",
+            quantity = int(r.get("count") or inv.get("count") or 1)
+            inv_label = f"INV {i + 1}" + (f" ({quantity} buc.)" if quantity > 1 else "")
+            self.box(bx + 3 * mm, iy, lw, ih, f"{inv_label} — {inv.get('brand_model') or '—'}",
                      [f"{inv.get('kind') or inv.get('type') or 'Invertor'} · {ph}",
                       f"Pn {v(inv.get('p_nom_kw'), ' kW')} · Pmax {v(inv.get('p_max_kw'), ' kW')}",
                       f"Limitare: {v(inv.get('p_limit_kw'), ' kW')} · MPPT: {v(inv.get('mppt_count'))}",
