@@ -17,7 +17,22 @@ const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${
 
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [importing, setImporting] = useState(false);
   const f = item[k];
+  const importUrl = async () => {
+    setImporting(true);
+    try {
+      await api.post(`/catalog/${item.id}/import-document`, { kind: k, url: sourceUrl });
+      toast.success(`${label} preluată de la sursa oficială`);
+      setSourceUrl("");
+      onUploaded();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Importul documentului a eșuat");
+    } finally {
+      setImporting(false);
+    }
+  };
   const up = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     const fd = new FormData(); fd.append("file", file);
@@ -30,9 +45,11 @@ function DocSlot({ item, k, label, onUploaded }) {
   return (
     <span className="inline-flex items-center gap-1">
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={up} data-testid={`upload-${k}-${item.id}`} />
-      {f ? <a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[12px] font-bold" style={{ color: "var(--blue)" }} data-testid={`open-${k}-${item.id}`}><FileText size={13} /> {label}</a>
+      {f ? <a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[12px] font-bold" style={{ color: "var(--blue)" }} data-testid={`open-${k}-${item.id}`} title={f.source_url || "Document încărcat"}><FileText size={13} /> {label}</a>
         : <span className="text-[12px]" style={{ color: "#b9770e" }}>{label} lipsă</span>}
       <button onClick={() => ref.current.click()} className="p-1 rounded hover:bg-[#eef4ff]" title={`Încarcă ${label}`} data-testid={`btn-upload-${k}-${item.id}`}><Upload size={13} style={{ color: "var(--blue)" }} /></button>
+      <input className="den-input text-[11px] py-1" style={{ width: 220 }} type="url" placeholder="Link PDF oficial HTTPS" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} aria-label={`Link oficial ${label}`} />
+      <button onClick={importUrl} disabled={importing || !sourceUrl} className="text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Preia PDF de pe site-ul oficial" data-testid={`import-url-${k}-${item.id}`}>{importing ? "Se preia…" : "Preia link"}</button>
     </span>
   );
 }
