@@ -76,7 +76,7 @@ async def build_positions(db, owner, rec, client, settings):
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
         m = missing(keys, ekeys)
-        if key == "notificare" and not docgen.inverters(ctx):
+        if key == "notificare" and not (ctx.raw("inverter") or ctx.raw("panels")):
             m.append("Invertoare / panouri (configurare CEF)")
         if key in ("schema", "fisa_tehnica"):
             if not (rec.get("cef") or {}).get("inverters"):
