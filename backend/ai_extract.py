@@ -47,7 +47,7 @@ async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict
         "cf": "Extras de carte funciară: extrage proprietarul, numărul CF și numărul cadastral. Nu inventa date lipsă.",
         "other": "Identifică tipul documentului și rezumă-l; extrage datele relevante numai dacă sunt vizibile.",
     }
-    prompt = PROMPT + "\\n\\nTip document selectat: " + hints.get(doc_type, "Identifică tipul documentului.") + " Nu deduce și nu completa valori absente."
+    prompt = PROMPT + "\n\nTip document selectat: " + hints.get(doc_type, "Identifică tipul documentului.") + " Nu deduce și nu completa valori absente."
     async for ev in chat.stream_message(UserMessage(text=prompt, file_contents=_images(content, mime))):
         if isinstance(ev, TextDelta):
             out += ev.content
