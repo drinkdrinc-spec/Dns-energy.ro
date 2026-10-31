@@ -502,6 +502,50 @@ async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_
     return {"storage_path": result["path"], "original_filename": file.filename,
             "content_type": ct, "size": result.get("size", len(data))}
 
+@api_router.post("/catalog/{item_id}/import-document")
+async def catalog_import_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Import a technical PDF from an allowlisted manufacturer or distributor domain."""
+    guard("catalog", user, write=True)
+    body = await request.json()
+    kind = body.get("kind")
+    url = str(body.get("url") or "").strip()
+    if kind not in ("datasheet", "conformity") or len(url) > 2048:
+        raise HTTPException(status_code=400, detail="Tipul documentului sau linkul nu este valid")
+    from urllib.parse import urlparse
+    import httpx
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    official = (
+        "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "solis.com", "ginlong.com", "fronius.com", "sma.de",
+        "sma-solar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
+        "risenenergy.com", "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro",
+    )
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in official):
+        raise HTTPException(status_code=400, detail="Folosește un link HTTPS de pe domeniul oficial al producătorului/operatorului.")
+    item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Modelul nu există în catalog")
+    try:
+        async with httpx.AsyncClient(timeout=25, follow_redirects=False) as client:
+            response = await client.get(url, headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"})
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Sursa a răspuns cu HTTP {response.status_code}; folosește linkul direct către PDF.")
+        data = response.content
+    except httpx.HTTPError:
+        raise HTTPException(status_code=400, detail="Documentul nu a putut fi preluat de la sursa oficială.")
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Documentul depășește limita de 25 MB")
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(status_code=415, detail="Linkul nu a returnat un PDF valid")
+    stored = put_object(f"{APP_NAME}/catalog/{user['id']}/{item_id}/{kind}_{uuid.uuid4().hex}.pdf", data, "application/pdf")
+    doc = {"storage_path": stored["path"], "original_filename": f"{item.get('brand_model', 'model')} — {kind}.pdf",
+           "content_type": "application/pdf", "size": len(data), "source_url": url, "source_host": host,
+           "imported_at": datetime.now(timezone.utc).isoformat()}
+    await db.catalog.update_one({"id": item_id, "owner": user["id"]}, {"$set": {kind: doc, f"{kind}_source_url": url}})
+    await audit(user, "import document catalog", "catalog", item_id, [kind, "source_url"])
+    return {"ok": True, "kind": kind, "source_url": url, "size": len(data)}
+
+
 @api_router.get("/files/{path:path}")
 async def download(path: str, authorization: str = Header(None), auth: str = Query(None),
                    module: str = Query("documents")):
