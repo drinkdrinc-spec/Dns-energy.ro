@@ -17,7 +17,8 @@ const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${
 
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
-  const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceUrl, setSourceUrl] = useState(() => item[`${k}_source_url`] || item[`${k}_url`] || "");
+  const officialUrl = item[`${k}_url`] || item[`${k}_source_url`] || "";
   const [importing, setImporting] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const f = item[k];
@@ -61,9 +62,10 @@ function DocSlot({ item, k, label, onUploaded }) {
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={up} data-testid={`upload-${k}-${item.id}`} />
       {f ? <a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[12px] font-bold" style={{ color: "var(--blue)" }} data-testid={`open-${k}-${item.id}`} title={f.source_url || "Document încărcat"}><FileText size={13} /> {label}</a>
         : <span className="text-[12px]" style={{ color: "#b9770e" }}>{label} lipsă</span>}
+      {officialUrl && <a href={officialUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] underline" title="Deschide documentul de la producător">Sursă oficială ↗</a>}
       <button onClick={() => ref.current.click()} className="p-1 rounded hover:bg-[#eef4ff]" title={`Încarcă ${label}`} data-testid={`btn-upload-${k}-${item.id}`}><Upload size={13} style={{ color: "var(--blue)" }} /></button>
       <input className="den-input text-[11px] py-1" style={{ width: 220 }} type="url" placeholder="Link PDF oficial HTTPS" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} aria-label={`Link oficial ${label}`} />
-      <button onClick={importUrl} disabled={importing || !sourceUrl} className="text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Preia PDF de pe site-ul oficial" data-testid={`import-url-${k}-${item.id}`}>{importing ? "Se preia…" : "Preia link"}</button>
+      <button onClick={importUrl} disabled={importing || !sourceUrl} className="text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Preia PDF de pe site-ul oficial" data-testid={`import-url-${k}-${item.id}`}>{importing ? "Se preia…" : "Importă PDF"}</button>
       {k === "datasheet" && f && <button onClick={extract} disabled={extracting} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Extrage numai specificațiile care apar în fișa PDF" data-testid={`ai-extract-${item.id}`}><Sparkles size={12} /> {extracting ? "Se citește…" : "AI extrage"}</button>}
     </span>
   );
