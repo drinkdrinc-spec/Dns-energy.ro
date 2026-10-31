@@ -49,6 +49,9 @@ export function AtrDossier({ id, form, setVal }) {
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="atr-dossier">
       <FormAlert operator={form.operator} scope="atr" />
+      <details className="mb-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-official-details">
+        <summary className="cursor-pointer text-sm font-semibold">Formulare oficiale, GDPR și anexă</summary>
+        <div className="mt-3">
       {operatorSource?.id === "deer" && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-deer-gdpr">
         <div className="font-bold mb-1">Document GDPR — DEER</div>
         <p className="mb-2" style={{ color: "var(--muted)" }}>Pentru persoane fizice, include în dosar nota de informare privind prelucrarea datelor personale, conform listei curente DEER. Este o notă de informare oficială, nu un formular de consimțământ creat de DNS Energy.</p>
@@ -71,7 +74,7 @@ export function AtrDossier({ id, form, setVal }) {
         </div>) : <div style={{ color: "var(--muted)" }}>Nu există încă un link ATR înregistrat pentru acest operator. Verificați formularul pe site-ul oficial înainte de depunere.</div>}
         <div className="mt-2" style={{ color: "var(--muted)" }}>PDF-ul generat de DNS Energy este un model completat pentru lucru și verificare; nu este garantat ca reproducere identică a formularului oficial curent.</div>
       </div>}
-      {operatorSource?.id === "deer" && <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--line)" }} data-testid="atr-annex-selector">
+      {operatorSource?.id === "deer" && !isNew && <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--line)" }} data-testid="atr-annex-selector">
         <div className="font-bold mb-1">Anexă pentru dosarul existent — DEER</div>
         <div className="text-xs mb-3" style={{ color: "var(--muted)" }}>Schimbi numai anexa. Datele clientului, echipamentele, documentele încărcate și restul dosarului se păstrează.</div>
         <label className="block text-xs font-semibold mb-1" htmlFor="atr-annex-choice">Anexa cerută de operator</label>
@@ -83,6 +86,11 @@ export function AtrDossier({ id, form, setVal }) {
         <a href={annexInfo.url} target="_blank" rel="noopener noreferrer" className="inline-flex underline font-semibold text-sm mt-2">Deschide formularul oficial selectat ↗</a>
         <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Alegerea se salvează în datele cererii când salvezi dosarul. Formularul oficial trebuie completat cu datele existente înainte de export; confirmă cu OD ce anexă se aplică.</div>
       </div>}
+        </div>
+      </details>
+      <details className="mb-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-technical-questionnaire">
+        <summary className="cursor-pointer text-sm font-semibold">Chestionar tehnic ATR și lista receptoarelor</summary>
+        <div className="mt-3">
       <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (peste 27 kW)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
@@ -102,9 +110,14 @@ export function AtrDossier({ id, form, setVal }) {
         <input className="den-input" placeholder="Observații / regim" value={r.notes || ""} onChange={(e) => setR(i, "notes", e.target.value)} />
         <button type="button" onClick={() => setVal("receptors", recs.filter((_, j) => j !== i))}><Trash2 size={13} style={{ color: "#b33333" }} /></button></div>)}
       <button type="button" className="text-xs font-bold mt-2 inline-flex items-center gap-1" style={{ color: "var(--blue)" }} onClick={() => setVal("receptors", [...recs, {}])} data-testid="atr-add-rec"><Plus size={12} />Adaugă receptor</button>
+        </div>
+      </details>
       <div className="mt-4 flex items-center gap-2 text-xs font-bold" data-testid="atr-checklist-status">
         {missing.length ? <><AlertTriangle size={14} style={{ color: "#8a5a00" }} />Lipsesc {missing.length} documente obligatorii</> : <><CheckCircle2 size={14} style={{ color: "#166534" }} />Toate documentele obligatorii sunt atașate</>}</div>
-      {DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={!!form.pros_id && prod && AUTO[k]} autoLabel={AUTO[k]} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}
+      <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-documents-details">
+        <summary className="cursor-pointer text-sm font-semibold">Documente anexate · {missing.length} obligatorii lipsă</summary>
+        <div className="mt-3">{DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={!!form.pros_id && prod && AUTO[k]} autoLabel={AUTO[k]} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}</div>
+      </details>
       <div className="flex flex-wrap gap-2 mt-4">
         {id ? <>
           <a href={pdf(id, 0)} target="_blank" rel="noopener noreferrer" data-testid="atr-cerere-pdf"><Btn type="button" variant="secondary">Cererea ATR completată (PDF)</Btn></a>
@@ -112,7 +125,7 @@ export function AtrDossier({ id, form, setVal }) {
           <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>
         </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați cererea pentru a genera documentele.</span>}
       </div>
-      {id && <AtrTracking id={id} operator={form.operator} />}
+      {id && <details className="mt-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-tracking-details"><summary className="cursor-pointer text-sm font-semibold">Stadiu și termene de urmărire</summary><div className="mt-3"><AtrTracking id={id} operator={form.operator} /></div></details>}
     </div>
   );
 }
