@@ -139,11 +139,16 @@ async def diu_import(item_id: str, request: Request, user: dict = Depends(get_cu
     p = CEF.from_legacy(p)
     cef = p.get("cef") or {}
     g = cef.get("grid") or {}
+    inverters = cef.get("inverters") or []
+    has_storage = bool(p.get("battery") or "hibrid" in str(p.get("system_type") or "").lower()
+                       or cef.get("shared_batteries")
+                       or any((inv.get("battery_mode") == "own" and (inv.get("battery") or {}).get("model"))
+                              or (inv.get("battery_mode") == "shared" and inv.get("shared_battery_id")) for inv in inverters))
     upd = {"pros_id": pid, "client_name": p.get("client_name"), "address": p.get("address"), "operator": p.get("operator"), "power": p.get("power"), "atr": p.get("atr")}
     if p.get("client_id"):
         upd["client_id"] = p["client_id"]
     fill = {"supply": p.get("supply"), "earthing": g.get("earthing"), "tg_breaker_a": g.get("tg_breaker_a"), "bmp_a": g.get("bmp_a"),
-            "type": "Sistem fotovoltaic hibrid" if p.get("battery") or "hibrid" in str(p.get("system_type") or "").lower() else "Sistem fotovoltaic on-grid",
+            "type": "Sistem fotovoltaic hibrid" if has_storage else "Sistem fotovoltaic on-grid",
             **{k: p.get(k) for k in ("receptie_date", "receptie_decision", "receptie_findings", "pif_date", "warranty_months")}}
     upd.update({k: v for k, v in fill.items() if v not in (None, "") and rec.get(k) in (None, "")})
     upd = {k: v for k, v in upd.items() if v not in (None, "")}
