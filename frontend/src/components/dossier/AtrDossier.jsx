@@ -110,10 +110,10 @@ export function AtrDossier({ id, form, setVal }) {
               {selectedPros
                 ? `Datele POD, puterea și echipamentele sunt legate de dosarul ${selectedPros.number || selectedPros.client_name || "prosumator"}.`
                 : "Alege clientul și dosarul de prosumator pentru preluarea automată a datelor tehnice."}
-              {" "}PDF-ul DNS Energy este o precompletare de lucru; formularul oficial trebuie verificat și depus în portalul distribuitorului.
+              {" "}Formularul este precompletat din dosar; valorile lipsă rămân goale. Verifică datele și semnează înainte de depunere.
             </p>
           </div>
-          {selectedDeerForm && <a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-bold text-white" style={{ background: "var(--blue)" }} data-testid="atr-download-official-annex">Descarcă anexa oficială ↗</a>}
+          {selectedDeerForm && <div className="flex flex-wrap gap-2"><Btn type="button" onClick={() => id && openAuthenticatedFile(`/atr/${encodeURIComponent(id)}/official-docx`)} disabled={!id} data-testid="atr-download-prefilled-deer">Descarcă anexa precompletată (DOCX)</Btn><a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold" style={{ borderColor: "var(--line)" }} data-testid="atr-download-official-annex">Model necompletat ↗</a></div>}
         </div>
         {selectedPros && <div className="mt-3 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full border bg-white px-3 py-1">POD: {selectedPros.pod || "de completat"}</span>
