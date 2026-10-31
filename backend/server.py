@@ -816,14 +816,23 @@ async def seed_catalog(owner: str):
     # Seed idempotent: adaugă numai modelele lipsă și pentru conturile deja existente.
     await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
     await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
-    existing = await db.catalog.find({"owner": owner}, {"category": 1, "brand_model": 1, "_id": 0}).to_list(10000)
-    known = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()) for x in existing}
+    existing = await db.catalog.find({"owner": owner}, {"id": 1, "category": 1, "brand_model": 1,
+        "datasheet_url": 1, "conformity_url": 1, "_id": 0}).to_list(10000)
+    by_key = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()): x for x in existing}
     missing = []
     for item in CATALOG_SEED:
         key = (item.get("category"), (item.get("brand_model") or "").strip().casefold())
-        if key not in known:
-            missing.append(_new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE}))
-            known.add(key)
+        row = by_key.get(key)
+        if row:
+            # Backfill manufacturer source links without overwriting a link the user already set.
+            source_updates = {f"{kind}_url": item[f"{kind}_url"] for kind in ("datasheet", "conformity")
+                              if item.get(f"{kind}_url") and not row.get(f"{kind}_url")}
+            if source_updates:
+                await db.catalog.update_one({"id": row["id"], "owner": owner}, {"$set": source_updates})
+            continue
+        created = _new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE})
+        missing.append(created)
+        by_key[key] = created
     if missing:
         await db.catalog.insert_many(missing)
 
