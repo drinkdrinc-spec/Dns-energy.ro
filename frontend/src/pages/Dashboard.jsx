@@ -12,8 +12,8 @@ import {
 const FLOW = [
   {
     number: "01",
-    title: "Client și documente",
-    desc: "Începe cu CI, factura de energie sau cartea funciară. Verifică datele extrase înainte de salvare.",
+    title: "Client și acte",
+    desc: "Încarcă CI, factura de energie și cartea funciară. Verifică datele extrase înainte de salvare.",
     to: "/prosumator",
     action: "Începe dosarul",
     icon: Upload,
@@ -21,17 +21,17 @@ const FLOW = [
   },
   {
     number: "02",
-    title: "Echipamente și dimensionare",
-    desc: "Alege echipamentele din catalog. Datele și documentele tehnice se preiau din fișele modelului.",
-    to: "/catalog-echipamente",
-    action: "Deschide catalogul",
+    title: "Instalație și echipamente",
+    desc: "Alege modelul exact al invertorului, panourilor și bateriei. Datele tehnice se preiau din fișe.",
+    to: "/prosumator",
+    action: "Configurează instalația",
     icon: Cpu,
     tone: "blue",
   },
   {
     number: "03",
     title: "ATR și spor de putere",
-    desc: "Leagă cererea de client și pregătește documentele aplicabile pentru operatorul selectat.",
+    desc: "Pornește cererea pentru clientul selectat și pregătește anexele în funcție de operator și lucrare.",
     to: "/cerere-atr",
     action: "Pregătește cererea",
     icon: FileText,
@@ -39,11 +39,20 @@ const FLOW = [
   },
   {
     number: "04",
-    title: "DI-U și verificare dosar",
-    desc: "Revizuiește schema, PRAM și documentele de predare înainte de descărcare și depunere.",
+    title: "DI-U și documente tehnice",
+    desc: "Pregătește schema monofilară, PRAM și procesele verbale PIF; descarcă fiecare document separat.",
     to: "/diu",
-    action: "Continuă dosarul",
+    action: "Pregătește documentele",
     icon: ClipboardCheck,
+    tone: "blue",
+  },
+  {
+    number: "05",
+    title: "Verificare și dosar ANRE",
+    desc: "Verifică lipsurile, pregătește dosarele ANRE și accesează portalul oficial al distribuitorului.",
+    to: "/dosare-anre",
+    action: "Verifică dosarul",
+    icon: PackageCheck,
     tone: "blue",
   },
 ];
@@ -107,7 +116,7 @@ export default function Dashboard() {
           <PackageCheck className="hidden sm:block shrink-0" size={22} style={{ color: "var(--blue)" }} />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
           {FLOW.map((step, index) => (
             <Link
               key={step.number}
