@@ -48,7 +48,7 @@ jobs:
         run: python -m compileall -q backend
       - name: Run offline technical safety tests
         run: |
-          python -m pip install pytest
+          python -m pip install pytest pytest-xdist
           python -m pytest -q backend/tests/test_technical_parameter_safety.py
       - name: Save frontend preview files as downloadable artifact
         uses: actions/upload-artifact@v4
