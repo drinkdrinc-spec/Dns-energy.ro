@@ -122,6 +122,7 @@ def test_catalog_backfill_fills_only_missing_verified_battery_fields():
     assert missing_seed_values(existing, seed) == {
         "i_max": 7.5,
         "coupling": "DC",
+        "voltage_1ph": 450,
         "voltage_3ph": 600,
         "i_max_source_url": "https://manufacturer.example/certificate.pdf",
     }
