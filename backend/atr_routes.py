@@ -583,6 +583,37 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
     return out.getvalue(), filled
 
 
+# ---------------- standalone prefilled DEER annex ----------------
+@api.get("/atr/{item_id}/official-docx")
+async def atr_official_docx(item_id: str, user: dict = Depends(get_current_user)):
+    """Download the selected DEER official annex prefilled with saved dossier data."""
+    rec = await get_rec(user, item_id, write=False)
+    client = await S.get_client(user["id"], rec) or {}
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros = {}
+    linked_pros = await S.resolve_atr_prosumer(user, rec, client)
+    if linked_pros:
+        pros, pros_client, settings, _ = await S.dossier_ctx(user, linked_pros["id"])
+        client = {**(pros_client or {}), **(client or {})}
+        rec = {**rec, "pros_id": linked_pros["id"]}
+        if "producere" not in str(rec.get("kind") or "").casefold():
+            rec["kind"] = "loc de consum și de producere"
+
+    if ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) != "deer":
+        raise HTTPException(status_code=400, detail="Precompletarea anexei oficiale este disponibilă pentru cererile DEER.")
+    try:
+        content = ATR.render_deer_official_docx(rec, client, settings, pros or {})
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    annex_info = ATR.deer_annex_info(rec)
+    label = re.sub(r"[^A-Za-z0-9_-]+", "_", (annex_info or ("Anexa_DEER",))[0]).strip("_")
+    filename = f"{label}_completata.docx"
+    return Response(content=content,
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": S.disp("attachment", filename)})
+
+
 # ---------------- complete downloadable package ----------------
 @api.get("/atr/{item_id}/package.zip")
 async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
