@@ -504,10 +504,28 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
                 value = c.get("rep_idcode") or r.get("rep_idcode")
             elif any(token in key for token in ("calitate", "functie", "rol")):
                 value = c.get("rep_role") or r.get("rep_role")
+            elif "email" in key:
+                value = c.get("rep_email") or r.get("rep_email")
+            elif "telefon" in key or "phone" in key:
+                value = c.get("rep_phone") or r.get("rep_phone")
+            elif any(token in key for token in ("adresa", "domiciliu", "strada")):
+                value = c.get("rep_address") or r.get("rep_address")
             elif any(token in key for token in ("nume", "name")):
                 value = c.get("rep_name") or r.get("rep_name")
             else:
                 value = None
+            return str(value) if value not in (None, "") else None
+        if "codpostal" in key or "postalcode" in key:
+            value = r.get("postal_code") or c.get("postal_code")
+            return str(value) if value not in (None, "") else None
+        if "registrulcomertului" in key or "registrationnumber" in key or "numarregcom" in key:
+            value = c.get("registration_no") or r.get("registration_no")
+            return str(value) if value not in (None, "") else None
+        if "iban" in key or "contbancar" in key:
+            value = c.get("iban") or r.get("iban")
+            return str(value) if value not in (None, "") else None
+        if "banca" in key or "bank" in key:
+            value = c.get("bank") or r.get("bank")
             return str(value) if value not in (None, "") else None
         for aliases, value in values:
             if value in (None, ""):
