@@ -14,7 +14,7 @@ function SharedBatteries({ list, set, catalog }) {
       <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Folosește doar dacă arhitectura producătorului permite funcționarea în paralel pe aceeași baterie.</p>
       {list.map((b, i) => (
         <div key={b.id} className="grid sm:grid-cols-4 gap-3 mb-3 pb-3 border-b" style={{ borderColor: "var(--line)" }} data-testid={`shared-${i}`}>
-          <CatalogPick items={catalog} category="Baterie" testid={`shared-${i}-pick`} onQueryChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, i_max: undefined, coupling: undefined })} onPick={(it) => upd(i, { catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, i_max: it.i_max, coupling: it.coupling || "" })} />
+          <CatalogPick items={catalog} category="Baterie" testid={`shared-${i}-pick`} onQueryChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, i_max: undefined, max_fuse_a: undefined, coupling: undefined })} onPick={(it) => upd(i, { catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, i_max: it.i_max, max_fuse_a: it.max_fuse_a, coupling: it.coupling || "" })} />
           <F label="Model" value={b.model} onChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, i_max: undefined, coupling: undefined })} testid={`shared-${i}-model`} />
           <F label="kWh / modul" type="number" value={b.kwh} onChange={(v) => upd(i, { kwh: v })} testid={`shared-${i}-kwh`} />
           <F label="Nr. module" type="number" value={b.modules} onChange={(v) => upd(i, { modules: v })} testid={`shared-${i}-modules`} />
