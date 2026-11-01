@@ -139,7 +139,7 @@ export const MODULES = {
   diu: {
     key: "diu", nav: "Dosar de utilizare (DI-U)", icon: "FolderOpen", group: "Dosare",
     eyebrow: "Documentație la finalizarea lucrării", title: "Dosar de utilizare — DI-U",
-    sub: "Completează fișa, bifează documentele existente și pregătește dosarul pentru predare.",
+    sub: "Preia datele din dosarul prosumator asociat, generează documentele DI-U și semnalează ce lipsește înainte de predare.",
     addLabel: "Dosar nou",
     display: (i) => i.number || i.address || "Dosar DI-U",
     columns: [
