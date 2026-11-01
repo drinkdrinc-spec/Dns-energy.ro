@@ -73,10 +73,23 @@ function DocSlot({ item, k, label, onUploaded }) {
 
 export default function EquipmentCatalog() {
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [cat, setCat] = useState("Invertor");
   const [q, setQ] = useState("");
   const [form, setForm] = useState(null);
-  const load = () => api.get("/data/catalog").then((r) => setItems(r.data)).catch(() => {});
+  const load = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const { data } = await api.get("/data/catalog");
+      setItems(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setLoadError(e.response?.data?.detail || "Catalogul nu s-a putut încărca. Verifică conexiunea și încearcă din nou.");
+    } finally {
+      setLoading(false);
+    }
+  };
   useEffect(() => { load(); }, []);
   const rows = useMemo(() => items.filter((i) => i.category === cat && !/\bTEST\b/i.test(String(i.brand_model || "")) && (!q || i.brand_model?.toLowerCase().includes(q.toLowerCase()))), [items, cat, q]);
 
@@ -174,7 +187,9 @@ export default function EquipmentCatalog() {
               </div>
             </article>
           ))}
-          {!rows.length && <p className="rounded-xl border p-6 text-center text-sm" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>Nu există modele în această categorie.</p>}
+          {loading && <p className="rounded-xl border p-6 text-center text-sm" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>Se încarcă modelele din catalog…</p>}
+          {!loading && loadError && <div className="rounded-xl border p-5 text-center" style={{ borderColor: "#f0c8c8", background: "#fff6f6" }} role="alert"><p className="text-sm mb-3" style={{ color: "#a33" }}>{loadError}</p><Btn variant="secondary" onClick={load} data-testid="catalog-retry-btn">Încearcă din nou</Btn></div>}
+          {!loading && !loadError && !rows.length && <p className="rounded-xl border p-6 text-center text-sm" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>Nu există modele în această categorie.</p>}
         </div>
       </div>
     </div>
