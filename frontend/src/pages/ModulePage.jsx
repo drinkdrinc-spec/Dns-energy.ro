@@ -601,14 +601,20 @@ export default function ModulePage({ moduleKey }) {
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
                     {key === "atr" && (() => {
                       const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
-                      const belongsToAtrClient = (prosumer) => it.client_id
-                        ? (prosumer.client_id ? prosumer.client_id === it.client_id : normalize(prosumer.client_name) === normalize(it.client_name))
-                        : normalize(prosumer.client_name) === normalize(it.client_name);
+                      const belongsToAtrClient = (prosumer) => (
+                        Boolean(it.client_id && prosumer.client_id && prosumer.client_id === it.client_id)
+                        || normalize(prosumer.client_name) === normalize(it.client_name)
+                      );
+                      const normalizeLocation = (value) => normalize(value).replace(/[^a-z0-9]/g, "");
                       const exactCandidate = it.pros_id ? linkedProsumer.find((p) => p.id === it.pros_id) : null;
                       const exactLink = exactCandidate && belongsToAtrClient(exactCandidate) ? exactCandidate : null;
                       const candidates = linkedProsumer.filter(belongsToAtrClient);
-                      const linked = exactLink || (candidates.length === 1 ? candidates[0] : null);
-                      const ambiguous = !exactLink && candidates.length > 1;
+                      const locationValue = it.pod || it.address;
+                      const locationMatches = locationValue ? candidates.filter((p) => (
+                        normalizeLocation(it.pod ? p.pod : p.address) === normalizeLocation(locationValue)
+                      )) : candidates;
+                      const linked = exactLink || (locationMatches.length === 1 ? locationMatches[0] : null);
+                      const ambiguous = !exactLink && (locationMatches.length > 1 || (!locationValue && candidates.length > 1));
                       const inverters = linked?.cef?.inverters || [];
                       const panels = [...new Set(inverters.map((x) => x.panel_model).filter(Boolean))];
                       const batteries = [
