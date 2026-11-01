@@ -93,3 +93,16 @@
   .den-panel { box-shadow: none !important; border: 1px solid #ccc; break-inside: avoid; }
   body { background: #fff !important; }
 }
+
+/* Mobile form ergonomics: prevent iOS focus zoom and keep dense cards readable. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  .den-panel {
+    padding: 16px;
+  }
+}
