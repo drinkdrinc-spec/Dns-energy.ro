@@ -158,6 +158,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       {opts ? <select className="den-input" value={form[name] ?? ""} onChange={(e) => { const v = e.target.value; setVal(name, v); if (name === "supply") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), supply: v } }); }}><option value="">Alege...</option>{opts.map((o) => <option key={o} value={o}>{o}</option>)}</select>
         : <input className="den-input" type={type} step={type === "number" ? "any" : undefined} value={form[name] ?? ""} onChange={(e) => {
           const v = e.target.value; setVal(name, v);
+          if (name === "hq_address" && form.address_same_as_ci === true) setVal("address", v);
           if (name === "panel_count") setVal("panel_count_auto", false);
           if (name === "bransament_kw") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), bransament_kw: Number(v) || "" } });
           if (name === "panel_count" && form.cef?.inverters?.length) {
