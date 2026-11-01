@@ -427,6 +427,7 @@ export default function ModulePage({ moduleKey }) {
       )}
 
       <div className="den-panel">
+        {onlyTestRecords && showTestRecords !== false && <div className="mb-4 rounded-lg border px-3 py-2 text-xs font-medium" style={{ borderColor: "#f2d28c", background: "#fff9e9", color: "#73520b" }} role="status">Sunt afișate dosare demonstrative marcate TEST. Folosește-le numai pentru verificarea fluxului; nu conțin date reale și nu se depun.</div>}
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({visibleItems.length})</span></h2>
           {hiddenTestCount > 0 && <button type="button" className="text-xs underline" onClick={() => setShowTestRecords((value) => !value)}>{(showTestRecords === true || (showTestRecords === null && onlyTestRecords)) ? "Ascunde" : "Arată"} înregistrările TEST ({hiddenTestCount})</button>}
