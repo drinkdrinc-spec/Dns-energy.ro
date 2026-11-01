@@ -119,10 +119,11 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       setVal("panels", item?.brand_model || ""); setVal("panel_w", item?.w || "");
       const suggestedCount = item ? panelCountForPower(form.power, item.w) : "";
       const hasSavedCount = form.panel_count !== undefined && form.panel_count !== null && String(form.panel_count).trim() !== "";
-      const useSuggestion = Boolean(suggestedCount) && (form.panel_count_auto === true || (!hasSavedCount && form.panel_count_auto !== false));
+      const autoMode = Boolean(item) && (form.panel_count_auto === true || (!hasSavedCount && form.panel_count_auto !== false));
+      const useSuggestion = Boolean(suggestedCount) && autoMode;
       panelCountOverride = useSuggestion ? suggestedCount : undefined;
       setVal("panel_count", useSuggestion ? suggestedCount : (item ? (form.panel_count || "") : ""));
-      setVal("panel_count_auto", useSuggestion);
+      setVal("panel_count_auto", autoMode);
     } else if (kind === "battery") {
       setVal("battery", item?.brand_model || ""); setVal("battery_kwh", item?.kwh || "");
       setVal("battery_v", item?.voltage || ""); setVal("battery_ah", item?.ah || "");
