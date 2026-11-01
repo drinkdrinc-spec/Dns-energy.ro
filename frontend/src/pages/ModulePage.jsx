@@ -174,7 +174,7 @@ export default function ModulePage({ moduleKey }) {
             ? linkedPros.find((item) => item.id === prosId)
             : linkedPros.length === 1 ? linkedPros[0] : null;
           const showTests = params.get("showTests") === "1";
-          if (!client && showTests && (pros?.is_test || /\\bTEST\\b/i.test(String(pros?.client_name || "")))) {
+          if (!client && showTests && (pros?.is_test || /\bTEST\b/i.test(String(pros?.client_name || "")))) {
             client = { id: clientId, name: pros.client_name || "TEST — client demonstrativ", address: pros.address || "", operator: pros.operator || "" };
             setRefOptions((prev) => {
               const clients = prev.clients || [];
