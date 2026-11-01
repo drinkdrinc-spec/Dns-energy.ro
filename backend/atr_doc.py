@@ -637,6 +637,16 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
     cef = pros.get("cef") or {}
     inverters = cef.get("inverters") or []
     p = CEF.flatten(pros) if pros else {}
+    limit_values = []
+    for inv in inverters:
+        model = str(inv.get("brand_model") or "Invertor")
+        unit_count = max(1, int(D.num(inv.get("count")) or 1))
+        unit_limit = D.num(inv.get("p_limit_kw"))
+        if unit_limit is None or unit_limit <= 0:
+            limit_values.append(f"{model}: limită nedeclarată")
+        else:
+            limit_values.append(f"{model}: {unit_limit:g} kW/buc. × {unit_count} buc.")
+    inverter_limit = "; ".join(limit_values) if limit_values else "Nedeclarată în configurarea invertorului"
     v = lambda value: escape(str(value)) if value not in (None, "") else M
     P = lambda text, style="p": Paragraph(text, D.S[style])
     T = lambda rows, widths: D.pdf_table(rows, widths, True, 7.6, 178)
@@ -671,7 +681,7 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
         T([["Câmp", "Valoare disponibilă"], ["Putere absorbită solicitată", v(rec.get("p_abs_kw")) + " kW / " + v(rec.get("p_abs_kva")) + " kVA"],
            ["Putere instalată fotovoltaică", v(rec.get("pv_kw") or p.get("power") or pros.get("power")) + " kW"],
            ["Putere evacuată solicitată", v(rec.get("p_evac_kw") or pros.get("power")) + " kW / " + v(rec.get("p_evac_kva")) + " kVA"],
-           ["Limită injectare invertor", v(rec.get("p_evac_kw") or pros.get("power")) + " kW"]], [48, 130]),
+           ["Limită de injecție declarată în setările invertorului", v(inverter_limit)]], [48, 130]),
         Spacer(1, 4),
         P("4. Echipamente declarate", "b"),
     ]
