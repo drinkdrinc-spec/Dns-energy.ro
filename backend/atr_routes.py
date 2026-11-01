@@ -44,7 +44,7 @@ DELGaz_FORM_PDFS = {
 OLTENIA_FORMS_URL = "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html"
 OLTENIA_FORM_PDFS = {
     1: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2024%2F26.01.2024%2F&fileName=01-03-01_P03-F16_Cerere+racordare+prosumatori_LC+noi+sau+spor+putere_anexa+1_rev06.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files",
-    2: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2023%2F&fileName=01-03-01_P03-F18_Notificare+racordare+prosumator+LC+existent+_anexa+2_rev05.doc.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files",
+    2: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FProsumatori%2Finformatii%20prosumatori%20racordati%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F18_Notificare%20racordare%20prosumator%20LC%20existent%20_anexa%202_rev06.pdf",
     3: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FFormulare%20racordare%2F2023%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F17_Notificare%20certificarea%20calitatii%20de%20prosumator%20LC%20producator%20existent_anexa%203_rev05.doc.pdf",
     4: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FProsumatori%2F2023%2F11.09.2023%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F15_CerereDeRacordProsuMPtLcExistCareAccesProgDeFinan%C8%9BPrivInstlDeCE-PtProdDeEnElDin%20SursRegen_Anexa%204_rev05.pdf",
     5: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FProsumatori%2F2023%2F08.06.2023%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F28_NotifRacordLC_LC%26proddin%20surse%20renerabileProsumPutereSub%2010%2C8kw_rev_01.pdf",
@@ -261,7 +261,7 @@ async def operator_form_links(operator: str = "", scope: str = "atr", user: dict
     if op == "oltenia" and scope == "atr":
         existing_titles = {str(row.get("title") or "").casefold() for row in out}
         for annex_no, url in OLTENIA_FORM_PDFS.items():
-            title = f"Distribuție Oltenia — Anexa {annex_no} prosumatori"
+            title = {1: "Distribuție Oltenia — Anexa 1 prosumatori rev. 06", 2: "Distribuție Oltenia — Anexa 2 prosumatori rev. 06", 3: "Distribuție Oltenia — Anexa 3 prosumatori rev. 05", 4: "Distribuție Oltenia — Anexa 4 prosumatori rev. 05", 5: "Distribuție Oltenia — Anexa 5 prosumatori rev. 01"}[annex_no]
             if title.casefold() not in existing_titles:
                 out.append({"id": f"builtin-oltenia-annex-{annex_no}", "operator": "Distribuție Oltenia",
                             "title": title, "url": url, "status": "sursă oficială", "version": "formular curent",
@@ -410,7 +410,7 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
         return annex_no, [{
             "operator": "Distribuție Oltenia",
             "kind": "prosumator atr",
-            "title": f"Anexa {annex_no} — formular prosumator Distribuție Oltenia",
+            "title": {1: "Anexa 1 prosumator Distribuție Oltenia rev. 06", 2: "Anexa 2 prosumator Distribuție Oltenia rev. 06", 3: "Anexa 3 prosumator Distribuție Oltenia rev. 05", 4: "Anexa 4 prosumator Distribuție Oltenia rev. 05", 5: "Anexa 5 prosumator Distribuție Oltenia rev. 01"}[annex_no],
             "url": OLTENIA_FORM_PDFS[annex_no],
             "source_url": OLTENIA_FORMS_URL,
             "status": "sursă oficială",
