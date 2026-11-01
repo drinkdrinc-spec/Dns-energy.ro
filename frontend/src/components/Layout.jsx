@@ -8,7 +8,7 @@ import { Menu, Home, FolderOpen, Receipt, Cpu, MoreHorizontal, UserRound, FileCh
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const workflowPaths = ["/clienti", "/prosumator", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/dosare-anre", "/mono", "/portaluri-distribuitori"];
+  const workflowPaths = ["/clienti", "/prosumator", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/dosare-anre", "/mono", "/pram", "/portaluri-distribuitori"];
   const showWorkflow = workflowPaths.some((path) => location.pathname.startsWith(path));
   return (
     <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
