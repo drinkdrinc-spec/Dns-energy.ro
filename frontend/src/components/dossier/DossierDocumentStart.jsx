@@ -12,7 +12,7 @@ const TYPES = [
   ["altele", "4. Alte documente", "PDF, imagini, DOCX și XLSX pot fi citite și rezumate; DOC/XLS și alte formate se atașează pentru verificare manuală."],
 ];
 
-const EMPTY = { client_name: "", cnp: "", hq_address: "", county: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "" };
+const EMPTY = { client_name: "", cnp: "", hq_address: "", county: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "" };
 
 // Some mobile document pickers report a blank or generic MIME type even when the
 // filename is a supported PDF/image. Use the extension as a safe fallback.
@@ -63,7 +63,7 @@ export function DossierDocumentStart({ onCreated }) {
         if (data.warning) extractionWarnings.push(`${file.name}: ${data.warning}`);
         const x = data.data || {};
         if (kind === "ci") mergedValues = putNonempty(mergedValues, { client_name: x.client_name, cnp: x.cnp, hq_address: x.hq_address || x.address,
-          county: x.county, phone: x.phone, email: x.email, ci_series: x.id_series && x.id_number ? `${x.id_series} ${x.id_number}` : x.id_series || x.id_number });
+          county: x.county, phone: x.phone, email: x.email, id_series: x.id_series, id_number: x.id_number });
         if (kind === "factura") mergedValues = putNonempty(mergedValues, { client_name: mergedValues.client_name || x.client_name, cnp: mergedValues.cnp || x.cnp,
           address: x.consumption_address || x.address, pod: x.pod, operator: x.operator, supplier: x.supplier,
           county: mergedValues.county || x.county, phone: mergedValues.phone || x.phone, email: mergedValues.email || x.email });
@@ -126,7 +126,7 @@ export function DossierDocumentStart({ onCreated }) {
           </div>)}
         </div>
         <div className="grid sm:grid-cols-2 gap-3 pt-2">
-          {field("client_name", "Nume client *")}{field("cnp", "CNP / CUI")}
+          {field("client_name", "Nume client *")}{field("cnp", "CNP / CUI")}{field("id_series", "Serie CI")}{field("id_number", "Număr CI")}
           {field("hq_address", "Domiciliu din CI")}{field("address", "Adresa locului de consum din factură")}
           {field("pod", "POD din factură")}{field("operator", "Operator de distribuție")}
           {field("cf_nr", "Număr carte funciară")}{field("cadastral_nr", "Număr cadastral")}
