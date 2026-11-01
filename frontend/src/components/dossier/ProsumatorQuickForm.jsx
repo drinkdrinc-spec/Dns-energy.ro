@@ -278,7 +278,16 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
         {form.panel_count_auto === true && <p className="sm:col-span-2 -mt-2 text-xs text-blue-800">Propunere: puterea solicitată ÷ puterea din fișa panoului, rotunjită în sus. Poți modifica numărul; verifică apoi stringurile și limitele invertorului.</p>}
         {catalogSelect("battery", "Baterie (opțional)")}
         {input("battery_count", "Număr baterii", "number")}
-        {catalogSelect("meter", "Smart meter (opțional)")}
+        <label className="den-field"><span>Smart meter</span><span className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={form.smart_meter_present === true} onChange={(e) => {
+          const present = e.target.checked;
+          setVal("smart_meter_present", present);
+          if (!present) {
+            setVal("smart_meter_type", "");
+            setVal("catalog_selection", { ...selected, meter: "" });
+            setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), meter: "", meter_catalog_id: "" } });
+          }
+        }} /> Există la instalație</span></label>
+        {form.smart_meter_present === true && catalogSelect("meter", "Model smart meter (opțional)")}
         <label className="den-field"><span>Backup</span><span className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={form.backup === true || form.backup === "Da"} onChange={(e) => { const on = e.target.checked; setVal("backup", on); setVal("anti_relay_present", on ? "DA" : "NU"); const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] }; setVal("cef", { ...cef, grid: { ...(cef.grid || {}), anti_required: on }, inverters: (cef.inverters || []).map((x, i) => i ? x : { ...x, backup: { ...(x.backup || {}), enabled: on } }) }); }} /> Include ieșire de rezervă</span></label>
       </div>
       {(() => { const strings = form.cef?.inverters?.[0]?.strings || []; return strings.some((x) => x.auto_generated)
