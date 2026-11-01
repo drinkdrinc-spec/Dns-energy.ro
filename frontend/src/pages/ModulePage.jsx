@@ -150,7 +150,7 @@ export default function ModulePage({ moduleKey }) {
             cf_nr: client.cf_nr || pros?.cf_nr || "",
             cadastral_nr: client.cadastral_nr || pros?.cadastral_nr || "",
             request_type: requestType,
-            ...(/deer|distributie energie electrica romania/i.test(String(client.operator || pros?.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")) && caseName.toLocaleLowerCase("ro-RO").includes("spor") ? { deer_case: "Loc existent — spor de putere — Anexa 1" } : {}),
+            ...(/deer|distributie energie electrica romania/i.test(String(client.operator || pros?.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")) && (caseName.toLocaleLowerCase("ro-RO").includes("spor") || caseName === "power-increase") ? { deer_case: "Loc existent — spor de putere — Anexa 1" } : {}),
           });
           setEditId(null); setChecks({});
           window.history.replaceState(null, "", window.location.pathname);
