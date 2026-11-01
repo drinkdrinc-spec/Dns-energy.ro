@@ -252,9 +252,9 @@ def check(cef: dict) -> dict:
         errors.append(f"Puterea evacuată totală ({tot_export:g} kW) depășește puterea aprobată a branșamentului ({br_kw:g} kW) — necesar spor de putere / ATR.")
     if not tri_grid and tot_export > 3.68 * max(1, len(invs)) and invs:
         warnings.append("Racord monofazat cu putere mare — verifică cerințele OD privind dezechilibrul (uzual trifazat peste ~3,7–5 kW).")
-    anti_auto = tot_kwp > 27 or tot_kw > 27
-    anti = bool(grid.get("anti_required")) or anti_auto
     i_br = (br_kw * 1000 / (math.sqrt(3) * 400 * 0.95)) if tri_grid else (br_kw * 1000 / (230 * 0.95))
+    anti_auto = tot_kwp > 27 or tot_kw > 27 or i_br > 63
+    anti = bool(grid.get("anti_required")) or anti_auto
     main_proposal = up(MAIN_PROTECTION, i_br) if br_kw else None
     anti_breaker_proposal = up(MAIN_BREAKERS, i_br) if anti and i_br else None
     if br_kw and i_br > MAIN_PROTECTION[-1]:
