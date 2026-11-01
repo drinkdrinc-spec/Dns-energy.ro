@@ -637,10 +637,10 @@ export default function ModulePage({ moduleKey }) {
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
                     {key === "atr" && (() => {
                       const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
-                      const belongsToAtrClient = (prosumer) => (
-                        Boolean(it.client_id && prosumer.client_id && prosumer.client_id === it.client_id)
-                        || normalize(prosumer.client_name) === normalize(it.client_name)
-                      );
+                      const belongsToAtrClient = (prosumer) => {
+                        if (it.client_id && prosumer.client_id) return prosumer.client_id === it.client_id;
+                        return normalize(prosumer.client_name) === normalize(it.client_name);
+                      };
                       const normalizeLocation = (value) => normalize(value).replace(/[^a-z0-9]/g, "");
                       const exactCandidate = it.pros_id ? linkedProsumer.find((p) => p.id === it.pros_id) : null;
                       const exactLink = exactCandidate && belongsToAtrClient(exactCandidate) ? exactCandidate : null;
