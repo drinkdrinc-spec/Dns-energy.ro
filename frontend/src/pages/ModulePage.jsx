@@ -230,7 +230,8 @@ export default function ModulePage({ moduleKey }) {
         next.kind = "Loc de consum și de producere (prosumator)";
         if (linked.supply) next.supply = linked.supply;
         if (linked.bransament_kw) next.p_abs_kw = linked.bransament_kw;
-        const installedKwp = installedPanelKwp(linked);\n        if (installedKwp) next.pv_kw = installedKwp;
+        const installedKwp = installedPanelKwp(linked);
+        if (installedKwp) next.pv_kw = installedKwp;
         if (linked.power) next.p_evac_kw = linked.power;
         if (/spor/i.test(String(linked.request_type || ""))) {
           next.request_type = "dezvoltarea unui utilizator existent (spor de putere)";
