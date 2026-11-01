@@ -259,8 +259,12 @@ def check(cef: dict) -> dict:
     if supply_known and not tri_grid and tot_export > 3.68 * max(1, len(invs)) and invs:
         warnings.append("Racord monofazat cu putere mare — verifică cerințele OD privind dezechilibrul (uzual trifazat peste ~3,7–5 kW).")
     i_br = ((br_kw * 1000 / (math.sqrt(3) * 400 * 0.95)) if tri_grid else (br_kw * 1000 / (230 * 0.95))) if br_kw and supply_known else 0
-    anti_auto = tot_kwp > 27 or tot_kw > 27 or i_br > 63
+    backup_enabled = any(bool((inv.get("backup") or {}).get("enabled")) for inv in invs)
+    anti_size_auto = tot_kwp > 27 or tot_kw > 27 or i_br > 63
+    anti_auto = anti_size_auto or backup_enabled
     anti = bool(grid.get("anti_required")) or anti_auto
+    if backup_enabled:
+        warnings.append("Circuitul de backup este selectat: schema propune protecție antiinsularizare pe branșamentul de rețea cu bobină de declanșare; soluția finală și dimensionarea se confirmă cu ATR-ul și schema producătorului.")
     main_proposal = up(MAIN_PROTECTION, i_br) if br_kw and supply_known else None
     anti_breaker_proposal = up(MAIN_BREAKERS, i_br) if anti and i_br else None
     if br_kw and i_br > MAIN_PROTECTION[-1]:
@@ -297,7 +301,7 @@ def check(cef: dict) -> dict:
                        "panels": sum(s["panels"] * i.get("count", 1) for i in out_inv for s in i["strings"]),
                        "inverters": sum(i.get("count", 1) for i in out_inv)},
             "grid": {"tri": tri_grid if supply_known else None, "bransament_kw": br_kw, "i_br": round(i_br, 1) if br_kw and supply_known else 0,
-                     "main_proposal": main_proposal, "main_section_proposal": column_section, "main_section_iz": round(column_iz, 1) if column_iz else None, "main_section_du": round(column_du, 2) if column_du is not None else None, "anti_breaker_proposal": anti_breaker_proposal, "anti_breaker_note": "întreruptor motorizat cu bobină de declanșare; confirmați curba, Icu/Ics și schema din ATR" if anti_breaker_proposal else None, "anti": anti, "anti_auto": anti_auto},
+                     "main_proposal": main_proposal, "main_section_proposal": column_section, "main_section_iz": round(column_iz, 1) if column_iz else None, "main_section_du": round(column_du, 2) if column_du is not None else None, "anti_breaker_proposal": anti_breaker_proposal, "anti_breaker_note": "întreruptor motorizat cu bobină de declanșare; confirmați curba, Icu/Ics și schema din ATR" if anti_breaker_proposal else None, "anti": anti, "anti_auto": anti_auto, "anti_backup": backup_enabled},
             "inverters": out_inv, "errors": errors, "warnings": warnings, "tmin": tmin,
             "note": "Valorile propuse sunt orientative (IEC 60364-5-52 / I7). Se validează de personal autorizat ANRE conform instrucțiunilor producătorului."}
 
