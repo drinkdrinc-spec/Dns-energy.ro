@@ -685,7 +685,7 @@ export default function ModulePage({ moduleKey }) {
                   battery.i_max ? `I max ${battery.i_max} A` : "",
                   battery.kwh ? `${battery.kwh} kWh` : "",
                   battery.coupling ? `cuplare ${battery.coupling}` : "",
-                ].filter(Boolean).join(" · "))].map((name) => `Baterie: ${name}`);
+                ].filter(Boolean).join(" · ")))].map((name) => `Baterie: ${name}`);
                 return [...inverterNames, ...panelNames, ...batteryNames].join(" · ") || "În dosar";
               })() : ambiguous ? "Selectează dosarul prosumator în cerere" : "Nu este asociat un dosar prosumator";
               const isDeer = /deer|distributie energie electrica romania/i.test(String(it.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
