@@ -654,6 +654,12 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
     cef = pros.get("cef") or {}
     inverters = cef.get("inverters") or []
     p = CEF.flatten(pros) if pros else {}
+    installed_pv_kwp = rec.get("pv_kw") or p.get("_kwp") or p.get("panel_kwp") or pros.get("_kwp") or pros.get("panel_kwp")
+    if not installed_pv_kwp:
+        legacy_panel_count = D.num(p.get("panel_count") or pros.get("panel_count"))
+        legacy_panel_w = D.num(p.get("panel_w") or pros.get("panel_w"))
+        if legacy_panel_count > 0 and legacy_panel_w > 0:
+            installed_pv_kwp = legacy_panel_count * legacy_panel_w / 1000
     limit_values = []
     for inv in inverters:
         model = str(inv.get("brand_model") or "Invertor")
@@ -701,7 +707,7 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
         Spacer(1, 4),
         P("3. Puteri și parametri solicitați", "b"),
         T([["Câmp", "Valoare disponibilă"], ["Putere absorbită solicitată", v(rec.get("p_abs_kw")) + " kW / " + v(rec.get("p_abs_kva")) + " kVA"],
-           ["Putere instalată fotovoltaică", v(rec.get("pv_kw") or p.get("power") or pros.get("power")) + " kW"],
+           ["Putere instalată fotovoltaică (DC)", v(installed_pv_kwp) + " kWp"],
            ["Putere evacuată solicitată", v(rec.get("p_evac_kw") or pros.get("power")) + " kW / " + v(rec.get("p_evac_kva")) + " kVA"],
            ["Limită de injecție declarată în setările invertorului", v(inverter_limit)]], [48, 130]),
         Spacer(1, 4),
