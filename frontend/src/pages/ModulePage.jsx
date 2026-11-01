@@ -173,7 +173,7 @@ export default function ModulePage({ moduleKey }) {
           const showTests = params.get("showTests") === "1";
           const linkedPros = allPros.filter((item) => item.client_id ? item.client_id === clientId : Boolean(client && normalizeClientName(item.client_name) === normalizeClientName(client.name)));
           const pros = prosId
-            ? linkedPros.find((item) => item.id === prosId) || (showTests ? allPros.find((item) => item.id === prosId && (item.is_test || /\\bTEST\\b/i.test(String(item.client_name || "")))) : null)
+            ? linkedPros.find((item) => item.id === prosId) || (showTests ? allPros.find((item) => item.id === prosId && (item.is_test || String(item.client_name || "").toUpperCase().includes("TEST"))) : null)
             : linkedPros.length === 1 ? linkedPros[0] : null;
           if (!client && showTests && (pros?.is_test || /\bTEST\b/i.test(String(pros?.client_name || "")))) {
             client = { id: clientId, name: pros.client_name || "TEST — client demonstrativ", address: pros.address || "", operator: pros.operator || "" };
