@@ -171,7 +171,7 @@ def check_inverters(user: dict, d: dict):
 
 # ---------------- Object storage ----------------
 # DNS Energy uses Cloudflare R2 directly. No Emergent proxy or fallback.
-from gridfs_storage import init_storage, put_object, get_object
+from gridfs_storage import init_storage, put_object, get_object, LegacyObjectUnavailable
 
 # Namespace used for uploaded file keys in MongoDB GridFS.
 APP_NAME = os.environ.get("APP_NAME", "dns-energy").strip("/") or "dns-energy"
@@ -610,7 +610,10 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
                 break
         if not ok and not await db.staff.find_one({"owner": user["id"], "id": user.get("staff_id")}) :
             raise HTTPException(status_code=404, detail="Fișier inexistent sau fără drept de acces")
-    data, content_type = get_object(path)
+    try:
+        data, content_type = get_object(path)
+    except LegacyObjectUnavailable as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
     return Response(content=data, media_type=content_type)
 
 # ---------------- AI extraction & document generation ----------------
