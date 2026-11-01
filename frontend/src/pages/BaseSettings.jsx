@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, fileUrl } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { Plus, Trash2, Upload, FileText } from "lucide-react";
@@ -21,7 +21,7 @@ function FileSlot({ label, file, onFile, testid }) {
     <div className="flex items-center gap-2 text-xs flex-wrap" data-testid={testid}>
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { onFile(await uploadFile(f)); ref.current.value = ""; } }} data-testid={`${testid}-input`} />
       <span className="font-semibold">{label}:</span>
-      {file ? <a href={fileUrl(file.storage_path)} target="_blank" rel="noopener noreferrer" className="underline inline-flex items-center gap-1" style={{ color: "var(--blue)" }}><FileText size={12} />{file.original_filename}</a> : <span style={{ color: "var(--muted)" }}>neîncărcat</span>}
+      {file ? <button type="button" onClick={() => openAuthenticatedFile(`/files/${file.storage_path}`)} className="underline inline-flex items-center gap-1 text-left" style={{ color: "var(--blue)" }}><FileText size={12} />{file.original_filename}</button> : <span style={{ color: "var(--muted)" }}>neîncărcat</span>}
       <button onClick={() => ref.current.click()} className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} data-testid={`${testid}-btn`}><Upload size={12} />{file ? "Înlocuiește" : "Încarcă"}</button>
     </div>
   );
@@ -49,7 +49,7 @@ function Company() {
         <FileSlot label="Ștampila firmei (imagine)" file={s.stamp} onFile={setFile("stamp")} testid="co-stamp" />
         <FileSlot label="Atestat ANRE (PDF)" file={s.anre_file} onFile={setFile("anre_file")} testid="co-anre-file" />
         <FileSlot label="Alt document / autorizație" file={null} onFile={(f) => save({ ...s, other_docs: [...(s.other_docs || []), f] })} testid="co-other" />
-        {(s.other_docs || []).map((f, i) => <div key={f.storage_path} className="text-xs ml-4 flex gap-2"><a className="underline" style={{ color: "var(--blue)" }} href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer">{f.original_filename}</a>
+        {(s.other_docs || []).map((f, i) => <div key={f.storage_path} className="text-xs ml-4 flex gap-2"><button type="button" className="underline text-left" style={{ color: "var(--blue)" }} onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)}>{f.original_filename}</button>
           <button onClick={() => save({ ...s, other_docs: s.other_docs.filter((_, j) => j !== i) })}><Trash2 size={12} style={{ color: "#b33333" }} /></button></div>)}
       </div>
       <p className="text-[11px] mt-3" style={{ color: "var(--muted)" }}>Ștampila (imagine PNG/JPG) și semnătura grafică a persoanei selectate ca executant/semnatar se aplică automat la generarea documentelor, doar dacă persoana are autorizație valabilă și verificată și a autorizat folosirea semnăturii. Lipsurile și documentele expirate sunt semnalate ca avertisment în dosar.</p>
