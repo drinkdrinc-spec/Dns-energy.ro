@@ -24,6 +24,8 @@ OP_DOMAINS = {"deer": ("distributie-energie.ro",), "delgaz": ("delgaz-grid.ro", 
               "oltenia": ("distributieoltenia.ro", "evryo.ro")}
 DEFAULT_TERMS = {"check_days": 10, "issue_days": 30, "remind_days": 3}
 LINK_DAYS = 30
+DEER_GDPR_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf"
+DEER_FORMS_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/"
 
 
 def now() -> str:
@@ -340,13 +342,41 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
         archive.writestr(pdf_name, pdf)
         op_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
         if op_key == "deer":
+            annex_info = ATR.deer_annex_info(rec)
             try:
                 annex = ATR.render_deer_official_docx(rec, client, settings, pros or {})
             except (ValueError, RuntimeError) as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
-            info = ATR.deer_annex_info(rec)
-            label = re.sub(r"[^A-Za-z0-9_-]+", "_", (info or ("Anexa_DEER",))[0]).strip("_")
+            label = re.sub(r"[^A-Za-z0-9_-]+", "_", (annex_info or ("Anexa_DEER",))[0]).strip("_")
             archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
+
+            # Include the operator's blank source form beside the prefilled working copy.
+            # The source file is retrieved only from the allow-listed DEER host and checked
+            # for a PDF/DOCX signature and a 20 MB size limit by _fetch_registry_annex.
+            deer_notes = [
+                "Pachet DEER — formularul completat este o copie de lucru precompletată din datele salvate.",
+                "Verificați versiunea curentă, completați câmpurile rămase goale și semnați înainte de depunere.",
+                f"Sursa oficială cu formularele aplicabile: {DEER_FORMS_URL}",
+            ]
+            if annex_info and annex_info[2]:
+                try:
+                    source, source_name = await _fetch_registry_annex(
+                        {"title": annex_info[1], "url": annex_info[2]}, "deer")
+                    archive.writestr(f"Anexe oficiale/Formular oficial necompletat/{source_name}", source)
+                    deer_notes.append(f"Formularul oficial {annex_info[0]} a fost inclus ca fișier original necompletat.")
+                except (httpx.HTTPError, ValueError) as exc:
+                    deer_notes.append(f"Formularul oficial nu a putut fi preluat acum: {exc}")
+            else:
+                deer_notes.append("Nu a fost identificată anexa oficială pentru selecția curentă; verificați pagina DEER.")
+
+            try:
+                gdpr, gdpr_name = await _fetch_registry_annex(
+                    {"title": "Nota DEER de informare GDPR v1/2026", "url": DEER_GDPR_URL}, "deer")
+                archive.writestr(f"Anexe oficiale/{gdpr_name}", gdpr)
+                deer_notes.append("Nota oficială DEER privind prelucrarea datelor personale (v1/2026) a fost inclusă.")
+            except (httpx.HTTPError, ValueError) as exc:
+                deer_notes.append(f"Nota GDPR oficială nu a putut fi preluată acum; descărcați-o de aici: {DEER_GDPR_URL} ({exc})")
+            archive.writestr("Anexe oficiale/INFO_DEER.txt", "\n".join(deer_notes))
         else:
             annex_no, forms = await _registry_forms_for_request(op_key, rec, pros)
             if annex_no:
