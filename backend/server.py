@@ -201,6 +201,7 @@ MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gi
               "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
               "xls": "application/vnd.ms-excel",
               "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 # ---------------- Models ----------------
 class RegisterReq(BaseModel):
@@ -526,13 +527,23 @@ async def save_settings(request: Request, user: dict = Depends(get_current_user)
 @api_router.post("/upload")
 async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     need(user, None, True)
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
+    filename = str(file.filename or "document")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    expected_type = MIME_TYPES.get(ext)
+    if not expected_type:
+        raise HTTPException(status_code=415, detail="Tipul fișierului nu este acceptat")
+    declared_type = str(file.content_type or "").split(";", 1)[0].strip().lower()
+    if declared_type and declared_type not in (expected_type, "application/octet-stream"):
+        raise HTTPException(status_code=415, detail="Tipul fișierului nu corespunde extensiei")
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
+    if not data:
+        raise HTTPException(status_code=400, detail="Fișierul este gol")
     path = f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}"
-    data = await file.read()
-    ct = file.content_type or MIME_TYPES.get(ext, "application/octet-stream")
-    result = put_object(path, data, ct)
-    return {"storage_path": result["path"], "original_filename": file.filename,
-            "content_type": ct, "size": result.get("size", len(data))}
+    result = put_object(path, data, expected_type)
+    return {"storage_path": result["path"], "original_filename": filename[:255],
+            "content_type": expected_type, "size": result.get("size", len(data))}
 
 @api_router.post("/catalog/{item_id}/import-document")
 async def catalog_import_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
@@ -670,11 +681,11 @@ async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> 
 @api_router.post("/ai/extract")
 async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"), user: dict = Depends(get_current_user)):
     guard("prosumator", user, write=True)
-    # Document intake is part of the prosumer workflow. The route already checks the\n    # prosumer module entitlement above; do not require a second AI-only feature for\n    # selectable-text PDFs and local Office extraction. GPT/OCR remains feature-gated below.\n    data = await file.read()
+    # Document intake is part of the prosumer workflow. The route already checks the\n    # prosumer module entitlement above; do not require a second AI-only feature for\n    # selectable-text PDFs and local Office extraction. GPT/OCR remains feature-gated below.\n    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
     if not data:
         raise HTTPException(status_code=400, detail="Fișierul este gol")
-    if len(data) > 25 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
     filename = str(file.filename or "document.pdf")
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
     ct = str(file.content_type or "").split(";", 1)[0].strip().lower()
