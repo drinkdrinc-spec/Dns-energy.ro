@@ -132,7 +132,7 @@ export default function ModulePage({ moduleKey }) {
           if (!client) return;
           const kind = String(client.kind || "").toLowerCase();
           const caseName = params.get("case") || "";
-          const requestType = caseName.toLocaleLowerCase("ro-RO").includes("spor")
+          const requestType = caseName.toLocaleLowerCase("ro-RO").includes("spor") || caseName === "power-increase"
             ? "dezvoltarea unui utilizator existent (spor de putere)"
             : "";
           setForm({
@@ -150,7 +150,7 @@ export default function ModulePage({ moduleKey }) {
             cf_nr: client.cf_nr || pros?.cf_nr || "",
             cadastral_nr: client.cadastral_nr || pros?.cadastral_nr || "",
             request_type: requestType,
-            ...(caseName ? { deer_case: caseName } : {}),
+            ...(/deer|distributie energie electrica romania/i.test(String(client.operator || pros?.operator || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")) && caseName.toLocaleLowerCase("ro-RO").includes("spor") ? { deer_case: "Loc existent — spor de putere — Anexa 1" } : {}),
           });
           setEditId(null); setChecks({});
           window.history.replaceState(null, "", window.location.pathname);
@@ -258,7 +258,7 @@ export default function ModulePage({ moduleKey }) {
         if (linked.power) next.p_evac_kw = linked.power;
         if (/spor/i.test(String(linked.request_type || ""))) {
           next.request_type = "dezvoltarea unui utilizator existent (spor de putere)";
-          next.deer_case = "Loc existent — spor de putere — Anexa 1";
+          if (/deer|distributie energie electrica romania/i.test(String(client.operator || linked?.operator || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, ""))) next.deer_case = "Loc existent — spor de putere — Anexa 1";
         }
       }
       setForm((p) => ({ ...p, ...next }));
@@ -556,7 +556,7 @@ export default function ModulePage({ moduleKey }) {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base}>Cerere ATR</a>
-                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base + "&case=" + encodeURIComponent("Loc existent — spor de putere — Anexa 1")}>Spor de putere</a>
+                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base + "&case=" + encodeURIComponent("power-increase")}>Spor de putere</a>
                   <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={"/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (pros ? "&prosId=" + encodeURIComponent(pros.id) : "")}>Creează DI-U</a>
                 </div>
                 {(pros || diu) && <details className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
@@ -598,7 +598,7 @@ export default function ModulePage({ moduleKey }) {
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/file/priza`, `pram_priza_${it.id.slice(0, 8)}.pdf`)}>PRAM priză</button>
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/pif/pdf`, `pif_${it.id.slice(0, 8)}.pdf`)}>Proces verbal PIF</button>
                   {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}`}>Cerere ATR</a>}
-                  {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}&case=${encodeURIComponent("Loc existent — spor de putere — Anexa 1")}`}>Spor de putere</a>}
+                  {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}&case=${encodeURIComponent("power-increase")}`}>Spor de putere</a>}
                   {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu?new=diu&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}`}>Creează DI-U</a>}
                   {diu && <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`, `pram_priza_diu_${diu.id.slice(0, 8)}.pdf`)}>PRAM DI-U</button>}
                 </div>
@@ -690,7 +690,7 @@ export default function ModulePage({ moduleKey }) {
                         return <span className="inline-flex max-w-[204px] items-center flex-wrap gap-1">
                           <button type="button" className={linkClass} onClick={() => { window.location.href = diuUrl; }}>Creează DI-U</button>
                           <a className={linkClass} href={"/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "")}>Cerere ATR</a>
-                          <a className={linkClass} href={"/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "") + "&case=" + encodeURIComponent("Loc existent — spor de putere — Anexa 1")}>Spor de putere</a>
+                          <a className={linkClass} href={"/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "") + "&case=" + encodeURIComponent("power-increase")}>Spor de putere</a>
                           {clientProsumerDossiers.length > 1 && <span className="basis-full text-[10px] text-amber-800">Mai multe dosare PV: selectează-l pe cel corect în ATR / DI-U.</span>}
                           {clientDiuDossiers.length > 1 && <span className="basis-full text-[10px] text-amber-800">Mai multe dosare DI-U: deschide dosarul dorit pentru documente și PRAM.</span>}
                           {dossier && <>
@@ -719,7 +719,7 @@ export default function ModulePage({ moduleKey }) {
                         return <span className="inline-flex items-center flex-wrap gap-y-1">
                           {diuUrl && <a className={linkClass} href={diuUrl}>Creează DI-U</a>}
                           {it.client_id && <a className={linkClass} href={atrUrl}>Cerere ATR</a>}
-                          {it.client_id && <a className={linkClass} href={atrUrl + "&case=" + encodeURIComponent("Loc existent — spor de putere — Anexa 1")}>Spor de putere</a>}
+                          {it.client_id && <a className={linkClass} href={atrUrl + "&case=" + encodeURIComponent("power-increase")}>Spor de putere</a>}
                           <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/export`)}>Dosar PDF</button>
                           <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/sld/${it.id}/pdf`, `schema_monofilara_${it.id.slice(0, 8)}.pdf`)}>Descarcă schemă</button>
                           <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/pif/pdf`, `pif_${it.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
