@@ -1632,6 +1632,50 @@ def catalog_documents_complete(pros: dict, positions: list) -> bool:
     return bool(expected) and expected.issubset(available)
 
 
+ATR_CLIENT_DOC_SLOTS = (
+    ("ci", "Act de identitate"),
+    ("cf", "Extras de carte funciară"),
+    ("factura", "Factură de energie"),
+    ("certificat", "Certificat de înregistrare"),
+    ("constatator", "Certificat constatator ONRC"),
+    ("semnate", "Documente semnate"),
+)
+ATR_CLIENT_DOC_MAX_FILE = 25 * 1024 * 1024
+ATR_CLIENT_DOC_MAX_TOTAL = 100 * 1024 * 1024
+
+
+def atr_client_documents(user: dict, client: dict):
+    """Return only the selected client's uploaded documents stored in this user's namespace."""
+    docs = (client or {}).get("docs") or {}
+    owner_prefix = f"{APP_NAME}/uploads/{user['id']}/"
+    result, issues, total = [], [], 0
+    for slot, label in ATR_CLIENT_DOC_SLOTS:
+        entries = docs.get(slot) or []
+        if not isinstance(entries, list):
+            continue
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("original_filename") or f"{slot}.pdf")
+            path = str(item.get("storage_path") or "")
+            if not path.startswith(owner_prefix):
+                issues.append(f"{label} — fișierul nu aparține spațiului de stocare al contului.")
+                continue
+            try:
+                data, content_type = get_object(path)
+                size = len(data)
+                if size > ATR_CLIENT_DOC_MAX_FILE or total + size > ATR_CLIENT_DOC_MAX_TOTAL:
+                    issues.append(f"{label} — {name} nu a fost inclus (limita pachetului de documente client a fost depășită).")
+                    continue
+                total += size
+                result.append({"slot": slot, "label": label, "name": name, "data": data,
+                               "content_type": content_type or item.get("content_type") or "application/octet-stream"})
+            except Exception as exc:
+                logger.warning("ATR client document could not be read (%s): %s", path, exc)
+                issues.append(f"{label} — {name} nu a putut fi citit din stocare.")
+    return result, issues
+
+
 async def atr_pack(user: dict, rec: dict, full: int):
     client = await get_client(user["id"], rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
@@ -1645,11 +1689,21 @@ async def atr_pack(user: dict, rec: dict, full: int):
         if "producere" not in str(rec.get("kind") or "").casefold():
             rec["kind"] = "loc de consum și de producere"
     att = rec.get("attachments") or {}
+    client_documents, client_document_issues = atr_client_documents(user, client)
     auto = {}
     if info and ATR.is_prod(rec):
         bykey = {p["key"]: p for p in info["positions"]}
         auto = {"schema": [bykey.get("schema")], "fise": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
     attached = {k for k, v in att.items() if v}
+    # Client documents uploaded once in the client profile are valid supporting
+    # evidence for matching ATR checklist positions; do not infer unrelated items.
+    for document in client_documents:
+        if document["slot"] == "ci":
+            attached.add("id")
+        elif document["slot"] == "cf":
+            attached.add("cf")
+        elif document["slot"] == "constatator":
+            attached.add("constatator")
     # A linked generated item is not proof of a ready document. Count schema only
     # when the source opis says it is generated/attached; catalog evidence must
     # exist for every selected model before it satisfies the required "fise" slot.
@@ -1696,7 +1750,7 @@ async def atr_pack(user: dict, rec: dict, full: int):
                 annex_registry_issue = "Tipul cererii nu are o mapare de anexă verificată pentru operatorul selectat."
         else:
             annex_registry_issue = "Operatorul de distribuție nu este selectat; anexa oficială aplicabilă nu poate fi stabilită."
-    unavailable = []
+    unavailable = list(client_document_issues)
     if full:
         for k, title, _ in ATR.DOCS:
             for f in att.get(k) or []:
@@ -1716,6 +1770,12 @@ async def atr_pack(user: dict, rec: dict, full: int):
                     except Exception as e:
                         logger.error(f"atr auto {k}: {e}")
                         unavailable.append(p.get("title") or title)
+        for document in client_documents:
+            try:
+                parts.append(OPIS.file_pdf(document["data"], document["content_type"]))
+            except Exception as exc:
+                logger.warning("ATR client document could not be merged (%s): %s", document["name"], exc)
+                unavailable.append(f"{document['label']} — {document['name']}")
     miss = [k for k in ATR.required(rec) if k not in attached]
     request_type_missing = not ATR.rtype(rec)
     doc_titles = {k: title for k, title, _ in ATR.DOCS}
