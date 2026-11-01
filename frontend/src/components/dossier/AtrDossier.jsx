@@ -222,6 +222,27 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
   const setR = (i, k, v) => setVal("receptors", recs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="atr-dossier">
+      <section className="mb-4 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-workflow-order">
+        <div className="mb-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)" }}>Fluxul dosarului ATR</div>
+          <h3 className="mt-1 text-sm font-bold">Completează în această ordine</h3>
+        </div>
+        <ol className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+          {[
+            ["1", "Client", Boolean(form.client_name)],
+            ["2", "POD și adresă", Boolean(form.pod && form.address)],
+            ["3", "Operator și cerere", Boolean(form.operator && form.request_type)],
+            ["4", "Echipamente", Boolean(selectedPros)],
+            ["5", "Anexe și verificare", missing.length === 0],
+          ].map(([number, title, complete]) => (
+            <li key={number} className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs" style={{ borderColor: "var(--line)" }}>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold" style={{ background: complete ? "#dcfce7" : "#eef2f7", color: complete ? "#166534" : "var(--muted)" }}>{complete ? "✓" : number}</span>
+              <span className="font-semibold">{title}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Alege clientul o singură dată. POD-ul, datele locului și echipamentele se preiau din dosarul asociat; secțiunile tehnice și documentele justificative rămân pentru confirmare și completarea lipsurilor.</p>
+      </section>
       <FormAlert operator={form.operator} scope="atr" />
       {operatorSource?.id === "deer" && <section className="mb-4 rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "linear-gradient(135deg, #f2f7ff 0%, #fff 72%)" }} data-testid="atr-next-actions">
         <div className="flex flex-wrap items-start justify-between gap-3">
