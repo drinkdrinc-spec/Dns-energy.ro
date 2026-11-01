@@ -1981,6 +1981,78 @@ async def power_official_docx(item_id: str, authorization: str = Header(None), a
                     headers={"Content-Disposition": disp("attachment", filename)})
 
 
+@api_router.get("/power/{item_id}/official-annex")
+async def power_official_annex(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    """Download the selected operator's official Annex 1, prefilled only where safe."""
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "power", item_id)
+    client = await get_client(user["id"], rec)
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros = {}
+    if rec.get("pros_id") and await db.prosumator.find_one(
+        {**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}
+    ):
+        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
+        client = {**(pclient or {}), **(client or {})}
+
+    operator_key = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
+    if not operator_key:
+        raise HTTPException(status_code=422, detail="Selectați operatorul de distribuție în dosar.")
+    is_new = rec.get("request_kind") == "nou"
+    case = "loc nou" if is_new else "spor de putere"
+    annex_rec = {
+        **rec,
+        "operator": rec.get("operator") or pros.get("operator") or client.get("operator"),
+        "request_type": "nou" if is_new else "spor",
+        "deer_case": case,
+        "kind": rec.get("kind") or "loc de consum și de producere",
+    }
+    if rec.get("requested_kva") not in (None, "") and annex_rec.get("p_abs_kva") in (None, ""):
+        annex_rec["p_abs_kva"] = rec["requested_kva"]
+
+    if operator_key == "deer":
+        client_kind = str(client.get("kind") or rec.get("applicant_type") or "").strip().casefold()
+        applicant_type = rec.get("applicant_type")
+        if not applicant_type:
+            if "jurid" in client_kind or client_kind in ("pj", "company", "firmă", "firma"):
+                applicant_type = "Persoană juridică"
+            elif "fizic" in client_kind or client_kind in ("pf", "individual"):
+                applicant_type = "Persoană fizică"
+            else:
+                raise HTTPException(status_code=422, detail="Selectați tipul clientului în fișa clientului înainte de generarea anexei oficiale.")
+        annex_rec["applicant_type"] = applicant_type
+        try:
+            payload = ATR.render_deer_official_docx(annex_rec, client or {}, settings, pros or {})
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        except Exception:
+            logger.exception("DEER power official annex generation failed")
+            raise HTTPException(status_code=500, detail="Nu am putut genera formularul oficial DEER.")
+        safe_name = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in str((client or {}).get("name") or "client")).strip().replace(" ", "_")
+        filename = f"DEER_Anexa1_{'loc_nou' if is_new else 'spor_putere'}_{safe_name}.docx"
+        return Response(content=payload, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        headers={"Content-Disposition": disp("attachment", filename)})
+
+    from atr_routes import _registry_forms_for_request, _fetch_registry_annex, _prefill_official_pdf
+    annex_no, forms = await _registry_forms_for_request(operator_key, annex_rec, pros or {})
+    if not annex_no or not forms:
+        raise HTTPException(status_code=404, detail="Nu există un formular oficial verificat pentru tipul cererii și operatorul selectat. Verificați Registrul formularelor oficiale.")
+    try:
+        payload, filename = await _fetch_registry_annex(forms[0], operator_key)
+    except Exception as exc:
+        logger.warning("Official power annex fetch failed (%s): %s", operator_key, exc)
+        raise HTTPException(status_code=502, detail="Formularul oficial al operatorului nu este disponibil momentan. Verificați Registrul formularelor oficiale.")
+    if filename.lower().endswith(".pdf"):
+        payload, _filled_fields = _prefill_official_pdf(payload, annex_rec, client or {}, pros or {})
+        media_type = "application/pdf"
+    elif filename.lower().endswith(".docx"):
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    else:
+        raise HTTPException(status_code=502, detail="Formatul formularului oficial nu este acceptat.")
+    return Response(content=payload, media_type=media_type,
+                    headers={"Content-Disposition": disp("attachment", filename)})
+
+
 @api_router.get("/power/{item_id}/pdf")
 async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
@@ -2012,6 +2084,7 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
         attached.add("j")
     parts = [PWR.render_anexa1(rec, client, base, pros or {}, attached, ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")))]
     unavailable = []
+    annex_registry_issue = ""
     if pros and not rec.get("is_test"):
         # Use the same per-model catalog evidence as the prosumer and ATR dossiers;
         # a datasheet for one model cannot satisfy another model's requirement.
@@ -2020,6 +2093,47 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
             parts[0] = PWR.render_anexa1(rec, client, base, pros, attached,
                 ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator")))
     if full:
+        operator_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
+        is_new = rec.get("request_kind") == "nou"
+        annex_rec = {
+            **rec,
+            "operator": rec.get("operator") or (pros or {}).get("operator") or client.get("operator"),
+            "request_type": "nou" if is_new else "spor",
+            "deer_case": "loc nou" if is_new else "spor de putere",
+            "kind": rec.get("kind") or "loc de consum și de producere",
+        }
+        if rec.get("requested_kva") not in (None, "") and annex_rec.get("p_abs_kva") in (None, ""):
+            annex_rec["p_abs_kva"] = rec["requested_kva"]
+        if operator_key:
+            if operator_key == "deer":
+                annex_title = "Anexa 1 oficială DEER (DOCX — descărcare separată)"
+                annex_registry_issue = "Formularul oficial DEER este DOCX și se descarcă separat din butonul «Anexa 1 oficială DEER»; PDF-ul dosarului conține fișa de precompletare, nu formularul operatorului."
+                annex_no, forms = 1, [{"title": annex_title}]
+            else:
+                from atr_routes import _registry_forms_for_request, _fetch_registry_annex, _prefill_official_pdf
+                annex_no, forms = await _registry_forms_for_request(operator_key, annex_rec, pros or {})
+                annex_title = (forms[0].get("title") if forms else "")
+            if annex_no:
+                parts.append(ATR.render_operator_annex_prep(
+                    annex_rec, client or {}, pros or {}, operator_key, annex_no, annex_title))
+            if not forms:
+                annex_registry_issue = annex_registry_issue or f"Nu există un formular oficial verificat în registru pentru Anexa {annex_no or 1} a operatorului selectat."
+            elif operator_key != "deer":
+                try:
+                    official_data, official_name = await _fetch_registry_annex(forms[0], operator_key)
+                    if official_name.lower().endswith(".pdf"):
+                        completed_data, filled_fields = _prefill_official_pdf(
+                            official_data, annex_rec, client or {}, pros or {})
+                        parts.append(completed_data if filled_fields else official_data)
+                        if not filled_fields:
+                            annex_registry_issue = "Formularul PDF oficial nu are câmpuri text semantice compatibile; originalul și fișa DNS de precompletare sunt incluse, iar formularul trebuie verificat/completat manual."
+                    else:
+                        annex_registry_issue = f"Formularul oficial {official_name} este DOCX și se descarcă separat din butonul «Anexa 1 oficială OD»; PDF-ul dosarului nu îl poate încorpora."
+                except Exception as exc:
+                    logger.warning("Official power annex could not be included: %s", exc)
+                    annex_registry_issue = "Formularul oficial nu a putut fi preluat la generare; descărcați-l separat din Registrul formularelor oficiale."
+        else:
+            annex_registry_issue = "Selectați operatorul de distribuție pentru a stabili formularul oficial aplicabil."
         for k, title in PWR.DOCS:
             for f in att.get(k) or []:
                 try:
@@ -2043,6 +2157,8 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
     missing_keys = sorted(k for k in required_keys if k not in attached)
     pwr_titles = dict(PWR.DOCS)
     missing_titles = [f"Document obligatoriu lipsă: {pwr_titles.get(k, k)}" for k in missing_keys]
+    if annex_registry_issue:
+        missing_titles.append(annex_registry_issue)
     report = OPIS._incomplete_report({"positions": [], "common_missing": missing_titles}, unavailable)
     if full and report:
         parts.append(report)
@@ -2054,7 +2170,7 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
         except Exception as e:
             logger.error(f"power merge: {e}")
     o = io.BytesIO(); w.write(o)
-    incomplete = bool(missing_keys or unavailable)
+    incomplete = bool(missing_keys or unavailable or annex_registry_issue)
     name = f"{'DOSAR_SPOR_PUTERE' if full else 'ANEXA1_DEER'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and incomplete else ''}.pdf"
     return Response(content=o.getvalue(), media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
 
