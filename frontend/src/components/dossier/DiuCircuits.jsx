@@ -2,7 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 
 const COLS = [["name", "Circuit", 150], ["curve", "Curbă", 50], ["breaker_a", "In (A)", 60], ["section", "Secț. (mm²)", 70], ["cable", "Tip cablu", 80],
   ["length", "L (m)", 55], ["rcd_ma", "DDR IΔn (mA)", 70], ["rcd_type", "DDR tip", 55]];
-const MEAS = [["r_pe", "R PE (Ω)"], ["riso", "Riso (MΩ)"], ["rcd_i", "DDR I decl. (mA)"], ["rcd_t", "DDR t (ms)"]];
+const MEAS = [["r_pe", "R PE măsurat (Ω)"], ["r_pe_limit", "Limită din proiect (Ω)"], ["riso", "Riso (MΩ)"], ["rcd_i", "DDR I decl. (mA)"], ["rcd_t", "DDR t (ms)"]];
 const PRAM = [["date", "Data măsurătorilor", "date"], ["instrument", "Aparat de măsură (tip, serie, certificat)"], ["verifier", "Verificator PRAM"],
   ["earth_ohm", "Rezistență dispersie măsurată (Ω)"], ["earth_limit", "Valoare admisă (Ω)"], ["soil", "Starea solului"], ["test_v", "Tensiune încercare izolație (V)"]];
 
@@ -13,7 +13,7 @@ export function DiuCircuits({ form, setVal }) {
   return (
     <div className="mt-4 space-y-4">
       <div>
-        <div className="text-xs font-bold mb-2">Circuitele tabloului general (TG) și măsurătorile PRAM pe circuit — doar valori măsurate efectiv</div>
+        <div className="text-xs font-bold mb-2">Circuitele TG și măsurătorile PRAM — introdu doar rezultate reale și limita de continuitate din proiect</div>
         <div className="overflow-x-auto">
           <table className="text-xs" data-testid="diu-circuits">
             <thead><tr>{[...COLS, ...MEAS].map(([k, l]) => <th key={k} className="px-1 py-1 text-left font-bold">{l}</th>)}<th /></tr></thead>
