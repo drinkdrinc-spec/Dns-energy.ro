@@ -30,6 +30,7 @@ DEER_FORMS_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/"
 # Current official Retele Electrice (RER) forms. The operator page is the
 # source of truth; direct PDF URLs are used only when the registry is empty.
 RER_FORMS_URL = "https://www.reteleelectrice.ro/cereri-documente/"
+RER_STORAGE_FORM_URL = "https://www.reteleelectrice.ro/wp-content/uploads/Anexa-aferenta-instalatiilor-de-stocare.pdf"
 RER_FORM_PDFS = {
     1: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-1-cerere-racordare.pdf",
     2: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-2-cerere-racordare.pdf",
@@ -440,6 +441,16 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                         note.append("Formular oficial descărcat în acest pachet.")
                     except (httpx.HTTPError, ValueError) as exc:
                         note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
+                if op_key == "rer" and ATR.storage_details(pros, rec):
+                    storage_form = {"title": "Anexa Retele Electrice aferentă instalațiilor de stocare",
+                                    "url": RER_STORAGE_FORM_URL}
+                    try:
+                        storage_pdf, storage_name = await _fetch_registry_annex(storage_form, op_key)
+                        archive.writestr(f"Anexe oficiale/{storage_name}", storage_pdf)
+                        note.append("Anexa oficială pentru instalația de stocare a fost inclusă deoarece dosarul are baterie.")
+                    except (httpx.HTTPError, ValueError) as exc:
+                        note.append(f"Anexa oficială pentru instalația de stocare nu a putut fi atașată: {exc}")
+                        note.append(f"Descărcați formularul de aici: {RER_STORAGE_FORM_URL}")
             elif annex_no:
                 note.append(f"Nu există în registru un formular oficial Anexa {annex_no} verificabil pentru operatorul și tipul cererii selectate.")
                 official_pages = {
