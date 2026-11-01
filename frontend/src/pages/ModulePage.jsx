@@ -115,6 +115,12 @@ export default function ModulePage({ moduleKey }) {
     if (key === "atr") {
       const params = new URLSearchParams(window.location.search);
       const clientId = params.get("clientId");
+      if (params.get("new") === "atr" && !clientId) {
+        setForm({ date: new Date().toISOString().slice(0, 10), submission_mode: "Solicitantul depune direct" });
+        setEditId(null);
+        setChecks({});
+        window.history.replaceState(null, "", window.location.pathname);
+      }
       if (params.get("new") === "atr" && clientId) {
         Promise.all([api.get("/data/clients"), api.get("/data/prosumator")]).then(([clientsRes, prosRes]) => {
           const client = (clientsRes.data || []).find((item) => item.id === clientId);
@@ -356,7 +362,9 @@ export default function ModulePage({ moduleKey }) {
     <div>
       <PageHeader eyebrow={cfg.eyebrow} title={cfg.title} sub={cfg.sub}
         action={<div className="flex gap-2 flex-wrap">
-          <Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>
+          {form ? <Btn data-testid="add-btn" onClick={() => setForm(null)}><X size={15} /> Închide</> : key === "atr"
+            ? <a data-testid="add-btn" href="/cerere-atr?new=atr" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> {cfg.addLabel}</a>
+            : <Btn data-testid="add-btn" onClick={openNew}><Plus size={15} /> {cfg.addLabel}</Btn>}
         </div>} />
 
       {key === "atr" && <section className="mb-6 overflow-hidden rounded-2xl border shadow-sm" aria-label="Flux cerere ATR" data-testid="atr-workflow" style={{ borderColor: "var(--line)", background: "#fff" }}>
@@ -366,7 +374,7 @@ export default function ModulePage({ moduleKey }) {
             <h2 className="mt-2 max-w-2xl text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: "#13243d" }}>Cererea pornește din datele clientului</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "var(--muted)" }}>Alege clientul și dosarul prosumator asociat. Datele cunoscute, puterile și echipamentele se preiau automat; verifică procedura și valorile înainte de generare.</p>
             <div className="mt-5 flex flex-wrap items-center gap-2">
-              <Btn onClick={openNew} data-testid="atr-start-new"><Plus size={15} /> Cerere ATR nouă</Btn>
+              <a href="/cerere-atr?new=atr" data-testid="atr-start-new" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> Cerere ATR nouă</a>
               <a href="/clienti" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-4 text-sm font-semibold" style={{ borderColor: "var(--line)", color: "#31425c" }}>Alege din clienți</a>
             </div>
             <p className="mt-3 text-xs leading-5" style={{ color: "var(--muted)" }}>Pachetul ATR include formularul de lucru și anexele oficiale disponibile pentru operatorul selectat. Formularele PDF oficiale se păstrează ca surse; verifică cerințele operatorului înainte de depunere.</p>
