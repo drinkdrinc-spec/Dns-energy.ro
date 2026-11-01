@@ -184,7 +184,7 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
         if cnp:
             fields["cnp"] = cnp.group(1)
         approved_power = re.search(
-            r"(?:putere\\s+aprobată|putere\\s+aprobata|puterea\\s+aprobată|puterea\\s+aprobata|putere\\s+contractată|putere\\s+contractata)\\s*[:：-]?\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:kW)?\\b",
+            r"(?:putere\s+aprobată|putere\s+aprobata|puterea\s+aprobată|puterea\s+aprobata|putere\s+contractată|putere\s+contractata)\s*[:：-]?\s*(\d+(?:[.,]\d+)?)\s*(?:kW)?\b",
             text, re.I,
         )
         if approved_power:
