@@ -54,4 +54,20 @@ SEED = [
     {"category": "Panou", "brand_model": "JinkoSolar Tiger Neo 440 W", "w": 440, "notes": "Familia are variante diferite; completați codul exact și valorile din fișa oficială."},
     {"category": "Panou", "brand_model": "LONGi Hi-MO 7 (model de completat)", "notes": "Completați codul exact al modulului și parametrii electrici din fișa oficială."},
     {"category": "Panou", "brand_model": "AIKO Neostar (model de completat)", "notes": "Completați puterea și codul exact al modulului din fișa oficială."},
+    # GoodWe ET LV exact model SKUs; electrical limits and powers from the current official family datasheet.
+    *({"category": "Invertor", "brand_model": f"GoodWe GW{kw}K-ET-L-G10", "type": "Hibrid", "phases": "Trifazat",
+       "p_nom_kw": kw, "p_max_kw": max_kw, "vdc_max": 1000, "mppt_min": 150, "mppt_max": 850,
+       "mppt_count": mppt, "imax_mppt": 20, "battery_voltage": "LV 48 V",
+       "datasheet_url": "https://en.goodwe.com/Public/Uploads/uploadfile/files/20260123/GW_ET-LV_Datasheet-EN.pdf",
+       "conformity_url": "https://en.goodwe.com/Ftp/EN/Downloads/Certificate/GW_ET-LV_Certificate-IEC62116_IEC61727.pdf",
+       "notes": "Fișă GoodWe ET LV; certificatul atașat este test certificate IEC 61727/62116 pentru familia indicată. Confirmați cerința de conectare a operatorului din România."}
+      for kw, max_kw, mppt in [(5, 5.5, 2), (6, 6.6, 2), (8, 8.8, 2), (10, 11, 3), (12, 13.2, 3), (15, 16.5, 4), (20, 22, 4)],
+    # Trina Vertex S+ exact SKUs; shared datasheet lists each power-bin electrical value.
+    *({"category": "Panou", "brand_model": f"Trina Solar TSM-{w}NEG9R.28", "w": w, "voc": voc, "vmp": vmp,
+       "isc": isc, "imp": imp, "coef_voc": -0.24, "temp_pmax": -0.29,
+       "datasheet_url": "https://static.trinasolar.com/sites/default/files/Datasheet%20Vertex%20S%2B_NEG9R.28_EN_2024_C_web.pdf",
+       "notes": "Parametri STC/coeficienți din fișa oficială Trina Vertex S+ NEG9R.28 v2024-C. Declarația/certificatele exacte se atașează separat din documentația modelului livrat."}
+      for w, voc, vmp, isc, imp in [(430, 51.4, 43.2, 10.59, 9.96), (440, 52.2, 44.0, 10.67, 10.01),
+                                    (450, 52.9, 44.6, 10.74, 10.09), (460, 53.8, 45.4, 10.81, 10.14)],
+
 ]
