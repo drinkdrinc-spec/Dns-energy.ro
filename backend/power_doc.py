@@ -111,6 +111,7 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, o
     invs = (pros.get("cef") or {}).get("inverters") or [] if pros else []
     rows = [["Nr. crt.", "Nr. panouri", "Tip", "Pi panou (c.c.) (kW)", "Pi total panouri (c.c.) (kW)", "Pmax debitat (c.c.) (kW)", "Pi total panouri pe 1 invertor (kW)", "Obs."]]
     irows = [["Nr. crt.", "Nr. invertoare", "Tipul invertoarelor", "Un invertor (c.a.) (V)", "Pi invertor (c.a.) (kW)", "Pmax evacuată în reţea (kW)", "Obs."]]
+    export_limit_notes = []
     for i, inv in enumerate(invs):
         unit_count = max(1, int(D.num(inv.get("count") or inv.get("quantity")) or 1))
         panels_per_inverter = sum(int(D.num(x.get("panels"))) for x in inv.get("strings") or [])
@@ -126,14 +127,18 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, o
         export_per_inverter = min(configured_limit, max_kw) if configured_limit and configured_limit > 0 and max_kw > 0 else (
             configured_limit if configured_limit and configured_limit > 0 else max_kw)
         export_total = D.fmt(export_per_inverter * unit_count, 3) if export_per_inverter and export_per_inverter > 0 else ""
-        limit_note = (f"Limită de injecție declarată: {configured_limit:g} kW/invertor × {unit_count} buc."
-                      if configured_limit and configured_limit > 0 else "Limită de injecție nedeclarată în configurare.")
+        limit_note = (f"{inv.get('brand_model') or 'Invertor'}: {configured_limit:g} kW/invertor × {unit_count} buc. = {configured_limit * unit_count:g} kW total"
+                      if configured_limit and configured_limit > 0 else
+                      f"{inv.get('brand_model') or 'Invertor'}: limită de injecție nedeclarată")
+        export_limit_notes.append(limit_note)
         irows.append([str(i + 1), str(unit_count), escape(inv.get("brand_model") or ""),
                       "400" if "tri" in str(inv.get("phases") or "").lower() else "230" if inv.get("phases") else "",
-                      escape(str(rated_kw if rated_kw > 0 else "")), export_total, escape(limit_note)])
+                      escape(str(rated_kw if rated_kw > 0 else "")), export_total,
+                      "Limită setată" if configured_limit and configured_limit > 0 else "Nedeclarată"])
     if not invs:
         rows.append([""] * 8); irows.append([""] * 7)
-    story += [T(rows, [7, 9, 22, 11, 13, 12, 14, 8]), Spacer(1, 3), P("Invertoare:"), T(irows, [7, 10, 30, 12, 12, 16, 9]), Spacer(1, 3),
+    story += [T(rows, [7, 9, 22, 11, 13, 12, 14, 8]), Spacer(1, 3), P("Invertoare:"), T(irows, [7, 10, 30, 12, 12, 16, 9]),
+              P("Limită de injecție declarată: " + escape("; ".join(export_limit_notes) or "nedeclarată în configurarea invertorului."), "small"), Spacer(1, 3),
               P(f"2.3. Serviciile interne ale instalaţiei de producere: Pi servicii interne {g(p, 'internal_pi')} kW; Puterea maximă simultan absorbită servicii interne {g(p, 'internal_pmax')} kW"),
               P("Anexez prezentei următoarele documente:", "b")]
     for k, t in DOCS:
