@@ -455,7 +455,14 @@ export default function ModulePage({ moduleKey }) {
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
                     {key === "atr" && (() => {
                       const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
-                      const linked = linkedProsumer.find((p) => p.id === it.pros_id || (it.client_id && p.client_id === it.client_id) || (!it.client_id && normalize(p.client_name) === normalize(it.client_name)));
+                      const exactLink = it.pros_id ? linkedProsumer.find((p) => p.id === it.pros_id) : null;
+                      const byClient = it.client_id ? linkedProsumer.filter((p) => p.client_id === it.client_id) : [];
+                      const byName = !it.client_id && !it.pros_id
+                        ? linkedProsumer.filter((p) => normalize(p.client_name) === normalize(it.client_name))
+                        : [];
+                      const candidates = it.client_id ? byClient : byName;
+                      const linked = exactLink || (candidates.length === 1 ? candidates[0] : null);
+                      const ambiguous = !exactLink && candidates.length > 1;
                       const inverters = linked?.cef?.inverters || [];
                       const panels = [...new Set(inverters.map((x) => x.panel_model).filter(Boolean))];
                       const batteries = [
@@ -469,7 +476,7 @@ export default function ModulePage({ moduleKey }) {
                           {inverters.length ? `Invertor: ${[...new Set(inverters.map((x) => x.brand_model).filter(Boolean))].join(", ")}` : "Invertor: nepreluat"}
                           {panels.length ? ` · Panouri: ${panels.join(", ")}` : ""}
                           {batteries.length ? ` · Baterie: ${[...new Set(batteries)].join(", ")}` : ""}
-                        </div> : <div className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Fără dosar prosumator asociat</div>}
+                        </div> : <div className="mt-1 text-[11px]" style={{ color: ambiguous ? "#9a6700" : "var(--muted)" }}>{ambiguous ? "Mai multe dosare prosumator — selectează dosarul exact în formularul ATR" : "Fără dosar prosumator asociat"}</div>}
                       </td>;
                     })()}
                     <td className="px-2 py-3 text-left whitespace-normal sticky right-0 z-10 bg-white shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.45)] max-w-[220px]">
