@@ -122,9 +122,9 @@ export default function ModulePage({ moduleKey }) {
         }).catch(() => {});
       }
     }
-    if (key === "clients" || key === "prosumator") {
+    if (key === "clients" || key === "prosumator" || key === "atr") {
       api.get("/data/prosumator").then((r) => setLinkedProsumer(r.data || [])).catch(() => {});
-      api.get("/data/diu").then((r) => setLinkedDiu(r.data || [])).catch(() => {});
+      if (key !== "atr") api.get("/data/diu").then((r) => setLinkedDiu(r.data || [])).catch(() => {});
     }
     if (key === "diu") {
       const params = new URLSearchParams(window.location.search);
