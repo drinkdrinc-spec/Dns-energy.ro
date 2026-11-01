@@ -195,17 +195,21 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
     return fields
 
 
-async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto") -> dict:
-    # Prefer the configured vision model. If it is unavailable, selectable PDF
-    # text can still prefill unambiguous labelled fields without inventing data.
-    try:
-        return await extract_gpt(content, mime, doc_type)
-    except Exception:
-        if mime != "application/pdf":
-            raise
-        import pymupdf
-        doc = pymupdf.open(stream=content, filetype="pdf")
-        text = "\n".join(page.get_text("text") for page in list(doc)[:12]).strip()
-        if not text:
-            raise
-        return _fallback_text_fields(text, doc_type)
+async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai: bool = True) -> dict:
+    # For PDFs, fall back to explicitly labelled selectable text when the AI
+    # service fails. Never infer missing values from surrounding context.
+    if use_ai:
+        try:
+            return await extract_gpt(content, mime, doc_type)
+        except Exception:
+            if mime != "application/pdf":
+                raise
+    elif mime != "application/pdf":
+        raise ValueError("Citirea imaginilor scanate necesită funcția AI activă.")
+
+    import pymupdf
+    doc = pymupdf.open(stream=content, filetype="pdf")
+    text = "\\n".join(page.get_text("text") for page in list(doc)[:12]).strip()
+    if not text:
+        raise ValueError("PDF-ul nu conține text selectabil. Pentru citirea unui scan este necesară funcția AI.")
+    return _fallback_text_fields(text, doc_type)
