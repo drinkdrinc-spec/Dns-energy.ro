@@ -202,7 +202,12 @@ def check(cef: dict) -> dict:
         mode = inv.get("battery_mode") or "none"
         b_kwh = 0
         if mode == "own":
-            prop["battery"] = battery_cable_proposal(bat)
+            battery_proposal = battery_cable_proposal(bat)
+            prop["battery"] = battery_proposal
+            if battery_proposal.get("section") is None:
+                w.append(f"{tag}: cablul DC al bateriei nu poate fi dimensionat din datele disponibile — {battery_proposal.get('note')}")
+            if battery_proposal.get("fuse_a") is None:
+                w.append(f"{tag}: siguranța DC a bateriei nu poate fi stabilită fără limita maximă admisă din fișa producătorului.")
             b_kwh = n(bat.get("kwh")) * (int(n(bat.get("modules"), 1)) or 1)
             if not b_kwh and n(bat.get("ah")) and n(bat.get("voltage")):
                 b_kwh = n(bat.get("ah")) * n(bat.get("voltage")) / 1000 * (int(n(bat.get("modules"), 1)) or 1)
