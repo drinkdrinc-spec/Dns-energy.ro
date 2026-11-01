@@ -37,7 +37,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
   useEffect(() => {
     api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setProblem("Catalogul nu s-a putut încărca. Poți salva datele de bază și selecta echipamentele ulterior.")).finally(() => setCatalogLoading(false));
   }, []);
-  const clients = (refOptions.clients || []).filter((client) => !/\\bTEST\\b/i.test(String(client.label || client.name || "")));
+  const clients = (refOptions.clients || []).filter((client) => !/\bTEST\b/i.test(String(client.label || client.name || "")));
   const selected = form.catalog_selection || {};
   useEffect(() => {
     const inferred = { ...selected };
