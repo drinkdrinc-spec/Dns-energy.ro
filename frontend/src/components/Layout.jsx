@@ -3,7 +3,7 @@ import { Outlet, Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
-import { Menu, Home, FolderOpen, Receipt, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity } from "lucide-react";
+import { Menu, Home, Users, FolderOpen, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity } from "lucide-react";
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
@@ -26,8 +26,8 @@ export default function Layout() {
         </main>
         <nav aria-label="Navigare rapidă" className="mobile-bottom-nav md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-5 border-t bg-white/95 backdrop-blur px-1 pt-2 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(20,35,70,0.08)]">
           <MobileNavItem to="/" icon={Home} label="Acasă" />
+          <MobileNavItem to="/clienti" icon={Users} label="Clienți" />
           <MobileNavItem to="/prosumator" icon={FolderOpen} label="Dosare" />
-          <MobileNavItem to="/oferte" icon={Receipt} label="Oferte" />
           <MobileNavItem to="/catalog-echipamente" icon={Cpu} label="Catalog" />
           <button type="button" onClick={() => setOpen(true)} aria-label="Mai multe module" className="flex min-h-[44px] flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={{ color: "var(--muted)" }}>
             <MoreHorizontal size={20} />
