@@ -664,10 +664,20 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
         if ct == "application/pdf" and not os.environ.get("OPENAI_API_KEY") and not isinstance(e, ValueError):
             raise HTTPException(status_code=503, detail="PDF-ul pare scanat sau nu are etichete text recunoscute. Pentru citirea AI a scanurilor trebuie configurată cheia OPENAI_API_KEY în serviciul API.")
         raise HTTPException(status_code=502, detail=str(e) if isinstance(e, ValueError) else "Nu am putut citi documentul. Încearcă din nou.")
+    expected = {
+        "ci": ("client_name", "cnp", "hq_address", "id_series", "id_number"),
+        "factura": ("client_name", "cnp", "consumption_address", "address", "pod", "operator", "supplier", "bransament_kw", "power"),
+        "cf": ("owner_name", "client_name", "cf_nr", "cadastral_nr"),
+    }
+    selected_type = doc_type if doc_type in expected else str(fields.get("doc_type") or "").casefold()
+    warning = None
+    if selected_type in expected and not any(fields.get(key) not in (None, "", "null") for key in expected[selected_type]):
+        warning = "Fișierul a fost atașat, dar nu s-au putut extrage câmpurile așteptate. Verifică imaginea și completează datele manual."
     stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
     engine = fields.pop("_engine", "OpenAI (GPT-4.1 mini)")
-    return {"data": fields, "engine": engine, "file": {"storage_path": stored["path"], "original_filename": file.filename,
-                                      "content_type": ct, "size": len(data)}}
+    return {"data": fields, "engine": engine, "warning": warning,
+            "file": {"storage_path": stored["path"], "original_filename": file.filename,
+                     "content_type": ct, "size": len(data)}}
 
 def _new(user, extra):
     now = datetime.now(timezone.utc).isoformat()
