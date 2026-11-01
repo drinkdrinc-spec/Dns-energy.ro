@@ -144,22 +144,28 @@ class CefDrawing(Flowable):
                          [f"Tip: {b.get('type') or 'parțial'}", f"Protecție: {b.get('breaker') or '—'}", str(b.get("circuits") or "")[:40]], "bk")
             if inv.get("battery_mode") == "own":
                 bt = inv.get("battery") or {}
-                self.line(bx + 3 * mm + lw, iy + 4 * mm, rx + rw / 2, iy + 4 * mm, dc=bt.get("coupling", "DC") == "DC")
-                self.line(rx + rw / 2, iy + 4 * mm, rx + rw / 2, 66 * mm, dc=bt.get("coupling", "DC") == "DC")
-                self.box(rx, 42 * mm, rw, 24 * mm, f"BATERIE ({bt.get('coupling') or 'DC'})",
+                coupling = str(bt.get("coupling") or "").strip().upper()
+                if coupling in ("AC", "DC"):
+                    self.line(bx + 3 * mm + lw, iy + 4 * mm, rx + rw / 2, iy + 4 * mm, dc=coupling == "DC")
+                    self.line(rx + rw / 2, iy + 4 * mm, rx + rw / 2, 66 * mm, dc=coupling == "DC")
+                coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
+                self.box(rx, 42 * mm, rw, 24 * mm, f"BATERIE ({coupling_label})",
                          [str(bt.get("model") or "—"), f"{v(bt.get('modules'), ' mod.')} × {v(bt.get('kwh'), ' kWh')}",
                           f"{v(bt.get('ah'), ' Ah')} · {v(bt.get('voltage'), ' V')}", f"Total {r.get('battery_kwh', 0):g} kWh",
-                          f"Protecție: {bt.get('protection') or 'siguranță DC / BMS'}"], "bat")
+                          f"Protecție: {bt.get('protection') or 'de confirmat'}"], "bat")
         for k, b in enumerate(shared):
             bx = (len(invs) + k) * cw
             users = [i for i, inv in enumerate(invs) if inv.get("shared_battery_id") == b.get("id")]
-            self.box(bx + 3 * mm, 42 * mm, cw - 6 * mm, 30 * mm, f"BATERIE COMUNĂ ({b.get('coupling') or 'DC'})",
+            coupling = str(b.get("coupling") or "").strip().upper()
+            coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
+            self.box(bx + 3 * mm, 42 * mm, cw - 6 * mm, 30 * mm, f"BATERIE COMUNĂ ({coupling_label})",
                      [str(b.get("model") or "—"), f"{v(b.get('modules'), ' mod.')} × {v(b.get('kwh'), ' kWh')}", f"{v(b.get('ah'), ' Ah')} · {v(b.get('voltage'), ' V')}",
-                      "Invertoare: " + ", ".join(f"INV {u + 1}" for u in users), f"Protecție: {b.get('protection') or 'siguranță DC / BMS'}"], "bat")
-            for j, u in enumerate(users):
-                yy = 70 * mm - j * 2.2 * mm
-                self.line(cx[u], 72 * mm, cx[u], yy, dc=True)
-                self.line(cx[u], yy, bx + 3 * mm, yy, dc=True)
+                      "Invertoare: " + ", ".join(f"INV {u + 1}" for u in users), f"Protecție: {b.get('protection') or 'de confirmat'}"], "bat")
+            if coupling in ("AC", "DC"):
+                for j, u in enumerate(users):
+                    yy = 70 * mm - j * 2.2 * mm
+                    self.line(cx[u], 72 * mm, cx[u], yy, dc=coupling == "DC")
+                    self.line(cx[u], yy, bx + 3 * mm, yy, dc=coupling == "DC")
         # legend
         c = self.canv
         c.setFont("LS", 6); c.setFillColor(colors.black)
