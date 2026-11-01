@@ -510,7 +510,7 @@ export default function ModulePage({ moduleKey }) {
             title="Verificare AI înainte de predarea către beneficiar" action="Salvează ca „Predat beneficiarului”" />}
           {(key === "power" || key === "atr") && editId && <AiRacordCheck id={editId} module={key} />}
           {["prosumator", "diu", "power", "atr"].includes(key) && editId && <AiOdReview id={editId} module={key} />}
-          {key === "clients" && editId && <ClientDocs client={form} onChange={(docs, fields = {}) => { setVal("docs", docs); if (Object.keys(fields).length) setForm((current) => ({ ...current, ...fields, docs })); }} />}
+          {key === "clients" && editId && }
           {key === "clients" && editId && <SignRequests clientName={form.name} />}
 
           <div className="flex gap-2 mt-6 den-noprint">
