@@ -5,8 +5,9 @@ T_CELL_HOT = 70.0
 RHO = {"Cu": 0.0225, "Al": 0.036}
 SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120]
 BREAKERS = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250]
-# Main incomer frame ratings; proposal only, subject to exact device and fault-level checks.
+# Motor-operated anti-islanding breaker frames; exact device and fault-level checks remain required.
 MAIN_BREAKERS = [100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000]
+MAIN_PROTECTION = sorted(set(BREAKERS + [315, 400, 500, 630, 800, 1000, 1250, 1600, 2000]))
 GPV = [10, 12, 15, 16, 20, 25, 30, 32]
 # IEC 60364-5-52, Cu PVC 70°C, 3 conductori încărcați, 30°C (A)
 IZ_AC = {
@@ -254,7 +255,10 @@ def check(cef: dict) -> dict:
     anti_auto = tot_kwp > 27 or tot_kw > 27
     anti = bool(grid.get("anti_required")) or anti_auto
     i_br = (br_kw * 1000 / (math.sqrt(3) * 400 * 0.95)) if tri_grid else (br_kw * 1000 / (230 * 0.95))
-    main_proposal = up(MAIN_BREAKERS, i_br) if br_kw else None
+    main_proposal = up(MAIN_PROTECTION, i_br) if br_kw else None
+    anti_breaker_proposal = up(MAIN_BREAKERS, i_br) if anti and i_br else None
+    if br_kw and i_br > MAIN_PROTECTION[-1]:
+        warnings.append("Curentul de calcul al branșamentului depășește domeniul componentelor din catalogul de propuneri (2.000 A); este necesară proiectarea echipamentului de putere și selectivitatea protecțiilor.")
     column_section = None
     column_du = None
     column_iz = None
@@ -285,7 +289,7 @@ def check(cef: dict) -> dict:
                        "panels": sum(s["panels"] * i.get("count", 1) for i in out_inv for s in i["strings"]),
                        "inverters": sum(i.get("count", 1) for i in out_inv)},
             "grid": {"tri": tri_grid, "bransament_kw": br_kw, "i_br": round(i_br, 1) if br_kw else 0,
-                     "main_proposal": main_proposal, "main_section_proposal": column_section, "main_section_iz": round(column_iz, 1) if column_iz else None, "main_section_du": round(column_du, 2) if column_du is not None else None, "anti": anti, "anti_auto": anti_auto},
+                     "main_proposal": main_proposal, "main_section_proposal": column_section, "main_section_iz": round(column_iz, 1) if column_iz else None, "main_section_du": round(column_du, 2) if column_du is not None else None, "anti_breaker_proposal": anti_breaker_proposal, "anti_breaker_note": "întreruptor motorizat cu bobină de declanșare; confirmați curba, Icu/Ics și schema din ATR" if anti_breaker_proposal else None, "anti": anti, "anti_auto": anti_auto},
             "inverters": out_inv, "errors": errors, "warnings": warnings, "tmin": tmin,
             "note": "Valorile propuse sunt orientative (IEC 60364-5-52 / I7). Se validează de personal autorizat ANRE conform instrucțiunilor producătorului."}
 
