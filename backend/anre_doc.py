@@ -25,10 +25,14 @@ def opis_items(kind: str) -> list:
     if kind in ("nou", "b_c1a", "b_c2a"):
         it = cer + A_G + [("tarif", "Dovada achitării tarifului ANRE de emitere (taxă externă, se plătește separat către ANRE)", "art. 13 și art. 14 alin. (1) lit. h)", "client")]
     elif kind == "vizare":
-        it = cer + [x for x in A_G] + [("atestat_original", "Originalul atestatului deținut", "Regulament, vizarea periodică (la 5 ani)", "client")]
+        it = cer + [x for x in A_G] + [
+            ("atestat_original", "Originalul atestatului deținut", "art. 24 alin. (1)", "client"),
+            ("tarif_vizare", "Dovada achitării tarifului ANRE de vizare a atestatului", "art. 24 alin. (1)", "client")]
     elif kind == "modificare":
-        it = cer + [("cert_constatator", A_G[0][1], "Regulament, modificarea atestatului", "client"), ("acte_modificare", "Documente care dovedesc modificarea datelor (acte ONRC, hotărâri etc.)", "Regulament, modificarea atestatului", "client"),
-                    ("atestat_original", "Originalul atestatului deținut", "Regulament, modificarea atestatului", "client")]
+        it = cer + [("cert_constatator", A_G[0][1], "art. 26 alin. (2)", "client"),
+                    ("acte_modificare", "Documente care dovedesc modificarea datelor (acte ONRC, hotărâri etc.)", "art. 26 alin. (2)", "client"),
+                    ("tarif_modificare", "Dovada achitării tarifului ANRE de modificare a atestatului", "art. 26 alin. (2)", "client"),
+                    ("atestat_original", "Originalul atestatului deținut", "art. 26 alin. (4)", "client")]
     else:
         it = cer + [("alte", "Documente cerute de procedura aplicabilă (stabilite împreună cu consultantul)", "de stabilit conform Regulamentului", "client")]
     return [{"nr": i + 1, "key": k, "title": t, "basis": b, "source": s} for i, (k, t, b, s) in enumerate(it)]
