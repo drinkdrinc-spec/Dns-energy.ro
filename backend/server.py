@@ -1551,7 +1551,15 @@ async def atr_pack(user: dict, rec: dict, full: int):
     if info and ATR.is_prod(rec):
         bykey = {p["key"]: p for p in info["positions"]}
         auto = {"schema": [bykey.get("schema")], "fise": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
-    attached = {k for k, v in att.items() if v} | {k for k, v in auto.items() if any(v)}
+    attached = {k for k, v in att.items() if v}
+    # A linked generated item is not proof of a ready document. Count schema only
+    # when the source opis says it is generated/attached; catalog evidence must
+    # exist for every selected model before it satisfies the required "fise" slot.
+    schema_position = (auto.get("schema") or [None])[0]
+    if schema_position and schema_position.get("auto_status") in ("generat", "atașat"):
+        attached.add("schema")
+    if pros and ATR.is_prod(rec) and auto.get("fise") and catalog_documents_complete(pros, (info or {}).get("positions", [])):
+        attached.add("fise")
     if pros and ATR.is_prod(rec) and "fise" in ATR.required(rec):
         if not catalog_documents_complete(pros, (info or {}).get("positions", [])):
             attached.discard("fise")
@@ -1650,7 +1658,20 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
         auto = {"h": [bykey.get("receptie")], "i": [bykey.get("priza")], "k": [bykey.get("schema")],
                 "j": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
     att = rec.get("attachments") or {}
-    attached = {k for k, v in att.items() if v} | {k for k, v in auto.items() if any(v)}
+    attached = {k for k, v in att.items() if v}
+    # Only mark auto-linked source documents present after the prosumer opis has
+    # cleared their missing-data and approval checks. Draft PDFs may still be
+    # included in the full bundle, but they cannot make Anexa 1 appear complete.
+    source_positions = {
+        "h": (auto.get("h") or [None])[0],
+        "i": (auto.get("i") or [None])[0],
+        "k": (auto.get("k") or [None])[0],
+    }
+    for key, position in source_positions.items():
+        if position and position.get("auto_status") in ("generat", "atașat"):
+            attached.add(key)
+    if pros and not rec.get("is_test") and catalog_documents_complete(pros, (info or {}).get("positions", [])):
+        attached.add("j")
     parts = [PWR.render_anexa1(rec, client, base, pros or {}, attached, ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")))]
     unavailable = []
     if pros and not rec.get("is_test"):
