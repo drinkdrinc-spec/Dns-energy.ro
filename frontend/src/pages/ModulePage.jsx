@@ -91,9 +91,12 @@ export default function ModulePage({ moduleKey }) {
       const clientId = params.get("clientId");
       if (params.get("new") === "atr" && clientId) {
         Promise.all([api.get("/data/clients"), api.get("/data/prosumator")]).then(([clientsRes, prosRes]) => {
-          const pros = (prosRes.data || []).find((item) => item.id === params.get("prosId") || item.client_id === clientId);
-          const client = (clientsRes.data || []).find((item) => item.id === clientId)
-            || (pros && (clientsRes.data || []).find((item) => String(item.name || "").trim().toLowerCase() === String(pros.client_name || "").trim().toLowerCase()));
+          const client = (clientsRes.data || []).find((item) => item.id === clientId);
+          const linkedPros = (prosRes.data || []).filter((item) => item.client_id === clientId);
+          const requestedProsId = params.get("prosId");
+          const pros = requestedProsId
+            ? linkedPros.find((item) => item.id === requestedProsId)
+            : linkedPros.length === 1 ? linkedPros[0] : null;
           if (!client) return;
           const kind = String(client.kind || "").toLowerCase();
           const caseName = params.get("case") || "";
@@ -133,7 +136,10 @@ export default function ModulePage({ moduleKey }) {
       if (params.get("new") === "diu" && clientId) {
         Promise.all([api.get("/data/clients"), prosId ? api.get("/data/prosumator") : Promise.resolve({ data: [] })]).then(([clientsRes, prosRes]) => {
           const client = (clientsRes.data || []).find((item) => item.id === clientId);
-          const pros = (prosRes.data || []).find((item) => item.id === prosId);
+          const linkedPros = (prosRes.data || []).filter((item) => item.client_id === clientId);
+          const pros = prosId
+            ? linkedPros.find((item) => item.id === prosId)
+            : linkedPros.length === 1 ? linkedPros[0] : null;
           if (!client) return;
           const grid = pros?.cef?.grid || {};
           const hasStorage = Boolean(pros && (pros.battery || /hibrid/i.test(String(pros.system_type || ""))
