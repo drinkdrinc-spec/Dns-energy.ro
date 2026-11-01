@@ -144,15 +144,37 @@ class CefDrawing(Flowable):
                          [f"Tip: {b.get('type') or 'parțial'}", f"Protecție: {b.get('breaker') or '—'}", str(b.get("circuits") or "")[:40]], "bk")
             if inv.get("battery_mode") == "own":
                 bt = inv.get("battery") or {}
+                bp = r.get("proposals", {}).get("battery", {})
                 coupling = str(bt.get("coupling") or "").strip().upper()
-                if coupling in ("AC", "DC"):
-                    self.line(bx + 3 * mm + lw, iy + 4 * mm, rx + rw / 2, iy + 4 * mm, dc=coupling == "DC")
-                    self.line(rx + rw / 2, iy + 4 * mm, rx + rw / 2, 66 * mm, dc=coupling == "DC")
+                battery_x = rx + rw / 2
+                battery_top = 66 * mm
+                if coupling == "DC":
+                    self.line(bx + 3 * mm + lw, iy + 4 * mm, battery_x, iy + 4 * mm, dc=True)
+                    self.line(battery_x, iy + 4 * mm, battery_x, 73 * mm, dc=True)
+                    c.setStrokeColor(RED); c.setLineWidth(0.8)
+                    c.rect(battery_x - 3.5 * mm, 69 * mm, 7 * mm, 4 * mm, stroke=1, fill=0)
+                    c.line(battery_x - 2 * mm, 69.5 * mm, battery_x + 2 * mm, 72.5 * mm)
+                    c.setFont("LSB", 4.8); c.setFillColor(RED); c.drawCentredString(battery_x, 74 * mm, "QBAT DC")
+                    self.line(battery_x, 69 * mm, battery_x, battery_top, dc=True)
+                elif coupling == "AC":
+                    self.line(bx + 3 * mm + lw, iy + 4 * mm, battery_x, iy + 4 * mm)
+                    self.line(battery_x, iy + 4 * mm, battery_x, battery_top)
                 coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
-                self.box(rx, 42 * mm, rw, 24 * mm, f"BATERIE ({coupling_label})",
-                         [str(bt.get("model") or "—"), f"{v(bt.get('modules'), ' mod.')} × {v(bt.get('kwh'), ' kWh')}",
-                          f"{v(bt.get('ah'), ' Ah')} · {v(bt.get('voltage'), ' V')}", f"Total {r.get('battery_kwh', 0):g} kWh",
-                          f"Protecție: {bt.get('protection') or 'de confirmat'}"], "bat")
+                battery_section = bt.get("cable_section") or bp.get("section")
+                battery_fuse = bt.get("fuse_a") or bp.get("fuse_a")
+                switch_u = bt.get("dc_switch_voltage_v")
+                switch_i = bt.get("dc_switch_current_a")
+                switch_text = f"Qbat DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "Qbat DC: tensiune/curent nominal de confirmat"
+                battery_lines = [
+                    str(bt.get("model") or "—"),
+                    f"{v(bt.get('modules'), ' mod.')} × {v(bt.get('kwh'), ' kWh')} · total {r.get('battery_kwh', 0):g} kWh",
+                    f"Ubat {v(bt.get('voltage'), ' V')} · Imax {v(bt.get('i_max'), ' A')}",
+                    f"Cablu DC: {v(battery_section, ' mm²')} · siguranță: {v(battery_fuse, ' A')}",
+                    switch_text,
+                    f"Protecție: {bt.get('protection') or 'de confirmat'}",
+                ]
+                self.box(rx, 36 * mm, rw, 30 * mm, f"BATERIE ({coupling_label})", battery_lines, "bat",
+                         dashed=bp.get("source") != "calculated" or not (switch_u and switch_i))
         for k, b in enumerate(shared):
             bx = (len(invs) + k) * cw
             users = [i for i, inv in enumerate(invs) if inv.get("shared_battery_id") == b.get("id")]
