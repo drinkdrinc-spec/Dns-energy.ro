@@ -441,13 +441,30 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         row = 2
         for idx, inv in enumerate(inverters, 1):
             model = inv.get("brand_model")
-            rated = inv.get("p_nom_kw")
-            limit = rec.get("p_evac_kw") or pros.get("power")
-            note = "Limitare evacuare: " + str(limit) + " kW" if limit not in (None, "") else ""
+            rated = D.num(inv.get("p_nom_kw"))
+            unit_limit = D.num(inv.get("p_limit_kw"))
+            count = max(1, int(D.num(inv.get("count")) or 1))
+            limit = f"{unit_limit:g}" if unit_limit is not None and unit_limit > 0 else ""
+            plant_max = rated * count if rated is not None and rated > 0 else ""
+            note = f"Limitare evacuare configurată: {unit_limit:g} kW/invertor" if unit_limit is not None and unit_limit > 0 else ""
             if inv.get("battery_mode") == "own" and inv.get("battery", {}).get("model"):
-                note = (note + "; " if note else "") + "Baterie: " + str(inv["battery"]["model"])
-            _deer_table_row(table, row, [str(idx), inv.get("count") or 1, model, "",
-                rated, limit, rated, note])
+                battery = inv["battery"]
+                details = []
+                for key, label in (("kwh", "kWh"), ("voltage", "V"), ("ah", "Ah")):
+                    value = D.num(battery.get(key))
+                    if value is not None and value > 0:
+                        details.append(f"{value:g} {label}")
+                if battery.get("coupling"):
+                    details.append("cuplare " + str(battery["coupling"]))
+                description = "Baterie: " + str(battery["model"])
+                if battery.get("modules"):
+                    description += " × " + str(battery["modules"])
+                if details:
+                    description += " (" + ", ".join(details) + ")"
+                note = (note + "; " if note else "") + description
+            _deer_table_row(table, row, [str(idx), count, model, "",
+                f"{rated:g}" if rated is not None and rated > 0 else "", limit,
+                f"{plant_max:g}" if plant_max else "", note])
             row += 1
         if inverters and len(table.rows) > row:
             total = sum(D.num(inv.get("p_nom_kw")) * D.num(inv.get("count") or 1) for inv in inverters)
