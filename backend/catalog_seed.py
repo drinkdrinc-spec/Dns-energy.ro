@@ -54,6 +54,15 @@ SEED = [
     {"category": "Panou", "brand_model": "JinkoSolar Tiger Neo 440 W", "w": 440, "notes": "Familia are variante diferite; completați codul exact și valorile din fișa oficială."},
     {"category": "Panou", "brand_model": "LONGi Hi-MO 7 (model de completat)", "notes": "Completați codul exact al modulului și parametrii electrici din fișa oficială."},
     {"category": "Panou", "brand_model": "AIKO Neostar (model de completat)", "notes": "Completați puterea și codul exact al modulului din fișa oficială."},
+    # FoxESS H3 Smart exact model SKUs; DC limits shared by the official v1.9 family datasheet.
+    # p_max_kw remains at rated active power; apparent power is not silently treated as active kW.
+    *({"category": "Invertor", "brand_model": f"FoxESS H3-{kw:.1f}-Smart", "type": "Hibrid", "phases": "Trifazat",
+       "p_nom_kw": kw, "p_max_kw": kw, "vdc_max": 1000, "mppt_min": 120, "mppt_max": 950,
+       "mppt_count": 3, "imax_mppt": 20, "isc_max_mppt": 25, "battery_voltage": "HV (FoxESS-compatible)",
+       "datasheet_url": "https://www.fox-ess.com/Public/Uploads/uploadfile/files/20251203/ENH3SmartDatasheetV1.920250411.pdf",
+       "conformity_url": "https://www.fox-ess.com/Public/Uploads/uploadfile/files/20261021/4479925406749234.pdf",
+       "notes": "Puterea Pmax este păstrată la Pn; fișa raportează separat puterea aparentă maximă în VA. Certificatul de familie este CE-LVD; verificați certificatele de conectare aplicabile operatorului din România."}
+      for kw in [5.0, 6.0, 8.0, 9.9, 10.0, 12.0, 15.0]),
     # GoodWe ET LV exact model SKUs; electrical limits and powers from the current official family datasheet.
     *({"category": "Invertor", "brand_model": f"GoodWe GW{kw}K-ET-L-G10", "type": "Hibrid", "phases": "Trifazat",
        "p_nom_kw": kw, "p_max_kw": max_kw, "vdc_max": 1000, "mppt_min": 150, "mppt_max": 850,
