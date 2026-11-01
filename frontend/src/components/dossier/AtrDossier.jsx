@@ -114,7 +114,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     if (selectedDeerForm.value.includes("≤10,8")) {
       const invs = selectedPros?.cef?.inverters || [];
       const stringsPower = invs.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, st) => n + (Number(st.panels) || 0), 0) * (Number(inv.panel_w) || 0) / 1000 * (Number(inv.count) || 1), 0);
-      const power = Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower || Number(selectedPros?.inverter_kw);
+      const power = installedPanelKwp(selectedPros) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower;
       if (!power) issues.push("Completează puterea instalată de producere pentru verificarea Anexei 5.");
       else if (power > 10.8) issues.push("Anexa 5 este pentru putere instalată de maximum 10,8 kW.");
       const supply = String(form.supply || selectedPros?.supply || selectedPros?.cef?.grid?.supply || "").toLowerCase();
@@ -122,7 +122,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
       else if (supply.includes("trifaz") || supply.includes("400")) issues.push("Anexa 5 selectată cere conexiune diferită de trifazic.");
     }
     if (selectedDeerForm.key === "large") {
-      const power = Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || Number(selectedPros?.inverter_kw);
+      const power = installedPanelKwp(selectedPros) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp);
       if (!power) issues.push("Completează puterea instalată de producere pentru procedura dedicată.");
       else if (power <= 400) issues.push("Procedura dedicată DEER selectată este pentru putere instalată mai mare de 400 kW.");
     }
