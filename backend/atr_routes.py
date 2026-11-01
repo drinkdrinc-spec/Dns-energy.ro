@@ -295,7 +295,12 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
     case = " ".join(str(rec.get(k) or "") for k in ("deer_case", "request_type")).casefold().replace("ț", "t").replace("ș", "s")
     request_type = ATR.rtype(rec)
     if "finant" in case:
-        annex_no = 4
+        # RER separates AFM/own-funds cases (Annex 2) from other funding
+        # programmes (Annex 4); Delgaz and Oltenia use Annex 4 for AFM cases.
+        if operator_key == "rer" and any(mark in case for mark in ("afm", "casa verde", "fonduri proprii", "surse proprii")):
+            annex_no = 2
+        else:
+            annex_no = 4
     elif any(mark in case for mark in ("≤10,8", "<=10,8", "<=10.8", "≤ 10,8")):
         annex_no = 5
     elif request_type == "mod_fara":
@@ -437,6 +442,13 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                         note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
             elif annex_no:
                 note.append(f"Nu există în registru un formular oficial Anexa {annex_no} verificabil pentru operatorul și tipul cererii selectate.")
+                official_pages = {
+                    "delgaz": "https://delgaz.ro/energie-electrica/prosumatori",
+                    "oltenia": "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html",
+                    "rer": RER_FORMS_URL,
+                }
+                if op_key in official_pages:
+                    note.append(f"Pagina oficială cu formulare și reguli: {official_pages[op_key]}")
             else:
                 note.append("Tipul cererii curente nu are încă o mapare automată la o anexă oficială în registrul aplicației.")
             archive.writestr("Anexe oficiale/INFO_completare.txt", "\n".join(note))
