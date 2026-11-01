@@ -82,7 +82,7 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
     setVal("current_supply_desc", [record.request_type, ...equipmentSummary(record).inverters.map((value) => `Invertor: ${value}`), ...equipmentSummary(record).panels.map((value) => `Panouri: ${value}`), ...equipmentSummary(record).batteries.map((value) => `Baterie: ${value}`)].filter(Boolean).join("; "));
   };
   useEffect(() => {
-    const id = form.pros_id || (linkedPros.length === 1 ? linkedPros[0].id : "");
+    const id = form.pros_id || (autoPros.length === 1 ? autoPros[0].id : "");
     const record = linkedPros.find((item) => item.id === id);
     if (!record) return;
     setSelectedProsId(id);
