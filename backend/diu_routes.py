@@ -17,6 +17,15 @@ OWN = ("receptie_", "pif_date", "pif_decision", "warranty_", "doc_date", "date")
 rcd = lambda v: str(v).replace("Tip", "").replace("tip", "").strip() if v else v
 
 
+def inverter_circuit_name(index: int, inverter: dict) -> str:
+    try:
+        count = max(1, int(float(inverter.get("count") or 1)))
+    except (TypeError, ValueError):
+        count = 1
+    model = inverter.get("brand_model") or "invertor"
+    return f"INV{index + 1} — {model}" + (f" × {count} buc." if count > 1 else "")
+
+
 async def diu_ctx(user: dict, item_id: str):
     S.guard("diu", user)
     rec = await S.check_access(user, "diu", item_id)
@@ -176,7 +185,7 @@ async def diu_import(item_id: str, request: Request, user: dict = Depends(get_cu
     else:
         upd.update({k: v for k, v in fill.items() if v not in (None, "") and rec.get(k) in (None, "")})
     if switching or not rec.get("circuits"):
-        upd["circuits"] = [{"name": f"INV{i + 1} — {inv.get('brand_model') or 'invertor'}", "breaker_a": (inv.get("ac") or {}).get("breaker_a"),
+        upd["circuits"] = [{"name": inverter_circuit_name(i, inv), "breaker_a": (inv.get("ac") or {}).get("breaker_a"),
                             "curve": (inv.get("ac") or {}).get("curve") or "C", "section": (inv.get("ac") or {}).get("section"),
                             "cable": (inv.get("ac") or {}).get("cable_type"), "length": (inv.get("ac") or {}).get("length_m"),
                             "rcd_ma": inv.get("rcd_ma"), "rcd_type": rcd(inv.get("rcd_type"))} for i, inv in enumerate(inverters)]
