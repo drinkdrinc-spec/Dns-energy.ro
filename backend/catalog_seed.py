@@ -8,7 +8,7 @@ def missing_seed_values(existing: dict, seed: dict) -> dict:
     updates = {}
     for field in SEED_BACKFILL_FIELDS:
         current = existing.get(field)
-        is_missing = current is None or current == "" or (field == "i_max" and current == 0)
+        is_missing = current is None or current == "" or (field in ("i_max", "voltage_1ph", "voltage_3ph") and current == 0)
         if is_missing and seed.get(field) not in (None, ""):
             updates[field] = seed[field]
     return updates
