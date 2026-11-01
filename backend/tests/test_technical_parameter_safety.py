@@ -76,3 +76,10 @@ def test_battery_cable_proposal_does_not_guess_without_battery_current_or_voltag
     missing_voltage = cef.battery_cable_proposal({"i_max": 40, "cable_length": 3})
     assert missing_voltage["section"] is None
     assert "tensiunea nominală" in missing_voltage["note"]
+
+
+def test_battery_fuse_is_proposed_only_below_documented_maximum():
+    valid = cef.battery_cable_proposal({"i_max": 40, "max_fuse_a": 50})
+    assert valid["fuse_a"] == 50
+    too_low = cef.battery_cable_proposal({"i_max": 40, "max_fuse_a": 40})
+    assert too_low["fuse_a"] is None
