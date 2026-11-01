@@ -474,8 +474,8 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
     values = [
         (("numecomplet", "utilizator", "beneficiar", "solicitant", "denumireclient"), c.get("name")),
         (("prenume",), c.get("first_name")),
-        (("cnp",), c.get("idcode") if str(r.get("applicant_type") or "").lower() not in ("pj", "persoana juridica") else None),
-        (("cui", "codfiscal", "codinregistrarefiscala"), c.get("cui") or (c.get("idcode") if str(r.get("applicant_type") or "").lower() in ("pj", "persoana juridica") else None)),
+        (("cnp",), c.get("idcode") if not is_company else None),
+        (("cui", "codfiscal", "codinregistrarefiscala"), c.get("cui") or (c.get("idcode") if is_company else None)),
         (("email",), c.get("email")),
         (("telefon", "telefonmobil", "phone"), c.get("phone")),
         (("judet", "county"), r.get("county") or c.get("county")),
