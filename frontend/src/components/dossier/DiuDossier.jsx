@@ -33,7 +33,16 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
   const [pid, setPid] = useState(form.pros_id || "");
   const [docs, setDocs] = useState(null);
   const [importing, setImporting] = useState(false);
-  const availablePros = pros.filter((item) => !/\bTEST\b/i.test([item.number, item.client_name].filter(Boolean).join(" ")));
+  const isTestRecord = (value) => /\bTEST\b/i.test(String(value || ""));
+  const isTestDiu = isTestRecord(form.number) || isTestRecord(form.client_name);
+  const normalizeClient = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
+  const availablePros = pros.filter((item) => {
+    const isTestPros = isTestRecord([item.number, item.client_name].filter(Boolean).join(" "));
+    if (isTestPros !== isTestDiu) return false;
+    if (!isTestDiu) return true;
+    return (form.client_id && item.client_id === form.client_id)
+      || normalizeClient(item.client_name) === normalizeClient(form.client_name);
+  });
   const loadDocs = () => api.get(`/diu/${id}/docs`).then((r) => setDocs(r.data)).catch(() => {});
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); loadDocs(); }, [id]); // eslint-disable-line
   useEffect(() => { if (savedAt) loadDocs(); }, [savedAt]); // eslint-disable-line
@@ -61,7 +70,7 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
         <div className="den-field min-w-[260px]"><label>Pornește din dosarul de prosumator</label>
           <select className="den-input" value={pid} onChange={(e) => importPros(e.target.value)} disabled={importing} data-testid="diu-pros-select">
             <option value="">Alege dosarul...</option>
-            {availablePros.map((p) => <option key={p.id} value={p.id}>{p.client_name || "fără nume"} — {p.address || p.pod || p.id.slice(0, 6)}</option>)}
+            {availablePros.map((p) => <option key={p.id} value={p.id}>{isTestRecord([p.number, p.client_name].filter(Boolean).join(" ")) ? "TEST · " : ""}{p.client_name || "fără nume"} — {p.address || p.pod || p.id.slice(0, 6)}</option>)}
           </select></div>
         <Btn variant="secondary" onClick={() => importPros()} disabled={!pid || importing} data-testid="diu-import-btn"><Download size={14} /> {importing ? "Se preiau..." : "Reîncarcă datele"}</Btn>
       </div>
