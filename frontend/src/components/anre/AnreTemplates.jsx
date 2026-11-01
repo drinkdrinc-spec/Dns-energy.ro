@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Upload, FileDown, Trash2 } from "lucide-react";
-import { api, API } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 
-const tok = () => localStorage.getItem("den_token");
-
-export function AnreTemplates() {
+undefinedexport function AnreTemplates() {
   const [d, setD] = useState(null);
   const [help, setHelp] = useState(false);
   useEffect(() => { api.get("/admin/anre/templates").then((r) => setD(r.data)); }, []);
@@ -25,7 +23,7 @@ export function AnreTemplates() {
           <td data-testid={`anre-tpl-status-${i.key}`}>{t ? <>{t.name} · {t.matched?.length || 0} câmpuri recunoscute{!t.matched?.length && <span style={{ color: "#9b2c2c" }}> — nu se poate precompleta, se folosește modelul standard</span>}</> : <span style={{ color: "var(--muted)" }}>model standard D-ENERGY</span>}</td>
           <td className="space-x-2 whitespace-nowrap text-right">
             <label className="cursor-pointer font-bold" style={{ color: "var(--blue)" }}><Upload size={12} className="inline" /> {t ? "Înlocuiește" : "Încarcă"}<input type="file" className="hidden" accept=".docx,application/pdf" onChange={(e) => e.target.files[0] && up(i.key, e.target.files[0])} data-testid={`anre-tpl-upload-${i.key}`} /></label>
-            {t && <a href={`${API}/admin/anre/templates/${i.key}/file?auth=${tok()}`} target="_blank" rel="noopener noreferrer" data-testid={`anre-tpl-view-${i.key}`}><FileDown size={12} className="inline" /></a>}
+            {t && <button type="button" onClick={() => openAuthenticatedFile(`/admin/anre/templates/${i.key}/file`)} aria-label={`Deschide fișierul ${i.key}`} data-testid={`anre-tpl-view-${i.key}`}><FileDown size={12} className="inline" /></button>}
             {t && <button onClick={() => del(i.key)} data-testid={`anre-tpl-delete-${i.key}`}><Trash2 size={12} className="inline" /></button>}
           </td></tr>); })}</tbody></table>
     </div>
