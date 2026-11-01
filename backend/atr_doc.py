@@ -478,7 +478,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
             limit = f"{unit_limit:g}" if unit_limit is not None and unit_limit > 0 else ""
             plant_max = rated * count if rated is not None and rated > 0 else ""
             note = f"Limitare evacuare configurată: {unit_limit:g} kW/invertor" if unit_limit is not None and unit_limit > 0 else ""
-            if inv.get("battery_mode") == "own" and inv.get("battery", {}).get("model"):
+            if not is_annex2 and inv.get("battery_mode") == "own" and inv.get("battery", {}).get("model"):
                 battery = inv["battery"]
                 details = []
                 for key, label in (("kwh", "kWh"), ("voltage", "V"), ("ah", "Ah"), ("i_max", "I max/modul A")):
@@ -500,6 +500,22 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         if inverters and len(table.rows) > row:
             total = sum(D.num(inv.get("p_nom_kw")) * D.num(inv.get("count") or 1) for inv in inverters)
             _deer_cell(table.cell(len(table.rows) - 1, 4), f"{total:g}" if total else "")
+        # List batteries as equipment rows, matching inverter visibility in Annex 2.
+        # Do not overwrite the template's total row; append battery rows after it.
+        for battery_idx, battery in enumerate(batteries, 1):
+            modules = max(1, int(D.num(battery.get("modules")) or 1))
+            specs = []
+            for key, label, unit in (("voltage", "U", " V"), ("ah", "Capacitate", " Ah"),
+                                     ("i_max", "I max", " A"), ("coupling", "Cuplare", "")):
+                value = battery.get(key)
+                if value not in (None, ""):
+                    specs.append(f"{label}: {value}{unit}")
+            capacity = D.num(battery.get("kwh"))
+            if capacity:
+                capacity *= modules
+            battery_row = len(table.rows)
+            _deer_table_row(table, battery_row, [f"B{battery_idx}", modules, battery.get("model") or "",
+                "Baterie", f"{capacity:g}" if capacity else "", "", "", "; ".join(specs)])
 
     if len(tables) > detail_table:
         detail = tables[detail_table]
@@ -507,7 +523,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         for inv in inverters:
             if inv.get("brand_model"):
                 supply_details.append("Invertor: " + str(inv["brand_model"]))
-        for battery in batteries:
+        for battery in ([] if is_annex2 else batteries):
             desc = "Baterie: " + str(battery.get("model") or "model necompletat")
             if battery.get("modules"):
                 desc += " × " + str(battery["modules"])
@@ -518,7 +534,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
             supply_details.append(desc)
         if supply_details:
             _deer_cell(detail.cell(0, 1), "; ".join(supply_details))
-        amp_hours = [str(b.get("ah")) for b in batteries if b.get("ah") not in (None, "")]
+        amp_hours = [] if is_annex2 else [str(b.get("ah")) for b in batteries if b.get("ah") not in (None, "")]
         if amp_hours:
             _deer_cell(detail.cell(1, 1), ", ".join(amp_hours))
 
