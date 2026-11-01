@@ -1423,9 +1423,11 @@ def expected_catalog_document_keys(pros: dict) -> set:
     expected = set()
 
     def add(label: str, model, catalog_id):
-        suffix = catalog_id or str(model or "").strip()
-        if not suffix:
+        name = str(model or "").strip()
+        # OPIS only creates catalog positions for equipment with an identified model.
+        if not name:
             return
+        suffix = catalog_id or name
         for kind in ("datasheet", "conformity"):
             expected.add(f"cat_{kind}_{label}_{suffix}")
 
