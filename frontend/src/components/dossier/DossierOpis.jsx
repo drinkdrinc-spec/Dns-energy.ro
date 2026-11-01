@@ -8,9 +8,9 @@ import { AiPrecheck } from "@/components/ai/AiPrecheck";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/plan";
 
- const STATUS_STYLE = { "de completat": ["#fff0f0", "#9b2c2c"], generat: ["#eef4ff", "#1d4ed8"], "necesită semnătură": ["#fff8e6", "#8a5a00"], "atașat": ["#ecfdf3", "#166534"] };
+const STATUS_STYLE = { "de completat": ["#fff0f0", "#9b2c2c"], generat: ["#eef4ff", "#1d4ed8"], "necesită semnătură": ["#fff8e6", "#8a5a00"], "atașat": ["#ecfdf3", "#166534"] };
 
-function Row({ p, id, statuses, reload, preview }) {
+function Row({ p, id, statuses, reload }) {
   const ref = useRef();
   const put = async (body) => { await api.put(`/dossier/${id}/item/${p.key}`, body); reload(); };
   const filePath = `/dossier/${id}/file/${encodeURIComponent(p.key)}`;
@@ -46,7 +46,7 @@ function Row({ p, id, statuses, reload, preview }) {
 
 export function DossierOpis({ id }) {
   const [d, setD] = useState(null);
-   const [showReport, setShowReport] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [pre, setPre] = useState(false);
   const { user } = useAuth();
   const load = () => api.get(`/dossier/${id}`).then((r) => setD(r.data)).catch(() => {});
