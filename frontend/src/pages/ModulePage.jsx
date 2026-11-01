@@ -29,6 +29,26 @@ import { can } from "@/lib/plan";
 import { ProsumatorQuickForm } from "@/components/dossier/ProsumatorQuickForm";
 import { AtrQuickForm } from "@/components/dossier/AtrQuickForm";
 
+function installedPanelKwp(pros) {
+  if (!pros) return "";
+  const number = (value) => {
+    const parsed = Number(String(value ?? "").replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const inverters = pros.cef?.inverters || [];
+  const calculated = inverters.reduce((total, inverter) => {
+    const panelW = number(inverter.panel_w);
+    const panels = (inverter.strings || []).reduce((sum, string) => sum + number(string.panels), 0);
+    const count = Math.max(1, number(inverter.count || inverter.quantity) || 1);
+    return total + panels * panelW * count / 1000;
+  }, 0);
+  if (calculated > 0) return Number(calculated.toFixed(3));
+  const legacyPanels = number(pros.panel_count);
+  const legacyW = number(pros.panel_w);
+  if (legacyPanels > 0 && legacyW > 0) return Number((legacyPanels * legacyW / 1000).toFixed(3));
+  return pros.cef?.total_kwp || pros.panel_kwp || pros._kwp || "";
+}
+
 function Field({ f, value, onChange, refOptions, ai }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
   const common = { className: "den-input", value: value ?? "", onChange: (e) => onChange(f.name, e.target.value), placeholder: f.placeholder || "", "data-testid": `field-${f.name}` };
@@ -110,7 +130,7 @@ export default function ModulePage({ moduleKey }) {
             client_id: client.id,
             ...(pros ? { pros_id: pros.id, kind: "Loc de consum și de producere (prosumator)",
               supply: pros.supply || "", p_abs_kw: pros.bransament_kw || "",
-              pv_kw: pros.inverter_kw || "", p_evac_kw: pros.power || "" } : {}),
+              pv_kw: installedPanelKwp(pros), p_evac_kw: pros.power || "" } : {}),
             applicant_type: /jurid/.test(kind) ? "Persoană juridică" : /fiz|persoan/.test(kind) ? "Persoană fizică" : "",
             pod: client.pod || pros?.pod || "",
             operator: client.operator || pros?.operator || "",
@@ -210,7 +230,7 @@ export default function ModulePage({ moduleKey }) {
         next.kind = "Loc de consum și de producere (prosumator)";
         if (linked.supply) next.supply = linked.supply;
         if (linked.bransament_kw) next.p_abs_kw = linked.bransament_kw;
-        if (linked.inverter_kw) next.pv_kw = linked.inverter_kw;
+        const installedKwp = installedPanelKwp(linked);\n        if (installedKwp) next.pv_kw = installedKwp;
         if (linked.power) next.p_evac_kw = linked.power;
         if (/spor/i.test(String(linked.request_type || ""))) {
           next.request_type = "dezvoltarea unui utilizator existent (spor de putere)";
