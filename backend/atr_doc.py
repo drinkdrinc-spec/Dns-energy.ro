@@ -664,6 +664,10 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
         else:
             limit_values.append(f"{model}: {unit_limit:g} kW/buc. × {unit_count} buc.")
     inverter_limit = "; ".join(limit_values) if limit_values else "Nedeclarată în configurarea invertorului"
+    applicant_type = str(rec.get("applicant_type") or "").casefold()
+    is_company = "jurid" in applicant_type or applicant_type == "pj"
+    applicant_identifier = (client.get("cui") or client.get("idcode")) if is_company else client.get("idcode")
+    applicant_address = (client.get("hq_address") or client.get("address")) if is_company else (client.get("address") or client.get("hq_address"))
     v = lambda value: escape(str(value)) if value not in (None, "") else M
     P = lambda text, style="p": Paragraph(text, D.S[style])
     T = lambda rows, widths: D.pdf_table(rows, widths, True, 7.6, 178)
@@ -682,8 +686,8 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
     story += [
         P("1. Solicitant", "b"),
         T([["Câmp", "Date disponibile"], ["Nume / denumire", v(client.get("name") or rec.get("client_name"))],
-           ["Tip solicitant", v(rec.get("applicant_type"))], ["CNP / CUI", v(client.get("idcode") or client.get("cui"))],
-           ["Domiciliu / sediu din act", v(client.get("hq_address"))],
+           ["Tip solicitant", v(rec.get("applicant_type"))], ["CNP / CUI", v(applicant_identifier)],
+           ["Domiciliu / sediu din act", v(applicant_address)],
            ["Telefon", v(client.get("phone"))], ["E-mail", v(client.get("email"))],
            ["Reprezentant", v(client.get("rep_name"))]], [48, 130]),
         Spacer(1, 4),
