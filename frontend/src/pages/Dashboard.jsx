@@ -50,7 +50,7 @@ const FLOW = [
 
 const TILES = [
   { to: "/prosumator", icon: SunMedium, title: "Dosare prosumator", desc: "Date client, instalație și documente pentru depunere." },
-  { to: "/cerere-atr", icon: FileText, title: "Cereri ATR", desc: "Cererile de racordare și spor de putere." },
+  { to: "/cerere-atr", icon: FileText, title: "Cereri ATR", desc: "Cererile pentru avizul tehnic de racordare." },\n  { to: "/spor-putere", icon: Zap, title: "Spor de putere", desc: "Solicitări pentru majorarea puterii aprobate." },
   { to: "/diu", icon: FolderOpen, title: "Dosare DI-U", desc: "Documentele instalației de utilizare." },
   { to: "/mono", icon: GitBranch, title: "Scheme monofilare", desc: "Scheme și protecțiile instalației." },
   { to: "/pram", icon: FileCheck2, title: "Buletine PRAM", desc: "Documente PRAM separate de dosar." },
