@@ -19,11 +19,12 @@ function Field({ f, form, setVal, refOptions }) {
 export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
   const [pros, setPros] = useState([]);
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(Array.isArray(r.data) ? r.data : [])).catch(() => {}); }, []);
-  const clients = (refOptions.clients || []).filter((c) => !/\bTEST\b/i.test(String(c.label || "")));
+  const showTests = new URLSearchParams(window.location.search).get("showTests") === "1";
+  const clients = (refOptions.clients || []).filter((c) => showTests || !/\bTEST\b/i.test(String(c.label || "")));
   const selectedClient = clients.find((c) => c.label === form.client_name);
   const linked = pros.filter((p) => selectedClient
     ? p.client_id ? p.client_id === selectedClient.id : norm(p.client_name) === norm(selectedClient.label)
-    : false).filter((p) => !/\bTEST\b/i.test([p.number, p.client_name].filter(Boolean).join(" ")));
+    : false).filter((p) => showTests || !/\bTEST\b/i.test([p.number, p.client_name].filter(Boolean).join(" ")));
   const chosenPros = linked.find((p) => p.id === form.pros_id) || null;
   const choosePros = (id) => {
     setVal("pros_id", id);
