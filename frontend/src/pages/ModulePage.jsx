@@ -554,7 +554,7 @@ export default function ModulePage({ moduleKey }) {
               </article>;
             })}
           </div>}
-          <div className="hidden overflow-x-auto sm:block">
+          <div className={key === "clients" ? "hidden overflow-x-auto sm:block" : "overflow-x-auto"}>
             <table className="w-full text-sm" data-testid="items-table">
               <thead>
                 <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
