@@ -613,8 +613,8 @@ export default function ModulePage({ moduleKey }) {
                   <div className="mt-2 flex flex-wrap gap-2">
                     {pros && <>
                       <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => openAuthenticatedFile("/dossier/" + pros.id + "/export")}>Dosar prosumator</button>
-                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/sld/" + pros.id + "/pdf", "schema_monofilara_" + pros.id.slice(0, 8) + ".pdf")}>Schema monofilara</button>
-                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/dossier/" + pros.id + "/file/priza", "pram_priza_" + pros.id.slice(0, 8) + ".pdf")}>Buletin PRAM</button>
+                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/sld/" + pros.id + "/pdf?download=1", "schema_monofilara_" + pros.id.slice(0, 8) + ".pdf")}>Schema monofilara</button>
+                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/dossier/" + pros.id + "/file/priza?download=1", "pram_priza_" + pros.id.slice(0, 8) + ".pdf")}>Buletin PRAM</button>
                     </>}
                     {diu && <>
                       <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/diu/" + diu.id + "/pdf?doc=pram_priza", "pram_priza_diu_" + diu.id.slice(0, 8) + ".pdf")}>PRAM priză DI-U</button>
@@ -643,8 +643,8 @@ export default function ModulePage({ moduleKey }) {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/export`)}>Dosar PDF</button>
-                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${it.id}/pdf`, `schema_monofilara_${it.id.slice(0, 8)}.pdf`)}>Schema</button>
-                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/file/priza`, `pram_priza_${it.id.slice(0, 8)}.pdf`)}>PRAM priză</button>
+                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${it.id}/pdf?download=1`, `schema_monofilara_${it.id.slice(0, 8)}.pdf`)}>Schema</button>
+                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/file/priza?download=1`, `pram_priza_${it.id.slice(0, 8)}.pdf`)}>PRAM priză</button>
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/pif/pdf`, `pif_${it.id.slice(0, 8)}.pdf`)}>Proces verbal PIF</button>
                   {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}`}>Cerere ATR</a>}
                   {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}&case=${encodeURIComponent("power-increase")}`}>Spor de putere</a>}
@@ -742,9 +742,9 @@ export default function ModulePage({ moduleKey }) {
                           {clientDiuDossiers.length > 1 && <span className="basis-full text-[10px] text-amber-800">Mai multe dosare DI-U: deschide dosarul dorit pentru documente și PRAM.</span>}
                           {dossier && <>
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${dossier.id}/export`)}>Dosar PDF</button>
-                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/sld/${dossier.id}/pdf`, `schema_monofilara_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă schemă</button>
+                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/sld/${dossier.id}/pdf?download=1`, `schema_monofilara_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă schemă</button>
                             <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${dossier.id}/pif/pdf`, `pif_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
-                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${dossier.id}/file/priza`, `pram_priza_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
+                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${dossier.id}/file/priza?download=1`, `pram_priza_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
                           </>}
                           {diu && <>
                             <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`, `pram_priza_diu_${diu.id.slice(0, 8)}.pdf`)}>Descarcă PRAM priză</button>
@@ -768,9 +768,9 @@ export default function ModulePage({ moduleKey }) {
                           {it.client_id && <a className={linkClass} href={atrUrl}>Cerere ATR</a>}
                           {it.client_id && <a className={linkClass} href={atrUrl + "&case=" + encodeURIComponent("power-increase")}>Spor de putere</a>}
                           <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/export`)}>Dosar PDF</button>
-                          <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/sld/${it.id}/pdf`, `schema_monofilara_${it.id.slice(0, 8)}.pdf`)}>Descarcă schemă</button>
+                          <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/sld/${it.id}/pdf?download=1`, `schema_monofilara_${it.id.slice(0, 8)}.pdf`)}>Descarcă schemă</button>
                           <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/pif/pdf`, `pif_${it.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
-                          <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/file/priza`, `pram_priza_${it.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
+                          <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/file/priza?download=1`, `pram_priza_${it.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
                           {diu && <>
                             <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`, `pram_priza_diu_${diu.id.slice(0, 8)}.pdf`)}>Descarcă PRAM priză</button>
                             <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_cont`, `pram_continuitate_${diu.id.slice(0, 8)}.pdf`)}>Descarcă continuitate</button>
