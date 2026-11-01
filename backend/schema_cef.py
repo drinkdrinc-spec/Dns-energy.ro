@@ -178,11 +178,22 @@ class CefDrawing(Flowable):
         for k, b in enumerate(shared):
             bx = (len(invs) + k) * cw
             users = [i for i, inv in enumerate(invs) if inv.get("shared_battery_id") == b.get("id")]
+            bp = res.get("shared_battery_proposals", {}).get(b.get("id"), {})
             coupling = str(b.get("coupling") or "").strip().upper()
             coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
+            battery_section = b.get("cable_section") or bp.get("section")
+            battery_fuse = b.get("fuse_a") or bp.get("fuse_a")
+            switch_u = b.get("dc_switch_voltage_v")
+            switch_i = b.get("dc_switch_current_a")
+            switch_text = f"Qbat DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "Qbat DC: tensiune/curent nominal de confirmat"
             self.box(bx + 3 * mm, 42 * mm, cw - 6 * mm, 30 * mm, f"BATERIE COMUNĂ ({coupling_label})",
-                     [str(b.get("model") or "—"), f"{v(b.get('modules'), ' mod.')} × {v(b.get('kwh'), ' kWh')}", f"{v(b.get('ah'), ' Ah')} · {v(b.get('voltage'), ' V')}",
-                      "Invertoare: " + ", ".join(f"INV {u + 1}" for u in users), f"Protecție: {b.get('protection') or 'de confirmat'}"], "bat")
+                     [str(b.get("model") or "—"),
+                      f"{v(b.get('modules'), ' mod.')} × {v(b.get('kwh'), ' kWh')} · total {v(b.get('kwh'), ' kWh')}",
+                      f"Ubat {v(b.get('voltage'), ' V')} · Imax {v(b.get('i_max'), ' A')}",
+                      f"Cablu DC: {v(battery_section, ' mm²')} · siguranță: {v(battery_fuse, ' A')}",
+                      switch_text,
+                      "Invertoare: " + ", ".join(f"INV {u + 1}" for u in users)], "bat",
+                     dashed=bp.get("source") != "calculated" or not (switch_u and switch_i))
             if coupling in ("AC", "DC"):
                 for j, u in enumerate(users):
                     yy = 70 * mm - j * 2.2 * mm
