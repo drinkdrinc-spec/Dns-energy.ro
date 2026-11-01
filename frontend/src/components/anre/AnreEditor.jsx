@@ -72,7 +72,7 @@ export function AnreEditor({ id, platform, onBack }) {
         <div className="den-panel"><h3 className="font-bold mb-2">Date firmă (preluate din profil)</h3>
           <div className="grid sm:grid-cols-4 gap-2">{CO.map(([k, l]) => <div key={k} className="den-field"><label>{l}</label><input className="den-input" value={d.company?.[k] ?? ""} onChange={(e) => setD({ ...d, company: { ...d.company, [k]: e.target.value } })} data-testid={`anre-co-${k}`} /></div>)}
             <div className="den-field sm:col-span-4"><label>Tip(uri) atestat solicitat</label><div className="flex flex-wrap gap-2">
-              {["A1", "A2", "A3", "B", "Bi", "Bp", "C1A", "C1B", "C2A", "C2B", "D1", "D2", "E1", "E2"].map((t) => { const tt = d.target_types || []; return (
+              {["A", "A1", "A2", "A3", "B", "Be", "Bi", "Bp", "C1A", "C1B", "C2A", "C2B", "D1", "D2", "E1", "E2", "E2PA"].map((t) => { const tt = d.target_types || []; return (
                 <label key={t} className="text-xs flex items-center gap-1 rounded border px-2 py-1" style={{ borderColor: "var(--line)" }}>
                   <input type="checkbox" checked={tt.includes(t)} onChange={(e) => setD({ ...d, target_types: e.target.checked ? [...tt, t] : tt.filter((x) => x !== t) })} data-testid={`anre-target-${t}`} />{t}</label>); })}</div></div></div>
           <h3 className="font-bold mt-3 mb-1 text-sm">Personal (Anexa 7)</h3><Rows cols={STAFF} rows={d.staff || []} onChange={(v) => setD({ ...d, staff: v })} tid="anre-staff" />
