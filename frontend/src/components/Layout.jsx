@@ -54,11 +54,11 @@ function DossierWorkflow({ pathname }) {
   return (
     <nav aria-label="Ordinea dosarului" className="mb-6 rounded-xl border bg-white p-3 sm:p-4" style={{ borderColor: "var(--line)" }} data-testid="dossier-workflow-nav">
       <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: "var(--muted)" }}>Flux de lucru · deschide direct un pas</div>
-      <ol className="flex gap-2 overflow-x-auto pb-1">
+      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
         {DOSSIER_STEPS.map(({ to, label, icon: Icon, matches }, index) => {
           const active = matches.some((path) => pathname.startsWith(path));
-          return <li key={to} className="shrink-0">
-            <NavLink to={to} aria-current={active ? "step" : undefined} className="flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:border-blue-300" style={active
+          return <li key={to} className="min-w-0">
+            <NavLink to={to} aria-current={active ? "step" : undefined} className="flex min-h-10 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-semibold transition hover:border-blue-300" style={active
               ? { background: "#eaf1ff", borderColor: "var(--blue)", color: "var(--blue)" }
               : { background: "#fff", borderColor: "var(--line)", color: "#475569" }}>
               <span className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={active ? { background: "var(--blue)", color: "#fff" } : { background: "#f1f5f9", color: "#475569" }}>{index + 1}</span>
