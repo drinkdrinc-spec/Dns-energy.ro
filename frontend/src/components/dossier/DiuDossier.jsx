@@ -8,23 +8,65 @@ import { DiuCircuits } from "./DiuCircuits";
 const tok = () => localStorage.getItem("den_token");
 
 const OPERATOR_DOCS = {
-  deer: ["Dosar instalației de utilizare și documentația tehnică a instalației de producere", "Proces-verbal de recepție și punere în funcțiune, după caz", "Buletin de încercare a prizei de pământ", "Fișe tehnice și certificate pentru invertor, module și stocare", "Schema monofilară cu tabloul general și protecțiile prevăzute"],
-  delgaz: ["Formular DIU DEGR E P46-A38, după caz", "Declarația executantului privind ATR-ul și proiectul verificat", "Proces-verbal de recepție cu rezultate corespunzătoare", "Buletin de verificare a instalației și buletine PRAM", "Schema monofilară cu TG, protecții și reglaje", "Angajamentul consumatorului privind accesul personalului autorizat ANRE", "Proiect tehnic verificat ANRE pentru instalații complexe"],
-  retele: ["Declarația executantului privind respectarea ATR-ului și proiectului verificat", "Proces-verbal de recepție cu rezultate corespunzătoare", "Documente de verificare, probe și teste conform normelor", "Schema monofilară, cel puțin până la interfață/TG, cu protecții și reglaje", "Schema surselor proprii avizată de operator, dacă există"],
-  oltenia: ["Lista DI-U și formularele curente publicate de operator", "ATR / certificatul de racordare și condițiile tehnice", "Proces-verbal de recepție și buletinele de verificare aplicabile", "Schema monofilară cu tabloul general, protecțiile și reglajele", "Declarațiile executantului și documentele tehnice ale echipamentelor"],
+  deer: [
+    { label: "Dosar instalației și documentația tehnică", keys: ["opis", "memoriu"] },
+    { label: "Proces-verbal de recepție și punere în funcțiune", keys: ["receptie", "pif"] },
+    { label: "Buletine de verificare PRAM", keys: ["pram_priza", "pram_cont", "pram_izol", "pram_ddr"] },
+    { label: "Fișe tehnice și certificate pentru echipamente", external: true },
+    { label: "Schema monofilară cu TG și protecții", keys: ["schema_tg"] },
+  ],
+  delgaz: [
+    { label: "Formularul oficial DIU DEGR E P46-A38, după caz", external: true },
+    { label: "Declarația executantului privind ATR-ul și proiectul verificat", keys: ["conformitate"], external: true },
+    { label: "Proces-verbal de recepție și PIF", keys: ["receptie", "pif"] },
+    { label: "Buletine de verificare PRAM", keys: ["pram_priza", "pram_cont", "pram_izol", "pram_ddr"] },
+    { label: "Schema monofilară cu TG, protecții și reglaje", keys: ["schema_tg"] },
+    { label: "Angajamentul consumatorului privind accesul personalului autorizat ANRE", keys: ["angajament_delgaz"] },
+    { label: "Proiect tehnic verificat ANRE, dacă este aplicabil", external: true },
+  ],
+  retele: [
+    { label: "Declarația executantului privind respectarea ATR-ului și proiectului verificat", keys: ["conformitate"], external: true },
+    { label: "Proces-verbal de recepție și PIF", keys: ["receptie", "pif"] },
+    { label: "Documente de verificare și probe", keys: ["pram_priza", "pram_cont", "pram_izol", "pram_ddr"] },
+    { label: "Schema monofilară până la interfață/TG", keys: ["schema_tg"] },
+    { label: "Schema surselor proprii avizată, dacă există", external: true },
+  ],
+  oltenia: [
+    { label: "Lista și formularele curente publicate de operator", external: true },
+    { label: "ATR / certificatul de racordare și condițiile tehnice", external: true },
+    { label: "Proces-verbal de recepție și buletinele aplicabile", keys: ["receptie", "pram_priza", "pram_cont", "pram_izol", "pram_ddr"] },
+    { label: "Schema monofilară cu tabloul general și protecțiile", keys: ["schema_tg"] },
+    { label: "Declarațiile și fișele tehnice ale echipamentelor", keys: ["conformitate"], external: true },
+  ],
 };
 const operatorInfoFor = (operator) => {
   const value = String(operator || "").toLowerCase();
   if (!value) return { key: "", label: "Selectează operatorul pentru lista și formularul aplicabil." };
   if (/deer|distributie energie electrica/.test(value)) return { key: "deer", label: "DEER — ghid de racordare pentru prosumatori", url: "https://www.distributie-energie.ro/racordare-la-retea-prosumator/" };
-  if (/delgaz/.test(value)) return { key: "delgaz", label: "Delgaz Grid — opis oficial DI-U (DEGR E P46-A38)", url: "https://delgaz.ro/getattachment/52b58b1b-a66a-4a79-888a-4b9ad5990fa0/Opis_Dosar_Instalatie_de_utilizare.pdf" };
+  if (/delgaz/.test(value)) return { key: "delgaz", label: "Delgaz Grid — opis oficial DI-U (DEGR E P46-A38)", url: "https://delgaz.ro/getattachment/4b81ca72-870b-4f1b-a703-b21ef7059bc4/Opis_Dosar_Instalatie_de_utilizare.pdf" };
   if (/retele electrice|e-distribu/.test(value)) return { key: "retele", label: "Rețele Electrice — lista oficială a documentelor DIU", url: "https://www.reteleelectrice.ro/cereri-documente/" };
   if (/oltenia|deo connect/.test(value)) return { key: "oltenia", label: "Distribuție Oltenia — portalul oficial de documente", url: "https://www.distributieoltenia.ro/" };
   return { key: "", label: "Lista este orientativă. Confirmă formularul și cerințele actuale pe site-ul operatorului." };
 };
 const operatorDocsFor = (operator) => {
   const info = operatorInfoFor(operator);
-  return OPERATOR_DOCS[info.key] || ["Formularul oficial DI-U și anexele aplicabile", "ATR / certificatul de racordare și condițiile tehnice", "Schema monofilară și documentația tehnică", "Procese-verbale și buletine de verificare", "Declarații și fișe tehnice ale echipamentelor"];
+  return OPERATOR_DOCS[info.key] || [
+    { label: "Formularul oficial DI-U și anexele aplicabile", external: true },
+    { label: "ATR / certificatul de racordare și condițiile tehnice", external: true },
+    { label: "Schema monofilară și documentația tehnică", keys: ["schema_tg", "memoriu"] },
+    { label: "Procese-verbale și buletine de verificare", keys: ["receptie", "pif", "pram_priza", "pram_cont", "pram_izol", "pram_ddr"] },
+    { label: "Declarații și fișe tehnice ale echipamentelor", keys: ["conformitate"], external: true },
+  ];
+};
+const requirementState = (item, docs) => {
+  if (item.external) return { label: "Verificare / atașare la operator", tone: "#92400e", bg: "#fffbeb" };
+  if (!docs) return { label: "Se verifică…", tone: "#475569", bg: "#f1f5f9" };
+  const positions = item.keys.map((key) => docs.positions?.find((position) => position.key === key)).filter(Boolean);
+  if (!positions.length) return { label: "Nu este generat pentru acest dosar", tone: "#475569", bg: "#f1f5f9" };
+  const missing = positions.some((position) => position.missing?.length);
+  return missing
+    ? { label: "De completat", tone: "#991b1b", bg: "#fef2f2" }
+    : { label: "Generat în dosar · verifică și semnează", tone: "#166534", bg: "#f0fdf4" };
 };
 
 
@@ -80,7 +122,7 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
         <div className="font-bold text-sm">Dosar adaptat operatorului de distribuție</div>
         <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Operator selectat: <b>{form.operator || "neselectat"}</b>. Lista de mai jos ajută la pregătirea dosarului; cerințele finale și formularele condiționale se confirmă din sursa oficială.</p>
         {operatorInfoFor(form.operator).url && <a className="mt-2 inline-flex text-xs font-semibold underline" href={operatorInfoFor(form.operator).url} target="_blank" rel="noopener noreferrer" data-testid="diu-official-requirements">Deschide {operatorInfoFor(form.operator).label} ↗</a>}
-        <ul className="mt-2 grid sm:grid-cols-2 gap-2 text-xs">{operatorDocsFor(form.operator).map((item) => <li key={item} className="rounded border px-3 py-2" style={{ borderColor: "var(--line)" }}>□ {item}</li>)}</ul>
+        <ul className="mt-2 grid sm:grid-cols-2 gap-2 text-xs">{operatorDocsFor(form.operator).map((item) => { const state = requirementState(item, docs); return <li key={item.label} className="rounded border px-3 py-2 flex items-start justify-between gap-2" style={{ borderColor: "var(--line)" }}><span>{item.label}</span><span className="shrink-0 rounded-full px-2 py-0.5 font-semibold text-[10px]" style={{ color: state.tone, background: state.bg }}>{state.label}</span></li>; })}</ul>
       </div>
       <details className="mt-4 rounded-xl border bg-white px-4" style={{ borderColor: "var(--line)" }} data-testid="diu-technical-details">
         <summary className="cursor-pointer py-3 text-sm font-semibold">Detalii tehnice, circuite și rezultate PRAM</summary>
