@@ -42,14 +42,14 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
       <div className="grid sm:grid-cols-4 gap-3">
         <CatalogPick items={catalog} category="Invertor" testid={`${t}-pick`} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, red_limit_mode: it.red_limit_mode || "Nu este declarată" })} />
         <F label="Marcă și model" value={inv.brand_model} onChange={s("brand_model")} testid={`${t}-model`} className="sm:col-span-2" />
+        <F label="Limită injecție în rețea (kW)" type="number" value={inv.p_limit_kw} onChange={s("p_limit_kw")} testid={`${t}-plim`} />
+        <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Detalii invertor · completate din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
         <F label="Tip" value={inv.type} onChange={s("type")} options={["Hibrid", "On-grid", "Invertor de baterie (AC)"]} testid={`${t}-type`} />
         <F label="Faze" value={inv.phases} onChange={s("phases")} options={["Trifazat", "Monofazat"]} testid={`${t}-phases`} />
         {inv.phases === "Monofazat" && <F label="Faza de racord" value={inv.phase} onChange={s("phase")} options={["L1", "L2", "L3"]} testid={`${t}-phase`} />}
         <F label="Putere nominală (kW)" type="number" value={inv.p_nom_kw} onChange={s("p_nom_kw")} testid={`${t}-pnom`} />
         <F label="Putere maximă (kW)" type="number" value={inv.p_max_kw} onChange={s("p_max_kw")} testid={`${t}-pmax`} />
         <F label="Limitare putere în RED" value={inv.red_limit_mode || "Nu este declarată"} onChange={s("red_limit_mode")} options={["Nu este declarată", "Limitare putere evacuată", "Zero export"]} testid={`${t}-red-limit-mode`} />
-        <F label="Pmax evacuată în RED (kW)" type="number" value={inv.p_limit_kw} onChange={s("p_limit_kw")} testid={`${t}-plim`} />
-        <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Parametri tehnici invertor · completare din fișa modelului</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
         <F label="Udc max (V)" type="number" value={inv.vdc_max} onChange={s("vdc_max")} testid={`${t}-vdc`} />
         <F label="MPPT min (V)" type="number" value={inv.mppt_min} onChange={s("mppt_min")} testid={`${t}-mpptmin`} />
         <F label="MPPT max (V)" type="number" value={inv.mppt_max} onChange={s("mppt_max")} testid={`${t}-mpptmax`} />
@@ -83,8 +83,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
               <div key={i} className="flex flex-wrap items-end gap-2" data-testid={`${t}-string-${i}`}>
                 <span className="text-xs font-bold w-16 pb-3">String {i + 1}</span>
                 <F label="Panouri în serie" type="number" value={st.panels} onChange={(v) => setStr(i, "panels", v)} testid={`${t}-string-${i}-panels`} />
-                <F label="MPPT" type="number" value={st.mppt} onChange={(v) => setStr(i, "mppt", v)} testid={`${t}-string-${i}-mppt`} />
-                {r && <span className="text-xs pb-3" style={{ color: "var(--muted)" }}>Voc rece {r.voc_cold} V · Vmp {r.vmp_stc} V · {r.kwp} kWp</span>}
+                <span className="text-xs pb-3" style={{ color: "var(--muted)" }}>MPPT {st.mppt || i + 1}{r?.kwp ? ` · ${r.kwp} kWp` : ""}</span>
                 <button onClick={() => set({ ...inv, strings: strings.filter((_, j) => j !== i) })} className="p-1.5 mb-1.5 rounded hover:bg-[#fff0f0]" data-testid={`${t}-string-${i}-remove`}><Trash2 size={14} style={{ color: "#b33333" }} /></button>
               </div>
             );
@@ -102,10 +101,11 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
             <F label="Model baterie" value={inv.battery?.model} onChange={sub("battery", "model")} testid={`${t}-bat-model`} />
             <F label="Cuplare" value={inv.battery?.coupling || "DC"} onChange={sub("battery", "coupling")} options={["DC", "AC"]} testid={`${t}-bat-coupling`} />
             <F label="kWh / modul" type="number" value={inv.battery?.kwh} onChange={sub("battery", "kwh")} testid={`${t}-bat-kwh`} />
+            <F label="Nr. module" type="number" value={inv.battery?.modules} onChange={sub("battery", "modules")} testid={`${t}-bat-modules`} />
             <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Alte date baterie din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
             <F label="Ah" type="number" value={inv.battery?.ah} onChange={sub("battery", "ah")} testid={`${t}-bat-ah`} />
             <F label="Tensiune (V)" type="number" value={inv.battery?.voltage} onChange={sub("battery", "voltage")} testid={`${t}-bat-v`} />
-            <F label="Nr. module" type="number" value={inv.battery?.modules} onChange={sub("battery", "modules")} testid={`${t}-bat-modules`} />
+
             <F label="Protecție baterie" value={inv.battery?.protection} onChange={sub("battery", "protection")} testid={`${t}-bat-prot`} />
             <F label="Curent max descărcare (A)" type="number" value={inv.battery?.i_max} onChange={sub("battery", "i_max")} testid={`${t}-bat-imax`} />
             <F label="Siguranță DC baterie (A)" type="number" value={inv.battery?.fuse_a} onChange={sub("battery", "fuse_a")} testid={`${t}-bat-fuse`} />
