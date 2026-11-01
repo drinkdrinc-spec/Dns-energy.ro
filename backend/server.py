@@ -162,7 +162,20 @@ def need(user: dict, feat: Optional[str], write: bool = False):
         raise HTTPException(status_code=402, detail=f"Modulul „{ALL_FEATURES.get(feat, feat)}” nu este inclus în abonamentul {p.get('name')}. Treceți la un abonament superior din pagina „Abonament”.")
 
 def inv_count(d: dict) -> int:
-    return len((d.get("cef") or {}).get("inverters") or []) or (1 if d.get("inverter") else 0)
+    inverters = (d.get("cef") or {}).get("inverters") or []
+    if not inverters:
+        return 1 if d.get("inverter") else 0
+    total = 0
+    for inverter in inverters:
+        raw_count = inverter.get("count", inverter.get("quantity", 1))
+        try:
+            count = float(raw_count or 1)
+        except (TypeError, ValueError):
+            count = 1
+        # Quantities are physical units; round a malformed fractional value up
+        # so it cannot bypass a plan limit.
+        total += max(1, int(count) + (1 if count > int(count) else 0))
+    return total
 
 def check_inverters(user: dict, d: dict):
     mx = (user.get("plan") or {}).get("max_inverters") or 0
