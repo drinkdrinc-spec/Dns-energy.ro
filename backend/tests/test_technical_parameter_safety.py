@@ -105,3 +105,31 @@ def test_sizing_autofill_respects_battery_datasheet_fuse_limit():
     result, filled = sizing.apply({"grid": {"supply": "Trifazat"}, "inverters": [inverter]})
     assert result["inverters"][0]["battery"]["fuse_a"] == 50
     assert "cef.inverters.0.battery.fuse_a" in filled
+
+
+
+def test_catalog_backfill_fills_only_missing_verified_battery_fields():
+    from catalog_seed import missing_seed_values
+
+    seed = {
+        "i_max": 7.5,
+        "coupling": "DC",
+        "voltage_1ph": 450,
+        "voltage_3ph": 600,
+        "i_max_source_url": "https://manufacturer.example/certificate.pdf",
+    }
+    existing = {"i_max": None, "coupling": "", "voltage_1ph": 0, "voltage_3ph": None}
+    assert missing_seed_values(existing, seed) == {
+        "i_max": 7.5,
+        "coupling": "DC",
+        "voltage_3ph": 600,
+        "i_max_source_url": "https://manufacturer.example/certificate.pdf",
+    }
+
+
+def test_catalog_backfill_never_overwrites_existing_user_values():
+    from catalog_seed import missing_seed_values
+
+    existing = {"i_max": 9, "coupling": "AC", "voltage_1ph": 230, "voltage_3ph": 400, "i_max_source_url": "manual.pdf"}
+    seed = {"i_max": 7.5, "coupling": "DC", "voltage_1ph": 450, "voltage_3ph": 600, "i_max_source_url": "official.pdf"}
+    assert missing_seed_values(existing, seed) == {}
