@@ -194,9 +194,9 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             o.it(T, "AC — curent de calcul Ib", g(ib, " A", 1), "calculat", "Ib = Pmax/(√3·400·0,95)" if tri else "Ib = Pmax/(230·0,95)")
             o.it(T, "AC — întreruptor propus", g(pa["breaker_a"], f" A {pa['poles']}"), "calculat", "In ≥ Ib (valoare standard)")
             o.it(T, "AC — secțiune propusă", g(pa["section"], " mm²"), "calculat", "Iz ≥ In și ΔU ≤ 3% (HD 60364-5-52)")
-        if ina:
+        if ina and r.get("phase_known"):
             inv_in.append(ina)
-        if sct:
+        if sct and r.get("phase_known"):
             izv = iz(sct, mat, ac.get("install") or "C", 3 if tri else 2, n(ac.get("k_correction"), 1))
             du = vdrop_ac(ib, L, sct, mat, tri)
             loss = (3 if tri else 2) * L * ib ** 2 * RHO.get(mat, RHO["Cu"]) / sct
@@ -212,7 +212,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                              "cores": "3L+N+PE" if tri else "L+N+PE", "section": sct, "material": mat, "length": L or None, "ib": ib,
                              "iz": round(izv), "du": round(du, 2), "loss": round(loss, 1), "pe": pe})
         icu = n(ac.get("icu_ka"))
-        if ina:
+        if ina and r.get("phase_known"):
             o.it(T, "AC — capacitate de rupere Icu ≥ Ik", f"{icu:g} kA ≥ {ik:g} kA" if (icu and ik) else None, "calculat" if icu and ik else "de confirmat",
                  "Icu (SR EN 60898/60947-2) ≥ Ik la punctul de montaj", (icu >= ik) if (icu and ik) else None,
                  "" if (icu and ik) else "completați Icu al aparatului și Ik comunicat de OD")
@@ -245,7 +245,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         o.it(G, "Curent branșament (putere aprobată)", g(gr["i_br"], " A", 1), "calculat", "I = P/(√3·400·0,95)" if tri_grid else "I = P/(230·0,95)")
         o.it(G, "Întreruptor BMP", g(bmp, " A") or g(gr["main_proposal"], " A (propus)"), "introdus" if bmp else "calculat", "In ≥ Ibr", (bmp >= gr["i_br"]) if bmp else None,
              "valoarea finală conform ATR / avizului OD")
-    if inv_in and tg:
+    if inv_in and tg and tri_grid is not None:
         ok = max(inv_in) < tg and (not bmp or tg <= bmp)
         o.it(G, "Selectivitate (cascadă)", f"INV {max(inv_in):g} A < TG {tg:g} A" + (f" ≤ BMP {bmp:g} A" if bmp else ""), "calculat",
              "In aval < In amonte (raport ≥ 1,6 recomandat pentru selectivitate amperometrică)", ok,
