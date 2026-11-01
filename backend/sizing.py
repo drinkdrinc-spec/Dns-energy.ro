@@ -232,18 +232,23 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             o.need(f"cef.inverters.{i}.battery.i_max", "Curent max descărcare baterie (A)", bat.get("i_max"), T)
             ibat = n(bat.get("i_max"))
             if ibat:
-                fb = up(BAT_FUSE, 1.25 * ibat)
-                o.it(T, "Baterie — protecție DC propusă", g(fb, " A"), "calculat", "In ≥ 1,25·Imax,desc. (conform manual)")
                 battery_proposal = r.get("proposals", {}).get("battery") or {}
+                fuse = n(bat.get("fuse_a")) or n(battery_proposal.get("fuse_a"))
+                if fuse:
+                    o.it(T, "Baterie — protecție DC propusă", g(fuse, " A"), "calculat" if not bat.get("fuse_a") else "introdus",
+                         "In ≥ 1,25·Imax și nu depășește limita maximă din manual")
+                else:
+                    o.need(f"cef.inverters.{i}.battery.max_fuse_a", "Limita siguranței DC admisă de producător (A)", bat.get("max_fuse_a"), T)
                 manual_section = n(bat.get("cable_section"))
                 proposed_section = n(battery_proposal.get("section"))
                 bs = manual_section or proposed_section
                 if bs:
                     izb = n(battery_proposal.get("iz")) if not manual_section and proposed_section == bs else iz(bs, "Cu", "C", 3, 1)
-                    fa = n(bat.get("fuse_a")) or n(battery_proposal.get("fuse_a")) or fb
-                    o.it(T, "Baterie — Iz cablu ≥ In protecție", f"{izb:.0f} ≥ {fa:g} A", "calculat", "Iz ≥ In", izb >= fa)
+                    threshold = fuse or 1.25 * ibat
+                    threshold_note = "Iz ≥ In protecție" if fuse else "Iz ≥ 1,25·Imax; siguranța finală necesită limita producătorului"
+                    o.it(T, "Baterie — Iz cablu ≥ curent de proiectare", f"{izb:.0f} ≥ {threshold:g} A", "calculat", threshold_note, izb >= threshold)
                     o.cables.append({"id": f"W{i + 1}.BAT", "from": f"-G{i + 1}", "to": f"-U{i + 1}", "type": bat.get("cable_type") or None, "cores": "1×(+), 1×(−)",
-                                     "section": bs, "material": "Cu", "length": n(bat.get("cable_length")) or None, "ib": ibat, "iz": round(izb), "du": None, "loss": None})
+                                     "section": bs, "material": "Cu", "length": n(bat.get("cable_length")) or None, "ib": ibat, "iz": round(izb), "du": battery_proposal.get("du"), "loss": None})
         o.errors += r["errors"]; o.warnings += r["warnings"]
     o.errors += [e for e in base["errors"] if e not in o.errors]
     o.warnings += [w for w in base["warnings"] if w not in o.warnings]
