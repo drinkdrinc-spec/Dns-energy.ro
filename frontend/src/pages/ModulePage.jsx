@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
@@ -75,6 +75,7 @@ function Field({ f, value, onChange, refOptions, ai }) {
 
 export default function ModulePage({ moduleKey }) {
   const params = useParams();
+  const location = useLocation();
   const key = moduleKey || params.module;
   const cfg = MODULES[key];
   const { user } = useAuth();
@@ -240,7 +241,7 @@ export default function ModulePage({ moduleKey }) {
       }
     }
     // eslint-disable-next-line
-  }, [key]);
+  }, [key, location.search]);
 
   const openNew = () => { setForm(key === "atr" ? { date: new Date().toISOString().slice(0, 10), submission_mode: "Solicitantul depune direct" } : {}); setEditId(null); setChecks({}); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); };
