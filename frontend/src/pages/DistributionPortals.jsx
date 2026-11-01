@@ -55,8 +55,10 @@ export default function DistributionPortals() {
   const result = useMemo(() => detectOperator(pod), [pod]);
   const selectedId = result.match || manual || operatorId(selectedPros?.operator);
   const selected = PORTALS.find((p) => p.id === selectedId);
-  const regionalUrl = selectedId === "deer" ? deerRegionalPortal(selectedPros?.county) : null;
-  const portalUrl = regionalUrl || selected?.url;
+  // DEER routes all new applications through the unified dedicated portal.
+  // Legacy regional portals remain useful only for historical records.
+  const historicalPortalUrl = selectedId === "deer" ? deerRegionalPortal(selectedPros?.county) : null;
+  const portalUrl = selected?.url;
 
   const selectPros = (id) => {
     setProsId(id);
@@ -105,11 +107,11 @@ export default function DistributionPortals() {
           <div className="mt-5 p-4 rounded-xl border" style={{ borderColor: "var(--line)", background: "var(--bg)" }}>
             <div className="font-bold">{selected.name}</div>
             <div className="text-sm mt-1" style={{ color: "var(--muted)" }}>{selected.detail}</div>
-            {regionalUrl && <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Portal regional selectat după județul {selectedPros.county}.</div>}
+            {selectedId === "deer" && <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Pentru cereri și documente noi, DEER indică portalul dedicat unificat. Portalurile regionale vechi sunt doar pentru consultarea istoricului.</div>}
             <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-4 rounded-lg px-4 py-3 text-sm font-bold text-white" style={{ background: "var(--blue)" }} data-testid="portal-open-selected">
               <ExternalLink size={16} /> Deschide portalul operatorului
             </a>
-            {regionalUrl && <a href={selected.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-4 ml-2 rounded-lg border px-4 py-3 text-sm font-semibold" style={{ borderColor: "var(--line)" }}>Portal DEER general ↗</a>}
+            {historicalPortalUrl && <a href={historicalPortalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-4 ml-2 rounded-lg border px-4 py-3 text-sm font-semibold" style={{ borderColor: "var(--line)" }}>Portal regional istoric · {selectedPros?.county || "zona DEER"} ↗</a>}
             <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>Portalul se deschide într-o filă separată. Autentificarea rămâne în browserul folosit la conectare, atât timp cât portalul își menține sesiunea. DNS Energy nu stochează parola portalului.</p>
           </div>
         )}
