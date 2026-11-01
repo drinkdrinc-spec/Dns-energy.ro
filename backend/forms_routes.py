@@ -36,6 +36,8 @@ SEED = [
      "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Loc-consum-si_sau-producere-existent-prevazut_cu_instalatii_de_producere_Anexa-nr-5.docx"),
     ("Delgaz Grid", "Cerere prosumator — Anexa 1 (fișier publicat în portalul Delgaz)", "prosumator / spor putere",
      "https://delgaz.ro/getattachment/91755a0d-890c-4357-917a-ac5128ec735a/Cerere_de_racordare_prosumator-Anexa-1.pdf"),
+    ("Delgaz Grid", "Notificare racordare prosumator — loc existent (Anexa 2, DEGR E P46-F11 Ed.4)", "prosumator / notificare",
+     "https://delgaz.ro/getattachment/90cf84fa-708e-46a7-b60b-266364c50098/Notificare_racordare_prosumator-Anexa-2.pdf"),
     ("Rețele Electrice România", "Anexa 1 — cerere prosumator (link publicat pe pagina oficială)", "prosumator / spor putere",
      "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-1-cerere-racordare.pdf"),
     ("Distribuție Energie Oltenia", "Anexa 1 rev06 — cerere prosumator, loc nou sau spor de putere", "prosumator / spor putere",
