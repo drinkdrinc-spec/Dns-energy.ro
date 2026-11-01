@@ -10,7 +10,7 @@ export function Issues({ errors = [], warnings = [], testid }) {
   );
 }
 
-export function Totals({ res, grid = {}, inverters = [] }) {
+export function Totals({ res, inverters = [] }) {
   if (!res) return null;
   const t = res.totals;
   const items = [["Panouri", `${t.kwp} kWp`, "tot-kwp"], ["Invertoare", `${t.inverters_kw} kW`, "tot-kw"], ["Evacuat", `${t.export_kw} kW`, "tot-export"],
