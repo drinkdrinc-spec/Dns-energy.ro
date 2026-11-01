@@ -1,3 +1,4 @@
+import asyncio
 from dotenv import load_dotenv
 from pathlib import Path
 import os
@@ -1242,8 +1243,47 @@ async def catalog_files(owner: str, rec: dict) -> list:
                 out.append({"catalog_id": cid, "model": it.get("brand_model"), "kind": label, **f})
     return out
 
+async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
+    """Fetch missing official PDFs for equipment selected in a dossier; never block the save on source failures."""
+    owner = user["id"]
+    candidates = []
+    for catalog_id in catalog_ids(rec):
+        item = await db.catalog.find_one({"owner": owner, "id": catalog_id}, {"_id": 0})
+        if not item:
+            continue
+        for kind in ("datasheet", "conformity"):
+            existing = item.get(kind)
+            if isinstance(existing, dict) and existing.get("storage_path"):
+                continue
+            source_url = item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
+            if source_url:
+                candidates.append((catalog_id, kind, str(source_url)))
+
+    semaphore = asyncio.Semaphore(3)
+
+    class ImportRequest:
+        def __init__(self, payload: dict):
+            self.payload = payload
+
+        async def json(self):
+            return self.payload
+
+    async def import_one(catalog_id: str, kind: str, source_url: str) -> None:
+        async with semaphore:
+            try:
+                await catalog_import_document(catalog_id, ImportRequest({"kind": kind, "url": source_url}), user)
+            except HTTPException as exc:
+                logger.info("Catalog PDF auto-import skipped for %s (%s): %s", catalog_id, kind, exc.detail)
+            except Exception:
+                logger.exception("Catalog PDF auto-import failed for %s (%s)", catalog_id, kind)
+
+    if candidates:
+        await asyncio.gather(*(import_one(*candidate) for candidate in candidates))
+
+
 async def sync_catalog_files_to_documents(user: dict, rec: dict) -> int:
     """Attach selected equipment datasheets and conformity declarations to the client dossier."""
+    await auto_import_selected_catalog_documents(user, rec)
     owner = user["id"]
     client_name = rec.get("client_name", "")
     client = await db.clients.find_one(
