@@ -7,6 +7,10 @@ import docgen as D
 import cef as CEF
 
 M = D.M
+
+
+def first_present(*values):
+    return next((value for value in values if value not in (None, "")), None)
 OP_NAMES = {"deer": "Distribuție Energie Electrică Romania S.A. (DEER)", "delgaz": "Delgaz Grid S.A.", "rer": "Rețele Electrice România S.A.",
             "oltenia": "Distribuție Energie Oltenia S.A."}
 DOCS = [("plan", "Plan de situație la scară, cu viza emitentului certificatului de urbanism (sau schiță de amplasament pentru construcție existentă)", True),
@@ -437,7 +441,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
     else:
         export_table, panel_table, inverter_table, detail_table = 2, 5, 6, 8
     if len(tables) > export_table and not is_annex2 and filename != "anexa3_update.docx.b64":
-        _deer_cell(tables[export_table].cell(0, 1), rec.get("p_evac_kw") or pros.get("power"))
+        _deer_cell(tables[export_table].cell(0, 1), first_present(rec.get("p_evac_kw"), pros.get("power")))
         _deer_cell(tables[export_table].cell(1, 1), rec.get("p_evac_kva"))
     elif is_annex2 and len(tables) > 0:
         # Anexa 2 does not have an export power table; its power is printed in the request sentence.
@@ -547,7 +551,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
                 8: rec.get("cf_nr") or c.get("cf_nr"),
                 9: rec.get("cadastral_nr") or c.get("cadastral_nr"),
                 10: rec.get("pod") or c.get("pod"),
-                11: rec.get("p_evac_kw") or pros.get("power"),
+                11: first_present(rec.get("p_evac_kw"), pros.get("power")),
                 12: rec.get("p_evac_kva"),
             }
             count = 0
@@ -628,8 +632,8 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
         story += [P("4. Date tehnice și energetice ale locului de producere (centrală fotovoltaică)", "b"),
                   T([["Nr.", "Date energetice ale producătorului", "Simbol", "U.M.", "Situația existentă", "Situația finală"],
                      ["1", "Puterea totală instalată (panouri c.c.)", "Pi", "kWp", escape(str(rec.get("pv_existing_kw") or "0")), escape(str(pv_kw or M))],
-                     ["2", "Puterea maximă simultan evacuată în rețea", "Pa", "kW", "", escape(str(rec.get("p_evac_kw") or p.get("power") or M))],
-                     ["", "", "Sa", "kVA", "", escape(str(rec.get("p_evac_kva") or p.get("apparent_kva") or M))],
+                     ["2", "Puterea maximă simultan evacuată în rețea", "Pa", "kW", "", escape(str(first_present(rec.get("p_evac_kw"), p.get("power"), M)))],
+                     ["", "", "Sa", "kVA", "", escape(str(first_present(rec.get("p_evac_kva"), p.get("apparent_kva"), M)))],
                      ["3", "Consumul propriu al centralei (servicii interne)", "Pi / Pa", "kW", "", f"{escape(str(p.get('internal_pi') or rec.get('internal_kw') or M))}"],
                      ["4", "Factorul de putere", "cos φ", "", "", escape(str(rec.get("cos_phi_prod") or "1"))]], [6, 42, 10, 8, 16, 18]),
                   Spacer(1, 3), P("Invertoare / unități generatoare:")]
@@ -729,7 +733,7 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
         P("3. Puteri și parametri solicitați", "b"),
         T([["Câmp", "Valoare disponibilă"], ["Putere absorbită solicitată", v(rec.get("p_abs_kw")) + " kW / " + v(rec.get("p_abs_kva")) + " kVA"],
            ["Putere instalată fotovoltaică (DC)", v(installed_pv_kwp) + " kWp"],
-           ["Putere evacuată solicitată", v(rec.get("p_evac_kw") or pros.get("power")) + " kW / " + v(rec.get("p_evac_kva")) + " kVA"],
+           ["Putere evacuată solicitată", v(first_present(rec.get("p_evac_kw"), pros.get("power"))) + " kW / " + v(rec.get("p_evac_kva")) + " kVA"],
            ["Limită de injecție declarată în setările invertorului", v(inverter_limit)]], [48, 130]),
         Spacer(1, 4),
         P("4. Echipamente declarate", "b"),
