@@ -709,6 +709,39 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                     except (httpx.HTTPError, ValueError) as exc:
                         note.append(f"{title} nu a putut fi atașat la generare: {exc}")
             archive.writestr("Anexe oficiale/INFO_completare.txt", "\n".join(note))
+        
+        # Carry the selected prosumer equipment evidence into the ATR submission
+        # package. The catalogue documents are copied as stored; no missing
+        # datasheet or conformity declaration is fabricated.
+        equipment_notes = ["Documentele de mai jos provin din catalogul echipamentelor asociat dosarului prosumator."]
+        if pros:
+            catalog_docs = await S.catalog_files(user["id"], pros)
+            included = 0
+            for index, item in enumerate(catalog_docs, 1):
+                storage_path = item.get("storage_path")
+                original_name = str(item.get("original_filename") or "document.pdf")
+                model = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(item.get("model") or "model_neprecizat")).strip("._") or "model_neprecizat"
+                kind = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(item.get("kind") or "document")).strip("._") or "document"
+                filename = re.sub(r"[^A-Za-z0-9_.-]+", "_", original_name.replace("/", "_").replace("\\", "_")).strip("._") or "document.pdf"
+                if not storage_path:
+                    continue
+                try:
+                    data, _ = S.get_object(storage_path)
+                    if len(data) > 25 * 1024 * 1024:
+                        equipment_notes.append(f"Omise (peste 25 MB): {kind} — {model} ({filename}).")
+                        continue
+                    archive.writestr(f"Documentație tehnică echipamente/{model}/{index:02d}_{kind}_{filename}", data)
+                    included += 1
+                    equipment_notes.append(f"Inclus: {kind} — {model} ({filename}).")
+                except Exception as exc:
+                    logger.warning("ATR catalog document could not be bundled (%s): %s", storage_path, exc)
+                    equipment_notes.append(f"Indisponibil la generare: {kind} — {model} ({filename}).")
+            if included == 0:
+                equipment_notes.append("Catalogul nu conține fișiere tehnice disponibile pentru echipamentele selectate.")
+        else:
+            equipment_notes.append("Cererea ATR nu are legat un dosar prosumator; atașați manual fișele tehnice și declarațiile necesare.")
+        equipment_notes.append("Verificați modelul exact, revizia și aplicabilitatea documentelor înainte de depunere.")
+        archive.writestr("Documentație tehnică echipamente/INFO_documente.txt", "\n".join(equipment_notes))
     name = re.sub(r"[^A-Za-z0-9_.-]+", "_", pdf_name.rsplit(".", 1)[0]) + "_pachet.zip"
     return Response(content=bundle.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": S.disp("attachment", name), "Cache-Control": "no-store"})
