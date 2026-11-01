@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, API, fileUrl, openAuthenticatedFile } from "@/lib/api";
+import { api, API, openAuthenticatedFile } from "@/lib/api";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { Btn } from "@/components/Layout";
 import { FileText, Plus, Trash2, Upload } from "lucide-react";
@@ -17,7 +17,7 @@ export function Slot({ k, label, files, onChange, auto, autoLabel, testPrefix = 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs py-1.5 border-t" style={{ borderColor: "var(--line)" }} data-testid={`${testPrefix}-doc-${k}`}>
       <b className="w-20 shrink-0">{k})</b><span className="min-w-[220px] flex-1">{label}</span>
-      {files.map((f, i) => <span key={f.storage_path} className="inline-flex items-center gap-1"><a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--blue)" }}><FileText size={11} className="inline" /> {f.original_filename}</a>
+      {files.map((f, i) => <span key={f.storage_path} className="inline-flex items-center gap-1"><button type="button" onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)} className="underline text-left" style={{ color: "var(--blue)" }}><FileText size={11} className="inline" /> {f.original_filename}</button>
         <button type="button" onClick={() => onChange(files.filter((_, j) => j !== i))}><Trash2 size={11} style={{ color: "#b33333" }} /></button></span>)}
       {!files.length && auto && <span style={{ color: "#166534" }}>auto din dosarul de prosumator: {autoLabel || AUTO[k]}</span>}
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { onChange([...files, await uploadFile(f)]); ref.current.value = ""; } }} />
