@@ -40,7 +40,7 @@ def _images(content: bytes, mime: str) -> list:
         import pymupdf
         doc = pymupdf.open(stream=content, filetype="pdf")
         out = []
-        for page in list(doc)[:4]:
+        for page in list(doc)[:12]:
             r = page.rect
             zoom = min(1600 / max(r.width, r.height), 2.5)
             out.append(ImageContent(image_base64=base64.b64encode(page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")).decode()))
@@ -120,7 +120,27 @@ def extract_office_local(content: bytes, mime: str, doc_type: str = "other") -> 
     return fields
 
 
+def _pdf_selectable_text(content: bytes, limit: int = 24000) -> str:
+    import pymupdf
+    doc = pymupdf.open(stream=content, filetype="pdf")
+    parts = []
+    remaining = limit
+    for page in doc:
+        if remaining <= 0:
+            break
+        text = page.get_text("text") or ""
+        if text:
+            parts.append(text[:remaining])
+            remaining -= len(text)
+    doc.close()
+    return "\\n".join(parts).strip()
+
+
 async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict:
+    if mime == "application/pdf":
+        text = _pdf_selectable_text(content)
+        if len(text) >= 80:
+            return await extract_gpt_text(text, doc_type)
     chat = LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=f"extract-{uuid.uuid4()}",
                    system_message="Extragi date structurate din documente tehnice românești. Răspunzi doar JSON.").with_model("openai", "gpt-4.1-mini")
     out = ""
