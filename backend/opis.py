@@ -58,7 +58,18 @@ def catalog_refs(rec):
         inv = [(None, rec.get("inverter"))] if rec.get("inverter") else []
         pan = [(None, rec.get("panels"))] if rec.get("panels") else []
         bat = [(None, rec.get("battery"))] if rec.get("battery") else []
-    dedup = lambda xs: list({(m or ""): (cid, m) for cid, m in xs if m}.values())
+    def dedup(items):
+        # Keep distinct catalog records even when two records share a display name.
+        # Fall back to a normalized model name only for equipment not linked by ID.
+        out = {}
+        for cid, model in items:
+            name = str(model or "").strip()
+            if not name:
+                continue
+            identity = ("id", str(cid)) if cid else ("model", name.casefold())
+            out[identity] = (cid, name)
+        return list(out.values())
+
     return dedup(inv), dedup(pan), dedup(bat), dedup(met)
 
 
