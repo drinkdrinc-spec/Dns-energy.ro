@@ -6,6 +6,11 @@ const title = (f, fallback) => f?.label?.replace(/\s*\*$/, "") || fallback;
 const selectStyle = { borderColor: "var(--line)" };
 
 // Propose strings only when both catalog datasheets provide the limits needed to check them.
+function panelCountForPower(powerKw, panelW) {
+  const kw = Number(powerKw), watts = Number(panelW);
+  return kw > 0 && watts > 0 ? Math.ceil((kw * 1000) / watts) : "";
+}
+
 function proposeStrings(inv, totalPanels) {
   const count = Math.floor(Number(totalPanels) || 0);
   const mppts = Math.floor(Number(inv.mppt_count) || 0);
@@ -72,7 +77,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
     };
   }, [catalog]);
 
-  const cefUpdate = (kind, item, id) => {
+  const cefUpdate = (kind, item, id, panelCountOverride) => {
     const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] };
     const old = cef.inverters?.[0] || { id: "main", strings: [], ac: { material: "Cu", install: "C" }, dc: { material: "Cu", cable_type: "H1Z2Z2-K" }, battery_mode: "none" };
     const inv = { ...old };
@@ -93,7 +98,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
     if (kind === "meter") setVal("cef", { ...cef, grid: { ...(cef.grid || {}), meter: item?.brand_model || "", meter_catalog_id: item?.id || "" } });
     else {
       if (canReplaceStrings) {
-        const proposal = proposeStrings(inv, form.panel_count);
+        const proposal = proposeStrings(inv, panelCountOverride ?? form.panel_count);
         if (proposal) inv.strings = proposal;
         else if (existingStrings.every((x) => x.auto_generated)) inv.strings = [];
       }
@@ -111,14 +116,19 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       if (item) setVal("system_type", item.type === "Hibrid" ? "Hibrid cu baterie" : "On-grid");
     } else if (kind === "panel") {
       setVal("panels", item?.brand_model || ""); setVal("panel_w", item?.w || "");
-      setVal("panel_count", item ? (form.panel_count || 1) : "");
+      const suggestedCount = item ? panelCountForPower(form.power, item.w) : "";
+      const useSuggestion = Boolean(suggestedCount) && form.panel_count_auto !== false;
+      setVal("panel_count", useSuggestion ? suggestedCount : (item ? (form.panel_count || "") : ""));
+      setVal("panel_count_auto", useSuggestion);
     } else if (kind === "battery") {
       setVal("battery", item?.brand_model || ""); setVal("battery_kwh", item?.kwh || "");
       setVal("battery_v", item?.voltage || ""); setVal("battery_ah", item?.ah || "");
       setVal("battery_coupling", item?.coupling || ""); setVal("battery_count", item ? (form.battery_count || 1) : "");
       setVal("system_type", item ? "Hibrid cu baterie" : "On-grid");
     } else setVal("smart_meter_type", item?.brand_model || "");
-    cefUpdate(kind, item, id);
+    const suggestedPanels = kind === "panel" && item && form.panel_count_auto !== false
+      ? panelCountForPower(form.power, item.w) : undefined;
+    cefUpdate(kind, item, id, suggestedPanels);
   };
 
   const addCatalogModel = async (kind, rawName) => {
@@ -146,6 +156,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       {opts ? <select className="den-input" value={form[name] ?? ""} onChange={(e) => { const v = e.target.value; setVal(name, v); if (name === "supply") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), supply: v } }); }}><option value="">Alege...</option>{opts.map((o) => <option key={o} value={o}>{o}</option>)}</select>
         : <input className="den-input" type={type} step={type === "number" ? "any" : undefined} value={form[name] ?? ""} onChange={(e) => {
           const v = e.target.value; setVal(name, v);
+          if (name === "panel_count") setVal("panel_count_auto", false);
           if (name === "bransament_kw") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), bransament_kw: Number(v) || "" } });
           if (name === "panel_count" && form.cef?.inverters?.length) {
             const inv = { ...form.cef.inverters[0] };
@@ -166,9 +177,23 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
             const modules = Math.max(1, Number(v) || 1);
             setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : { ...x, battery: { ...(x.battery || {}), modules } }) });
           }
-          if (name === "power" && form.cef?.inverters?.length) {
-            const count = Math.max(1, Number(form.inverter_count) || form.cef.inverters.reduce((n, x) => n + (Number(x.count) || 1), 0));
-            setVal("cef", { ...form.cef, inverters: form.cef.inverters.map((x, i) => i ? x : { ...x, p_limit_kw: Number(v) ? Number(v) / count : "" }) });
+          if (name === "power") {
+            const panel = options.panel.find((x) => x.id === selected.panel);
+            const suggestedPanels = form.panel_count_auto === true && panel ? panelCountForPower(v, panel.w) : null;
+            if (suggestedPanels) setVal("panel_count", suggestedPanels);
+            if (form.cef?.inverters?.length) {
+              const count = Math.max(1, Number(form.inverter_count) || form.cef.inverters.reduce((n, x) => n + (Number(x.count) || 1), 0));
+              const nextInverters = form.cef.inverters.map((x, i) => {
+                if (i) return x;
+                const next = { ...x, p_limit_kw: Number(v) ? Number(v) / count : "" };
+                const strings = next.strings || [];
+                if (suggestedPanels && (!strings.length || strings.every((row) => row.auto_generated))) {
+                  next.strings = proposeStrings(next, suggestedPanels) || [];
+                }
+                return next;
+              });
+              setVal("cef", { ...form.cef, inverters: nextInverters });
+            }
           }
         }} />}
     </label>
@@ -246,7 +271,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
         {catalogSelect("inverter", "Invertor")}
         {input("inverter_count", "Număr invertoare", "number")}
         {catalogSelect("panel", "Panou fotovoltaic")}
-        {input("panel_count", "Număr total panouri", "number")}
+        {input("panel_count", form.panel_count_auto === true ? "Număr panouri (calculat)" : "Număr total panouri", "number")}
+        {form.panel_count_auto === true && <p className="sm:col-span-2 -mt-2 text-xs text-blue-800">Propunere: puterea solicitată ÷ puterea din fișa panoului, rotunjită în sus. Poți modifica numărul; verifică apoi stringurile și limitele invertorului.</p>}
         {catalogSelect("battery", "Baterie (opțional)")}
         {input("battery_count", "Număr baterii", "number")}
         {catalogSelect("meter", "Smart meter (opțional)")}
