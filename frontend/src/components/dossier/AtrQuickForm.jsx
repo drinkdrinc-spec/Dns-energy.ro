@@ -41,8 +41,11 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
   const clients = refOptions.clients || [];
   const pros = refOptions.prosumator || [];
   const norm = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
-  const linkedPros = pros.filter((p) => (form.pros_id && p.id === form.pros_id) || (form.client_id && p.client_id === form.client_id)
-    || (form.client_name && norm(p.client_name) === norm(form.client_name)));
+  const linkedPros = pros.filter((p) => {
+    if (form.pros_id) return p.id === form.pros_id && (!form.client_id || !p.client_id || p.client_id === form.client_id);
+    if (form.client_id && p.client_id) return p.client_id === form.client_id;
+    return Boolean(form.client_name && norm(p.client_name) === norm(form.client_name));
+  });
   const [selectedProsId, setSelectedProsId] = useState(form.pros_id || (linkedPros.length === 1 ? linkedPros[0].id : ""));
   useEffect(() => {
     if (form.pros_id) setSelectedProsId(form.pros_id);
@@ -87,7 +90,7 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
       <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Alege clientul; datele cunoscute din fișa clientului se preiau automat. Completează POD-ul de pe factură și confirmă tipul solicitării.</p>
       <div className="grid sm:grid-cols-2 gap-3">{basic.map(renderField)}</div>
     </div>
-    {form.client_id && linkedPros.length > 0 && <section className="rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-linked-equipment">
+    {form.client_id && <section className="rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-linked-equipment">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h3 className="text-sm font-bold">Echipamente transferate în cererea ATR</h3>
           <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Date preluate din dosarul prosumator ales; apar și în pachetul de anexe unde formularul operatorului le cere.</p></div>
@@ -96,7 +99,7 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
             <option value="">Alege dosarul...</option>{linkedPros.map((p) => <option key={p.id} value={p.id}>{p.number || p.client_name || "Dosar"} · {p.operator || "operator neconfirmat"}</option>)}
           </select></label>}
       </div>
-      {!selectedPros ? <p className="mt-3 text-sm text-amber-800">Selectează dosarul prosumator pentru a transfera echipamentele și puterile în cererea ATR.</p>
+      {!selectedPros ? <p className="mt-3 text-sm text-amber-800">{linkedPros.length ? "Selectează dosarul prosumator pentru a transfera echipamentele și puterile în cererea ATR." : "Clientul nu are încă un dosar prosumator asociat. Cererea ATR poate fi salvată, dar echipamentele și puterile nu vor fi completate automat."}</p>
         : <div className="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
           {[["Invertor(e)", equipment.inverters], ["Panouri", equipment.panels], ["Baterie / BESS", equipment.batteries], ["Putere evacuată", equipment.power ? [`${equipment.power} kW`] : []], ["Stringuri", equipment.strings ? [equipment.strings] : []], ["Branșament", [selectedPros.supply || selectedPros.cef?.grid?.supply].filter(Boolean)]].map(([name, values]) =>
             <div key={name} className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
