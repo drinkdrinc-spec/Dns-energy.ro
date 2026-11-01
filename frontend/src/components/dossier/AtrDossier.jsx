@@ -26,6 +26,10 @@ function installedPanelKwp(pros) {
   return pros.cef?.total_kwp || pros.panel_kwp || pros._kwp || "";
 }
 
+function normalizeClientName(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
+}
+
 const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schiță de amplasament", "req"], ["cf", "Extras de carte funciară (CF / nr. cadastral)", "req"],
   ["prop", "Act de proprietate / drept de folosință", "req"], ["id", "Act de identitate / CUI / acte de funcționare", "req"], ["cu", "Certificat de urbanism", "new"],
   ["ac", "Autorizație de construire", ""], ["puz", "PUZ / PUD (dacă e cerut prin CU)", ""], ["acord", "Acord notarial proprietar (dacă nu e proprietar)", ""],
@@ -58,11 +62,10 @@ export function AtrDossier({ id, form, setVal }) {
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     if (!String(form.kind || "").includes("producere") || !form.client_name || !pros.length) return;
-    const norm = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
     const current = pros.find((p) => p.id === form.pros_id);
-    const belongsToClient = (item) => form.client_id
+    const belongsToClient = (item) => item.client_id
       ? item.client_id === form.client_id
-      : norm(item.client_name) === norm(form.client_name);
+      : normalizeClientName(item.client_name) === normalizeClientName(form.client_name);
     if (current && belongsToClient(current)) return;
     const matches = pros.filter(belongsToClient);
     if (matches.length === 1) selectPros(matches[0].id);
@@ -77,7 +80,9 @@ export function AtrDossier({ id, form, setVal }) {
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
   const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
   const selectedRecord = pros.find((p) => p.id === form.pros_id) || null;
-  const selectedPros = selectedRecord && (!form.client_id || selectedRecord.client_id === form.client_id) ? selectedRecord : null;
+  const selectedPros = selectedRecord && (selectedRecord.client_id
+    ? selectedRecord.client_id === form.client_id
+    : normalizeClientName(selectedRecord.client_name) === normalizeClientName(form.client_name)) ? selectedRecord : null;
   const deerAnnexIssues = (() => {
     if (operatorSource?.id !== "deer" || !selectedDeerForm) return [];
     const issues = [];
@@ -163,7 +168,9 @@ export function AtrDossier({ id, form, setVal }) {
   const selectPros = (id) => {
     setVal("pros_id", id);
     const item = pros.find((p) => p.id === id);
-    if (!item || (form.client_id && item.client_id !== form.client_id)) {
+    if (!item || (item.client_id
+      ? item.client_id !== form.client_id
+      : normalizeClientName(item.client_name) !== normalizeClientName(form.client_name))) {
       setVal("pros_id", "");
       return;
     }
