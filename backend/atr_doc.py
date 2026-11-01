@@ -226,6 +226,7 @@ def storage_details(pros: dict, rec: dict) -> list:
             "kwh": (rec or {}).get("battery_kwh"),
             "ah": (rec or {}).get("battery_ah"),
             "voltage": (rec or {}).get("battery_v"),
+            "i_max": (rec or {}).get("battery_i_max"),
             "coupling": (rec or {}).get("battery_coupling"),
         })
     return details
@@ -244,7 +245,7 @@ def storage_row(battery: dict) -> list:
     coupling = battery.get("coupling")
     return [escape(str(battery.get("model") or M)), escape(str(modules or M)), escape(capacity),
             escape(str(battery.get("ah") or M)), escape(str(battery.get("voltage") or M)),
-            escape(str(coupling).upper() if coupling else "Nespecificată")]
+            escape(str(battery.get("i_max") or M)), escape(str(coupling).upper() if coupling else "Nespecificată")]
 
 
 def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attached: set) -> bytes:
@@ -480,7 +481,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
             if inv.get("battery_mode") == "own" and inv.get("battery", {}).get("model"):
                 battery = inv["battery"]
                 details = []
-                for key, label in (("kwh", "kWh"), ("voltage", "V"), ("ah", "Ah")):
+                for key, label in (("kwh", "kWh"), ("voltage", "V"), ("ah", "Ah"), ("i_max", "I max/modul A")):
                     value = D.num(battery.get(key))
                     if value is not None and value > 0:
                         details.append(f"{value:g} {label}")
@@ -512,6 +513,8 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
                 desc += " × " + str(battery["modules"])
             if battery.get("coupling"):
                 desc += " (" + str(battery["coupling"]) + ")"
+            if D.num(battery.get("i_max")) is not None:
+                desc += f"; I max/modul {D.num(battery.get('i_max')):g} A"
             supply_details.append(desc)
         if supply_details:
             _deer_cell(detail.cell(0, 1), "; ".join(supply_details))
@@ -757,7 +760,7 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
     batteries = storage_details(pros, rec)
     story.append(P("Stocare: " + ("DA" if batteries else ("NU" if inverters else "nespecificat")), "small"))
     if batteries:
-        story.append(T([["Model baterie", "Module", "Capacitate", "Ah", "V", "Cuplare"]] + [storage_row(x) for x in batteries], [48, 14, 46, 16, 18, 36]))
+        story.append(T([["Model baterie", "Module", "Capacitate", "Ah", "V", "I max (A)", "Cuplare"]] + [storage_row(x) for x in batteries], [42, 12, 38, 15, 15, 20, 26]))
     story += [Spacer(1, 4), P("5. Verificare înainte de depunere", "b"),
               P("Comparați această fișă cu formularul oficial atașat. Confirmați datele de identificare, POD, tipul cererii, puterile aprobate/solicitate și cerințele specifice operatorului. Fișa nu înlocuiește semnătura solicitantului, documentele justificative sau verificarea proiectantului.", "small")]
     doc.build(story)
