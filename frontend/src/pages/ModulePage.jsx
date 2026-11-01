@@ -92,6 +92,7 @@ export default function ModulePage({ moduleKey }) {
   const [q, setQ] = useState("");
   const [savedAt, setSavedAt] = useState(0);
   const [diuPre, setDiuPre] = useState(false);
+  const [catalogImportsBusy, setCatalogImportsBusy] = useState(false);
 
   const load = () => api.get(`/data/${key}`).then((r) => {
     setItems(r.data);
@@ -279,6 +280,10 @@ export default function ModulePage({ moduleKey }) {
   };
 
   const save = async () => {
+    if (key === "prosumator" && catalogImportsBusy) {
+      toast.warning("Așteaptă să se termine preluarea fișelor și certificatelor din catalog.");
+      return;
+    }
     const orig = items.find((i) => i.id === editId);
     if (key === "diu" && editId && form.status === "Predat beneficiarului" && orig?.status !== "Predat beneficiarului" && can(user, "ai_gpt")) { setDiuPre(true); return; }
     return doSave().catch(() => {});
@@ -438,7 +443,7 @@ export default function ModulePage({ moduleKey }) {
       {form && (
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
-          {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
+          {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} /> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
             </div>
@@ -490,7 +495,7 @@ export default function ModulePage({ moduleKey }) {
           {key === "clients" && editId && <SignRequests clientName={form.name} />}
 
           <div className="flex gap-2 mt-6 den-noprint">
-            <Btn onClick={save} data-testid="save-btn">Salvează</Btn>
+            <Btn onClick={save} disabled={key === "prosumator" && catalogImportsBusy} data-testid="save-btn">{catalogImportsBusy ? "Se preiau documentele…" : "Salvează"}</Btn>
             <Btn variant="secondary" onClick={() => window.print()} data-testid="pdf-btn">Tipărește / PDF</Btn>
             <Btn variant="secondary" onClick={() => setForm(null)}>Anulează</Btn>
           </div>
