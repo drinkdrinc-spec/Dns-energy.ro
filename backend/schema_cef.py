@@ -107,7 +107,7 @@ class CefDrawing(Flowable):
             q = f"Q{i + 1}: C{v(ac.get('breaker_a') or pa.get('breaker_a'))} A {pa.get('poles', poles)}"
             c.drawString(bx + 3 * mm, ty + 5, self.fit(q + (" (propus)" if not ac.get("breaker_a") else "") + (f" · {inv.get('rcd')}" if inv.get("rcd") else ""), cw - 6 * mm, "LS", 5.8))
             iy, ih = 72 * mm, 24 * mm
-            cable = f"{ac.get('cable_type') or 'CYY-F'} {v(ac.get('section') or pa.get('section'))} mm² {ac.get('material') or 'Cu'}, {v(ac.get('length_m'), ' m')}"
+            cable = f"{ac.get('cable_type') or 'RV-K'} {v(ac.get('section') or pa.get('section'))} mm² {ac.get('material') or 'Cu'}, {v(ac.get('length_m'), ' m')}"
             self.line(mid, ty, mid, iy + ih, label=cable)
             ph = "3F" if r.get("tri") else ("1F" + (f" pe {inv.get('phase')}" if inv.get("phase") else ""))
             quantity = int(r.get("count") or inv.get("count") or 1)
