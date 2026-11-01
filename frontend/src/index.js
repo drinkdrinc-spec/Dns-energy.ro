@@ -44,6 +44,18 @@ if (import.meta.env.PROD) {
   window.setInterval(checkForNewBuild, 5 * 60 * 1000);
 }
 
+// Keep the install event even when it fires on the public login screen,
+// before the authenticated mobile app layout has mounted.
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  window.__dnsEnergyInstallPrompt = event;
+  window.dispatchEvent(new Event("dns-energy-install-ready"));
+});
+window.addEventListener("appinstalled", () => {
+  window.__dnsEnergyInstalled = true;
+  window.dispatchEvent(new Event("dns-energy-app-installed"));
+});
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
