@@ -30,7 +30,8 @@ export function Totals({ res, inverters = [] }) {
       </div>
       {res.inverters?.length > 0 && <div className="mt-3 rounded-lg border border-white/15 bg-white/5 p-3" data-testid="cef-auto-sizing">
         <b className="block text-xs">Propuneri automate de protecții și cabluri</b>
-        {res.grid?.main_proposal && <p className="mt-2 text-xs">Branșament: disjunctor general propus {res.grid.main_proposal} A · Ib {res.grid.i_br} A.</p>}
+        {res.grid?.main_proposal && <p className="mt-2 text-xs">Branșament: protecție generală propusă {res.grid.main_proposal} A · Ib {res.grid.i_br} A{res.grid.main_section_proposal ? " · coloană BMP–TG minim " + res.grid.main_section_proposal + " mm² (Iz " + res.grid.main_section_iz + " A" + (res.grid.main_section_du != null ? ", ΔU " + res.grid.main_section_du + "%" : "") + ")" : ""}.</p>}
+        {res.grid?.main_proposal && !res.grid.main_section_proposal && <p className="mt-1 text-xs text-amber-100">Pentru această putere secțiunea coloanei nu poate fi aleasă sigur din tabelul disponibil; este necesar proiect dedicat.</p>}
         <div className="mt-2 space-y-1.5">
           {res.inverters.map((inv, index) => {
             const ac = inv.proposals?.ac || {};
