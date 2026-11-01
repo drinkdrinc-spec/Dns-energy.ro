@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Upload, FileDown, Send } from "lucide-react";
-import { api, API } from "@/lib/api";
+import { api, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { streamAI, clean } from "@/lib/ai";
 
-const tok = () => localStorage.getItem("den_token");
 const CO = [["name", "Denumire"], ["cui", "CUI"], ["regcom", "Nr. Reg. Comerțului"], ["address", "Sediu social"], ["rep_name", "Reprezentant legal"], ["rep_role", "Funcție"],
   ["email", "E-mail"], ["phone", "Telefon"], ["attest_no", "Nr. atestat existent"], ["attest_types", "Tipuri atestat existent"], ["attest_valid", "Valabil până la"]];
 const STAFF = [["name", "Nume"], ["role", "Funcție"], ["grade", "Grad/tip autorizare"], ["license", "Nr. legitimație"], ["license_valid", "Valabilă până la"], ["contract", "Contract"]];
@@ -55,7 +54,7 @@ export function AnreEditor({ id, platform, onBack }) {
     try { const { data } = await api.post(`/anre/dossiers/${id}/docs/${key}`, fd, { headers: { "Content-Type": "multipart/form-data" } }); setD(data); toast.success("Document încărcat"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   const review = async (key, body) => { try { const { data } = await api.post(`/anre/dossiers/${id}/docs/${key}/review`, body); setD(data); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   const runCheck = async () => { try { const { data } = await api.post(`/anre/dossiers/${id}/check`); setRep(data); load(); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
-  const url = (k) => `${API}/anre/dossiers/${id}/file/${k}?auth=${tok()}`;
+  const url = (k) => `/anre/dossiers/${id}/file/${k}`;
   return (
     <div className="space-y-4" data-testid="anre-editor">
       <div className="flex flex-wrap items-center gap-2">
@@ -66,7 +65,7 @@ export function AnreEditor({ id, platform, onBack }) {
       {d.creation_mode === "intern" && <div className="den-panel text-sm" style={{ background: "#eef4ff" }} data-testid="anre-internal-draft">Dosar intern — poți completa și verifica documentele fără să emiți o comandă sau o proformă.</div>}
       {!paid && <div className="den-panel text-sm" style={{ background: "#fff8e6" }} data-testid="anre-unpaid">Serviciul costă <b>{d.price.net} lei + TVA ({d.price.total} lei)</b>. Plătiți prin OP cu mențiunea „{d.invoice_number || `Dosar ANRE ${d.id.slice(0, 8)}`}”; dosarul se deblochează după confirmarea plății de către administrator. {d.price.note}.
         {d.transfer && <div className="mt-2 text-xs grid sm:grid-cols-3 gap-1" data-testid="anre-transfer"><span>Beneficiar: <b>{d.transfer.beneficiary}</b></span><span>CUI: {d.transfer.cui || "—"}</span><span>IBAN: <b>{d.transfer.iban || "—"}</b></span><span>Banca: {d.transfer.bank || "—"}</span><span>Suma: <b>{d.transfer.amount} lei</b></span><span>Mențiune OP: <b>{d.transfer.reference}</b></span></div>}</div>}
-      {d.invoice_id && <a href={`${API}/billing/invoices/${d.invoice_id}/pdf?auth=${tok()}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="anre-proforma-pdf"><FileDown size={14} /> Proforma {d.invoice_number} (PDF)</a>}
+      {d.invoice_id && <button type="button" onClick={() => openAuthenticatedFile(`/billing/invoices/${d.invoice_id}/pdf`)} className="text-sm font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="anre-proforma-pdf"><FileDown size={14} /> Proforma {d.invoice_number} (PDF)</button>}
       {platform && d.payment_status !== "plătit" && <Btn onClick={async () => { const ref = window.prompt("Referința OP / extras:"); if (ref) { await api.post(`/admin/anre/${id}/payment`, { reference: ref }); load(); } }} data-testid="anre-confirm-payment">Confirmă plata (admin)</Btn>}
       {paid && <>
         <div className="den-panel"><h3 className="font-bold mb-2">Date firmă (preluate din profil)</h3>
@@ -78,7 +77,7 @@ export function AnreEditor({ id, platform, onBack }) {
           <h3 className="font-bold mt-3 mb-1 text-sm">Personal (Anexa 7)</h3><Rows cols={STAFF} rows={d.staff || []} onChange={(v) => setD({ ...d, staff: v })} tid="anre-staff" />
           <h3 className="font-bold mt-3 mb-1 text-sm">Dotări (Anexa 5)</h3><Rows cols={EQ} rows={d.equipment || []} onChange={(v) => setD({ ...d, equipment: v })} tid="anre-eq" />
           <Btn className="mt-3" onClick={() => save()} data-testid="anre-save">Salvează datele</Btn></div>
-        <div className="den-panel overflow-x-auto"><div className="flex items-center justify-between mb-2"><h3 className="font-bold">Opis</h3><a href={url("opis")} target="_blank" rel="noopener noreferrer" className="text-xs font-bold" style={{ color: "var(--blue)" }} data-testid="anre-opis-pdf">Opis PDF</a></div>
+        <div className="den-panel overflow-x-auto"><div className="flex items-center justify-between mb-2"><h3 className="font-bold">Opis</h3><button type="button" onClick={() => openAuthenticatedFile(url("opis"))} className="text-xs font-bold" style={{ color: "var(--blue)" }} data-testid="anre-opis-pdf">Opis PDF</button></div>
           <table className="w-full text-xs" data-testid="anre-opis"><thead><tr className="text-left" style={{ color: "var(--muted)" }}><th>Nr.</th><th>Document</th><th>Temei</th><th>Sursă</th><th>Status</th><th>Acțiuni</th></tr></thead>
             <tbody>{d.items.map((i) => (
               <tr key={i.key} className="border-t align-top" style={{ borderColor: "var(--line)" }} data-testid={`anre-item-${i.key}`}>
@@ -87,13 +86,13 @@ export function AnreEditor({ id, platform, onBack }) {
                 <td className="space-x-2 whitespace-nowrap">
                   {i.source === "client" ? <label className="cursor-pointer font-bold" style={{ color: "var(--blue)" }}><Upload size={12} className="inline" /> Încarcă<input type="file" className="hidden" accept="application/pdf,image/jpeg,image/png" onChange={(e) => e.target.files[0] && up(i.key, e.target.files[0])} data-testid={`anre-upload-${i.key}`} /></label>
                     : <button className="font-bold" style={{ color: "#166534" }} onClick={() => review(i.key, { approved: i.status !== "verificat" })} data-testid={`anre-approve-${i.key}`}>{i.status === "verificat" ? "Anulează aprobarea" : "Am verificat"}</button>}
-                  {(i.source !== "client" || i.file) && <a href={url(i.key)} target="_blank" rel="noopener noreferrer" data-testid={`anre-view-${i.key}`}><FileDown size={12} className="inline" /></a>}
+                  {(i.source !== "client" || i.file) && <button type="button" onClick={() => openAuthenticatedFile(url(i.key))} aria-label={`Deschide ${i.title}`} data-testid={`anre-view-${i.key}`}><FileDown size={12} className="inline" /></button>}
                   {i.source === "client" && i.file && <select className="den-input !py-0 !text-[11px] !w-36 inline" value={i.status} onChange={(e) => review(i.key, { status: e.target.value })} data-testid={`anre-review-${i.key}`}>{d.doc_statuses.map((s) => <option key={s}>{s}</option>)}</select>}
                 </td></tr>))}</tbody></table></div>
         <div className="den-panel"><div className="flex flex-wrap gap-2 items-end">
           <Btn onClick={runCheck} data-testid="anre-check">Verificare finală</Btn>
-          <a href={url("raport")} target="_blank" rel="noopener noreferrer" data-testid="anre-report-pdf"><Btn variant="secondary">Raport PDF</Btn></a>
-          <Btn variant="secondary" onClick={async () => { try { const r = await fetch(`${API}/anre/dossiers/${id}/package?auth=${tok()}`); if (!r.ok) throw new Error((await r.json()).detail); const b = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `Dosar_ANRE_${d.company?.cui || id.slice(0, 6)}.zip`; a.click(); } catch (e) { toast.error(e.message); } }} data-testid="anre-package">Pachet final (ZIP)</Btn>
+          <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(url("raport"))} data-testid="anre-report-pdf">Raport PDF</Btn>
+          <Btn type="button" variant="secondary" onClick={() => downloadAuthenticatedFile(`/anre/dossiers/${id}/package`, `Dosar_ANRE_${d.company?.cui || id.slice(0, 6)}.zip`)} data-testid="anre-package">Pachet final (ZIP)</Btn>
           <input className="den-input !w-40" placeholder="Nr. înregistrare ANRE" onChange={(e) => setFiling({ ...filing, filing_no: e.target.value })} data-testid="anre-filing-no" />
           <input className="den-input !w-40" type="date" onChange={(e) => setFiling({ ...filing, filing_date: e.target.value })} data-testid="anre-filing-date" />
           <input className="den-input !w-52" placeholder="Rezultat ANRE (pentru „Soluționat”)" onChange={(e) => setFiling({ ...filing, result: e.target.value })} data-testid="anre-result" />
