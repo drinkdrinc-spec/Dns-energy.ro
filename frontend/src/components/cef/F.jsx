@@ -19,7 +19,7 @@ export function Check({ label, value, onChange, testid }) {
   );
 }
 
-export function CatalogPick({ items, category, onPick, testid, label = "Caută model în catalog" }) {
+export function CatalogPick({ items, category, onPick, onQueryChange, testid, label = "Caută model în catalog" }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const list = items.filter((i) => i.category === category);
@@ -46,7 +46,7 @@ export function CatalogPick({ items, category, onPick, testid, label = "Caută m
         data-testid={testid}
         onFocus={() => setOpen(true)}
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
+        onChange={(event) => { const value = event.target.value; setQuery(value); setOpen(true); onQueryChange?.(value); }}
         onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
       />
       {open && (
