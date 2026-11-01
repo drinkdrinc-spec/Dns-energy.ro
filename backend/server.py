@@ -661,9 +661,29 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     for f in files:
         if not isinstance(f, dict) or not str(f.get("storage_path") or "").startswith(APP_NAME + "/uploads/" + str(user["id"]) + "/"):
             raise HTTPException(status_code=400, detail="Document invalid sau neîncărcat în contul curent")
-    client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
-    if d.get("pod") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "client_name": name, "pod": d["pod"]}):
-        raise HTTPException(status_code=409, detail="Există deja un dosar pentru acest client și acest POD")
+    identity_code = str(d.get("cnp") or "").strip()
+    client = None
+    if identity_code:
+        client = await db.clients.find_one({**scope_q(user, "clients"),
+            "$or": [{"idcode": identity_code}, {"cui": identity_code}]}, {"_id": 0})
+    if not client:
+        client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
+    stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
+    # A same-name client with a different CNP/CUI is a separate person/company.
+    if client and identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+        client = None
+
+    if d.get("pod"):
+        duplicate_match = []
+        if client:
+            duplicate_match.append({"client_id": client["id"]})
+        if identity_code:
+            duplicate_match.extend([{"cnp": identity_code}, {"idcode": identity_code}])
+        else:
+            duplicate_match.append({"client_name": name})
+        duplicate = await db.prosumator.find_one({**scope_q(user, "prosumator"), "pod": d["pod"], "$or": duplicate_match}, {"id": 1})
+        if duplicate:
+            raise HTTPException(status_code=409, detail="Există deja un dosar pentru acest client și acest POD")
     if not client:
         client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""), "email": d.get("email", ""),
                              "address": d.get("address", ""), "hq_address": d.get("hq_address", ""), "county": d.get("county", ""),
