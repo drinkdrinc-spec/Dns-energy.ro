@@ -749,7 +749,8 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         client["docs"] = client.get("docs") or {}
         await db.clients.insert_one(dict(client))
     client.setdefault("docs", {})
-    client_values = {"name": name, "idcode": d.get("cnp"), "phone": d.get("phone"), "email": d.get("email"),
+    client_values = {"name": name, "idcode": d.get("cnp"), "id_series": d.get("id_series"), "id_number": d.get("id_number"),
+                     "phone": d.get("phone"), "email": d.get("email"),
                      "address": d.get("address"), "hq_address": d.get("hq_address"), "county": d.get("county"),
                      "pod": d.get("pod"), "operator": d.get("operator"), "cadastral_nr": d.get("cadastral_nr"),
                      "cf_nr": d.get("cf_nr"), "supplier": d.get("supplier"), "rep_name": d.get("rep_name"),
