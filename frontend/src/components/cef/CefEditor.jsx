@@ -21,6 +21,7 @@ function SharedBatteries({ list, set, catalog }) {
           <F label="Ah" type="number" value={b.ah} onChange={(v) => upd(i, { ah: v })} testid={`shared-${i}-ah`} />
           <F label="Tensiune (V)" type="number" value={b.voltage} onChange={(v) => upd(i, { voltage: v })} testid={`shared-${i}-v`} />
           <F label="Curent max descărcare (A)" type="number" value={b.i_max} onChange={(v) => upd(i, { i_max: v })} testid={`shared-${i}-imax`} />
+          <F label="Siguranță max. admisă (A), din fișă" type="number" value={b.max_fuse_a} onChange={(v) => upd(i, { max_fuse_a: v })} testid={`shared-${i}-max-fuse`} />
           <F label="Cuplare" value={b.coupling || ""} onChange={(v) => upd(i, { coupling: v })} options={["DC", "AC"]} testid={`shared-${i}-coupling`} />
           <div className="flex items-end gap-3 pb-2">
             <Check label="Producătorul permite paralel" value={b.parallel_supported} onChange={(v) => upd(i, { parallel_supported: v })} testid={`shared-${i}-parallel`} />
