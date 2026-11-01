@@ -234,10 +234,11 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             if ibat:
                 fb = up(BAT_FUSE, 1.25 * ibat)
                 o.it(T, "Baterie — protecție DC propusă", g(fb, " A"), "calculat", "In ≥ 1,25·Imax,desc. (conform manual)")
-                bs = n(bat.get("cable_section"))
+                battery_proposal = r.get("proposals", {}).get("battery") or {}
+                bs = n(bat.get("cable_section")) or n(battery_proposal.get("section"))
                 if bs:
-                    izb = iz(bs, "Cu", None, 1, 1, dc=True)
-                    fa = n(bat.get("fuse_a")) or fb
+                    izb = n(battery_proposal.get("iz")) or iz(bs, "Cu", "C", 3, 1)
+                    fa = n(bat.get("fuse_a")) or n(battery_proposal.get("fuse_a")) or fb
                     o.it(T, "Baterie — Iz cablu ≥ In protecție", f"{izb:.0f} ≥ {fa:g} A", "calculat", "Iz ≥ In", izb >= fa)
                     o.cables.append({"id": f"W{i + 1}.BAT", "from": f"-G{i + 1}", "to": f"-U{i + 1}", "type": bat.get("cable_type") or None, "cores": "1×(+), 1×(−)",
                                      "section": bs, "material": "Cu", "length": n(bat.get("cable_length")) or None, "ib": ibat, "iz": round(izb), "du": None, "loss": None})
