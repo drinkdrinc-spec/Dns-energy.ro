@@ -8,6 +8,11 @@ from pymongo import MongoClient
 
 LEGACY_STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 LEGACY_STORAGE_KEY = (os.environ.get("EMERGENT_LLM_KEY") or "").strip()
+
+
+class LegacyObjectUnavailable(FileNotFoundError):
+    """A legacy object exists outside GridFS but its former storage account rejects access."""
+
 _client = MongoClient(
     os.environ["MONGO_URL"],
     serverSelectionTimeoutMS=10000,
@@ -62,12 +67,20 @@ def get_object(path: str):
             metadata = getattr(stored, "metadata", None) or {}
             return stream.read(), metadata.get("contentType", "application/octet-stream")
 
-    token = _legacy_storage_token()
-    response = requests.get(f"{LEGACY_STORAGE_URL}/objects/{key}", headers={"X-Storage-Key": token}, timeout=60)
-    if response.status_code == 404:
-        token = _legacy_storage_token(force=True)
+    try:
+        token = _legacy_storage_token()
         response = requests.get(f"{LEGACY_STORAGE_URL}/objects/{key}", headers={"X-Storage-Key": token}, timeout=60)
-    response.raise_for_status()
+        if response.status_code == 404:
+            token = _legacy_storage_token(force=True)
+            response = requests.get(f"{LEGACY_STORAGE_URL}/objects/{key}", headers={"X-Storage-Key": token}, timeout=60)
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        if status in (401, 403):
+            raise LegacyObjectUnavailable(
+                "Documentul istoric nu mai este accesibil din spațiul de stocare vechi. Reîncărcați fișierul în dosar sau în catalog."
+            ) from exc
+        raise
     data = response.content
     content_type = response.headers.get("Content-Type", "application/octet-stream")
     try:
