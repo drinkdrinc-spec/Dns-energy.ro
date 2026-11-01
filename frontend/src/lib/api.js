@@ -26,6 +26,14 @@ export function formatApiErrorDetail(detail) {
 
 export { API };
 
+async function apiErrorMessage(error) {
+  let data = error.response?.data;
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    try { data = JSON.parse(await data.text()); } catch { data = null; }
+  }
+  return typeof data?.detail === "string" ? data.detail : "Nu am putut genera documentul. Verifică datele și încearcă din nou.";
+}
+
 export async function downloadAuthenticatedFile(path, fallbackName = "document") {
   try {
     const response = await api.get(path, { responseType: "blob" });
@@ -45,8 +53,7 @@ export async function downloadAuthenticatedFile(path, fallbackName = "document")
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
   } catch (error) {
-    const detail = error.response?.data?.detail;
-    window.alert(typeof detail === "string" ? detail : "Nu am putut genera documentul. Verifică datele și încearcă din nou.");
+    window.alert(await apiErrorMessage(error));
   }
 }
 
@@ -62,7 +69,6 @@ export async function openAuthenticatedFile(path) {
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
   } catch (error) {
     tab.close();
-    const detail = error.response?.data?.detail;
-    window.alert(typeof detail === "string" ? detail : "Nu am putut genera documentul. Verifică datele și încearcă din nou.");
+    window.alert(await apiErrorMessage(error));
   }
 }
