@@ -53,6 +53,11 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       const seen = new Set();
       return catalog.filter((item) => {
         if (item.category !== category || /\bTEST\b/i.test(String(item.brand_model || ""))) return false;
+        // Keep legacy seed rows with electrical values contradicted by the attached manufacturer sheet out of new designs.
+        if (item.category === "Panou" && item.brand_model === "Aiko Neostar 475 W"
+          && Number(item.voc) === 40.2 && Number(item.vmp) === 33.6 && Number(item.isc) === 14.9 && Number(item.imp) === 14.15) return false;
+        if (item.category === "Panou" && item.brand_model === "LONGi Hi-MO 6 LR5-54HTH-440M"
+          && Number(item.voc) === 39.9 && Number(item.vmp) === 33.3 && Number(item.isc) === 14.04 && Number(item.imp) === 13.22) return false;
         const key = String(item.brand_model || "").trim().toLocaleLowerCase("ro-RO");
         if (!key || seen.has(key)) return false;
         seen.add(key);
@@ -250,6 +255,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       {problem && <p className="text-xs mt-2 text-amber-700">{problem}</p>}
       {catalogLoading && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Se încarcă modelele din catalog…</p>}
       {!catalogLoading && catalog.length === 0 && !problem && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Catalog gol. Adaugă modelele și fișele lor în Catalog echipamente.</p>}
+      <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Variantele cu date vechi care contrazic fișa oficială sunt excluse din configurare. Alege modelul exact al producătorului.</p>
     </section>
   </div>;
 }
