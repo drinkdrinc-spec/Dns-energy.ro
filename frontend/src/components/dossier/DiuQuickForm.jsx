@@ -57,6 +57,7 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
       setVal("pros_id", matches[0].id);
       const p = matches[0];
       choosePros(matches[0].id);
+      setVal("client_id", client.id);
       setVal("address", p.address || client?.address || "");
       setVal("operator", p.operator || client?.operator || "");
     }
