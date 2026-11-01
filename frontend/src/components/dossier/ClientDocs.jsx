@@ -95,7 +95,7 @@ function Slot({ k, label, files, add, remove }) {
 export function ClientDocs({ client, onChange }) {
   const docs = client.docs || {};
   const persistDocs = async (next) => {
-    await api.put(`/data/clients/${client.id}`, { docs: next });
+    if (client.id) await api.put(`/data/clients/${client.id}`, { docs: next });
     onChange(next, {});
   };
   const add = async (slot, sourceFile) => {
