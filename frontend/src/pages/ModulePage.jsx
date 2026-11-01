@@ -511,6 +511,7 @@ export default function ModulePage({ moduleKey }) {
         {filtered.length === 0 ? (
           <div className="text-sm py-8 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>Nu există înregistrări încă.</div>
         ) : (
+          <>
           {key === "clients" && <div className="grid gap-3 sm:hidden" data-testid="mobile-client-actions">
             {filtered.map((it) => {
               const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
@@ -654,6 +655,7 @@ export default function ModulePage({ moduleKey }) {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </div>
