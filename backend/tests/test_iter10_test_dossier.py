@@ -1,3 +1,8 @@
+import os as _dns_test_os
+import pytest as _dns_test_pytest
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    _dns_test_pytest.skip("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1", allow_module_level=True)
+
 # Iteration 10: TEST dossier (create/delete/separation), exports, docx fisa_tehnica, revisions compare,
 # approval requests (auto+manual), test_email routing of e-mails, remote signing on TEST dossiers.
 # Sends at most 3 real e-mails (only to the configured test address).
@@ -7,8 +12,8 @@ from pypdf import PdfReader
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
-ADMIN = {"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}
-TEST_EMAIL = "drinkdrinc@gmail.com"
+ADMIN = {"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}
+TEST_EMAIL = _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"]
 pytestmark = pytest.mark.xdist_group("iter10")  # run sequentially in one worker
 S = {}
 

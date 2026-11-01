@@ -1,3 +1,8 @@
+import os as _dns_test_os
+import pytest as _dns_test_pytest
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    _dns_test_pytest.skip("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1", allow_module_level=True)
+
 # Iteration 26: admin visa panel API (GET /api/admin/operators/visas) + cron visa reminder with 'Comandă dosarul de vizare' link
 import time
 import uuid
@@ -26,7 +31,7 @@ def login(email, pw):
 
 @pytest.fixture(scope="module")
 def H():
-    return login("drinkdrinc@gmail.com", "DEnergy2026!")
+    return login(_dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"])
 
 
 @pytest.fixture(scope="module", autouse=True)

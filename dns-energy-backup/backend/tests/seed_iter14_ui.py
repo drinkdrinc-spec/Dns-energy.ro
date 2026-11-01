@@ -1,3 +1,7 @@
+import os as _dns_test_os
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    raise SystemExit("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1 before running this helper.")
+
 # Seed START + FULL subscribers for iter14 UI tests (delete with: python seed_iter14_ui.py clean)
 import sys, requests, os
 from datetime import date, timedelta
@@ -14,7 +18,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "clean":
     mdb.users.delete_many({"email": {"$regex": "^ui14_"}})
     mdb.atr.delete_many({"client_name": {"$regex": "UI14"}})
     print("cleaned", len(uids)); sys.exit()
-adm = requests.post(f"{API}/auth/login", json={"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}).json()["access_token"]
+adm = requests.post(f"{API}/auth/login", json={"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}).json()["access_token"]
 for k, plan in (("start", "start"), ("full", "full")):
     e = f"ui14_{k}@example.com"
     requests.post(f"{API}/auth/register", json={"email": e, "password": "Test2026!x", "name": f"UI {k}", "billing": PF})

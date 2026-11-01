@@ -1,3 +1,7 @@
+import os as _dns_test_os
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    raise SystemExit("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1 before running this helper.")
+
 # Seed/cleanup for iteration 13 UI: START subscriber with a PAID proforma (credit on upgrade). Usage: python seed_iter13_ui.py [clean]
 import os, sys, requests
 from pymongo import MongoClient
@@ -19,7 +23,7 @@ def clean():
 if len(sys.argv) > 1 and sys.argv[1] == "clean":
     clean(); print("cleaned"); sys.exit()
 clean()
-adm = requests.post(f"{API}/auth/login", json={"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}).json()["access_token"]
+adm = requests.post(f"{API}/auth/login", json={"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}).json()["access_token"]
 H = {"Authorization": f"Bearer {adm}"}
 print(requests.post(f"{API}/auth/register", json={"email": EMAIL, "password": PWD, "name": "UI13", "billing": PF}).status_code)
 uid = mdb.users.find_one({"email": EMAIL})["id"]

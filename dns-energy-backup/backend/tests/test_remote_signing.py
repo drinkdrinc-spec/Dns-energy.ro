@@ -1,3 +1,8 @@
+import os as _dns_test_os
+import pytest as _dns_test_pytest
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    _dns_test_pytest.skip("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1", allow_module_level=True)
+
 # Tests: Remote signing module (sign requests CRUD, links, revoke/new-link/expire, public page, OTP, sign, refuse, attach to opis)
 import base64
 import hashlib
@@ -14,8 +19,8 @@ from PIL import Image, ImageDraw
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
-EMAIL = "drinkdrinc@gmail.com"
-PASSWORD = "DEnergy2026!"
+EMAIL = _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"]
+PASSWORD = _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]
 DID = "3f6fd4d4-f603-4880-9a11-304820c2d3e3"
 KEYS = ["afm", "pif", "reglaj"]
 db = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))[os.environ.get("DB_NAME", "test_database")]

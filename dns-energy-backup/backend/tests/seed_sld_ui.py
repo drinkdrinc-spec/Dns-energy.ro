@@ -1,9 +1,13 @@
+import os as _dns_test_os
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    raise SystemExit("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1 before running this helper.")
+
 # Helper: seed / cleanup a TEST_ SLD record for UI testing. Usage: python seed_sld_ui.py [seed|clean]
 import os, sys, copy, json, requests
 sys.path.insert(0, "/app/backend")
 from sld_demo import DEMO_REC, DEMO_CLIENT
 API = os.environ["REACT_APP_BACKEND_URL"].rstrip("/") + "/api"
-tok = requests.post(f"{API}/auth/login", json={"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}).json()["access_token"]
+tok = requests.post(f"{API}/auth/login", json={"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}).json()["access_token"]
 s = requests.Session(); s.headers["Authorization"] = f"Bearer {tok}"
 F = "/tmp/sld_ui_ids.json"
 if sys.argv[1] == "seed":

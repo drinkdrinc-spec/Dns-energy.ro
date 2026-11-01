@@ -1,3 +1,7 @@
+import os as _dns_test_os
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    raise SystemExit("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1 before running this helper.")
+
 # Setup for iteration 25 UI: subscriber with unpaid ANRE dossier + operator record (visa_date), docx template file
 import io
 import json
@@ -12,7 +16,7 @@ API = BASE.rstrip("/") + "/api"
 env = dict(l.strip().split("=", 1) for l in open("/app/backend/.env") if "=" in l)
 mdb = MongoClient(env["MONGO_URL"].strip('"'))[env["DB_NAME"].strip('"')]
 RID = uuid.uuid4().hex[:6]
-H = {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}).json()["access_token"]}
+H = {"Authorization": "Bearer " + requests.post(f"{API}/auth/login", json={"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}).json()["access_token"]}
 email = f"sub_iter25ui_{RID}@example.com"
 BILL = {"client_type": "pj", "company_name": "TEST UI25 SRL", "cui": "RO12345678", "regcom": "J37/1/2020", "hq_address": "Str. Test 1", "county": "Vaslui",
         "locality": "Vaslui", "country": "România", "rep_name": "TEST Rep", "phone": "0700000000"}

@@ -1,3 +1,8 @@
+import os as _dns_test_os
+import pytest as _dns_test_pytest
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    _dns_test_pytest.skip("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1", allow_module_level=True)
+
 # Iteration 28: visa e-mail campaign (AI drafts + bulk send), operator call log, visas.xlsx call columns
 # Module-level functions on purpose: xdist loadscope keeps them on one worker, in order (shared state).
 import io
@@ -38,7 +43,7 @@ def login(email, pw):
 
 @pytest.fixture(scope="module")
 def AH():
-    return login("drinkdrinc@gmail.com", "DEnergy2026!")
+    return login(_dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"])
 
 
 @pytest.fixture(scope="module")
@@ -181,7 +186,7 @@ def test_call_log_history_and_last_call(H):
     r0 = requests.get(f"{API}/admin/operators/{t}/calls", headers=H).json()
     assert r0["items"] == [] and list(r0["outcomes"]) == ["interesat", "nu răspunde", "revine / sună înapoi", "a comandat", "refuză", "alt rezultat"]
     a = requests.post(f"{API}/admin/operators/{t}/calls", json={"outcome": "nu răspunde"}, headers=H)
-    assert a.status_code == 200 and a.json()["callback_date"] is None and a.json()["by"] == "drinkdrinc@gmail.com"
+    assert a.status_code == 200 and a.json()["callback_date"] is None and a.json()["by"] == _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"]
     cb = (T - timedelta(days=1)).isoformat()
     b = requests.post(f"{API}/admin/operators/{t}/calls", json={"outcome": "revine / sună înapoi", "note": "TEST_ sună joi", "callback_date": cb}, headers=H)
     assert b.status_code == 200, b.text

@@ -1,3 +1,8 @@
+import os as _dns_test_os
+import pytest as _dns_test_pytest
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    _dns_test_pytest.skip("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1", allow_module_level=True)
+
 # Iteration 23: Etapa 2 tariffs + OP transfer checkout, ANRE operator attest gating (new/legacy), contract online signing, offer from dossier
 import os
 import io
@@ -18,7 +23,7 @@ if not BASE:
         if ln.startswith("REACT_APP_BACKEND_URL="):
             BASE = ln.split("=", 1)[1].strip()
 API = BASE.rstrip("/") + "/api"
-ADMIN = {"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}
+ADMIN = {"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}
 env = dict(l.strip().split("=", 1) for l in open("/app/backend/.env") if "=" in l)
 mdb = MongoClient(env["MONGO_URL"].strip('"'))[env["DB_NAME"].strip('"')]
 RID = uuid.uuid4().hex[:6]

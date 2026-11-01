@@ -1,3 +1,8 @@
+import os as _dns_test_os
+import pytest as _dns_test_pytest
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    _dns_test_pytest.skip("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1", allow_module_level=True)
+
 # Iteration 21: DI-U remote signing (one link per doc), signed PDF propagation, Word export, DI-U AI precheck, sign-message module=diu
 import os, io, hashlib, base64, random
 from datetime import datetime, timezone, timedelta
@@ -16,7 +21,7 @@ ST = {}
 
 @pytest.fixture(scope="module")
 def H():
-    r = requests.post(f"{BASE}/auth/login", json={"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"})
+    r = requests.post(f"{BASE}/auth/login", json={"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]})
     assert r.status_code == 200
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 

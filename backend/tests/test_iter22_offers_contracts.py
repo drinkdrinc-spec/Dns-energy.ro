@@ -1,3 +1,8 @@
+import os as _dns_test_os
+import pytest as _dns_test_pytest
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    _dns_test_pytest.skip("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1", allow_module_level=True)
+
 # Iteration 22: Oferte de preț + Contracte (numbering, totals, PDF, status, contract gen, versions, template, isolation, feature gate)
 import os
 import io
@@ -12,7 +17,7 @@ if not BASE:
             BASE = ln.split("=", 1)[1].strip()
 BASE = BASE.rstrip("/")
 API = f"{BASE}/api"
-ADMIN = {"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}
+ADMIN = {"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}
 
 ITEMS = [
     {"category": "panouri", "kind": "echipament", "name": "Panouri", "manufacturer": "Jinko", "model": "Tiger", "power": "450W", "qty": 10, "unit": "buc", "unit_price": 500, "warranty": "25 ani"},

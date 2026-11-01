@@ -1,15 +1,19 @@
+import os as _dns_test_os
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    raise SystemExit("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1 before running this helper.")
+
 # Helper (iter9): seed/clean an APPROVED TEST_ SLD record (designer with email) for UI tests. Usage: python seed_sld_ui9.py seed|clean
 import os, sys, copy, json, requests
 sys.path.insert(0, "/app/backend")
 from sld_demo import DEMO_REC, DEMO_CLIENT
 from pymongo import MongoClient
 API = os.environ["REACT_APP_BACKEND_URL"].rstrip("/") + "/api"
-tok = requests.post(f"{API}/auth/login", json={"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}).json()["access_token"]
+tok = requests.post(f"{API}/auth/login", json={"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}).json()["access_token"]
 s = requests.Session(); s.headers["Authorization"] = f"Bearer {tok}"
 F = "/tmp/sld_ui9_ids.json"
 AUTH = [{"type": "ANRE", "number": "UI9", "expires": "2030-12-31", "file": {"storage_path": "x"}, "verified": True}]
 if sys.argv[1] == "seed":
-    ids = {"designer": s.post(f"{API}/data/staff", json={"name": "TEST_UI9 designer", "email": "drinkdrinc@gmail.com", "phone": "0700000009", "auths": AUTH}).json()["id"],
+    ids = {"designer": s.post(f"{API}/data/staff", json={"name": "TEST_UI9 designer", "email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "phone": "0700000009", "auths": AUTH}).json()["id"],
            "verifier": s.post(f"{API}/data/staff", json={"name": "TEST_UI9 verifier", "auths": AUTH}).json()["id"]}
     cl = s.post(f"{API}/data/clients", json={**DEMO_CLIENT, "name": "TEST_UI9 SLD Client"}).json()
     ids["client"] = cl["id"]

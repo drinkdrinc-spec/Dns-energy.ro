@@ -1,3 +1,7 @@
+import os as _dns_test_os
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    raise SystemExit("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1 before running this helper.")
+
 # Iteration 24 UI helper: create/approve a TEST subscriber for ANRE dossier UI tests; `python iter24_ui_setup.py clean` removes it
 import sys
 import requests
@@ -9,12 +13,12 @@ mdb = MongoClient(env["MONGO_URL"].strip('"'))[env["DB_NAME"].strip('"')]
 EMAIL = "sub_iter24ui@example.com"
 if len(sys.argv) > 1 and sys.argv[1] == "clean":
     uids = [u["id"] for u in mdb.users.find({"email": {"$regex": "^sub_iter24"}})]
-    print(mdb.anre_dossiers.delete_many({"$or": [{"owner": {"$in": uids}}, {"company.name": {"$regex": "^TEST"}}, {"created_by": "drinkdrinc@gmail.com"}]}).deleted_count)
+    print(mdb.anre_dossiers.delete_many({"$or": [{"owner": {"$in": uids}}, {"company.name": {"$regex": "^TEST"}}, {"created_by": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"]}]}).deleted_count)
     for c in ("subscriptions", "invoices", "operators", "billing_profiles", "billing_history", "payment_transactions"):
         mdb[c].delete_many({"tenant": {"$in": uids}})
     mdb.users.delete_many({"id": {"$in": uids}})
     sys.exit()
-H = {"Authorization": "Bearer " + requests.post(f"{BASE}/auth/login", json={"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}).json()["access_token"]}
+H = {"Authorization": "Bearer " + requests.post(f"{BASE}/auth/login", json={"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}).json()["access_token"]}
 if not mdb.users.find_one({"email": EMAIL}):
     r = requests.post(f"{BASE}/auth/register", json={"email": EMAIL, "password": "Test2026!x", "name": "TEST UI", "billing": {"client_type": "pj", "company_name": "TEST UI SRL", "cui": "RO12345678", "regcom": "J37/1/2020", "hq_address": "Str. Test 1", "county": "Vaslui", "locality": "Vaslui", "country": "România", "rep_name": "TEST Rep", "phone": "0700000000"}})
     print(r.status_code, r.text[:100])

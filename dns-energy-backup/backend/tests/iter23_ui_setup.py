@@ -1,3 +1,7 @@
+import os as _dns_test_os
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    raise SystemExit("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1 before running this helper.")
+
 # Iteration 23 UI setup: register + approve a subscriber for UI tests (cleanup: python iter23_ui_setup.py clean)
 import sys, uuid, requests
 from pymongo import MongoClient
@@ -12,7 +16,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "clean":
         print(c, mdb[c].delete_many({"tenant": {"$in": uids}}).deleted_count)
     print("users", mdb.users.delete_many({"id": {"$in": uids}}).deleted_count)
     sys.exit()
-H = {"Authorization": "Bearer " + requests.post(f"{BASE}/auth/login", json={"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}).json()["access_token"]}
+H = {"Authorization": "Bearer " + requests.post(f"{BASE}/auth/login", json={"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}).json()["access_token"]}
 BILL = {"client_type": "pj", "company_name": "TEST UI SRL", "cui": "RO87654321", "regcom": "J37/2/2020", "hq_address": "Str. Test 2", "county": "Vaslui",
         "locality": "Vaslui", "country": "România", "rep_name": "TEST Rep", "phone": "0700000000"}
 print(requests.post(f"{BASE}/auth/register", json={"email": EMAIL, "password": "Test2026!x", "name": "TEST UI", "billing": BILL}).text)

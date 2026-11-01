@@ -1,3 +1,7 @@
+import os as _dns_test_os
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    raise SystemExit("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1 before running this helper.")
+
 # Iteration 19 UI setup/cleanup: admin test dossier + START subscriber (AI upgrade gate). Usage: python iter19_ui_setup.py setup|cleanup
 import os, sys, json, requests
 from pymongo import MongoClient
@@ -7,9 +11,9 @@ env = dict(l.strip().split("=", 1) for l in open("/app/backend/.env") if "=" in 
 mdb = MongoClient(env["MONGO_URL"].strip('"'))[env["DB_NAME"].strip('"')]
 EMAIL, PWD = "sub_i19ui@example.com", "Test2026!x"
 PF = {"client_type": "pf", "full_name": "Maria Test", "address": "Str. PF 2", "locality": "Cluj", "county": "Cluj", "country": "România", "billing_email": "pf@example.com", "phone": "0711111111"}
-tok = requests.post(f"{API}/auth/login", json={"email": "drinkdrinc@gmail.com", "password": "DEnergy2026!"}).json()["access_token"]
+tok = requests.post(f"{API}/auth/login", json={"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "password": _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]}).json()["access_token"]
 H = {"Authorization": f"Bearer {tok}"}
-owner = mdb.users.find_one({"email": "drinkdrinc@gmail.com"})["id"]
+owner = mdb.users.find_one({"email": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"]})["id"]
 
 if sys.argv[1] == "setup":
     pid = requests.post(f"{API}/test-dossier", headers=H).json()["prosumator_id"]

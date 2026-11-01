@@ -1,3 +1,8 @@
+import os as _dns_test_os
+import pytest as _dns_test_pytest
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    _dns_test_pytest.skip("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1", allow_module_level=True)
+
 # Iteration 27: platform Settings iban/bank -> ANRE proforma transfer/PDF; admin visa AI email draft + send; visas.xlsx export
 import io
 import json
@@ -31,7 +36,7 @@ def login(email, pw):
 
 @pytest.fixture(scope="module")
 def AH():
-    return login("drinkdrinc@gmail.com", "DEnergy2026!")
+    return login(_dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"])
 
 
 @pytest.fixture(scope="module")
@@ -73,7 +78,7 @@ def seed(H):
         for c in ("subscriptions", "invoices", "billing_profiles", "billing_history", "operators"):
             mdb[c].delete_many({"tenant": uid})
         mdb.users.delete_many({"id": uid})
-    for d in mdb.anre_dossiers.find({"created_by": "drinkdrinc@gmail.com", "kind": "vizare", "history.by": "sistem", "test_iter27": True}):
+    for d in mdb.anre_dossiers.find({"created_by": _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], "kind": "vizare", "history.by": "sistem", "test_iter27": True}):
         pass
 
 

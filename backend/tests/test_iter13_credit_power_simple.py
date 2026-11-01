@@ -1,3 +1,8 @@
+import os as _dns_test_os
+import pytest as _dns_test_pytest
+if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_PASSWORD") and _dns_test_os.environ.get("REACT_APP_BACKEND_URL") and _dns_test_os.environ.get("DNS_ENERGY_TEST_ALLOW_MUTATION") == "1"):
+    _dns_test_pytest.skip("Set staging-only DNS_ENERGY_TEST_* credentials, REACT_APP_BACKEND_URL and DNS_ENERGY_TEST_ALLOW_MUTATION=1", allow_module_level=True)
+
 # Iteration 13 — upgrade credit (quote/checkout), SmartBill 'neconfigurat', simple prosumator dossier PDF, Spor de putere (Anexa 1) PDFs + plan gating
 import os, uuid, io, time
 from datetime import date, timedelta
@@ -6,7 +11,7 @@ from pymongo import MongoClient
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
-ADMIN = ("drinkdrinc@gmail.com", "DEnergy2026!")
+ADMIN = (_dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"], _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"])
 PWD = "TestPass123!"
 TAG = f"test_i13_{uuid.uuid4().hex[:6]}"
 
