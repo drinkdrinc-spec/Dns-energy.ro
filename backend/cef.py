@@ -77,8 +77,8 @@ def battery_cable_proposal(battery: dict) -> dict:
         return {"section": None, "fuse_a": None, "i_design": None, "iz": None, "du": None,
                 "note": "Lipsește Imax din fișa tehnică a bateriei.", "source": "lipsă Imax"}
     design_current = current * 1.25
-    fuse = up(BREAKERS, design_current)
-    if not fuse or (max_fuse and fuse > max_fuse):
+    fuse = up(BREAKERS, design_current) if max_fuse > 0 else None
+    if not fuse or fuse > max_fuse:
         fuse = None
     chosen = None
     drop = None
