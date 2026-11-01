@@ -150,7 +150,7 @@ export default function ModulePage({ moduleKey }) {
             cf_nr: client.cf_nr || pros?.cf_nr || "",
             cadastral_nr: client.cadastral_nr || pros?.cadastral_nr || "",
             request_type: requestType,
-            ...(/deer|distributie energie electrica romania/i.test(String(client.operator || pros?.operator || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")) && caseName.toLocaleLowerCase("ro-RO").includes("spor") ? { deer_case: "Loc existent — spor de putere — Anexa 1" } : {}),
+            ...(/deer|distributie energie electrica romania/i.test(String(client.operator || pros?.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")) && caseName.toLocaleLowerCase("ro-RO").includes("spor") ? { deer_case: "Loc existent — spor de putere — Anexa 1" } : {}),
           });
           setEditId(null); setChecks({});
           window.history.replaceState(null, "", window.location.pathname);
@@ -258,7 +258,7 @@ export default function ModulePage({ moduleKey }) {
         if (linked.power) next.p_evac_kw = linked.power;
         if (/spor/i.test(String(linked.request_type || ""))) {
           next.request_type = "dezvoltarea unui utilizator existent (spor de putere)";
-          if (/deer|distributie energie electrica romania/i.test(String(client.operator || linked?.operator || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, ""))) next.deer_case = "Loc existent — spor de putere — Anexa 1";
+          if (/deer|distributie energie electrica romania/i.test(String(client.operator || linked?.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) next.deer_case = "Loc existent — spor de putere — Anexa 1";
         }
       }
       setForm((p) => ({ ...p, ...next }));
