@@ -531,7 +531,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                         note.append(f"Document oficial atașat: {title}.")
                     except (httpx.HTTPError, ValueError) as exc:
                         note.append(f"{title} nu a putut fi atașat la generare: {exc}")
-            archive.writestr("Anexe oficiale/INFO_completare.txt", "\\n".join(note))
+            archive.writestr("Anexe oficiale/INFO_completare.txt", "\n".join(note))
     name = re.sub(r"[^A-Za-z0-9_.-]+", "_", pdf_name.rsplit(".", 1)[0]) + "_pachet.zip"
     return Response(content=bundle.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": S.disp("attachment", name), "Cache-Control": "no-store"})
