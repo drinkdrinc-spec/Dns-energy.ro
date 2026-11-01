@@ -52,19 +52,20 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
   const clients = refOptions.clients || [];
   const pros = refOptions.prosumator || [];
   const norm = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
-  const linkedPros = pros.filter((p) => {
-    if (form.pros_id) return p.id === form.pros_id && (!form.client_id || !p.client_id || p.client_id === form.client_id);
-    if (form.client_id && p.client_id) return p.client_id === form.client_id;
-    return Boolean(form.client_name && norm(p.client_name) === norm(form.client_name));
-  });
+  const explicitPros = form.pros_id ? pros.find((p) => p.id === form.pros_id) : null;
+  const linkedByClientId = form.client_id ? pros.filter((p) => p.client_id === form.client_id) : [];
+  const sameNamePros = pros.filter((p) => Boolean(form.client_name && norm(p.client_name) === norm(form.client_name)));
+  const linkedPros = explicitPros ? [explicitPros] : linkedByClientId.length ? linkedByClientId : sameNamePros;
+  const needsManualPros = Boolean(!explicitPros && form.client_id && !linkedByClientId.length && sameNamePros.length);
+  const autoPros = explicitPros ? [explicitPros] : linkedByClientId.length === 1 ? linkedByClientId : !form.client_id && sameNamePros.length === 1 ? sameNamePros : [];
   const linkedProsKey = linkedPros.map((item) => item.id).join("|");
-  const [selectedProsId, setSelectedProsId] = useState(form.pros_id || (linkedPros.length === 1 ? linkedPros[0].id : ""));
+  const [selectedProsId, setSelectedProsId] = useState(form.pros_id || (autoPros.length === 1 ? autoPros[0].id : ""));
   useEffect(() => {
-    if (form.pros_id && linkedPros.some((item) => item.id === form.pros_id)) setSelectedProsId(form.pros_id);
-    else if (linkedPros.length === 1) setSelectedProsId(linkedPros[0].id);
+    if (explicitPros) setSelectedProsId(explicitPros.id);
+    else if (autoPros.length === 1) setSelectedProsId(autoPros[0].id);
     else if (!linkedPros.some((item) => item.id === selectedProsId)) setSelectedProsId("");
   }, [form.pros_id, form.client_id, linkedProsKey]);
-  const selectedPros = linkedPros.find((p) => p.id === selectedProsId) || (linkedPros.length === 1 ? linkedPros[0] : null);
+  const selectedPros = linkedPros.find((p) => p.id === selectedProsId) || (autoPros.length === 1 ? autoPros[0] : null);
   const equipment = equipmentSummary(selectedPros);
   const choosePros = (id) => {
     const record = linkedPros.find((p) => p.id === id);
@@ -127,12 +128,12 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h3 className="text-sm font-bold">Echipamente transferate în cererea ATR</h3>
           <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Date preluate din dosarul prosumator ales. Fișele tehnice și declarațiile existente în catalog intră automat în ZIP-ul ATR.</p></div>
-        {linkedPros.length > 1 && <label className="den-field min-w-[240px]"><span>Alege dosarul prosumator</span>
+        {(linkedPros.length > 1 || needsManualPros) && <label className="den-field min-w-[240px]"><span>Alege dosarul prosumator</span>
           <select className="den-input" value={selectedProsId} onChange={(e) => choosePros(e.target.value)}>
             <option value="">Alege dosarul...</option>{linkedPros.map((p) => <option key={p.id} value={p.id}>{p.number || p.client_name || "Dosar"} · {p.operator || "operator neconfirmat"}</option>)}
           </select></label>}
       </div>
-      {!selectedPros ? <p className="mt-3 text-sm text-amber-800">{linkedPros.length ? "Selectează dosarul prosumator pentru a transfera echipamentele și puterile în cererea ATR." : "Clientul nu are încă un dosar prosumator asociat. Cererea ATR poate fi salvată, dar echipamentele și puterile nu vor fi completate automat."}</p>
+      {!selectedPros ? <p className="mt-3 text-sm text-amber-800">{needsManualPros ? "Am găsit dosar(e) cu același nume, dar cu alt ID de client. Alege manual dosarul corect înainte să preiei echipamentele." : linkedPros.length ? "Selectează dosarul prosumator pentru a transfera echipamentele și puterile în cererea ATR." : "Clientul nu are încă un dosar prosumator asociat. Cererea ATR poate fi salvată, dar echipamentele și puterile nu vor fi completate automat."}</p>
         : <div className="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
           {[["Invertor(e)", equipment.inverters], ["Panouri", equipment.panels], ["Putere panouri c.c.", equipment.panelPower ? [`${equipment.panelPower.toFixed(3)} kWp`] : []], ["Baterie / BESS", equipment.batteries], ["Putere evacuată c.a.", equipment.power ? [`${equipment.power} kW`] : []], ["Stringuri", equipment.strings ? [equipment.strings] : []], ["Branșament", [selectedPros.supply || selectedPros.cef?.grid?.supply].filter(Boolean)]].map(([name, values]) =>
             <div key={name} className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
