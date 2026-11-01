@@ -6,6 +6,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadFile, File, Form, Response, Header, Query
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr
@@ -172,6 +173,11 @@ def check_inverters(user: dict, d: dict):
 # ---------------- Object storage ----------------
 # DNS Energy uses Cloudflare R2 directly. No Emergent proxy or fallback.
 from gridfs_storage import init_storage, put_object, get_object, LegacyObjectUnavailable
+
+@app.exception_handler(LegacyObjectUnavailable)
+async def legacy_file_unavailable(request: Request, exc: LegacyObjectUnavailable):
+    return JSONResponse(status_code=410, content={"detail": str(exc)})
+
 
 # Namespace used for uploaded file keys in MongoDB GridFS.
 APP_NAME = os.environ.get("APP_NAME", "dns-energy").strip("/") or "dns-energy"
