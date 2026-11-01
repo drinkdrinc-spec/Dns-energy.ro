@@ -148,28 +148,33 @@ export default function EquipmentCatalog() {
           <h2 className="text-lg font-bold">{cat} <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({rows.length})</span></h2>
           <input className="den-input" style={{ width: 240 }} placeholder="Caută model..." value={q} onChange={(e) => setQ(e.target.value)} data-testid="catalog-db-search" />
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-testid="catalog-table">
-            <thead><tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
-              {["Model", "Specificații", "Documente", ""].map((h) => <th key={h} className="px-3 py-2.5 font-semibold text-[12px]">{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {rows.map((i) => (
-                <tr key={i.id} className="border-t" style={{ borderColor: "var(--line)" }} data-testid={`catalog-row-${i.id}`}>
-                  <td className="px-3 py-3 font-bold">{i.brand_model}{i.notes && <div className="text-[11px] font-normal" style={{ color: "var(--muted)" }}>{i.notes}</div>}</td>
-                  <td className="px-3 py-3 whitespace-nowrap">{spec(i)}</td>
-                  <td className="px-3 py-3"><div className="flex flex-col gap-1">
-                    <DocSlot item={i} k="datasheet" label="Fișă tehnică" onUploaded={load} />
-                    <DocSlot item={i} k="conformity" label="Certificat / declarație de conformitate" onUploaded={load} />
-                  </div></td>
-                  <td className="px-3 py-3 text-right whitespace-nowrap">
-                    <button onClick={() => setForm({ ...i })} className="p-1.5 rounded hover:bg-[#eef4ff]" data-testid={`catalog-edit-${i.id}`}><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
-                    <button onClick={() => remove(i.id)} className="p-1.5 rounded hover:bg-[#fff0f0] ml-1" data-testid={`catalog-delete-${i.id}`}><Trash2 size={15} style={{ color: "#b33333" }} /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3" data-testid="catalog-cards">
+          {rows.map((i) => (
+            <article key={i.id} className="rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid={`catalog-row-${i.id}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="font-bold break-words">{i.brand_model}</h3>
+                  {i.notes && <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{i.notes}</p>}
+                  <p className="mt-2 text-sm font-medium">{spec(i)}</p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <button onClick={() => setForm({ ...i })} className="rounded-lg border p-2 hover:bg-[#eef4ff]" aria-label={`Editează ${i.brand_model}`} data-testid={`catalog-edit-${i.id}`}><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
+                  <button onClick={() => remove(i.id)} className="rounded-lg border p-2 hover:bg-[#fff0f0]" aria-label={`Șterge ${i.brand_model}`} data-testid={`catalog-delete-${i.id}`}><Trash2 size={15} style={{ color: "#b33333" }} /></button>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3">
+                <div className="min-w-0">
+                  <p className="mb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Fișă tehnică</p>
+                  <DocSlot item={i} k="datasheet" label="Fișă tehnică" onUploaded={load} />
+                </div>
+                <div className="min-w-0">
+                  <p className="mb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Conformitate</p>
+                  <DocSlot item={i} k="conformity" label="Certificat / declarație de conformitate" onUploaded={load} />
+                </div>
+              </div>
+            </article>
+          ))}
+          {!rows.length && <p className="rounded-xl border p-6 text-center text-sm" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>Nu există modele în această categorie.</p>}
         </div>
       </div>
     </div>
