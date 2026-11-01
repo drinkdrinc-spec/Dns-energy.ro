@@ -100,6 +100,7 @@ def check(cef: dict) -> dict:
         p_lim = n(inv.get("p_limit_kw")) or p_nom
         vdc_max, mmin, mmax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max"))
         mppt_count, imax = int(n(inv.get("mppt_count"))), n(inv.get("imax_mppt"))
+        isc_mppt_limit = n(inv.get("isc_max_mppt"))
         strings = [string_calc(s, inv, tmin) for s in (inv.get("strings") or []) if n(s.get("panels")) > 0]
         kwp = sum(s["kwp"] for s in strings)
         tot_kwp += kwp * unit_count; tot_kw += p_nom * unit_count; tot_kwmax += p_max * unit_count
@@ -123,9 +124,8 @@ def check(cef: dict) -> dict:
             e.append(f"{tag}: invertorul de baterie (AC) nu are intrări PV — eliminați stringurile sau schimbați tipul.")
         if strings and mppt_count and len({s["mppt"] for s in strings}) < min(mppt_count, len(strings)):
             w.append(f"{tag}: stringurile folosesc {len({s['mppt'] for s in strings})} din {mppt_count} MPPT — verificați repartizarea.")
-        isc_p = n(inv.get("panel_isc"))
-        if isc_p and imax and isc_p > imax:
-            e.append(f"{tag}: Isc panou {isc_p:g} A depășește curentul maxim al intrării MPPT ({imax:g} A).")
+        if strings and not isc_mppt_limit:
+            w.append(f"{tag}: lipsește limita Isc max / MPPT din fișa invertorului; curentul de scurtcircuit al stringurilor nu poate fi verificat.")
         per_mppt = {}
         for si, s in enumerate(strings):
             st = f"{tag} / string {si + 1}"
@@ -140,10 +140,13 @@ def check(cef: dict) -> dict:
             per_mppt.setdefault(s["mppt"], []).append(s)
         for m, ss in per_mppt.items():
             i_sum = sum(x["isc"] for x in ss)
+            i_work = n(inv.get("panel_imp")) * len(ss)
             if len({x["panels"] for x in ss}) > 1:
                 e.append(f"{tag} / MPPT {m}: stringuri în paralel cu număr diferit de panouri.")
-            if imax and i_sum > imax:
-                e.append(f"{tag} / MPPT {m}: Isc total {i_sum:.1f} A depășește curentul maxim de intrare ({imax:g} A).")
+            if imax and i_work and i_work > imax:
+                e.append(f"{tag} / MPPT {m}: Imp total {i_work:.1f} A depășește curentul maxim de funcționare al intrării ({imax:g} A).")
+            if isc_mppt_limit and i_sum > isc_mppt_limit:
+                e.append(f"{tag} / MPPT {m}: Isc total {i_sum:.1f} A depășește limita de scurtcircuit a intrării ({isc_mppt_limit:g} A).")
         ratio = kwp / p_nom if p_nom else 0
         if ratio > 1.5:
             w.append(f"{tag}: raport DC/AC {ratio:.2f} — supradimensionare mare, verifică fișa producătorului.")
