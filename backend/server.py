@@ -1417,6 +1417,37 @@ async def atr_pdf(item_id: str, full: int = 0, authorization: str = Header(None)
     pdf, name = await atr_pack(user, rec, full)
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
 
+def expected_catalog_document_keys(pros: dict) -> set:
+    """Return per-model datasheet and conformity keys required by the selected equipment."""
+    cef = (pros or {}).get("cef") or {}
+    expected = set()
+
+    def add(label: str, model, catalog_id):
+        suffix = catalog_id or str(model or "").strip()
+        if not suffix:
+            return
+        for kind in ("datasheet", "conformity"):
+            expected.add(f"cat_{kind}_{label}_{suffix}")
+
+    for inv in cef.get("inverters") or []:
+        add("invertor", inv.get("brand_model"), inv.get("catalog_id"))
+        add("panou", inv.get("panel_model"), inv.get("panel_catalog_id"))
+        if inv.get("battery_mode") == "own":
+            battery = inv.get("battery") or {}
+            add("baterie", battery.get("model"), battery.get("catalog_id"))
+    for battery in cef.get("shared_batteries") or []:
+        add("baterie", battery.get("model"), battery.get("catalog_id"))
+    grid = cef.get("grid") or {}
+    add("smart_meter", grid.get("meter"), grid.get("meter_catalog_id"))
+    return expected
+
+
+def catalog_documents_complete(pros: dict, positions: list) -> bool:
+    expected = expected_catalog_document_keys(pros)
+    available = {p.get("key") for p in positions or [] if p.get("source") == "catalog" and p.get("files")}
+    return bool(expected) and expected.issubset(available)
+
+
 async def atr_pack(user: dict, rec: dict, full: int):
     client = await get_client(user["id"], rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
@@ -1431,21 +1462,7 @@ async def atr_pack(user: dict, rec: dict, full: int):
         auto = {"schema": [bykey.get("schema")], "fise": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
     attached = {k for k, v in att.items() if v} | {k for k, v in auto.items() if any(v)}
     if pros and ATR.is_prod(rec) and "fise" in ATR.required(rec):
-        expected_models = set()
-        cef = pros.get("cef") or {}
-        for inv in cef.get("inverters") or []:
-            for kind, model, cid in (("invertor", inv.get("brand_model"), inv.get("catalog_id")),
-                                     ("panou", inv.get("panel_model"), inv.get("panel_catalog_id"))):
-                key = f"{kind}:{cid or str(model or '').strip().casefold()}"
-                if key.split(":", 1)[1]: expected_models.add(key)
-            if inv.get("battery_mode") == "own":
-                battery = inv.get("battery") or {}
-                key = f"baterie:{battery.get('catalog_id') or str(battery.get('model') or '').strip().casefold()}"
-                if key.split(":", 1)[1]: expected_models.add(key)
-        for battery in cef.get("shared_batteries") or []:
-            key = f"baterie:{battery.get('catalog_id') or str(battery.get('model') or '').strip().casefold()}"
-            if key.split(":", 1)[1]: expected_models.add(key)
-        if expected_models and len(att.get("fise") or []) + len(auto.get("fise") or []) < 2 * len(expected_models):
+        if not catalog_documents_complete(pros, (info or {}).get("positions", [])):
             attached.discard("fise")
     parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
     if full and ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) == "deer":
@@ -1462,7 +1479,9 @@ async def atr_pack(user: dict, rec: dict, full: int):
                 except Exception as e:
                     logger.error(f"atr attach {k}: {e}")
                     unavailable.append(f"{title} — {f.get('original_filename') or 'fișier atașat'}")
-            if not att.get(k):
+            # Catalog sheets are model-linked evidence and must be included even when
+            # the user also attached a manual file under the same checklist item.
+            if not att.get(k) or k == "fise":
                 for p in auto.get(k) or []:
                     try:
                         if p:
@@ -1512,24 +1531,9 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
     parts = [PWR.render_anexa1(rec, client, base, pros or {}, attached, ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")))]
     unavailable = []
     if pros and not rec.get("is_test"):
-        expected_models = set()
-        cef = pros.get("cef") or {}
-        for inv in cef.get("inverters") or []:
-            for kind, model, cid in (("invertor", inv.get("brand_model"), inv.get("catalog_id")),
-                                     ("panou", inv.get("panel_model"), inv.get("panel_catalog_id"))):
-                key = f"{kind}:{cid or str(model or '').strip().casefold()}"
-                if key.split(":", 1)[1]:
-                    expected_models.add(key)
-            if inv.get("battery_mode") == "own":
-                battery = inv.get("battery") or {}
-                key = f"baterie:{battery.get('catalog_id') or str(battery.get('model') or '').strip().casefold()}"
-                if key.split(":", 1)[1]:
-                    expected_models.add(key)
-        for battery in cef.get("shared_batteries") or []:
-            key = f"baterie:{battery.get('catalog_id') or str(battery.get('model') or '').strip().casefold()}"
-            if key.split(":", 1)[1]:
-                expected_models.add(key)
-        if expected_models and len(att.get("j") or []) + len(auto.get("j") or []) < 2 * len(expected_models):
+        # Use the same per-model catalog evidence as the prosumer and ATR dossiers;
+        # a datasheet for one model cannot satisfy another model's requirement.
+        if not catalog_documents_complete(pros, (info or {}).get("positions", [])):
             attached.discard("j")
             parts[0] = PWR.render_anexa1(rec, client, base, pros, attached,
                 ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator")))
@@ -1542,7 +1546,8 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
                 except Exception as e:
                     logger.error(f"power attach {k}: {e}")
                     unavailable.append(f"{title} — {f.get('original_filename') or 'fișier atașat'}")
-            if not att.get(k):
+            # Include model-linked catalog evidence alongside manual attachments.
+            if not att.get(k) or k == "j":
                 for p in auto.get(k) or []:
                     try:
                         if p:
