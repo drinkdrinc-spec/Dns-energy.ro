@@ -1743,7 +1743,7 @@ async def atr_pack(user: dict, rec: dict, full: int):
             # Use the same annex selector as the ZIP package, and include a validated
             # official PDF copy when the registry has one. DOC/DOCX originals remain
             # in the ZIP; the main PDF stays explicit about that limitation.
-            from atr_routes import _registry_forms_for_request, _fetch_registry_annex
+            from atr_routes import _registry_forms_for_request, _fetch_registry_annex, _prefill_official_pdf
             annex_no, forms = await _registry_forms_for_request(operator_key, rec, pros or {})
             if annex_no:
                 annex_pdf = ATR.render_operator_annex_prep(
@@ -1756,7 +1756,15 @@ async def atr_pack(user: dict, rec: dict, full: int):
                     try:
                         official_data, official_name = await _fetch_registry_annex(forms[0], operator_key)
                         if official_name.lower().endswith(".pdf"):
-                            parts.append(official_data)
+                            completed_data, filled_fields = _prefill_official_pdf(
+                                official_data, rec, client, pros or {})
+                            parts.append(completed_data if filled_fields else official_data)
+                            if not filled_fields:
+                                annex_registry_issue = (
+                                    f"Formularul oficial PDF pentru Anexa {annex_no} nu are câmpuri text compatibile "
+                                    "pentru precompletare. PDF-ul include formularul original și fișa DNS de precompletare; "
+                                    "completați și verificați formularul oficial înainte de depunere."
+                                )
                         else:
                             annex_registry_issue = f"Formularul oficial pentru Anexa {annex_no} este disponibil ca {official_name}; originalul se găsește în pachetul ZIP, nu în PDF-ul combinat."
                     except Exception as exc:
