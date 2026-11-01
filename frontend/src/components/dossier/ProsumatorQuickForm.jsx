@@ -109,6 +109,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
 
   const choose = (kind, id, providedItem = null) => {
     const item = providedItem || options[kind].find((x) => x.id === id);
+    let panelCountOverride;
     setVal("catalog_selection", { ...selected, [kind]: id || "" });
     if (kind === "inverter") {
       setVal("inverter", item?.brand_model || ""); setVal("inverter_kw", item?.p_nom_kw || "");
@@ -117,7 +118,9 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
     } else if (kind === "panel") {
       setVal("panels", item?.brand_model || ""); setVal("panel_w", item?.w || "");
       const suggestedCount = item ? panelCountForPower(form.power, item.w) : "";
-      const useSuggestion = Boolean(suggestedCount) && form.panel_count_auto !== false;
+      const hasSavedCount = form.panel_count !== undefined && form.panel_count !== null && String(form.panel_count).trim() !== "";
+      const useSuggestion = Boolean(suggestedCount) && (form.panel_count_auto === true || (!hasSavedCount && form.panel_count_auto !== false));
+      panelCountOverride = useSuggestion ? suggestedCount : undefined;
       setVal("panel_count", useSuggestion ? suggestedCount : (item ? (form.panel_count || "") : ""));
       setVal("panel_count_auto", useSuggestion);
     } else if (kind === "battery") {
@@ -126,9 +129,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       setVal("battery_coupling", item?.coupling || ""); setVal("battery_count", item ? (form.battery_count || 1) : "");
       setVal("system_type", item ? "Hibrid cu baterie" : "On-grid");
     } else setVal("smart_meter_type", item?.brand_model || "");
-    const suggestedPanels = kind === "panel" && item && form.panel_count_auto !== false
-      ? panelCountForPower(form.power, item.w) : undefined;
-    cefUpdate(kind, item, id, suggestedPanels);
+    cefUpdate(kind, item, id, panelCountOverride);
   };
 
   const addCatalogModel = async (kind, rawName) => {
@@ -180,15 +181,15 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
           if (name === "power") {
             const panel = options.panel.find((x) => x.id === selected.panel);
             const suggestedPanels = form.panel_count_auto === true && panel ? panelCountForPower(v, panel.w) : null;
-            if (suggestedPanels) setVal("panel_count", suggestedPanels);
+            if (form.panel_count_auto === true && panel) setVal("panel_count", suggestedPanels);
             if (form.cef?.inverters?.length) {
               const count = Math.max(1, Number(form.inverter_count) || form.cef.inverters.reduce((n, x) => n + (Number(x.count) || 1), 0));
               const nextInverters = form.cef.inverters.map((x, i) => {
                 if (i) return x;
                 const next = { ...x, p_limit_kw: Number(v) ? Number(v) / count : "" };
                 const strings = next.strings || [];
-                if (suggestedPanels && (!strings.length || strings.every((row) => row.auto_generated))) {
-                  next.strings = proposeStrings(next, suggestedPanels) || [];
+                if ((!strings.length || strings.every((row) => row.auto_generated)) && form.panel_count_auto === true && panel) {
+                  next.strings = suggestedPanels ? (proposeStrings(next, suggestedPanels) || []) : [];
                 }
                 return next;
               });
