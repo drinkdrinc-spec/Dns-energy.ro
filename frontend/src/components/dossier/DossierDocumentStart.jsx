@@ -39,7 +39,7 @@ export function DossierDocumentStart({ onCreated }) {
     let failed = 0;
     for (const file of list) {
       try {
-        const officeExtractable = /\\.(docx|xlsx)$/i.test(file.name);
+        const officeExtractable = /\.(docx|xlsx)$/i.test(file.name);
         const extractable = file.type === "application/pdf" || file.type.startsWith("image/") || officeExtractable;
         if (kind === "altele" && !extractable) {
           const fd = new FormData(); fd.append("file", file);
