@@ -30,6 +30,10 @@ function normalizeClientName(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
 }
 
+function normalizeLocation(value) {
+  return normalizeClientName(value).replace(/[^a-z0-9]/g, "");
+}
+
 const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schiță de amplasament", "req"], ["cf", "Extras de carte funciară (CF / nr. cadastral)", "req"],
   ["prop", "Act de proprietate / drept de folosință", "req"], ["id", "Act de identitate / CUI / acte de funcționare", "req"], ["cu", "Certificat de urbanism", "new"],
   ["ac", "Autorizație de construire", ""], ["puz", "PUZ / PUD (dacă e cerut prin CU)", ""], ["acord", "Acord notarial proprietar (dacă nu e proprietar)", ""],
@@ -67,10 +71,13 @@ export function AtrDossier({ id, form, setVal }) {
       ? item.client_id === form.client_id
       : normalizeClientName(item.client_name) === normalizeClientName(form.client_name);
     if (current && belongsToClient(current)) return;
-    const matches = pros.filter(belongsToClient);
+    const candidates = pros.filter(belongsToClient);
+    const locationValue = form.pod || form.address;
+    const locationKey = normalizeLocation(locationValue);
+    const matches = locationKey ? candidates.filter((item) => normalizeLocation(form.pod ? item.pod : item.address) === locationKey) : candidates;
     if (matches.length === 1) selectPros(matches[0].id);
-    else if (current) setVal("pros_id", "");
-  }, [form.client_id, form.client_name, form.kind, form.pros_id, pros.length]);
+    else if (current && !belongsToClient(current)) setVal("pros_id", "");
+  }, [form.client_id, form.client_name, form.pod, form.address, form.pros_id, pros.length]);
   useEffect(() => {
     if (!form.operator) { setOfficialForms([]); return; }
     api.get(`/forms/operator-links?operator=${encodeURIComponent(form.operator)}&scope=atr`)
@@ -269,7 +276,7 @@ export function AtrDossier({ id, form, setVal }) {
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
           <div className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="atr-pros">
-            {clientPros.length > 1
+            {(clientPros.length > 1 || (clientPros.length === 1 && !form.pros_id))
               ? <label className="den-field"><span>Alege locul de consum pentru acest client</span><select className="den-input" value={form.pros_id || ""} onChange={(e) => selectPros(e.target.value)}><option value="">Alege dosarul prosumator...</option>{clientPros.map((p) => <option key={p.id} value={p.id}>{p.number} · POD {p.pod || "necompletat"} · {p.address || p.client_name}</option>)}</select></label>
               : selectedPros
                 ? <>Dosar prosumator asociat automat după client: <strong style={{ color: "var(--ink)" }}>{selectedPros.number} · {selectedPros.client_name}</strong></>
