@@ -10,11 +10,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export function fileUrl(storagePath) {
-  const token = localStorage.getItem("den_token");
-  return `${API}/files/${storagePath}?auth=${token}`;
-}
-
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "A apărut o eroare. Încearcă din nou.";
   if (typeof detail === "string") return detail;
