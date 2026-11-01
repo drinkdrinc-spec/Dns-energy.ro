@@ -61,7 +61,7 @@ export function AtrDossier({ id, form, setVal }) {
   const [catalogFiles, setCatalogFiles] = useState([]);
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
   useEffect(() => {
-    if (!String(form.kind || "").includes("producere") || !form.client_name || !pros.length) return;
+    if (!form.client_name || !pros.length) return;
     const current = pros.find((p) => p.id === form.pros_id);
     const belongsToClient = (item) => item.client_id
       ? item.client_id === form.client_id
