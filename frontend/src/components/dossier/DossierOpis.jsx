@@ -33,7 +33,7 @@ function Row({ p, id, statuses, reload }) {
       </td>
       <td className="px-2 py-2.5 whitespace-nowrap text-right">
         {canView && <button className="p-1.5 rounded hover:bg-[#eef4ff]" title="Previzualizare" onClick={() => openAuthenticatedFile(filePath)} data-testid={`opis-preview-${p.nr}`}><Eye size={15} style={{ color: "var(--blue)" }} /></button>}
-        {canView && <button type="button" className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="Descarcă PDF" onClick={() => downloadAuthenticatedFile(filePath, `document-${p.key}.pdf`)} data-testid={`opis-pdf-${p.nr}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></button>}
+        {canView && <button type="button" className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="Descarcă PDF" onClick={() => downloadAuthenticatedFile(`${filePath}?download=1`, `document-${p.key}.pdf`)} data-testid={`opis-pdf-${p.nr}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></button>}
         {p.source === "generat" && p.key !== "schema" && <button type="button" className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="Descarcă Word" onClick={() => downloadAuthenticatedFile(`${filePath}?fmt=docx`, `document-${p.key}.docx`)} data-testid={`opis-docx-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></button>}
         <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" data-testid={`opis-upload-input-${p.nr}`}
           onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; await put({ upload: await uploadFile(f), status: null }); toast.success("Document atașat"); ref.current.value = ""; }} />
@@ -69,7 +69,7 @@ export function DossierOpis({ id }) {
         </div>
         <div className="flex gap-2 flex-wrap">
           <Btn variant="secondary" onClick={lock} data-testid="opis-finalize">{d.finalized ? <><Unlock size={14} /> Redeschide</> : <><Lock size={14} /> Finalizează dosarul</>}</Btn>
-          <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(`/dossier/${id}/file/opis`, "Opis_declaratie_autenticitate.pdf")} data-testid="opis-declaration"><FileDown size={14} /> Opis (declarație autenticitate)</Btn>
+          <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(`/dossier/${id}/file/opis?download=1`, "Opis_declaratie_autenticitate.pdf")} data-testid="opis-declaration"><FileDown size={14} /> Opis (declarație autenticitate)</Btn>
           <Btn onClick={() => downloadAuthenticatedFile(`/dossier/${id}/export`, "Dosar_prosumator.pdf")} data-testid="opis-export"><FileDown size={15} /> Export dosar complet PDF{d.complete ? "" : " (CIORNĂ)"}</Btn>
         </div>
       </div>
