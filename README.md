@@ -13,7 +13,7 @@ Aplicație web DNS Energy: frontend React/Vite și backend FastAPI cu MongoDB.
 2. Configurează o instanță MongoDB și setează `MONGO_URL`, `DB_NAME` și un `JWT_SECRET` lung și aleatoriu.
 3. Instalează dependențele din `backend/requirements.txt`.
 4. Din directorul `backend`, pornește API-ul cu `uvicorn server:app --host 0.0.0.0 --port 8000`.
-5. Funcțiile care folosesc stocarea/integrarea Emergent au nevoie de cheia de integrare configurată în mediul backend.
+5. Extragerea AI folosește direct OpenAI când `OPENAI_API_KEY` este configurată; documentele se stochează în Cloudflare R2 prin variabilele `R2_*`.
 
 ### Frontend
 1. Creează `frontend/.env` pornind de la `frontend/.env.example`.
