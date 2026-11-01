@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { api, formatApiErrorDetail } from "@/lib/api";
+import { api, formatApiErrorDetail, downloadAuthenticatedFile } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { PageHeader, Btn } from "@/components/Layout";
 import { BillingForm } from "@/components/billing/BillingForm";
@@ -89,7 +89,7 @@ export default function Subscription() {
         {tr && <div className="w-full rounded-lg border p-3 text-sm" style={{ borderColor: "var(--line)", background: "#f7fbff" }} data-testid="transfer-details">
           <b>Proforma {tr.number} — plată prin transfer bancar</b><br />Beneficiar: {tr.beneficiary || "—"} (CUI {tr.cui || "—"}) · IBAN: <b>{tr.iban || "de completat în setările platformei"}</b> {tr.bank || ""}<br />
           Sumă: <b>{lei(tr.amount)}</b> · Detalii plată: <b>{tr.reference}</b><br /><span className="text-xs">{tr.note}</span><br />
-          <a className="font-bold" style={{ color: "var(--blue)" }} href={`${process.env.REACT_APP_BACKEND_URL}/api/billing/invoices/${tr.id}/pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" data-testid="transfer-invoice-pdf">Descarcă proforma (link individual de plată)</a></div>}
+          <button type="button" className="font-bold" style={{ color: "var(--blue)" }} onClick={() => downloadAuthenticatedFile(`/billing/invoices/${tr.id}/pdf`, `proforma_${tr.id}.pdf`)} data-testid="transfer-invoice-pdf">Descarcă proforma (link individual de plată)</button></div>}
       </div>
       <h2 className="text-base md:text-lg font-extrabold mb-3">Proforme și plăți</h2>
       <div className="den-panel mb-6"><InvoiceList items={me.invoices} actions={(i) => i.status === "în așteptarea plății" && i.pay_url ? <a href={i.pay_url} className="font-bold" style={{ color: "#166534" }} data-testid={`invoice-pay-${i.number}`}>Plătește</a> : null} /></div>
