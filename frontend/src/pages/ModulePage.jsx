@@ -50,7 +50,7 @@ function installedPanelKwp(pros) {
 }
 
 function normalizeClientName(value) {
-  return String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
 }
 
 function Field({ f, value, onChange, refOptions, ai }) {
