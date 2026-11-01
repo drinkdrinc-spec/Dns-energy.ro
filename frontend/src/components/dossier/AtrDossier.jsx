@@ -184,7 +184,7 @@ export function AtrDossier({ id, form, setVal }) {
           <span className="rounded-full border bg-white px-3 py-1">POD: {selectedPros.pod || "de completat"}</span>
           <span className="rounded-full border bg-white px-3 py-1">Invertor: {selectedPros.inverter_kw || selectedPros.cef?.total_kw || "—"} kW</span>
           <span className="rounded-full border bg-white px-3 py-1">Evacuare: {selectedPros.power || selectedPros.cef?.total_export_kw || "—"} kW</span>
-          <span className="rounded-full border bg-white px-3 py-1">Echipamente: {catalogEquipmentKeys.length}</span>
+          <span className="rounded-full border bg-white px-3 py-1">Echipamente: {catalogRequirements.length}</span>
         </div>}
         {selectedPros && <div className="mt-3 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-equipment-summary">
           <div className="text-xs font-bold">Echipamente preluate în cerere și anexe</div>
