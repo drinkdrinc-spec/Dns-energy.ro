@@ -59,6 +59,7 @@ export default function ModulePage({ moduleKey }) {
   const [linkedProsumer, setLinkedProsumer] = useState([]);
   const [linkedDiu, setLinkedDiu] = useState([]);
   const [showTestRecords, setShowTestRecords] = useState(false);
+  const [creatingTestDossier, setCreatingTestDossier] = useState(false);
   const [form, setForm] = useState(null); // null=hidden, {} = open
   const [editId, setEditId] = useState(null);
   const [checks, setChecks] = useState({});
@@ -276,6 +277,21 @@ export default function ModulePage({ moduleKey }) {
     } catch (e) { toast.error(e.response?.data?.detail || "Eroare la salvare"); throw e; }
   };
 
+  const createTestDossier = async () => {
+    if (creatingTestDossier || hiddenTestCount > 0) return;
+    setCreatingTestDossier(true);
+    try {
+      const { data } = await api.post("/test-dossier");
+      setShowTestRecords(true);
+      await load();
+      toast.success(`Dosar demonstrativ TEST creat: ${data?.number || "gata"}`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Nu s-a putut crea dosarul demonstrativ TEST");
+    } finally {
+      setCreatingTestDossier(false);
+    }
+  };
+
   const remove = async (id) => {
     if (!window.confirm("Ștergi această înregistrare?")) return;
     await api.delete(`/data/${key}/${id}`);
@@ -312,6 +328,14 @@ export default function ModulePage({ moduleKey }) {
               <Btn variant="secondary" onClick={openNew} data-testid="prosumer-manual-start"><Plus size={15} /> Introducere manuală</Btn>
             </div>
             <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Datele extrase rămân de verificat. Sistemul nu completează măsurători reale în locul instalatorului.</p>
+            {role === "admin" && hiddenTestCount === 0 && <div className="mt-4 rounded-xl border border-dashed p-3" style={{ borderColor: "var(--line)", background: "#fff" }}>
+              <div className="flex flex-wrap items-center gap-3">
+                <Btn variant="secondary" onClick={createTestDossier} disabled={creatingTestDossier} data-testid="create-test-dossier">
+                  {creatingTestDossier ? "Se pregătește dosarul..." : "Creează dosar demonstrativ TEST"}
+                </Btn>
+                <span className="text-xs leading-5" style={{ color: "var(--muted)" }}>Date sintetice marcate TEST, doar pentru verificarea fluxului. Nu sunt acte sau măsurători reale și nu se depun.</span>
+              </div>
+            </div>}
           </div>
           <div className="border-t p-5 sm:p-7 lg:border-l lg:border-t-0" style={{ borderColor: "var(--line)", background: "#fbfcfe" }}>
             <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--muted)" }}>Continuă un dosar</div>
