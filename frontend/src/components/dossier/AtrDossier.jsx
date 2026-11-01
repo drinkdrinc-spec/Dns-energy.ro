@@ -34,6 +34,12 @@ function normalizeLocation(value) {
   return normalizeClientName(value).replace(/[^a-z0-9]/g, "");
 }
 
+function belongsToClient(item, clientId, clientName) {
+  const sameId = Boolean(item?.client_id && clientId && item.client_id === clientId);
+  const sameName = Boolean(normalizeClientName(item?.client_name) && normalizeClientName(item.client_name) === normalizeClientName(clientName));
+  return sameId || sameName;
+}
+
 const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schiță de amplasament", "req"], ["cf", "Extras de carte funciară (CF / nr. cadastral)", "req"],
   ["prop", "Act de proprietate / drept de folosință", "req"], ["id", "Act de identitate / CUI / acte de funcționare", "req"], ["cu", "Certificat de urbanism", "new"],
   ["ac", "Autorizație de construire", ""], ["puz", "PUZ / PUD (dacă e cerut prin CU)", ""], ["acord", "Acord notarial proprietar (dacă nu e proprietar)", ""],
@@ -67,11 +73,9 @@ export function AtrDossier({ id, form, setVal }) {
   useEffect(() => {
     if (!form.client_name || !pros.length) return;
     const current = pros.find((p) => p.id === form.pros_id);
-    const belongsToClient = (item) => item.client_id
-      ? item.client_id === form.client_id
-      : normalizeClientName(item.client_name) === normalizeClientName(form.client_name);
+    const matchesClient = (item) => belongsToClient(item, form.client_id, form.client_name);
     if (current && belongsToClient(current)) return;
-    const candidates = pros.filter(belongsToClient);
+    const candidates = pros.filter(matchesClient);
     const locationValue = form.pod || form.address;
     const locationKey = normalizeLocation(locationValue);
     const matches = locationKey ? candidates.filter((item) => normalizeLocation(form.pod ? item.pod : item.address) === locationKey) : candidates;
@@ -87,9 +91,7 @@ export function AtrDossier({ id, form, setVal }) {
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
   const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
   const selectedRecord = pros.find((p) => p.id === form.pros_id) || null;
-  const selectedPros = selectedRecord && (selectedRecord.client_id
-    ? selectedRecord.client_id === form.client_id
-    : normalizeClientName(selectedRecord.client_name) === normalizeClientName(form.client_name)) ? selectedRecord : null;
+  const selectedPros = selectedRecord && belongsToClient(selectedRecord, form.client_id, form.client_name) ? selectedRecord : null;
   const deerAnnexIssues = (() => {
     if (operatorSource?.id !== "deer" || !selectedDeerForm) return [];
     const issues = [];
@@ -175,9 +177,7 @@ export function AtrDossier({ id, form, setVal }) {
   const selectPros = (id) => {
     setVal("pros_id", id);
     const item = pros.find((p) => p.id === id);
-    if (!item || (item.client_id
-      ? item.client_id !== form.client_id
-      : normalizeClientName(item.client_name) !== normalizeClientName(form.client_name))) {
+    if (!item || !belongsToClient(item, form.client_id, form.client_name)) {
       setVal("pros_id", "");
       return;
     }
