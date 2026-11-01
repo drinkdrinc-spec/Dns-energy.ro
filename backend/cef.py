@@ -65,7 +65,7 @@ def vdrop_dc(i, length, section, material, v):
 
 
 def battery_cable_proposal(battery: dict) -> dict:
-    """Conservative BESS proposal; only rates cable/fuse when manufacturer inputs exist."""
+    """Propose a BESS conductor section from explicit battery current and documented cable data."""
     battery = battery or {}
     current = n(battery.get("i_max"))
     voltage = n(battery.get("voltage"))
@@ -75,11 +75,26 @@ def battery_cable_proposal(battery: dict) -> dict:
     options = battery.get("cable_ampacities") or []
     if current <= 0:
         return {"section": None, "fuse_a": None, "i_design": None, "iz": None, "du": None,
-                "note": "Lipsește Imax din fișa tehnică a bateriei.", "source": "lipsă Imax"}
+                "note": "Lipsește Imax din fișa tehnică a bateriei.", "source": "missing battery current"}
     design_current = current * 1.25
     fuse = up(BREAKERS, design_current) if max_fuse > 0 else None
     if not fuse or fuse > max_fuse:
         fuse = None
+
+    source = "manufacturer cable ampacities"
+    if not options:
+        if material != "Cu":
+            return {"section": None, "fuse_a": fuse, "i_design": round(design_current, 2), "iz": None, "du": None,
+                    "note": "Lipsește tabelul de ampacitate pentru conductorul selectat. Calculul automat disponibil folosește cupru.",
+                    "source": "missing cable ampacity"}
+        # Conservative fallback: 3 loaded Cu/PVC conductors, reference installation method C.
+        # This understates the ampacity of the usual two loaded DC conductors. It is only a
+        # preliminary section proposal; the cable type, grouping, temperature, fault rating,
+        # and battery manufacturer's limits still require confirmation.
+        options = [{"section": section, "ampacity_a": IZ_AC["C"][index]}
+                   for index, section in enumerate(SECTIONS)]
+        source = "IEC 60364-5-52 method C Cu/PVC, 3 loaded conductors (conservative proposal)"
+
     chosen = None
     drop = None
     for option in sorted(options, key=lambda item: n(item.get("section"), 1e9)):
@@ -97,16 +112,18 @@ def battery_cable_proposal(battery: dict) -> dict:
         chosen, drop = option, candidate_drop
         break
     if chosen:
+        note = "Propunere preliminară din Imax, ampacitate și lungime; verifică tipul cablului, corecțiile de instalare și limitele din manualul producătorului."
+        if source != "manufacturer cable ampacities":
+            note = "Propunere preliminară Cu/PVC metodă C (3 conductoare încărcate, conservator); confirmă tipul cablului, corecțiile de instalare și limitele din manualul bateriei."
         return {"section": n(chosen.get("section")), "fuse_a": fuse,
                 "i_design": round(design_current, 2), "iz": round(n(chosen.get("ampacity_a")), 1),
                 "du": round(drop, 2) if drop is not None else None,
-                "note": "Propunere calculată din Imax, ampacitatea cablului și lungime; verificați limita de siguranță și cablarea din manualul producătorului.",
-                "source": "calculated"}
-    note = "Lipsește limita maximă a siguranței din manualul bateriei." if not max_fuse else "Introduceți opțiunile reale de cablu (secțiune și ampacitate) din fișa cablului."
+                "note": note, "source": source}
+    note = "Lipsește limita maximă a siguranței din manualul bateriei." if not max_fuse else "Nicio secțiune disponibilă nu respectă curentul și/sau căderea de tensiune admisă."
     if length > 0 and voltage <= 0:
         note = "Introduceți tensiunea nominală a bateriei pentru verificarea căderii de tensiune."
     return {"section": None, "fuse_a": fuse, "i_design": round(design_current, 2),
-            "iz": None, "du": None, "note": note, "source": "incomplete manufacturer data"}
+            "iz": None, "du": None, "note": note, "source": "insufficient cable data"}
 
 
 def string_calc(s, inv, tmin):
