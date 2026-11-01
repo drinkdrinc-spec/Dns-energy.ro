@@ -6,6 +6,26 @@ import { Plus, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { FormAlert } from "@/components/dossier/FormAlert";
 import { AtrTracking } from "@/components/dossier/AtrTracking";
 
+function installedPanelKwp(pros) {
+  if (!pros) return "";
+  const number = (value) => {
+    const parsed = Number(String(value ?? "").replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const inverters = pros.cef?.inverters || [];
+  const calculated = inverters.reduce((total, inverter) => {
+    const panelW = number(inverter.panel_w);
+    const panels = (inverter.strings || []).reduce((sum, string) => sum + number(string.panels), 0);
+    const count = Math.max(1, number(inverter.count || inverter.quantity) || 1);
+    return total + panels * panelW * count / 1000;
+  }, 0);
+  if (calculated > 0) return Number(calculated.toFixed(3));
+  const legacyPanels = number(pros.panel_count);
+  const legacyW = number(pros.panel_w);
+  if (legacyPanels > 0 && legacyW > 0) return Number((legacyPanels * legacyW / 1000).toFixed(3));
+  return pros.cef?.total_kwp || pros.panel_kwp || pros._kwp || "";
+}
+
 const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schiță de amplasament", "req"], ["cf", "Extras de carte funciară (CF / nr. cadastral)", "req"],
   ["prop", "Act de proprietate / drept de folosință", "req"], ["id", "Act de identitate / CUI / acte de funcționare", "req"], ["cu", "Certificat de urbanism", "new"],
   ["ac", "Autorizație de construire", ""], ["puz", "PUZ / PUD (dacă e cerut prin CU)", ""], ["acord", "Acord notarial proprietar (dacă nu e proprietar)", ""],
@@ -148,7 +168,7 @@ export function AtrDossier({ id, form, setVal }) {
       return;
     }
     const values = { pod: item.pod, operator: item.operator, address: item.address, supply: item.supply,
-      p_abs_kw: item.bransament_kw, pv_kw: item.inverter_kw || item.cef?.total_kw, p_evac_kw: item.power || item.cef?.total_export_kw };
+      p_abs_kw: item.bransament_kw, pv_kw: installedPanelKwp(item), p_evac_kw: item.power || item.cef?.total_export_kw };
     Object.entries(values).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== "") setVal(key, value); });
   };
   const att = form.attachments || {};
