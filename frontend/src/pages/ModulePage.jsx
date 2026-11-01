@@ -169,11 +169,12 @@ export default function ModulePage({ moduleKey }) {
       if (params.get("new") === "diu" && clientId) {
         Promise.all([api.get("/data/clients"), prosId ? api.get("/data/prosumator") : Promise.resolve({ data: [] })]).then(([clientsRes, prosRes]) => {
           let client = (clientsRes.data || []).find((item) => item.id === clientId);
-          const linkedPros = (prosRes.data || []).filter((item) => item.client_id ? item.client_id === clientId : Boolean(client && normalizeClientName(item.client_name) === normalizeClientName(client.name)));
-          const pros = prosId
-            ? linkedPros.find((item) => item.id === prosId)
-            : linkedPros.length === 1 ? linkedPros[0] : null;
+          const allPros = prosRes.data || [];
           const showTests = params.get("showTests") === "1";
+          const linkedPros = allPros.filter((item) => item.client_id ? item.client_id === clientId : Boolean(client && normalizeClientName(item.client_name) === normalizeClientName(client.name)));
+          const pros = prosId
+            ? linkedPros.find((item) => item.id === prosId) || (showTests ? allPros.find((item) => item.id === prosId && (item.is_test || /\\bTEST\\b/i.test(String(item.client_name || "")))) : null)
+            : linkedPros.length === 1 ? linkedPros[0] : null;
           if (!client && showTests && (pros?.is_test || /\bTEST\b/i.test(String(pros?.client_name || "")))) {
             client = { id: clientId, name: pros.client_name || "TEST — client demonstrativ", address: pros.address || "", operator: pros.operator || "" };
             setRefOptions((prev) => {
