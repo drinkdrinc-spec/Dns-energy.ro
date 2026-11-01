@@ -132,6 +132,7 @@ def check(cef: dict) -> dict:
     invs = cef.get("inverters") or []
     shared = {b.get("id"): b for b in (cef.get("shared_batteries") or [])}
     shared_users = {}
+    shared_battery_proposals = {}
     out_inv, errors, warnings = [], [], []
     tot_kwp = tot_kw = tot_kwmax = tot_export = tot_kwh = 0.0
 
@@ -302,6 +303,12 @@ def check(cef: dict) -> dict:
 
     for sid, users in shared_users.items():
         b = shared[sid]
+        battery_proposal = battery_cable_proposal(b)
+        shared_battery_proposals[sid] = battery_proposal
+        if battery_proposal.get("section") is None:
+            warnings.append(f"Baterie comună „{b.get('model') or sid}”: cablul DC nu poate fi dimensionat — {battery_proposal.get('note')}")
+        if battery_proposal.get("fuse_a") is None:
+            warnings.append(f"Baterie comună „{b.get('model') or sid}”: siguranța DC nu poate fi stabilită fără limita maximă admisă din fișa producătorului.")
         kwh = n(b.get("kwh")) * (int(n(b.get("modules"), 1)) or 1)
         if not kwh and n(b.get("ah")) and n(b.get("voltage")):
             kwh = n(b.get("ah")) * n(b.get("voltage")) / 1000 * (int(n(b.get("modules"), 1)) or 1)
@@ -361,7 +368,8 @@ def check(cef: dict) -> dict:
                        "inverters": sum(i.get("count", 1) for i in out_inv)},
             "grid": {"tri": tri_grid if supply_known else None, "bransament_kw": br_kw, "i_br": round(i_br, 1) if br_kw and supply_known else 0,
                      "main_proposal": main_proposal, "main_section_proposal": column_section, "main_section_iz": round(column_iz, 1) if column_iz else None, "main_section_du": round(column_du, 2) if column_du is not None else None, "anti_breaker_proposal": anti_breaker_proposal, "anti_breaker_note": "întreruptor motorizat cu bobină de declanșare; confirmați curba, Icu/Ics și schema din ATR" if anti_breaker_proposal else None, "anti": anti, "anti_auto": anti_auto, "anti_backup": backup_enabled},
-            "inverters": out_inv, "errors": errors, "warnings": warnings, "tmin": tmin,
+            "inverters": out_inv, "shared_battery_proposals": shared_battery_proposals,
+            "errors": errors, "warnings": warnings, "tmin": tmin,
             "note": "Valorile propuse sunt orientative (IEC 60364-5-52 / I7). Se validează de personal autorizat ANRE conform instrucțiunilor producătorului."}
 
 
