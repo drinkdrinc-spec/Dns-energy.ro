@@ -25,8 +25,11 @@ now = lambda: datetime.now(timezone.utc).isoformat()
 
 
 def new_chat(system: str, history: list = None) -> LlmChat:
+    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Serviciul AI nu este configurat. Extragerea locală a PDF-urilor cu text poate funcționa fără AI.")
     init = [{"role": "system", "content": system}] + (history or [])
-    return LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=str(uuid.uuid4()), system_message=system,
+    return LlmChat(api_key=api_key, session_id=str(uuid.uuid4()), system_message=system,
                    initial_messages=init).with_model(*MODEL)
 
 
@@ -99,6 +102,7 @@ async def ai_message(sid: str, request: Request, user: dict = Depends(get_curren
     if not text:
         raise HTTPException(status_code=400, detail="Scrie o întrebare")
     past = await db.ai_messages.find({"session_id": sid}, {"_id": 0, "role": 1, "content": 1}).sort("at", -1).to_list(30)
+    chat = new_chat(SYS_CHAT, list(reversed(past)))
     await db.ai_messages.insert_one({"session_id": sid, "role": "user", "content": text, "at": now()})
     upd = {"updated_at": now()}
     if s["title"] == "Conversație nouă":
@@ -107,7 +111,7 @@ async def ai_message(sid: str, request: Request, user: dict = Depends(get_curren
 
     async def done(out):
         await db.ai_messages.insert_one({"session_id": sid, "role": "assistant", "content": out, "at": now()})
-    return sse(new_chat(SYS_CHAT, list(reversed(past))), text, done)
+    return sse(chat, text, done)
 
 
 # ---------------- Verificare dosar înainte de trimitere ----------------
@@ -346,6 +350,8 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
             elif isinstance(ev, StreamDone):
                 break
         extracted = _parse(raw)
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Equipment datasheet extraction failed")
         raise HTTPException(status_code=502, detail="AI-ul nu a putut extrage datele acum. Poți completa manual.")
