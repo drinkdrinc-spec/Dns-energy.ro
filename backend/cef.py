@@ -326,6 +326,8 @@ def check(cef: dict) -> dict:
         shared_battery_proposals[sid] = battery_proposal
         if battery_proposal.get("section") is None:
             warnings.append(f"Baterie comună „{b.get('model') or sid}”: cablul DC nu poate fi dimensionat — {battery_proposal.get('note')}")
+        elif battery_proposal.get("source", "").startswith("IEC 60364-5-52"):
+            warnings.append(f"Baterie comună „{b.get('model') or sid}”: secțiunea este o propunere preliminară din tabel IEC conservator; confirmă tipul cablului și instalarea.")
         if battery_proposal.get("fuse_a") is None:
             warnings.append(f"Baterie comună „{b.get('model') or sid}”: siguranța DC nu poate fi stabilită fără limita maximă admisă din fișa producătorului.")
         kwh = n(b.get("kwh")) * (int(n(b.get("modules"), 1)) or 1)
