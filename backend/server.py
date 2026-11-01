@@ -344,6 +344,7 @@ async def create_item(module: str, request: Request, user: dict = Depends(get_cu
     if module not in MODULES:
         raise HTTPException(status_code=404, detail="Modul inexistent")
     data = await request.json()
+    data = await apply_selected_client_defaults(user["id"], module, data)
     data.pop("_id", None)
     data.pop("atr_track", None)
     data["id"] = str(uuid.uuid4())
@@ -1277,6 +1278,44 @@ def merge_pdfs(base: bytes, extra: list) -> bytes:
 
 # ---------------- Dossier opis (model PUBLISERV) ----------------
 import opis as OPIS
+
+async def apply_selected_client_defaults(owner: str, module: str, data: dict) -> dict:
+    """Copy verified client master data into a new dossier without replacing explicit entries."""
+    if module not in ("prosumator", "atr", "power", "diu") or not data.get("client_id"):
+        return data
+    client = await db.clients.find_one({"owner": owner, "id": str(data["client_id"])}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=400, detail="Clientul selectat nu există în agenda contului. Reîncarcă lista și selectează un client salvat.")
+    def pick(*keys):
+        return next((client.get(key) for key in keys if client.get(key) not in (None, "")), None)
+    defaults = {
+        "client_name": pick("name", "full_name"),
+        "client_kind": pick("kind", "type"),
+        "applicant_type": pick("kind", "type"),
+        "cnp": pick("cnp"),
+        "cui": pick("cui"),
+        "id_series": pick("id_series", "series"),
+        "id_number": pick("id_number", "id_no"),
+        "phone": pick("phone", "telephone"),
+        "email": pick("email"),
+        "county": pick("county"),
+        "operator": pick("operator"),
+        "pod": pick("pod"),
+        "cf_nr": pick("cf_nr", "land_registry_number"),
+        "cadastral_nr": pick("cadastral_nr", "cadastral_number"),
+        "supply": pick("supply", "connection_type"),
+        "client_address": pick("id_address", "address"),
+        "consumption_address": pick("consumption_address", "pod_address"),
+    }
+    if client.get("same_address_as_client") or client.get("same_address"):
+        defaults["address"] = pick("consumption_address", "pod_address", "address")
+    else:
+        defaults["address"] = pick("consumption_address", "pod_address")
+    for key, value in defaults.items():
+        if value not in (None, "") and data.get(key) in (None, ""):
+            data[key] = value
+    return data
+
 
 async def get_client(owner: str, rec: dict) -> dict:
     c = None
