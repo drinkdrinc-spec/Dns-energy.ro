@@ -50,7 +50,9 @@ def missing(key, r, s):
         if key == "pram_priza":
             m += need([(p.get("earth_ohm"), "Rezistența de dispersie măsurată (Ω)"), (p.get("earth_limit"), "Valoarea admisă (Ω)")])
         if key == "pram_cont":
-            m += ([] if cs else ["Circuitele tabloului"]) + [f"Continuitate PE — {c['name']}" for c in cs if c.get("r_pe") in (None, "")]
+            m += ([] if cs else ["Circuitele tabloului"])
+            m += [f"Continuitate PE — {c['name']}: valoare măsurată lipsă" for c in cs if c.get("r_pe") in (None, "")]
+            m += [f"Continuitate PE — {c['name']}: limită de acceptare din proiect lipsă" for c in cs if c.get("r_pe_limit") in (None, "")]
         if key == "pram_izol":
             m += need([(p.get("test_v"), "Tensiune de încercare (V)")]) + ([] if cs else ["Circuitele tabloului"]) + [f"Rezistență izolație — {c['name']}" for c in cs if c.get("riso") in (None, "")]
         if key == "pram_ddr":
@@ -206,9 +208,14 @@ def doc_priza(ctx, r, pos):
 
 
 def doc_cont(ctx, r, pos):
-    rows = [["Nr.", "Circuit", "Conductor PE (mm²)", "Rezistență continuitate măsurată (Ω)", "Rezultat"]]
-    rows += [[str(i + 1), escape(c["name"]), e(c.get("section")), e(c.get("r_pe")), "—" if c.get("r_pe") in (None, "") else "Continuitate asigurată"] for i, c in enumerate(circuits(r))] or [["—", M, M, M, "—"]]
-    return pram_head(ctx, r, "BULETIN DE VERIFICARE A CONTINUITĂȚII CONDUCTOARELOR DE PROTECȚIE", "SR HD 60364-6, art. 6.4.3.2") + [B("table", rows, [6, 36, 16, 24, 18], True), pram_sign(ctx, r)]
+    rows = [["Nr.", "Circuit", "PE (mm²)", "R PE măsurat (Ω)", "Limită proiect (Ω)", "Rezultat"]]
+    for i, c in enumerate(circuits(r)):
+        measured, limit = num(c.get("r_pe")), num(c.get("r_pe_limit"))
+        result = "—" if measured is None or limit is None else verdict(measured <= limit)
+        rows.append([str(i + 1), escape(c["name"]), e(c.get("section")), e(c.get("r_pe")), e(c.get("r_pe_limit")), result])
+    if len(rows) == 1:
+        rows.append(["—", M, M, M, M, "—"])
+    return pram_head(ctx, r, "BULETIN DE VERIFICARE A CONTINUITĂȚII CONDUCTOARELOR DE PROTECȚIE", "SR HD 60364-6, art. 6.4.3.2 · criteriul de acceptare este cel consemnat în proiect") + [B("table", rows, [6, 26, 12, 18, 18, 20], True), pram_sign(ctx, r)]
 
 
 def doc_izol(ctx, r, pos):
