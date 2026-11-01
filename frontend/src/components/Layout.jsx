@@ -3,7 +3,7 @@ import { Outlet, Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
-import { Menu, Home, FolderOpen, Receipt, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe } from "lucide-react";
+import { Menu, Home, FolderOpen, Receipt, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity } from "lucide-react";
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
@@ -42,11 +42,13 @@ export default function Layout() {
 const DOSSIER_STEPS = [
   { to: "/clienti", label: "Client", icon: UserRound, matches: ["/clienti"] },
   { to: "/prosumator", label: "Prosumator", icon: FolderOpen, matches: ["/prosumator"] },
-  { to: "/cerere-atr", label: "ATR / spor", icon: FileCheck2, matches: ["/cerere-atr", "/spor-putere"] },
+  { to: "/cerere-atr", label: "Cerere ATR", icon: FileCheck2, matches: ["/cerere-atr"] },
+  { to: "/spor-putere", label: "Spor putere", icon: Zap, matches: ["/spor-putere"] },
   { to: "/diu", label: "DI-U", icon: Wrench, matches: ["/diu"] },
   { to: "/catalog-echipamente", label: "Echipamente", icon: Cpu, matches: ["/catalog-echipamente"] },
   { to: "/dosare-anre", label: "Dosar ANRE", icon: FileCheck2, matches: ["/dosare-anre"] },
-  { to: "/mono", label: "Schemă · PRAM", icon: CircuitBoard, matches: ["/mono"] },
+  { to: "/mono", label: "Schemă", icon: CircuitBoard, matches: ["/mono"] },
+  { to: "/pram", label: "PRAM", icon: Activity, matches: ["/pram"] },
   { to: "/portaluri-distribuitori", label: "Portal OD", icon: Globe, matches: ["/portaluri-distribuitori"] },
 ];
 
@@ -54,7 +56,7 @@ function DossierWorkflow({ pathname }) {
   return (
     <nav aria-label="Ordinea dosarului" className="mb-6 rounded-xl border bg-white p-3 sm:p-4" style={{ borderColor: "var(--line)" }} data-testid="dossier-workflow-nav">
       <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: "var(--muted)" }}>Flux de lucru · deschide direct un pas</div>
-      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-5 xl:grid-cols-10">
         {DOSSIER_STEPS.map(({ to, label, icon: Icon, matches }, index) => {
           const active = matches.some((path) => pathname.startsWith(path));
           return <li key={to} className="min-w-0">
