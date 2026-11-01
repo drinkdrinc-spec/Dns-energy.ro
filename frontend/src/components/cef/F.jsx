@@ -24,6 +24,29 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
   const [open, setOpen] = useState(false);
   const list = items.filter((i) => i.category === category);
   const fold = (value) => String(value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("ro-RO");
+  const hasValue = (value) => value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
+  const positive = (value) => hasValue(value) && Number(value) > 0;
+  const missing = (item) => {
+    if (category === "Invertor") return [
+      [positive(item.p_nom_kw), "puterea nominală"],
+      [!!item.phases, "numărul de faze"],
+      [!!item.type, "tipul invertorului"],
+    ].filter(([ok]) => !ok).map(([, name]) => name);
+    if (category === "Panou") return [
+      [positive(item.w), "puterea panoului"],
+      [positive(item.voc), "Voc"],
+      [positive(item.vmp), "Vmp"],
+      [positive(item.isc), "Isc"],
+      [hasValue(item.coef_voc), "coeficientul Voc"],
+    ].filter(([ok]) => !ok).map(([, name]) => name);
+    if (category === "Baterie") return [
+      [positive(item.kwh) || positive(item.ah), "capacitatea (kWh sau Ah)"],
+      [positive(item.voltage), "tensiunea"],
+      [positive(item.i_max), "curentul maxim"],
+      [!!item.coupling, "tipul de cuplare AC/DC"],
+    ].filter(([ok]) => !ok).map(([, name]) => name);
+    return [];
+  };
   const filtered = list.filter((item) => fold(item.brand_model).includes(fold(query)));
   const pick = (item) => {
     onPick(item);
@@ -57,9 +80,11 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
               type="button"
               role="option"
               aria-selected={false}
+              aria-disabled={missing(item).length > 0}
+              disabled={missing(item).length > 0}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => pick(item)}
-              className="block w-full rounded-md px-3 py-2 text-left text-xs hover:bg-[#eef4ff]"
+              className={`block w-full rounded-md px-3 py-2 text-left text-xs ${missing(item).length ? "cursor-not-allowed opacity-60" : "hover:bg-[#eef4ff]"}`}
             >
               <span className="block font-semibold">{item.brand_model}</span>
               <span className="block" style={{ color: "var(--muted)" }}>
@@ -68,6 +93,7 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
                   : category === "Baterie" ? [item.kwh && `${item.kwh} kWh`, item.ah && `${item.ah} Ah`, item.voltage && `${item.voltage} V`].filter(Boolean).join(" · ")
                   : [item.phases].filter(Boolean).join(" · ")}
               </span>
+              {missing(item).length > 0 && <span className="mt-1 block text-[11px] font-medium text-amber-700">Indisponibil pentru proiectare · lipsesc: {missing(item).join(", ")}</span>}
             </button>
           ))}
           {!filtered.length && <p className="px-3 py-2 text-xs" style={{ color: "var(--muted)" }}>Modelul nu este în catalog. Îl poți scrie în câmpul de model de mai jos.</p>}
