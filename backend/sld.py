@@ -15,6 +15,8 @@ INK = colors.HexColor("#111111")
 RED = colors.HexColor("#c0392b")
 PEC = colors.HexColor("#1e8449")
 GREY = colors.HexColor("#666666")
+PV_ORANGE = colors.HexColor("#d9822b")
+BATTERY_GREEN = colors.HexColor("#26834a")
 CELL = ParagraphStyle("c", fontName="LS", fontSize=6.6, leading=8)
 CELLB = ParagraphStyle("cb", fontName="LSB", fontSize=6.6, leading=8)
 
@@ -43,7 +45,9 @@ class Sheet:
         elif kind == "ctl":
             self.lw(0.18, GREY, ([0.8, 0.6], 0))
         elif kind == "dc":
-            self.lw(0.35)
+            self.lw(0.35, PV_ORANGE)
+        elif kind == "bat":
+            self.lw(0.35, BATTERY_GREEN)
         else:
             self.lw(0.4)
         self.c.line(x1, y1, x2, y2)
@@ -144,7 +148,7 @@ class Sheet:
         self.text(cx + h - 7, cy - h + 2.2, "~", 10, True)
 
     def pv(self, x1, y, w=16, h=8):
-        self.lw(0.35); self.c.setFillColor(colors.white)
+        self.lw(0.35, PV_ORANGE); self.c.setStrokeColor(PV_ORANGE); self.c.setFillColor(colors.white)
         self.c.rect(x1, y - h / 2, w, h, stroke=1, fill=1)
         self.lw(0.25); self.c.line(x1, y - h / 2, x1 + w, y + h / 2)
         for dx in (0, 2.2):
@@ -153,7 +157,7 @@ class Sheet:
         self.text(x1 + w - 3.5, y - h / 2 + 1, "=", 6)
 
     def battery(self, x, y):
-        self.lw(0.4)
+        self.lw(0.4, BATTERY_GREEN)
         for k in range(2):
             yy = y - k * 2.6
             self.c.line(x - 3.2, yy, x + 3.2, yy)
@@ -617,6 +621,54 @@ def report(rec, client, settings, res, approval) -> bytes:
     return buf.getvalue()
 
 
+def drawing_header(S, PW, PH, rec, client, settings, res, approval):
+    c = S.c
+    company = settings.get("company") or "DNS HOSTESS S.R.L."
+    totals = res["base"]["totals"]
+    summary = f"CEF {totals['kwp']:g} kWp · {totals['inverters_kw']:g} kW AC" if totals["kwp"] else "CEF · date tehnice de verificat"
+    title = "SCHEMĂ MONOFILARĂ"
+    y = PH - 17
+    S.text(22, y + 1.2, company, 7.2, True)
+    S.text(22, y - 2.2, "INSTALAȚII FOTOVOLTAICE", 4.2, color=GREY)
+    S.text(PW / 2, y, title, 10, True, anchor="c")
+    S.text(PW / 2, y - 4.2, summary, 5, color=GREY, anchor="c")
+    label = "CIORNĂ" if approval.get("status") != "approved" else "VERIFICAT INTERN"
+    badge_w = 38
+    bx = PW - 12 - badge_w
+    S.lw(0.35, RED if label == "CIORNĂ" else BATTERY_GREEN)
+    c.roundRect(bx, y - 2, badge_w, 7, 1.5, stroke=1, fill=0)
+    S.text(bx + badge_w / 2, y + 0.3, label, 4.8, True, RED if label == "CIORNĂ" else BATTERY_GREEN, "c")
+    S.lw(0.25, GREY)
+    c.line(22, PH - 24, PW - 12, PH - 24)
+    return PH - 27
+
+
+def drawing_grid(S, x1, y1, x2, y2):
+    c = S.c
+    top = y2
+    c.saveState()
+    S.lw(0.4, GREY)
+    c.rect(x1, y1, x2 - x1, top - y1, stroke=1, fill=0)
+    cols, rows = 7, 4
+    faint = colors.HexColor("#e7ebf0")
+    for i in range(1, cols):
+        x = x1 + (x2 - x1) * i / cols
+        S.lw(0.15, faint); c.line(x, y1, x, top)
+    for j in range(1, rows):
+        y = y1 + (top - y1) * j / rows
+        S.lw(0.15, faint); c.line(x1, y, x2, y)
+    S.lw(0.25, GREY)
+    for i, label in enumerate("ABCDEFG"):
+        x = x1 + (x2 - x1) * (i + 0.5) / cols
+        S.text(x, top + 1.2, label, 3.8, color=GREY, anchor="c")
+        S.text(x, y1 - 3.6, label, 3.8, color=GREY, anchor="c")
+    for j in range(rows):
+        y = top - (top - y1) * (j + 0.5) / rows
+        S.text(x1 - 2.1, y, str(j + 1), 3.8, color=GREY, anchor="r")
+        S.text(x2 + 2.1, y, str(j + 1), 3.8, color=GREY, anchor="l")
+    c.restoreState()
+
+
 def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> bytes:
     fmt = res["format"] if fmt not in ("A3", "A4") else fmt
     PW, PH = [x / mm for x in landscape(A3 if fmt == "A3" else A4)]
@@ -627,13 +679,15 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     c.scale(mm, mm)
     S = Sheet(c)
     area = frame(S, PW, PH, rec, client, settings, res, approval, 1, 2, fmt, demo)
+    x1, y1, x2, _ = area
+    plot_y2 = drawing_header(S, PW, PH, rec, client, settings, res, approval)
+    drawing_grid(S, x1, y1, x2, plot_y2)
     W, H, draw = diagram(S, rec, res, client)
-    x1, y1, x2, y2 = area
-    s = min((x2 - x1) / W, (y2 - y1 - 6) / H, 1.6)
-    c.saveState(); c.translate(x1 + ((x2 - x1) - W * s) / 2, y1 + max(1, ((y2 - y1 - 6) - H * s) / 2)); c.scale(s, s)
+    s = min((x2 - x1 - 8) / W, (plot_y2 - y1 - 8) / H, 1.6)
+    c.saveState(); c.translate(x1 + 4 + ((x2 - x1 - 8) - W * s) / 2, y1 + 4 + ((plot_y2 - y1 - 8) - H * s) / 2); c.scale(s, s)
     draw()
     c.restoreState()
-    S.text(x1 + 1, y2 - 3, "Notă: c.c. — linie continuă subțire, c.a. — linie continuă, PE — linie întreruptă verde. Valorile marcate [lipsă] trebuie completate și verificate.", 5, color=GREY)
+    S.text(x1 + 2, y1 + 2, "DC fotovoltaic — portocaliu · stocare — verde · PE — verde întrerupt · valorile [lipsă] rămân de confirmat.", 4.1, color=GREY)
     if demo:
         watermark(S, PW, PH, "EXEMPLU DEMONSTRATIV")
     elif rec.get("is_test"):
