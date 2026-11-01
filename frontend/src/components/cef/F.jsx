@@ -49,6 +49,7 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
   };
   const filtered = list.filter((item) => fold(item.brand_model).includes(fold(query)));
   const pick = (item) => {
+    if (missing(item).length) return;
     onPick(item);
     setQuery(item.brand_model);
     setOpen(false);
