@@ -56,7 +56,7 @@ export function CefEditor({ value, onChange }) {
         <button onClick={() => set({ inverters: [...invs, { id: uid(), phases: cef.grid?.supply || "Trifazat", type: "Hibrid", strings: [{ panels: "", mppt: 1 }], battery_mode: "none", ac: { material: "Cu", install: "C" }, dc: { material: "Cu", cable_type: "H1Z2Z2-K" } }] })}
           className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white" style={{ background: "var(--blue)" }} data-testid="add-inverter"><Plus size={15} /> Adaugă invertor</button>
       </div>
-      <Totals res={res} grid={cef.grid || {}} inverters={invs} />
+      <Totals res={res} inverters={invs} />
       <GridCard grid={cef.grid || {}} set={(g) => set({ grid: g })} catalog={catalog} res={res} />
       {invs.map((inv, i) => (
         <InverterCard key={inv.id || i} idx={i} inv={inv} catalog={catalog} shared={cef.shared_batteries || []} res={res?.inverters?.[i]}
