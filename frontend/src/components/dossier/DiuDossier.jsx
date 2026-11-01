@@ -59,11 +59,15 @@ const operatorDocsFor = (operator) => {
   ];
 };
 const requirementState = (item, docs) => {
-  if (item.external) return { label: "Verificare / atașare la operator", tone: "#92400e", bg: "#fffbeb" };
-  if (!docs) return { label: "Se verifică…", tone: "#475569", bg: "#f1f5f9" };
-  const positions = item.keys.map((key) => docs.positions?.find((position) => position.key === key)).filter(Boolean);
-  if (!positions.length) return { label: "Nu este generat pentru acest dosar", tone: "#475569", bg: "#f1f5f9" };
+  if (!docs && item.keys?.length) return { label: "Se verifică…", tone: "#475569", bg: "#f1f5f9" };
+  const positions = (item.keys || []).map((key) => docs?.positions?.find((position) => position.key === key)).filter(Boolean);
+  if (!positions.length) return item.external
+    ? { label: "Verificare / atașare la operator", tone: "#92400e", bg: "#fffbeb" }
+    : { label: "Nu este generat pentru acest dosar", tone: "#475569", bg: "#f1f5f9" };
   const missing = positions.some((position) => position.missing?.length);
+  if (item.external) return missing
+    ? { label: "De completat · verifică/atașează la operator", tone: "#991b1b", bg: "#fef2f2" }
+    : { label: "Generat · verifică și atașează la operator", tone: "#92400e", bg: "#fffbeb" };
   return missing
     ? { label: "De completat", tone: "#991b1b", bg: "#fef2f2" }
     : { label: "Generat în dosar · verifică și semnează", tone: "#166534", bg: "#f0fdf4" };
