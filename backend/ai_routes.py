@@ -318,7 +318,7 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
     fields = {
         "Invertor": ("type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "battery_voltage", "bat_i_max"),
         "Panou": ("w", "voc", "vmp", "isc", "imp", "coef_voc", "coef_vmp", "temp_noct", "temp_pmax"),
-        "Baterie": ("kwh", "ah", "voltage", "i_max", "tech", "coupling"),
+        "Baterie": ("kwh", "ah", "voltage", "i_max", "max_fuse_a", "tech", "coupling"),
         "Smart meter": ("phases",),
     }
     category = item.get("category")
