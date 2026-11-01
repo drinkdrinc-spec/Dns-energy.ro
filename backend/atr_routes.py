@@ -728,7 +728,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
         client_doc_notes.extend(client_document_issues)
         if not client_documents:
             client_doc_notes.append("Fișa clientului nu are documente încărcate în pozițiile standard.")
-        archive.writestr("Documente client/INFO_documente.txt", "\\n".join(client_doc_notes))
+        archive.writestr("Documente client/INFO_documente.txt", "\n".join(client_doc_notes))
 
         # Carry the selected prosumer equipment evidence into the ATR submission
         # package. The catalogue documents are copied as stored; no missing
