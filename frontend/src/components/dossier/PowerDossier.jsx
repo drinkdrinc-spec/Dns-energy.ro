@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, API, openAuthenticatedFile } from "@/lib/api";
+import { api, API, downloadAuthenticatedFile, openAuthenticatedFile } from "@/lib/api";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { Btn } from "@/components/Layout";
 import { FileText, Plus, Trash2, Upload } from "lucide-react";
@@ -32,6 +32,8 @@ export function PowerDossier({ id, form, setVal }) {
   const att = form.attachments || {};
   const recs = form.receptors || [];
   const selectedPros = pros.find((item) => item.id === form.pros_id);
+  const operatorLabel = form.operator || selectedPros?.operator || "";
+  const isDeer = /\\bdeer\\b|distributie energie|transilvania|muntenia nord/i.test(operatorLabel);
   const equipment = selectedPros?.cef?.inverters || [];
   const totalPanels = equipment.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1), 0);
   const panelKwp = equipment.reduce((sum, inv) => sum + (Number(inv.panel_w) || 0) * (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1) / 1000, 0)
@@ -103,7 +105,8 @@ export function PowerDossier({ id, form, setVal }) {
       {DOCS.map(([k, l]) => <Slot key={k} k={k} label={l} files={att[k] || []} auto={!!form.pros_id && AUTO[k]} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}
       <div className="flex flex-wrap gap-2 mt-4">
         {id ? <>
-          <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(pdf(id, 0))} data-testid="power-anexa1-pdf">Anexa 1 completată (PDF)</Btn>
+          <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(pdf(id, 0))} data-testid="power-anexa1-pdf">Anexa 1 model (PDF)</Btn>
+          {isDeer && <Btn type="button" variant="secondary" onClick={() => downloadAuthenticatedFile(`/power/${id}/official-docx`, "Anexa1_DEER.docx")} data-testid="power-official-docx">Anexa 1 oficială DEER (DOCX)</Btn>}
           <Btn type="button" onClick={() => openAuthenticatedFile(pdf(id, 1))} data-testid="power-full-pdf">Dosar spor de putere — PDF unic</Btn>
         </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați fișa pentru a genera Anexa 1 și dosarul.</span>}
         {id && <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>}
