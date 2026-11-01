@@ -312,7 +312,7 @@ def doc_notificare(ctx):
         out.append(B("table", [["Nr. crt.", "Serie contor", "Tip contor", "Date tehnice"],
                                ["1", ctx.v("smart_meter_serial"), ctx.v("smart_meter_type"), ctx.v("smart_meter_data")]], [14, 40, 70, 50], True))
     out += [B("p", "Declar pe propria răspundere că datele şi informaţiile cuprinse în prezenta notificare sunt autentice şi că documentele anexate, în copie, sunt conforme cu originalul."),
-            sign(["Data", f"<b>{ctx.date}</b>"], ["Solicitant/Împuternicit,", f"<b>{ctx.name}</b>", "numele, prenumele şi semnătura"])]
+            sign(["Data", f"<b>{ctx.date}</b>"], ["Reprezentantul firmei instalatoare,", f"<b>{ctx.rep}</b>", f"<b>{ctx.company}</b>", "semnătura și ștampila"])]
     return out
 
 
