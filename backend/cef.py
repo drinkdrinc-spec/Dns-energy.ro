@@ -5,6 +5,8 @@ T_CELL_HOT = 70.0
 RHO = {"Cu": 0.0225, "Al": 0.036}
 SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120]
 BREAKERS = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250]
+# Main incomer frame ratings; proposal only, subject to exact device and fault-level checks.
+MAIN_BREAKERS = [100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000]
 GPV = [10, 12, 15, 16, 20, 25, 30, 32]
 # IEC 60364-5-52, Cu PVC 70°C, 3 conductori încărcați, 30°C (A)
 IZ_AC = {
@@ -252,12 +254,38 @@ def check(cef: dict) -> dict:
     anti_auto = tot_kwp > 27 or tot_kw > 27
     anti = bool(grid.get("anti_required")) or anti_auto
     i_br = (br_kw * 1000 / (math.sqrt(3) * 400 * 0.95)) if tri_grid else (br_kw * 1000 / (230 * 0.95))
+    main_proposal = up(MAIN_BREAKERS, i_br) if br_kw else None
+    column_section = None
+    column_du = None
+    column_iz = None
+    column_length = n(grid.get("column_length"))
+    column_material = grid.get("column_material") or "Cu"
+    column_install = grid.get("column_install") or "D"
+    if main_proposal:
+        for sct in SECTIONS:
+            ampacity = iz(sct, column_material, column_install, 3 if tri_grid else 2, n(grid.get("column_k_correction"), 1))
+            drop = vdrop_ac(i_br, column_length, sct, column_material, tri_grid)
+            if ampacity >= main_proposal and (not column_length or drop <= 3):
+                column_section, column_du, column_iz = sct, drop, ampacity
+                break
+        if column_section is None:
+            warnings.append("Coloana BMP–TG nu poate fi dimensionată automat în limitele tabelului disponibil (max. 120 mm² / pozare selectată). Pentru curenți mari sunt necesare conductoare în paralel și proiect dedicat; aplicația nu ghicește secțiunea.")
+    selected_section = n(grid.get("column_section"))
+    selected_breaker = n(grid.get("bmp_a")) or main_proposal or 0
+    if selected_section:
+        selected_iz = iz(selected_section, column_material, column_install, 3 if tri_grid else 2, n(grid.get("column_k_correction"), 1))
+        if selected_breaker > selected_iz:
+            errors.append(f"Protecția BMP ({selected_breaker:g} A) depășește Iz = {selected_iz:.0f} A a coloanei BMP–TG ({selected_section:g} mm²) — cablul nu este protejat.")
+        if column_length:
+            selected_du = vdrop_ac(i_br, column_length, selected_section, column_material, tri_grid)
+            if selected_du > 3:
+                warnings.append(f"Căderea de tensiune pe coloana BMP–TG este {selected_du:.2f}% > 3% recomandat.")
     return {"totals": {"kwp": round(tot_kwp, 3), "inverters_kw": round(tot_kw, 2), "inverters_kw_max": round(tot_kwmax, 2),
                        "export_kw": round(tot_export, 2), "storage_kwh": round(tot_kwh, 2),
                        "panels": sum(s["panels"] * i.get("count", 1) for i in out_inv for s in i["strings"]),
                        "inverters": sum(i.get("count", 1) for i in out_inv)},
             "grid": {"tri": tri_grid, "bransament_kw": br_kw, "i_br": round(i_br, 1) if br_kw else 0,
-                     "main_proposal": up(BREAKERS, i_br) if br_kw else None, "anti": anti, "anti_auto": anti_auto},
+                     "main_proposal": main_proposal, "main_section_proposal": column_section, "main_section_iz": round(column_iz, 1) if column_iz else None, "main_section_du": round(column_du, 2) if column_du is not None else None, "anti": anti, "anti_auto": anti_auto},
             "inverters": out_inv, "errors": errors, "warnings": warnings, "tmin": tmin,
             "note": "Valorile propuse sunt orientative (IEC 60364-5-52 / I7). Se validează de personal autorizat ANRE conform instrucțiunilor producătorului."}
 
