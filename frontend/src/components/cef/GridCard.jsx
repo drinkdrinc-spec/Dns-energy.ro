@@ -44,7 +44,8 @@ export function GridCard({ grid, set, catalog, res }) {
       <p className="text-[11px] mt-2" style={{ color: "var(--muted)" }}>Rezistența prizei de pământ se completează doar cu valoarea măsurată (buletin PRAM); aplicația nu estimează rezultate de măsurare.</p>
       <div className="mt-3 flex flex-wrap items-center gap-4">
         <Check label="Tablou antiinsularizare cerut prin ATR / soluția de racordare" value={grid.anti_required} onChange={s("anti_required")} testid="grid-anti" />
-        {gr?.anti_auto && <span className="text-xs font-bold" style={{ color: "#b03a2e" }}>Peste 27 kW sau curent calculat peste 63 A — propunere automată</span>}
+        {gr?.anti_backup ? <span className="text-xs font-bold" style={{ color: "#b03a2e" }}>Backup selectat — include protecția antiinsularizare cu bobină de declanșare; verifică soluția din ATR</span>
+          : gr?.anti_auto && <span className="text-xs font-bold" style={{ color: "#b03a2e" }}>Peste 27 kW sau curent calculat peste 63 A — propunere automată</span>}
       </div>
       {(grid.anti_required || gr?.anti) && (
         <div className="grid sm:grid-cols-2 gap-3 mt-3">
