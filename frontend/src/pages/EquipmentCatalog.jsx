@@ -8,7 +8,7 @@ import { toast } from "sonner";
 const CATS = ["Invertor", "Panou", "Baterie", "Smart meter"];
 const FIELDS = {
   Invertor: [["type", "Tip", ["Hibrid", "On-grid", "Invertor de baterie (AC)"]], ["phases", "Faze", ["Trifazat", "Monofazat"]], ["p_nom_kw", "Pn (kW)"], ["p_max_kw", "Pmax (kW)"], ["red_limit_mode", "Limitare putere în RED", ["Nu este declarată", "Limitare putere evacuată", "Zero export"]],
-    ["vdc_max", "Udc max (V)"], ["mppt_min", "MPPT min (V)"], ["mppt_max", "MPPT max (V)"], ["mppt_count", "Nr. MPPT"], ["imax_mppt", "Imax / MPPT (A)"], ["battery_voltage", "Tensiune baterie compatibilă", null, "text"], ["bat_i_max", "Curent max baterie (A)"]],
+    ["vdc_max", "Udc max (V)"], ["mppt_min", "MPPT min (V)"], ["mppt_max", "MPPT max (V)"], ["mppt_count", "Nr. MPPT"], ["imax_mppt", "Imax / MPPT (A)"], ["isc_max_mppt", "Isc max admisibil / MPPT (A)"], ["battery_voltage", "Tensiune baterie compatibilă", null, "text"], ["bat_i_max", "Curent max baterie (A)"]],
   Panou: [["w", "Putere (W)"], ["voc", "Voc (V)"], ["vmp", "Vmp (V)"], ["isc", "Isc (A)"], ["imp", "Imp (A)"], ["coef_voc", "Coef. Voc (%/°C)"], ["coef_vmp", "Coef. Vmp (%/°C)"], ["temp_noct", "NOCT (°C)"], ["temp_pmax", "Coef. Pmax (%/°C)"]],
   Baterie: [["kwh", "kWh / modul"], ["ah", "Ah"], ["voltage", "Tensiune (V)"], ["tech", "Tehnologie", ["LV", "HV"]], ["coupling", "Cuplare", ["DC", "AC"]], ["i_max", "Curent max descărcare (A)"]],
   "Smart meter": [["phases", "Faze", ["Trifazat", "Monofazat"]]],
