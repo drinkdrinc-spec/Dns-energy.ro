@@ -257,22 +257,25 @@ def doc_notificare(ctx):
                      f"{total_kw:.2f}" if total_kw else "", f"{total_kw:.2f}" if total_kw else "",
                      f"{p['kw']:.2f}" if p["kw"] else "", ""])
     tk = sum(p["kw"] * p["count"] for p in pr)
-    rows.append(["TOTAL:", "", "", "", f"{tk:.2f}" if tk else "", f"{tk:.2f}" if tk else "", "", ""])
+    total_panels = sum(p["n"] * p["count"] for p in pr)
+    rows.append(["TOTAL:", str(total_panels) if total_panels else "", "", "", f"{tk:.2f}" if tk else "", f"{tk:.2f}" if tk else "", "", ""])
     out.append(B("table", rows, [12, 16, 30, 20, 24, 26, 28, 18], True))
     out.append(B("b", "Invertoare:"))
     rows = [["Nr. crt.", "Nr. invertoare", "Tipul invertoarelor", "Un invertor (c.a.) (V)", "Pi invertor (c.a.) (kW)", "Pmax invertor evacuată în reţea (c.a.) (kW)",
              "Pmax centrală formată din module generatoare (c.a.) (kW)", "Observaţii"]]
     tpi = tpm = 0
+    total_inverters = 0
     for i, inv in enumerate(invs):
         count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
         pi = num(inv.get("p_nom_kw"))
         pm = num(inv.get("p_limit_kw")) or num(inv.get("p_max_kw")) or pi
         tpi += pi * count
         tpm += pm * count
+        total_inverters += count
         un = "400" if "mono" not in str(inv.get("phases") or ("Trifazat" if tri else "Monofazat")).lower() else "230"
         rows.append([str(i + 1), str(count), escape(inv.get("brand_model") or ""), un, f"{pi:.2f}" if pi else "",
                      f"{pm:.2f}" if pm else "", f"{pm * count:.2f}" if pm else "", ""])
-    rows.append(["TOTAL:", str(len(invs)) if invs else "", "", "", f"{tpi:.2f}" if tpi else "", f"{tpm:.2f}" if tpm else "", f"{tk:.2f}" if tk else "", ""])
+    rows.append(["TOTAL:", str(total_inverters) if total_inverters else "", "", "", f"{tpi:.2f}" if tpi else "", f"{tpm:.2f}" if tpm else "", f"{tk:.2f}" if tk else "", ""])
     out += [B("table", rows, [12, 16, 34, 20, 20, 26, 30, 16], True),
             B("small", "NOTĂ:<br/>U.G. = unitate generatoare; panou = panou fotovoltaic; As - asincron; S - sincron; T - termo; H - hidro; E - eolian; "
                        "Qn - putere reactivă nominală; Qmax = putere reactivă maximă; Qmin = putere reactivă minimă; c.c. = curent continuu; c.a. = curent alternativ; "
