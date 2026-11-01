@@ -46,11 +46,13 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
     if (form.client_id && p.client_id) return p.client_id === form.client_id;
     return Boolean(form.client_name && norm(p.client_name) === norm(form.client_name));
   });
+  const linkedProsKey = linkedPros.map((item) => item.id).join("|");
   const [selectedProsId, setSelectedProsId] = useState(form.pros_id || (linkedPros.length === 1 ? linkedPros[0].id : ""));
   useEffect(() => {
-    if (form.pros_id) setSelectedProsId(form.pros_id);
+    if (form.pros_id && linkedPros.some((item) => item.id === form.pros_id)) setSelectedProsId(form.pros_id);
     else if (linkedPros.length === 1) setSelectedProsId(linkedPros[0].id);
-  }, [form.pros_id, form.client_id]);
+    else if (!linkedPros.some((item) => item.id === selectedProsId)) setSelectedProsId("");
+  }, [form.pros_id, form.client_id, linkedProsKey]);
   const selectedPros = linkedPros.find((p) => p.id === selectedProsId) || (linkedPros.length === 1 ? linkedPros[0] : null);
   const equipment = equipmentSummary(selectedPros);
   const choosePros = (id) => {
@@ -58,12 +60,18 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
     setSelectedProsId(id);
     setVal("pros_id", id);
     if (!record) return;
+    const invs = record.cef?.inverters || [];
+    const panelKwp = invs.reduce((total, inv) => {
+      const watts = Number(inv.panel_w) || 0;
+      const count = (inv.strings || []).reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
+      return total + watts * count * Math.max(1, Number(inv.count) || 1) / 1000;
+    }, 0) || (Number(record.panel_count) > 0 && Number(record.panel_w) > 0 ? Number(record.panel_count) * Number(record.panel_w) / 1000 : 0);
     setVal("kind", "Loc de consum și de producere (prosumator)");
     setVal("supply", record.supply || record.cef?.grid?.supply || form.supply || "");
-    setVal("pv_kw", record._kwp || record.power || record.inverter_kw || "");
+    setVal("pv_kw", panelKwp ? Number(panelKwp.toFixed(3)) : record._kwp || "");
     setVal("p_evac_kw", record.power || record.p_evac_kw || record.inverter_kw || "");
     setVal("p_abs_kw", record.bransament_kw || form.p_abs_kw || "");
-    setVal("current_supply_desc", [record.request_type, record.inverter ? `Invertor: ${record.inverter}` : "", record.panels ? `Panouri: ${record.panels}` : "", record.battery ? `Baterie: ${record.battery}` : ""].filter(Boolean).join("; "));
+    setVal("current_supply_desc", [record.request_type, ...equipmentSummary(record).inverters.map((value) => `Invertor: ${value}`), ...equipmentSummary(record).panels.map((value) => `Panouri: ${value}`), ...equipmentSummary(record).batteries.map((value) => `Baterie: ${value}`)].filter(Boolean).join("; "));
   };
   const renderField = (f) => {
     const common = {
