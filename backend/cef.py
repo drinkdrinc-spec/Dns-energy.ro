@@ -244,6 +244,14 @@ def check(cef: dict) -> dict:
                 elif bv and not (vmin_ and vmax_):
                     w.append(f"{tag}: introduceți domeniul de tensiune baterie al invertorului (fișa tehnică) pentru verificarea compatibilității bateriei.")
             bi, ii = n(bat.get("i_max")), n(inv.get("bat_i_max"))
+            selected_battery_fuse = n(bat.get("fuse_a"))
+            manufacturer_max_fuse = n(bat.get("max_fuse_a"))
+            if selected_battery_fuse and manufacturer_max_fuse and selected_battery_fuse > manufacturer_max_fuse:
+                e.append(f"{tag}: siguranța DC selectată ({selected_battery_fuse:g} A) depășește limita producătorului ({manufacturer_max_fuse:g} A).")
+            elif selected_battery_fuse and not manufacturer_max_fuse:
+                w.append(f"{tag}: limita maximă a siguranței bateriei lipsește din fișă; confirmă valoarea introdusă înainte de validare.")
+            if selected_battery_fuse and bi and selected_battery_fuse < 1.25 * bi:
+                w.append(f"{tag}: siguranța DC selectată ({selected_battery_fuse:g} A) este sub 1,25×Imax descărcare ({1.25 * bi:g} A); verifică manualul și curenții tranzitorii.")
             if bi and ii and bi > ii:
                 w.append(f"{tag}: bateria permite {bi:g} A, invertorul max. {ii:g} A — curentul va fi limitat de invertor (verificați dimensionarea protecției).")
             if not (bat.get("model") or b_kwh):
