@@ -26,7 +26,11 @@ def _battery_items(pros: dict, rec: dict, flat: dict) -> list:
     items = []
     for inv in cef.get("inverters") or []:
         if inv.get("battery_mode") == "own" and isinstance(inv.get("battery"), dict):
-            items.append(inv["battery"])
+            battery = dict(inv["battery"])
+            inverter_count = max(1, int(D.num(inv.get("count") or inv.get("quantity")) or 1))
+            module_count = max(1, int(D.num(battery.get("modules")) or 1))
+            battery["modules"] = module_count * inverter_count
+            items.append(battery)
     items.extend(b for b in cef.get("shared_batteries") or [] if isinstance(b, dict))
     if not items and (flat.get("battery") or rec.get("battery") or rec.get("storage")):
         model = flat.get("battery") or rec.get("battery") or rec.get("storage")
@@ -108,12 +112,25 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, o
     rows = [["Nr. crt.", "Nr. panouri", "Tip", "Pi panou (c.c.) (kW)", "Pi total panouri (c.c.) (kW)", "Pmax debitat (c.c.) (kW)", "Pi total panouri pe 1 invertor (kW)", "Obs."]]
     irows = [["Nr. crt.", "Nr. invertoare", "Tipul invertoarelor", "Un invertor (c.a.) (V)", "Pi invertor (c.a.) (kW)", "Pmax evacuată în reţea (kW)", "Obs."]]
     for i, inv in enumerate(invs):
-        n = sum(int(D.num(x.get("panels"))) for x in inv.get("strings") or [])
+        unit_count = max(1, int(D.num(inv.get("count") or inv.get("quantity")) or 1))
+        panels_per_inverter = sum(int(D.num(x.get("panels"))) for x in inv.get("strings") or [])
+        total_panels = panels_per_inverter * unit_count
         w = D.num(inv.get("panel_w")) / 1000
-        tot = D.fmt(n * w, 3) if n and w else ""
-        rows.append([str(i + 1), str(n or ""), escape(inv.get("panel_model") or ""), D.fmt(w, 3) if w else "", tot, tot, tot, ""])
-        irows.append([str(i + 1), "1", escape(inv.get("brand_model") or ""), "400" if "tri" in str(inv.get("phases") or "").lower() else "230" if inv.get("phases") else "",
-                      escape(str(inv.get("p_nom_kw") or "")), escape(str(inv.get("p_max_kw") or inv.get("p_nom_kw") or "")), ""])
+        total_kwp = D.fmt(total_panels * w, 3) if total_panels and w else ""
+        per_inverter_kwp = D.fmt(panels_per_inverter * w, 3) if panels_per_inverter and w else ""
+        rows.append([str(i + 1), str(total_panels or ""), escape(inv.get("panel_model") or ""), D.fmt(w, 3) if w else "",
+                     total_kwp, total_kwp, per_inverter_kwp, ""])
+        rated_kw = D.num(inv.get("p_nom_kw"))
+        max_kw = D.num(inv.get("p_max_kw")) or rated_kw
+        configured_limit = D.num(inv.get("p_limit_kw"))
+        export_per_inverter = min(configured_limit, max_kw) if configured_limit and configured_limit > 0 and max_kw > 0 else (
+            configured_limit if configured_limit and configured_limit > 0 else max_kw)
+        export_total = D.fmt(export_per_inverter * unit_count, 3) if export_per_inverter and export_per_inverter > 0 else ""
+        limit_note = (f"Limită de injecție declarată: {configured_limit:g} kW/invertor × {unit_count} buc."
+                      if configured_limit and configured_limit > 0 else "Limită de injecție nedeclarată în configurare.")
+        irows.append([str(i + 1), str(unit_count), escape(inv.get("brand_model") or ""),
+                      "400" if "tri" in str(inv.get("phases") or "").lower() else "230" if inv.get("phases") else "",
+                      escape(str(rated_kw if rated_kw > 0 else "")), export_total, escape(limit_note)])
     if not invs:
         rows.append([""] * 8); irows.append([""] * 7)
     story += [T(rows, [7, 9, 22, 11, 13, 12, 14, 8]), Spacer(1, 3), P("Invertoare:"), T(irows, [7, 10, 30, 12, 12, 16, 9]), Spacer(1, 3),
