@@ -124,6 +124,7 @@ export default function EquipmentCatalog() {
           <Btn variant="secondary" onClick={importOfficialDocuments} disabled={importingOfficial} data-testid="catalog-import-official-btn">
             <Upload size={14} /> {importingOfficial ? "Se preiau PDF-urile…" : "Preia PDF-urile oficiale"}
           </Btn>
+          <a href="https://delgaz.ro/getattachment/f005023f-8d6f-4065-b6f5-cee47673593e/Lista-invertoare-conforme.xlsx" target="_blank" rel="noopener noreferrer" data-testid="catalog-delgaz-approved-inverters" className="inline-flex min-h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} title="Lista oficială Delgaz Grid cu invertoare conforme">Listă invertoare Delgaz ↗</a>
           <Btn onClick={() => setForm(form ? null : { category: cat })} data-testid="catalog-add-btn">{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> Model nou</>}</Btn>
         </div>} />
       <div className="flex flex-wrap gap-2 mb-4">
