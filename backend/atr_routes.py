@@ -721,7 +721,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
         client_documents, client_document_issues = S.atr_client_documents(user, client)
         client_doc_notes = ["Documente încărcate la fișa clientului; copiile originale sunt păstrate aici."]
         for index, document in enumerate(client_documents, 1):
-            filename = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(document.get("name") or "document.pdf").replace("/", "_").replace("\\\\", "_")).strip("._") or "document.pdf"
+            filename = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(document.get("name") or "document.pdf").replace("/", "_").replace("\\", "_")).strip("._") or "document.pdf"
             slot = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(document.get("slot") or "document"))
             archive.writestr(f"Documente client/{slot}/{index:02d}_{filename}", document["data"])
             client_doc_notes.append(f"Inclus: {document.get('label') or slot} — {filename}.")
