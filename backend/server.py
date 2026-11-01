@@ -1577,7 +1577,7 @@ async def dossier_item(item_id: str, key: str, request: Request, user: dict = De
     return {"ok": True}
 
 @api_router.get("/dossier/{item_id}/file/{key}")
-async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int = 0, authorization: str = Header(None), auth: str = Query(None)):
+async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int = 0, download: int = 0, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
     rec, client, settings, info = await dossier_ctx(user, item_id)
     p = next((x for x in info["positions"] if x["key"] == key), None)
@@ -1612,7 +1612,7 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         pdf = OPIS.mark_test(pdf)
     elif p.get("source") == "generat" and (p.get("missing") or info.get("common_missing")):
         pdf = OPIS.mark_test(pdf, "CIORNĂ — DATE / MĂSURĂTORI DE COMPLETAT", 28)
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}.pdf")})
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('attachment' if download else 'inline', f"{name}.pdf")})
 
 @api_router.get("/dossier/{item_id}/export")
 async def dossier_export(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
