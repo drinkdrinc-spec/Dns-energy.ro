@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { Outlet, Link } from "react-router-dom";
+import { Outlet, Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
-import { Menu, Home, FolderOpen, Receipt, Cpu, MoreHorizontal } from "lucide-react";
+import { Menu, Home, FolderOpen, Receipt, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench } from "lucide-react";
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const workflowPaths = ["/clienti", "/prosumator", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/mono"];
+  const showWorkflow = workflowPaths.some((path) => location.pathname.startsWith(path));
   return (
     <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
       <Sidebar open={open} onClose={() => setOpen(false)} />
@@ -18,6 +21,7 @@ export default function Layout() {
         </header>
         <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto pb-24 md:pb-8">
           <PlanBanner />
+          {showWorkflow && <DossierWorkflow pathname={location.pathname} />}
           <Outlet />
         </main>
         <nav aria-label="Navigare rapidă" className="mobile-bottom-nav md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-5 border-t bg-white/95 backdrop-blur px-1 pt-2 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(20,35,70,0.08)]">
@@ -32,6 +36,36 @@ export default function Layout() {
         </nav>
       </div>
     </div>
+  );
+}
+
+const DOSSIER_STEPS = [
+  { to: "/clienti", label: "Client", icon: UserRound, matches: ["/clienti"] },
+  { to: "/prosumator", label: "Prosumator", icon: FolderOpen, matches: ["/prosumator"] },
+  { to: "/cerere-atr", label: "ATR / spor", icon: FileCheck2, matches: ["/cerere-atr", "/spor-putere"] },
+  { to: "/diu", label: "DI-U", icon: Wrench, matches: ["/diu"] },
+  { to: "/catalog-echipamente", label: "Echipamente", icon: Cpu, matches: ["/catalog-echipamente"] },
+  { to: "/mono", label: "Schemă · PRAM", icon: CircuitBoard, matches: ["/mono"] },
+];
+
+function DossierWorkflow({ pathname }) {
+  return (
+    <nav aria-label="Ordinea dosarului" className="mb-6 rounded-xl border bg-white p-3 sm:p-4" style={{ borderColor: "var(--line)" }} data-testid="dossier-workflow-nav">
+      <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: "var(--muted)" }}>Flux de lucru · deschide direct un pas</div>
+      <ol className="flex gap-2 overflow-x-auto pb-1">
+        {DOSSIER_STEPS.map(({ to, label, icon: Icon, matches }, index) => {
+          const active = matches.some((path) => pathname.startsWith(path));
+          return <li key={to} className="shrink-0">
+            <NavLink to={to} aria-current={active ? "step" : undefined} className="flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:border-blue-300" style={active
+              ? { background: "#eaf1ff", borderColor: "var(--blue)", color: "var(--blue)" }
+              : { background: "#fff", borderColor: "var(--line)", color: "#475569" }}>
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={active ? { background: "var(--blue)", color: "#fff" } : { background: "#f1f5f9", color: "#475569" }}>{index + 1}</span>
+              <Icon size={14} aria-hidden="true" />{label}
+            </NavLink>
+          </li>;
+        })}
+      </ol>
+    </nav>
   );
 }
 
