@@ -75,14 +75,17 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
           </select></div>
         <Btn variant="secondary" onClick={() => importPros()} disabled={!pid || importing} data-testid="diu-import-btn"><Download size={14} /> {importing ? "Se preiau..." : "Reîncarcă datele"}</Btn>
       </div>
-      <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>La selectarea clientului se preiau automat datele disponibile, protecțiile și circuitele din dosarul ales. La schimbarea sursei, măsurătorile vechi sunt eliminate; se copiază numai valori măsurate existente.</p>
+      <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Datele, protecțiile și circuitele se preiau din dosarul prosumator selectat. Valorile PRAM sunt incluse numai dacă au fost măsurate și salvate; schimbarea instalației elimină măsurătorile vechi.</p>
       <div className="mt-4 rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="diu-operator-requirements">
         <div className="font-bold text-sm">Dosar adaptat operatorului de distribuție</div>
         <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Operator selectat: <b>{form.operator || "neselectat"}</b>. Lista de mai jos ajută la pregătirea dosarului; cerințele finale și formularele condiționale se confirmă din sursa oficială.</p>
         {operatorInfoFor(form.operator).url && <a className="mt-2 inline-flex text-xs font-semibold underline" href={operatorInfoFor(form.operator).url} target="_blank" rel="noopener noreferrer" data-testid="diu-official-requirements">Deschide {operatorInfoFor(form.operator).label} ↗</a>}
         <ul className="mt-2 grid sm:grid-cols-2 gap-2 text-xs">{operatorDocsFor(form.operator).map((item) => <li key={item} className="rounded border px-3 py-2" style={{ borderColor: "var(--line)" }}>□ {item}</li>)}</ul>
       </div>
-      <DiuCircuits form={form} setVal={setVal} />
+      <details className="mt-4 rounded-xl border bg-white px-4" style={{ borderColor: "var(--line)" }} data-testid="diu-technical-details">
+        <summary className="cursor-pointer py-3 text-sm font-semibold">Detalii tehnice, circuite și rezultate PRAM</summary>
+        <div className="pb-4"><DiuCircuits form={form} setVal={setVal} /></div>
+      </details>
       <div className="flex items-center justify-between flex-wrap gap-2 mt-5">
         <div className="text-xs font-bold" style={{ color: docs?.complete ? "#166534" : "#9b2c2c" }} data-testid="diu-docs-state">
           {docs ? (docs.complete ? "Toate documentele sunt complete" : "Unele documente au date lipsă (export CIORNĂ)") : ""} · stările se actualizează după „Salvează”</div>
