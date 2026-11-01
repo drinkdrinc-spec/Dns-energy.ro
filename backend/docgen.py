@@ -427,9 +427,11 @@ def doc_decl_conformitate(ctx):
 def equipment_lines(ctx):
     rows = [["Echipament", "Cantitate", "Model / detalii"]]
     for inv in inverters(ctx):
-        rows.append(["Invertor", "1 buc", escape(inv.get("brand_model") or M)])
+        count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
+        rows.append(["Invertor", f"{count} buc", escape(inv.get("brand_model") or M)])
     for p in panel_rows(ctx):
-        rows.append(["Panouri fotovoltaice", f"{p['n']} buc" if p["n"] else M, escape(p["model"] or M)])
+        total_panels = int(num(p["n"]) * num(p.get("count"), 1))
+        rows.append(["Panouri fotovoltaice", f"{total_panels} buc" if total_panels else M, escape(p["model"] or M)])
     for b in storage(ctx):
         rows.append(["Sistem de stocare", f"{b.get('modules') or 1} buc", escape(f"{b.get('model')} · {b.get('kwh') or ''} kWh")])
     if ctx.raw("smart_meter_type"):
