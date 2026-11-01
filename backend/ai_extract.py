@@ -202,6 +202,8 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
         if any(needle in operator_text for needle in needles):
             fields.setdefault("operator", key)
             break
+    if doc_type == "factura" and fields.get("consumption_address"):
+        fields.setdefault("address", fields["consumption_address"])
     if not fields:
         raise ValueError("PDF-ul conține text, dar nu am găsit câmpuri cu etichete suficient de clare. Verifică documentul și completează manual.")
     fields["doc_type"] = {"ci": "Carte de identitate", "factura": "Factură energie", "cf": "Carte funciară"}.get(doc_type, "Document PDF")
