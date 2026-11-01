@@ -129,6 +129,43 @@ def deer_annex_info(rec: dict):
     return None
 
 
+def installed_pv_kwp_for_record(rec: dict = None, pros: dict = None):
+    """Return DC panel capacity in kWp from confirmed equipment data; never substitute inverter AC kW."""
+    rec, pros = rec or {}, pros or {}
+    cef = pros.get("cef") or {}
+    if cef.get("inverters"):
+        try:
+            calculated = CEF.check(cef).get("totals", {}).get("kwp")
+            if D.num(calculated) > 0:
+                return D.num(calculated)
+        except Exception:
+            pass
+        panel_total = 0.0
+        complete = True
+        for inv in cef.get("inverters") or []:
+            count = max(1, int(D.num(inv.get("count")) or 1))
+            watts = D.num(inv.get("panel_w"))
+            panels = sum(D.num(item.get("panels")) for item in inv.get("strings") or [])
+            if panels <= 0 and len(cef.get("inverters") or []) == 1:
+                panels = D.num(pros.get("panel_count"))
+            if watts <= 0 or panels <= 0:
+                complete = False
+                break
+            panel_total += panels * watts * count
+        if complete and panel_total > 0:
+            return panel_total / 1000
+    flat = CEF.flatten(pros) if pros else {}
+    for value in (rec.get("pv_kw"), flat.get("_kwp"), flat.get("panel_kwp"), pros.get("_kwp"), pros.get("panel_kwp")):
+        number = D.num(value)
+        if number > 0:
+            return number
+    count = D.num(flat.get("panel_count") or pros.get("panel_count"))
+    watts = D.num(flat.get("panel_w") or pros.get("panel_w"))
+    if count > 0 and watts > 0:
+        return count * watts / 1000
+    return None
+
+
 def deer_annex_issues(rec: dict, pros: dict = None) -> list:
     """Return hard validation issues for DEER cases that have objective eligibility rules."""
     if op_key(rec.get("operator"), (pros or {}).get("operator")) != "deer":
@@ -147,13 +184,7 @@ def deer_annex_issues(rec: dict, pros: dict = None) -> list:
     elif "program de finanțare" in case and request != "nou":
         issues.append("Procedura selectată este Anexa 4 pentru program de finanțare, dar tipul solicitării nu este utilizator nou.")
     if "≤10,8" in case or "<=10,8" in case or "<=10.8" in case:
-        cef = (pros or {}).get("cef") or {}
-        calculated = CEF.check(cef).get("totals", {}).get("kwp") if cef else None
-        raw_power = rec.get("pv_kw") or (pros or {}).get("_kwp") or calculated or (pros or {}).get("inverter_kw")
-        try:
-            power = float(str(raw_power).replace(",", ".")) if raw_power not in (None, "") else None
-        except (TypeError, ValueError):
-            power = None
+        power = installed_pv_kwp_for_record(rec, pros)
         if power is None:
             issues.append("Pentru Anexa 5 trebuie confirmată puterea instalată de producere (Pi) din fișa tehnică / proiect.")
         elif power > 10.8:
@@ -164,13 +195,7 @@ def deer_annex_issues(rec: dict, pros: dict = None) -> list:
         elif "trifaz" in supply or "400" in supply:
             issues.append("Anexa 5 selectată este pentru conexiune diferită de trifazic; branșamentul este trifazat.")
     if ">400" in case:
-        cef = (pros or {}).get("cef") or {}
-        calculated = CEF.check(cef).get("totals", {}).get("kwp") if cef else None
-        raw_power = rec.get("pv_kw") or (pros or {}).get("_kwp") or calculated or (pros or {}).get("inverter_kw")
-        try:
-            power = float(str(raw_power).replace(",", ".")) if raw_power not in (None, "") else None
-        except (TypeError, ValueError):
-            power = None
+        power = installed_pv_kwp_for_record(rec, pros)
         if power is None:
             issues.append("Procedura dedicată pentru >400 kW necesită puterea instalată de producere.")
         elif power <= 400:
@@ -226,6 +251,7 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
     annex, title, url = info
     c = client or {}
     p = CEF.flatten(pros) if pros else {}
+    pv_kwp = installed_pv_kwp_for_record(rec, pros)
     g = lambda d, k: escape(str(d.get(k))) if d.get(k) not in (None, "") else M
     P = lambda t, k="p": Paragraph(t, D.S[k])
     T = lambda rows, w: D.pdf_table(rows, w, True, 8, 178)
@@ -256,7 +282,7 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
            ["Procedură DEER selectată", escape(str(rec.get("deer_case") or annex))],
            ["Tip solicitare", g(rec, "request_type")], ["Tip racord", g(rec, "supply")],
            ["Putere absorbită", f"{g(rec, 'p_abs_kw')} kW / {g(rec, 'p_abs_kva')} kVA"],
-           ["Putere instalată producere", f"{g(rec, 'pv_kw') if rec.get('pv_kw') else g(p, 'power')} kW"],
+           ["Putere instalată producere (DC)", f"{g({'pv_kwp': pv_kwp}, 'pv_kwp')} kWp"],
            ["Putere maximă evacuată", f"{g(rec, 'p_evac_kw')} kW / {g(rec, 'p_evac_kva')} kVA"],
            ["Descriere modificări", g(rec, "current_supply_desc")]], [52, 126]),
         Spacer(1, 4),
@@ -598,10 +624,10 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
               P(f"3.7 Data estimată pentru punerea sub tensiune finală: {escape(D.ro_date(rec.get('energize_date')) or M)}; 3.8 etape: {g(rec, 'stages') if rec.get('stages') else '—'}")]
     if prod:
         invs = (pros.get("cef") or {}).get("inverters") or [] if pros else []
-        pv_kw = rec.get("pv_kw") or p.get("power")
+        pv_kw = installed_pv_kwp_for_record(rec, pros)
         story += [P("4. Date tehnice și energetice ale locului de producere (centrală fotovoltaică)", "b"),
                   T([["Nr.", "Date energetice ale producătorului", "Simbol", "U.M.", "Situația existentă", "Situația finală"],
-                     ["1", "Puterea totală instalată", "Pi", "kW", escape(str(rec.get("pv_existing_kw") or "0")), escape(str(pv_kw or M))],
+                     ["1", "Puterea totală instalată (panouri c.c.)", "Pi", "kWp", escape(str(rec.get("pv_existing_kw") or "0")), escape(str(pv_kw or M))],
                      ["2", "Puterea maximă simultan evacuată în rețea", "Pa", "kW", "", escape(str(rec.get("p_evac_kw") or p.get("power") or M))],
                      ["", "", "Sa", "kVA", "", escape(str(rec.get("p_evac_kva") or p.get("apparent_kva") or M))],
                      ["3", "Consumul propriu al centralei (servicii interne)", "Pi / Pa", "kW", "", f"{escape(str(p.get('internal_pi') or rec.get('internal_kw') or M))}"],
@@ -654,12 +680,7 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
     cef = pros.get("cef") or {}
     inverters = cef.get("inverters") or []
     p = CEF.flatten(pros) if pros else {}
-    installed_pv_kwp = rec.get("pv_kw") or p.get("_kwp") or p.get("panel_kwp") or pros.get("_kwp") or pros.get("panel_kwp")
-    if not installed_pv_kwp:
-        legacy_panel_count = D.num(p.get("panel_count") or pros.get("panel_count"))
-        legacy_panel_w = D.num(p.get("panel_w") or pros.get("panel_w"))
-        if legacy_panel_count > 0 and legacy_panel_w > 0:
-            installed_pv_kwp = legacy_panel_count * legacy_panel_w / 1000
+    installed_pv_kwp = installed_pv_kwp_for_record(rec, pros)
     limit_values = []
     for inv in inverters:
         model = str(inv.get("brand_model") or "Invertor")
