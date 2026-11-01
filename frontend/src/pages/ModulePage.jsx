@@ -657,6 +657,37 @@ export default function ModulePage({ moduleKey }) {
           {key === "atr" && <div className="grid gap-3 sm:hidden" data-testid="atr-mobile-cards">
             {filtered.map((it) => {
               const { linked, ambiguous } = resolveLinkedProsumer(it, linkedProsumer);
+              const equipmentLabel = linked ? (() => {
+                const inverters = linked.cef?.inverters || [];
+                const inverterNames = [...new Set(inverters.map((item) => item.brand_model).filter(Boolean))].map((name) => \`Invertor: \${name}\`);
+                const panelCounts = new Map();
+                for (const inverter of inverters) {
+                  const model = String(inverter.panel_model || "").trim();
+                  if (!model) continue;
+                  const count = (inverter.strings || []).reduce((sum, item) => sum + (Number(item.panels) || 0), 0) * Math.max(1, Number(inverter.count) || 1);
+                  panelCounts.set(model, (panelCounts.get(model) || 0) + count);
+                }
+                const panelNames = [...panelCounts].map(([model, count]) => \`Panouri: \${model}\${count ? \` (\${count} buc.)\` : ""}\`);
+                const batteries = [
+                  ...inverters.filter((item) => item.battery_mode === "own" && item.battery?.model)
+                    .map((item) => ({ ...item.battery, modules: (Number(item.battery.modules) || 1) * Math.max(1, Number(item.count) || 1) })),
+                  ...(linked.cef?.shared_batteries || []),
+                ];
+                if (!batteries.length && (linked.battery || linked.storage)) {
+                  const legacy = linked.battery || linked.storage;
+                  batteries.push(typeof legacy === "string" ? { model: legacy } : legacy);
+                }
+                const batteryNames = [...new Set(batteries.map((battery) => [
+                  battery.model || "Baterie",
+                  battery.modules > 1 ? \`× \${battery.modules}\` : "",
+                  battery.voltage ? \`\${battery.voltage} V\` : "",
+                  battery.ah ? \`\${battery.ah} Ah\` : "",
+                  battery.i_max ? \`I max \${battery.i_max} A\` : "",
+                  battery.kwh ? \`\${battery.kwh} kWh\` : "",
+                  battery.coupling ? \`cuplare \${battery.coupling}\` : "",
+                ].filter(Boolean).join(" · "))].map((name) => \`Baterie: \${name}\`);
+                return [...inverterNames, ...panelNames, ...batteryNames].join(" · ") || "În dosar";
+              })() : ambiguous ? "Selectează dosarul prosumator în cerere" : "Nu este asociat un dosar prosumator";
               const isDeer = /deer|distributie energie electrica romania/i.test(String(it.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
               return <article key={it.id} className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: "var(--line)" }} data-testid={`atr-mobile-card-${it.id}`}>
                 <div className="flex items-start justify-between gap-3">
@@ -670,7 +701,7 @@ export default function ModulePage({ moduleKey }) {
                   <div><dt style={{ color: "var(--muted)" }}>Procedură</dt><dd className="mt-0.5 font-semibold">{it.deer_case || it.request_type || "De selectat"}</dd></div>
                   <div><dt style={{ color: "var(--muted)" }}>POD</dt><dd className="mt-0.5 font-semibold">{it.pod || "De completat"}</dd></div>
                   <div><dt style={{ color: "var(--muted)" }}>Putere absorbită</dt><dd className="mt-0.5 font-semibold">{it.p_abs_kw ? `${it.p_abs_kw} kW` : "—"}</dd></div>
-                  <div><dt style={{ color: "var(--muted)" }}>Echipamente</dt><dd className="mt-0.5 font-semibold">{linked ? [...new Set((linked.cef?.inverters || []).map((item) => item.brand_model).filter(Boolean))].join(", ") || "În dosar" : ambiguous ? "Selectează dosarul prosumator în cerere" : "Nu este asociat un dosar prosumator"}</dd></div>
+                  <div><dt style={{ color: "var(--muted)" }}>Echipamente</dt><dd className="mt-0.5 font-semibold">{equipmentLabel}</dd></div>
                 </dl>
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <button type="button" className="min-h-10 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openEdit(it)} data-testid={`edit-mobile-${it.id}`}>Editează cererea</button>
