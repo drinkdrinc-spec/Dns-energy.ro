@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from ai_provider import LlmChat, UserMessage, TextDelta, StreamDone, ImageContent
 
 import server as S
+from ai_extract import _parse
 import cef as CEF
 
 db, api, get_current_user, logger = S.db, S.api_router, S.get_current_user, S.logger
@@ -344,8 +345,7 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
                 raw += ev.content
             elif isinstance(ev, StreamDone):
                 break
-        match = re.search(r"\{[\s\S]*\}", raw)
-        extracted = json.loads(match.group(0)) if match else {}
+        extracted = _parse(raw)
     except Exception:
         logger.exception("Equipment datasheet extraction failed")
         raise HTTPException(status_code=502, detail="AI-ul nu a putut extrage datele acum. Poți completa manual.")
@@ -432,8 +432,7 @@ async def run_precheck(summary: dict, what: str) -> list:
               + json.dumps(summary, ensure_ascii=False, default=str)[:14000])
     try:
         out = await collect(new_chat("Ești verificator de dosare electrice pentru D-ENERGY. " + RULES), prompt)
-        m = re.search(r"\{.*\}", out, re.S)
-        raw = (json.loads(m.group(0)) if m else {}).get("items") or []
+        raw = _parse(out).get("items") or []
     except Exception as e:
         logger.error(f"AI precheck failed: {e}")
         raise HTTPException(status_code=502, detail="Verificarea AI nu a putut fi efectuată acum. Poți continua și fără ea.")
