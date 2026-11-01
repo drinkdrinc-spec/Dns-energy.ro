@@ -2174,6 +2174,97 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
     name = f"{'DOSAR_SPOR_PUTERE' if full else 'ANEXA1_DEER'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and incomplete else ''}.pdf"
     return Response(content=o.getvalue(), media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
 
+@api_router.get("/power/{item_id}/package.zip")
+async def power_package(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    """Create a transfer-ready ZIP with the dossier, OD annex, source files and separate schema/PRAM."""
+    import io
+    import os
+    import re
+    import zipfile
+
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "power", item_id)
+    package = io.BytesIO()
+    notes = [
+        "DNS Energy — pachet pentru depunerea cererii de spor / racordare.",
+        "Verificați documentele, datele și versiunea formularelor în portalul oficial al operatorului înainte de depunere.",
+        "Documentele generate sunt marcate ciornă când lipsesc date sau aprobarea tehnică; pachetul nu atestă conformitatea legală.",
+    ]
+    total_size = 0
+    max_size = 100 * 1024 * 1024
+
+    def add_file(archive, arcname, payload):
+        nonlocal total_size
+        payload = bytes(payload)
+        if len(payload) > max_size or total_size + len(payload) > max_size:
+            notes.append(f"Fișier omis, limita pachetului de 100 MB a fost depășită: {arcname}")
+            return False
+        safe_parts = [part for part in str(arcname).replace("\\", "/").split("/") if part not in ("", ".", "..")]
+        safe_name = "/".join(safe_parts) or "document"
+        archive.writestr(safe_name, payload)
+        total_size += len(payload)
+        return True
+
+    client = await get_client(user["id"], rec) or {}
+    client_name = str(client.get("name") or rec.get("client_name") or "client")
+    safe_client = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in client_name).strip().replace(" ", "_") or "client"
+    pdf_response = await power_pdf(item_id, full=1, authorization=authorization, auth=auth)
+
+    with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        add_file(archive, f"DOSAR_SPOR_PUTERE_{safe_client}.pdf", pdf_response.body)
+
+        try:
+            official_response = await power_official_annex(item_id, authorization=authorization, auth=auth)
+            disposition = official_response.headers.get("content-disposition", "")
+            match = re.search(r'filename="?([^";]+)"?', disposition, re.I)
+            official_name = os.path.basename(match.group(1)) if match else "Anexa1_oficiala_OD"
+            add_file(archive, f"Anexe oficiale/{official_name}", official_response.body)
+            notes.append(f"Formular oficial inclus: {official_name}. Verificați și semnați varianta cerută de operator.")
+        except HTTPException as exc:
+            notes.append(f"Formularul oficial OD nu a putut fi inclus automat (HTTP {exc.status_code}): {exc.detail}")
+
+        owner_prefix = f"{APP_NAME}/uploads/{user['id']}/"
+        attachment_count = 0
+        for slot, files in (rec.get("attachments") or {}).items():
+            for entry in files or []:
+                path = str((entry or {}).get("storage_path") or "")
+                original = os.path.basename(str((entry or {}).get("original_filename") or f"{slot}.pdf"))
+                if not path.startswith(owner_prefix):
+                    notes.append(f"Fișier atașat ignorat deoarece nu aparține spațiului acestui cont: {original}")
+                    continue
+                try:
+                    payload, _content_type = get_object(path)
+                    if add_file(archive, f"Documente atașate/{slot}/{original}", payload):
+                        attachment_count += 1
+                except Exception:
+                    logger.exception("Power package attachment could not be read (%s)", path)
+                    notes.append(f"Fișier atașat indisponibil în stocare: {original}")
+        notes.append(f"Fișiere atașate separat incluse: {attachment_count}.")
+
+        pros_id = rec.get("pros_id")
+        if pros_id and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": pros_id}, {"id": 1}):
+            for key, label, filename in (
+                ("schema", "Schema monofilară", f"Schema_monofilară_{safe_client}.pdf"),
+                ("priza", "Buletin PRAM / priză de pământ", f"Buletin_PRAM_{safe_client}.pdf"),
+            ):
+                try:
+                    response = await dossier_file(pros_id, key, download=1, authorization=authorization, auth=auth)
+                    add_file(archive, f"Documente separate/{filename}", response.body)
+                    notes.append(f"{label}: inclus separat; verificați marcajul ciornă/aprobat și completitudinea înainte de depunere.")
+                except HTTPException as exc:
+                    notes.append(f"{label}: nu a putut fi generat/atașat (HTTP {exc.status_code}): {exc.detail}")
+        else:
+            notes.append("Schema și PRAM separat nu au putut fi extrase: dosarul de spor nu are un dosar de prosumator asociat.")
+
+        archive.writestr("CITESTE_INAINTE.txt", "\n".join(notes))
+
+    return Response(
+        content=package.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": disp("attachment", f"Pachet_depunere_spor_{safe_client}.zip")},
+    )
+
+
 # ---------------- Semnare la distanță (semnătură electronică simplă) ----------------
 import hashlib
 import re
