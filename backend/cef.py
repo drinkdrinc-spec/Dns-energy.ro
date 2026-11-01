@@ -161,13 +161,17 @@ def check(cef: dict) -> dict:
             if not b_kwh and n(bat.get("ah")) and n(bat.get("voltage")):
                 b_kwh = n(bat.get("ah")) * n(bat.get("voltage")) / 1000 * (int(n(bat.get("modules"), 1)) or 1)
             tot_kwh += b_kwh * unit_count
-            if inv.get("type") == "On-grid" and bat.get("coupling", "DC") == "DC":
+            coupling = str(bat.get("coupling") or "").strip().upper()
+            if not coupling:
+                w.append(f"{tag}: cuplarea bateriei nu este declarată; confirmați AC/DC din fișa tehnică înainte de validarea schemei.")
+            if inv.get("type") == "On-grid" and coupling == "DC":
                 e.append(f"{tag}: invertor on-grid cu baterie cuplată DC — necesită invertor hibrid sau cuplare AC.")
             bv, vmin_, vmax_ = n(bat.get("voltage")), n(inv.get("bat_v_min")), n(inv.get("bat_v_max"))
-            if bv and vmin_ and vmax_ and not (vmin_ <= bv <= vmax_):
-                e.append(f"{tag}: tensiunea bateriei ({bv:g} V) este în afara domeniului acceptat de invertor ({vmin_:g}–{vmax_:g} V) — baterie incompatibilă (HV/LV).")
-            elif bv and not (vmin_ and vmax_) and bat.get("coupling", "DC") == "DC":
-                w.append(f"{tag}: introduceți domeniul de tensiune baterie al invertorului (fișa tehnică) pentru verificarea compatibilității bateriei.")
+            if coupling == "DC":
+                if bv and vmin_ and vmax_ and not (vmin_ <= bv <= vmax_):
+                    e.append(f"{tag}: tensiunea bateriei ({bv:g} V) este în afara domeniului acceptat de invertor ({vmin_:g}–{vmax_:g} V) — baterie incompatibilă (HV/LV).")
+                elif bv and not (vmin_ and vmax_):
+                    w.append(f"{tag}: introduceți domeniul de tensiune baterie al invertorului (fișa tehnică) pentru verificarea compatibilității bateriei.")
             bi, ii = n(bat.get("i_max")), n(inv.get("bat_i_max"))
             if bi and ii and bi > ii:
                 w.append(f"{tag}: bateria permite {bi:g} A, invertorul max. {ii:g} A — curentul va fi limitat de invertor (verificați dimensionarea protecției).")
