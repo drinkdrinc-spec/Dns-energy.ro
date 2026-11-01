@@ -31,6 +31,39 @@ export function PowerDossier({ id, form, setVal }) {
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
   const att = form.attachments || {};
   const recs = form.receptors || [];
+  const selectedPros = pros.find((item) => item.id === form.pros_id);
+  const equipment = selectedPros?.cef?.inverters || [];
+  const totalPanels = equipment.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1), 0);
+  const panelKwp = equipment.reduce((sum, inv) => sum + (Number(inv.panel_w) || 0) * (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1) / 1000, 0)
+    || Number(selectedPros?._kwp || selectedPros?.panel_kwp) || 0;
+  const inverterText = equipment.map((inv) => (inv.brand_model || "Invertor") + " × " + Math.max(1, Number(inv.count || inv.quantity) || 1) + " · " + (inv.p_nom_kw || "?") + " kW");
+  const batteryItems = [
+    ...equipment.filter((inv) => inv.battery_mode === "own" && inv.battery?.model)
+      .map((inv) => ({ ...inv.battery, modules: (Number(inv.battery.modules) || 1) * Math.max(1, Number(inv.count || inv.quantity) || 1) })),
+    ...(selectedPros?.cef?.shared_batteries || []),
+  ];
+  const exportLimitKw = equipment.reduce((sum, inv) => {
+    const count = Math.max(1, Number(inv.count || inv.quantity) || 1);
+    const limit = Number(inv.p_limit_kw) || 0;
+    const max = Number(inv.p_max_kw || inv.p_nom_kw) || 0;
+    return sum + (limit > 0 ? Math.min(limit, max || limit) * count : 0);
+  }, 0);
+  useEffect(() => {
+    if (!selectedPros) return;
+    for (const [key, value] of [["client_name", selectedPros.client_name], ["client_id", selectedPros.client_id],
+      ["address", selectedPros.address], ["pod", selectedPros.pod], ["operator", selectedPros.operator],
+      ["current_supply", selectedPros.supply || selectedPros.cef?.grid?.supply]]) {
+      if (value && !form[key]) setVal(key, value);
+    }
+  }, [selectedPros?.id]);
+  const choosePros = (id) => {
+    setVal("pros_id", id);
+    const item = pros.find((row) => row.id === id);
+    for (const key of ["client_name", "client_id", "address", "pod", "operator", "current_supply"]) {
+      const value = key === "current_supply" ? item?.supply || item?.cef?.grid?.supply : item?.[key];
+      setVal(key, value || "");
+    }
+  };
   const setR = (i, k, v) => setVal("receptors", recs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   const chk = (k, l, def) => <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={form[k] ?? def ?? false} onChange={(e) => setVal(k, e.target.checked)} data-testid={`power-${k}`} />{l}</label>;
   return (
@@ -40,13 +73,24 @@ export function PowerDossier({ id, form, setVal }) {
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="den-field"><label>Tip cerere</label><select className="den-input" value={form.request_kind || "existent"} onChange={(e) => setVal("request_kind", e.target.value)} data-testid="power-kind">
           <option value="existent">Loc de consum existent — depășirea puterii aprobate</option><option value="nou">Loc de consum și de producere nou</option></select></div>
-        <div className="den-field"><label>Dosar de prosumator asociat (date PV + documente automate)</label><select className="den-input" value={form.pros_id || ""} onChange={(e) => setVal("pros_id", e.target.value)} data-testid="power-pros">
-          <option value="">— fără —</option>{pros.map((p) => <option key={p.id} value={p.id}>{p.number} · {p.client_name}</option>)}</select></div>
+        <div className="den-field"><label>Dosar de prosumator asociat (date PV + documente automate)</label><select className="den-input" value={form.pros_id || ""} onChange={(e) => choosePros(e.target.value)} data-testid="power-pros">
+          <option value="">— fără —</option>{pros.map((p) => <option key={p.id} value={p.id}>{p.number} · {p.client_name}</option>)}</select>
+          {selectedPros && <span className="mt-1 block text-[11px]" style={{ color: "var(--muted)" }}>Client, POD, operator și documentele tehnice vor fi preluate din dosarul asociat.</span>}</div>
         <div className="den-field"><label>Putere solicitată (kVA)</label><input className="den-input" value={form.requested_kva || ""} onChange={(e) => setVal("requested_kva", e.target.value)} data-testid="power-kva" /></div>
         <div className="den-field"><label>Data cererii</label><input type="date" className="den-input" value={form.date || ""} onChange={(e) => setVal("date", e.target.value)} data-testid="power-date" /></div>
         {form.request_kind === "nou" && <div className="den-field"><label>Data estimată punere sub tensiune finală</label><input type="date" className="den-input" value={form.energize_date || ""} onChange={(e) => setVal("energize_date", e.target.value)} /></div>}
         <div className="den-field sm:col-span-2"><label>Descrierea modificărilor tehnice față de situația anterioară</label><textarea rows={2} className="den-input" value={form.changes || ""} onChange={(e) => setVal("changes", e.target.value)} data-testid="power-changes" /></div>
       </div>
+      {selectedPros && <section className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="power-linked-equipment">
+        <b className="text-xs">Echipamente incluse în Anexa 1</b>
+        <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+          <span><b>Invertor:</b> {inverterText.length ? inverterText.join("; ") : "nespecificat"}</span>
+          <span><b>Panouri:</b> {selectedPros.panels || "nespecificat"}{totalPanels ? " · " + totalPanels + " buc. · " + panelKwp.toFixed(3) + " kWp DC" : panelKwp ? " · " + panelKwp.toFixed(3) + " kWp DC" : ""}</span>
+          <span><b>Limită injecție configurată:</b> {exportLimitKw > 0 ? exportLimitKw.toFixed(3) + " kW AC" : "nedeclarată în setările invertorului"}</span>
+          <span><b>Baterie / BESS:</b> {batteryItems.length ? batteryItems.map((item) => (item.model || "model nespecificat") + " × " + (item.modules || 1) + (item.kwh ? " · " + Number(item.kwh) * (Number(item.modules) || 1) + " kWh" : "") + (item.coupling ? " · cuplare " + item.coupling : "")).join("; ") : "nu este selectată"}</span>
+        </div>
+        <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Fișele, declarațiile, PV-ul de recepție, PRAM-ul și schema se atașează la generare când sunt disponibile și validate în dosarul sursă.</p>
+      </section>}
       <div className="flex flex-wrap gap-4 mt-3">{chk("ask_atr", "Aviz tehnic de racordare + certificare prosumator", true)}{chk("ask_meter", "Înlocuire contor cu contor bidirecțional")}{chk("ask_probe", "Punere sub tensiune pentru probe")}</div>
       <div className="mt-4 text-xs font-bold">1.3 Lista receptoarelor</div>
       {recs.map((r, i) => <div key={i} className="grid grid-cols-[1fr_90px_1fr_24px] gap-2 mt-1" data-testid={`power-rec-${i}`}>
