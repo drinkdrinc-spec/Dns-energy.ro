@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, API, openAuthenticatedFile } from "@/lib/api";
+import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Sparkles, FileDown, FileText, Paperclip, BookOpen } from "lucide-react";
 import { toast } from "sonner";
@@ -76,10 +76,10 @@ export function GeneratedDocs({ id, files, form }) {
         <h3 className="font-bold text-sm">Documente generate automat</h3>
         {form?.request_type === "Spor de putere + prosumator" && <p className="text-xs sm:col-span-2" style={{ color: "var(--muted)" }}>Pentru spor de putere, dosarul PDF înlocuiește Anexa 2 cu Anexa 1 oficială a distribuitorului, dacă formularul PDF este înregistrat. Verificați linkul și versiunea înainte de depunere.</p>}
         {id && <Btn onClick={() => openAuthenticatedFile(docUrl("all", id))} data-testid="doc-all"><FileDown size={15} /> Dosar complet (PDF)</Btn>}
-        {id && <Btn variant="secondary" onClick={() => openAuthenticatedFile(schemaUrl(id))} data-testid="doc-schema"><FileDown size={15} /> Schema monofilară (PDF)</Btn>}
+        {id && <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(schemaUrl(id), `schema_monofilara_${id}.pdf`)} data-testid="doc-schema"><FileDown size={15} /> Descarcă schema monofilară (PDF)</Btn>}
       </div>
       {id && <div className="mb-3 flex flex-wrap gap-2" aria-label="Descarcă separat documentele de predare">
-        <Btn variant="secondary" onClick={() => openAuthenticatedFile(docUrl("buletin_priza", id))} data-testid="doc-pram-standalone"><FileDown size={15} /> Buletin PRAM separat (PDF)</Btn>
+        <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(docUrl("buletin_priza", id), `buletin_pram_${id}.pdf`)} data-testid="doc-pram-standalone"><FileDown size={15} /> Descarcă buletinul PRAM separat (PDF)</Btn>
         <Btn variant="secondary" onClick={() => openAuthenticatedFile(docUrl("pv_pif", id))} data-testid="doc-pif-standalone"><FileDown size={15} /> Proces-verbal PIF separat (PDF)</Btn>
       </div>}
       {!id ? <p className="text-xs" style={{ color: "var(--muted)" }}>Salvează dosarul pentru a genera documentele.</p> : (
