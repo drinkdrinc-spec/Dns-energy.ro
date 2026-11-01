@@ -31,6 +31,16 @@ DEER_FORMS_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/"
 # source of truth; direct PDF URLs are used only when the registry is empty.
 RER_FORMS_URL = "https://www.reteleelectrice.ro/cereri-documente/"
 RER_STORAGE_FORM_URL = "https://www.reteleelectrice.ro/wp-content/uploads/Anexa-aferenta-instalatiilor-de-stocare.pdf"
+
+DELGaz_FORMS_URL = "https://delgaz.ro/energie-electrica/prosumatori"
+DELGaz_FORM_PDFS = {
+    1: "https://delgaz.ro/getattachment/91755a0d-890c-4357-917a-ac5128ec735a/Cerere_de_racordare_prosumator-Anexa-1.pdf",
+    2: "https://delgaz.ro/getattachment/90cf84fa-708e-46a7-b60b-266364c50098/Notificare_racordare_prosumator-Anexa-2.pdf",
+    3: "https://delgaz.ro/getattachment/e2021264-a5fa-43f4-95d6-3975d8960202/Notificare_certificare_calitate_prosumator-Anexa-3.pdf",
+    4: "https://delgaz.ro/getattachment/d1de9dd7-849d-458f-aed2-3f3fc1694eaf/Cerere_de_racordare_prosumator_programe-Anexa-4.pdf",
+    5: "https://delgaz.ro/getattachment/f0d42548-d9fe-4275-b694-6bfc075842f3/Notificare_racordare_10-8kW-Anexa-5.pdf",
+}
+
 RER_FORM_PDFS = {
     1: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-1-cerere-racordare.pdf",
     2: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-2-cerere-racordare.pdf",
@@ -231,6 +241,14 @@ async def operator_form_links(operator: str = "", scope: str = "atr", user: dict
                 out.append({"id": f"builtin-rer-annex-{annex_no}", "operator": "Retele Electrice",
                             "title": title, "url": url, "status": "sursă oficială", "version": "formular curent",
                             "source_url": RER_FORMS_URL})
+    if op == "delgaz" and scope == "atr":
+        existing_titles = {str(row.get("title") or "").casefold() for row in out}
+        for annex_no, url in DELGaz_FORM_PDFS.items():
+            title = f"Delgaz Grid — Anexa {annex_no} prosumatori"
+            if title.casefold() not in existing_titles:
+                out.append({"id": f"builtin-delgaz-annex-{annex_no}", "operator": "Delgaz Grid",
+                            "title": title, "url": url, "status": "sursă oficială", "version": "formular curent",
+                            "source_url": DELGaz_FORMS_URL})
     return sorted(out, key=lambda f: (f.get("status") in ("link invalid", "versiune nouă detectată"), str(f.get("title") or "")))
 
 
@@ -361,6 +379,16 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
             "status": "sursă oficială",
             "version": "formular curent",
         }]
+    if operator_key == "delgaz" and annex_no in DELGaz_FORM_PDFS:
+        return annex_no, [{
+            "operator": "Delgaz Grid",
+            "kind": "prosumator atr",
+            "title": f"Anexa {annex_no} — formular prosumator Delgaz Grid",
+            "url": DELGaz_FORM_PDFS[annex_no],
+            "source_url": DELGaz_FORMS_URL,
+            "status": "sursă oficială",
+            "version": "formular curent",
+        }]
     return annex_no, []
 
 
@@ -454,7 +482,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
             elif annex_no:
                 note.append(f"Nu există în registru un formular oficial Anexa {annex_no} verificabil pentru operatorul și tipul cererii selectate.")
                 official_pages = {
-                    "delgaz": "https://delgaz.ro/energie-electrica/prosumatori",
+                    "delgaz": DELGaz_FORMS_URL,
                     "oltenia": "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html",
                     "rer": RER_FORMS_URL,
                 }
