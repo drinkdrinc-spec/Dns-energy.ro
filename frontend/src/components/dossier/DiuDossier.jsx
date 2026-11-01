@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { FileDown, RefreshCw, Download, FileType2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, API, openAuthenticatedFile } from "@/lib/api";
@@ -33,7 +33,6 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
   const [pid, setPid] = useState(form.pros_id || "");
   const [docs, setDocs] = useState(null);
   const [importing, setImporting] = useState(false);
-  const autoImportAttempt = useRef("");
   const isTestRecord = (value) => /\bTEST\b/i.test(String(value || ""));
   const isTestDiu = isTestRecord(form.number) || isTestRecord(form.client_name);
   const normalizeClient = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
@@ -55,7 +54,7 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
     try {
       const { data } = await api.post(`/diu/${id}/import-pros`, { pros_id: selectedPid });
       setPid(selectedPid);
-      setForm((current) => ({ ...current, ...data, pros_imported_from: selectedPid }));
+      setForm((current) => ({ ...current, ...data }));
       toast.success("Datele dosarului au fost preluate automat");
       loadDocs();
     } catch (e) {
@@ -63,31 +62,6 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
       toast.error(e.response?.data?.detail || "Nu am putut prelua dosarul");
     } finally { setImporting(false); }
   };
-  useEffect(() => {
-    const selectedId = form.pros_id;
-    if (!id || !selectedId || form.pros_imported_from === selectedId || !pros.some((item) => item.id === selectedId)) return;
-    const key = String(id) + ":" + String(selectedId);
-    if (autoImportAttempt.current === key) return;
-    autoImportAttempt.current = key;
-    let active = true;
-    setImporting(true);
-    api.post("/diu/" + id + "/import-pros", { pros_id: selectedId })
-      .then(({ data }) => {
-        if (!active) return;
-        setPid(selectedId);
-        setForm((current) => ({ ...current, ...data, pros_imported_from: selectedId }));
-        api.get("/diu/" + id + "/docs").then((r) => { if (active) setDocs(r.data); }).catch(() => {});
-      })
-      .catch((e) => {
-        if (active) {
-          autoImportAttempt.current = "";
-          toast.error(e.response?.data?.detail || "Nu am putut prelua automat dosarul prosumator");
-        }
-      })
-      .finally(() => { if (active) setImporting(false); });
-    return () => { active = false; };
-  }, [id, form.pros_id, form.pros_imported_from, pros, setForm]);
-
   const pdf = (doc) => `/diu/${id}/pdf?doc=${doc}`
 
   return (
