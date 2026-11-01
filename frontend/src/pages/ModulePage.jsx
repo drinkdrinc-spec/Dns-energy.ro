@@ -445,6 +445,7 @@ export default function ModulePage({ moduleKey }) {
               <thead>
                 <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
                   {cfg.columns.map((c) => <th key={c.key} className="px-3 py-2.5 font-semibold text-[12px] whitespace-nowrap">{c.label}</th>)}
+                  {key === "atr" && <th className="px-3 py-2.5 font-semibold text-[12px] whitespace-nowrap">Procedură și instalație</th>}
                   <th className="px-3 py-2.5 text-right"></th>
                 </tr>
               </thead>
@@ -452,6 +453,25 @@ export default function ModulePage({ moduleKey }) {
                 {filtered.map((it) => (
                   <tr key={it.id} className="border-t hover:bg-[#fafcff]" style={{ borderColor: "var(--line)" }}>
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
+                    {key === "atr" && (() => {
+                      const normalize = (value) => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+                      const linked = linkedProsumer.find((p) => p.id === it.pros_id || (it.client_id && p.client_id === it.client_id) || (!it.client_id && normalize(p.client_name) === normalize(it.client_name)));
+                      const inverters = linked?.cef?.inverters || [];
+                      const panels = [...new Set(inverters.map((x) => x.panel_model).filter(Boolean))];
+                      const batteries = [
+                        ...inverters.filter((x) => x.battery_mode === "own" && x.battery?.model).map((x) => x.battery.model),
+                        ...(linked?.cef?.shared_batteries || []).map((x) => x.model).filter(Boolean),
+                      ];
+                      const procedure = it.deer_case || (it.operator && /deer|distributie energie electrica/i.test(it.operator) ? "Alege procedura DEER" : "Procedură necompletată");
+                      return <td className="px-3 py-3 min-w-[220px] max-w-[340px] whitespace-normal" data-testid={`atr-summary-${it.id}`}>
+                        <div className="font-semibold">{procedure}</div>
+                        {linked ? <div className="mt-1 text-[11px] leading-5" style={{ color: "var(--muted)" }}>
+                          {inverters.length ? `Invertor: ${[...new Set(inverters.map((x) => x.brand_model).filter(Boolean))].join(", ")}` : "Invertor: nepreluat"}
+                          {panels.length ? ` · Panouri: ${panels.join(", ")}` : ""}
+                          {batteries.length ? ` · Baterie: ${[...new Set(batteries)].join(", ")}` : ""}
+                        </div> : <div className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Fără dosar prosumator asociat</div>}
+                      </td>;
+                    })()}
                     <td className="px-2 py-3 text-left whitespace-normal sticky right-0 z-10 bg-white shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.45)] max-w-[220px]">
                       {key === "clients" && (() => {
                         const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
