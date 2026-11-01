@@ -321,7 +321,7 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
             rows.append([escape(label), "Atașat" if key in attached else "Lipsește"])
     story += [T(rows, [138, 40]), Spacer(1, 5),
               P("Formularul oficial selectat trebuie descărcat și verificat la sursa DEER:", "small"),
-              P(f'<link href="{escape(url)}" color="blue">{escape(url)}</link>', "small"),
+              P(f'<link href="{escape(url)}" color="blue">Deschide formularul oficial DEER</link>', "small"),
               Spacer(1, 5),
               P("Câmpurile care lipsesc din datele clientului sau din cerere rămân necompletate aici; nu se estimează și nu se inventează valori.", "small")]
     buf = io.BytesIO()
