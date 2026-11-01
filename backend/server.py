@@ -1954,6 +1954,17 @@ import test_data as TD
 @api_router.post("/test-dossier")
 async def test_dossier_create(user: dict = Depends(get_current_user)):
     require(user, "admin")
+    existing = await db.prosumator.find_one(
+        {"owner": user["id"], "is_test": True},
+        {"_id": 0, "id": 1, "number": 1, "client_name": 1},
+    )
+    if existing:
+        return {
+            "prosumator_id": existing["id"],
+            "number": existing.get("number"),
+            "client": existing.get("client_name"),
+            "already_exists": True,
+        }
     st = await db.settings.find_one({"owner": user["id"]}, {"_id": 0, "test_email": 1}) or {}
     stamp = datetime.now(timezone.utc).strftime("%m%d%H%M%S")
     files = {}
