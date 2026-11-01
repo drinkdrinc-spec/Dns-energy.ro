@@ -279,38 +279,6 @@ async def _registry_annex1(operator_key: str) -> dict | None:
     """Select an official prosumer Annex 1 from the operator registry, never an arbitrary user URL."""
     if operator_key not in OP_DOMAINS:
         return None
-    # RER publishes stable direct PDFs on its official forms page. Use these when
-    # the tenant's optional forms registry has not been populated.
-    if operator_key == "rer" and annex_no in RER_FORM_PDFS:
-        return annex_no, [{
-            "operator": "Retele Electrice",
-            "kind": "prosumator atr",
-            "title": f"Anexa {annex_no} — formular prosumator Retele Electrice",
-            "url": RER_FORM_PDFS[annex_no],
-            "source_url": RER_FORMS_URL,
-            "status": "sursă oficială",
-            "version": "formular curent",
-        }]
-    if operator_key == "delgaz" and annex_no in DELGaz_FORM_PDFS:
-        return annex_no, [{
-            "operator": "Delgaz Grid",
-            "kind": "prosumator atr",
-            "title": f"Anexa {annex_no} — formular prosumator Delgaz Grid",
-            "url": DELGaz_FORM_PDFS[annex_no],
-            "source_url": DELGaz_FORMS_URL,
-            "status": "sursă oficială",
-            "version": "formular curent",
-        }]
-    if operator_key == "oltenia" and annex_no in OLTENIA_FORM_PDFS:
-        return annex_no, [{
-            "operator": "Distribuție Oltenia",
-            "kind": "prosumator atr",
-            "title": {1: "Anexa 1 prosumator Distribuție Oltenia rev. 06", 2: "Anexa 2 prosumator Distribuție Oltenia rev. 06", 3: "Anexa 3 prosumator Distribuție Oltenia rev. 05", 4: "Anexa 4 prosumator Distribuție Oltenia rev. 05", 5: "Anexa 5 prosumator Distribuție Oltenia rev. 01"}[annex_no],
-            "url": OLTENIA_FORM_PDFS[annex_no],
-            "source_url": OLTENIA_FORMS_URL,
-            "status": "sursă oficială",
-            "version": "formular curent",
-        }]
     rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
     matches = []
     for form in rows:
@@ -402,6 +370,38 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
         annex_no = None
     if annex_no is None:
         return None, []
+    # RER publishes stable direct PDFs on its official forms page. Use these when
+    # the tenant's optional forms registry has not been populated.
+    if operator_key == "rer" and annex_no in RER_FORM_PDFS:
+        return annex_no, [{
+            "operator": "Retele Electrice",
+            "kind": "prosumator atr",
+            "title": f"Anexa {annex_no} — formular prosumator Retele Electrice",
+            "url": RER_FORM_PDFS[annex_no],
+            "source_url": RER_FORMS_URL,
+            "status": "sursă oficială",
+            "version": "formular curent",
+        }]
+    if operator_key == "delgaz" and annex_no in DELGaz_FORM_PDFS:
+        return annex_no, [{
+            "operator": "Delgaz Grid",
+            "kind": "prosumator atr",
+            "title": f"Anexa {annex_no} — formular prosumator Delgaz Grid",
+            "url": DELGaz_FORM_PDFS[annex_no],
+            "source_url": DELGaz_FORMS_URL,
+            "status": "sursă oficială",
+            "version": "formular curent",
+        }]
+    if operator_key == "oltenia" and annex_no in OLTENIA_FORM_PDFS:
+        return annex_no, [{
+            "operator": "Distribuție Oltenia",
+            "kind": "prosumator atr",
+            "title": {1: "Anexa 1 prosumator Distribuție Oltenia rev. 06", 2: "Anexa 2 prosumator Distribuție Oltenia rev. 06", 3: "Anexa 3 prosumator Distribuție Oltenia rev. 05", 4: "Anexa 4 prosumator Distribuție Oltenia rev. 05", 5: "Anexa 5 prosumator Distribuție Oltenia rev. 01"}[annex_no],
+            "url": OLTENIA_FORM_PDFS[annex_no],
+            "source_url": OLTENIA_FORMS_URL,
+            "status": "sursă oficială",
+            "version": "formular curent",
+        }]
     rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
     matches = []
     annex_pattern = re.compile(rf"anexa\s*(?:nr\.?\s*)?{annex_no}\b", re.I)
