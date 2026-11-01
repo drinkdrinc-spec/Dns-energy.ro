@@ -430,6 +430,10 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
     return annex_no, []
 
 
+def _first_present(*values):
+    return next((value for value in values if value not in (None, "")), None)
+
+
 def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict) -> tuple[bytes, int]:
     """Fill only semantically named text fields in official PDF forms; never infer values."""
     try:
@@ -488,7 +492,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         (("pabsorbita", "putereabsorbita", "pabs", "pmaxabsorbita"), r.get("p_abs_kw")),
         (("putereinstalatapv", "putereinstalataproducere", "putereinstalatafotovoltaica", "puterepanouri", "kwpinstalat"), ATR.installed_pv_kwp_for_record(r, p)),
         (("putereevacuatakva", "pevackva", "pmaxevacuatakva"), r.get("p_evac_kva")),
-        (("putereevacuatakw", "pevackw", "pmaxevacuatakw", "putereevacuata", "pevacuare", "pmaxevacuata"), r.get("p_evac_kw") or p.get("power")),
+        (("putereevacuatakw", "pevackw", "pmaxevacuatakw", "putereevacuata", "pevacuare", "pmaxevacuata"), _first_present(r.get("p_evac_kw"), p.get("power"))),
         (("modelpanou", "modelulinpanou", "tipmodelpanou", "tippanou", "tipulpanoului", "modulefotovoltaic"), panel_models or None),
         (("numarpanouri", "numardepanouri", "nrpanouri", "nrdetotalpanouri"), panel_count or None),
         (("modelinvertor", "modelulinvertorului", "tipmodelinvertor", "tipulinvertor", "tipulinvertoarelor", "marcainvertor", "producatorinvertor"), inverter_models or None),
