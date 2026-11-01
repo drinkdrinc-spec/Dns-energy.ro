@@ -334,7 +334,13 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
         return None, []
     case = " ".join(str(rec.get(k) or "") for k in ("deer_case", "request_type")).casefold().replace("ț", "t").replace("ș", "s")
     request_type = ATR.rtype(rec)
-    if "finant" in case:
+    if request_type in ("nou", "temp", "spor", "mod_dep"):
+        # All three operators use Annex 1 for new places and technical changes
+        # that exceed the previously approved power.
+        annex_no = 1
+    elif request_type == "admin":
+        annex_no = 3
+    elif "finant" in case:
         # RER separates AFM/own-funds cases (Annex 2) from other funding
         # programmes (Annex 4); Delgaz and Oltenia use Annex 4 for AFM cases.
         if operator_key == "rer" and any(mark in case for mark in ("afm", "casa verde", "fonduri proprii", "surse proprii")):
@@ -361,9 +367,7 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
         single_phase = bool(supply) and not any(mark in supply for mark in ("trifaz", "400", "three-phase", "3 phase"))
         annex_no = 5 if kwp is not None and kwp <= 10.8 and single_phase else 2
     else:
-        # All three operators use Annex 1 for new places and technical changes
-        # that exceed the previously approved power.
-        annex_no = {"nou": 1, "temp": 1, "spor": 1, "mod_dep": 1, "admin": 3}.get(request_type)
+        annex_no = None
     if annex_no is None:
         return None, []
     rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
