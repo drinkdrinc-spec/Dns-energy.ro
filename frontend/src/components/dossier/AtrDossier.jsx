@@ -35,9 +35,8 @@ function normalizeLocation(value) {
 }
 
 function belongsToClient(item, clientId, clientName) {
-  const sameId = Boolean(item?.client_id && clientId && item.client_id === clientId);
-  const sameName = Boolean(normalizeClientName(item?.client_name) && normalizeClientName(item.client_name) === normalizeClientName(clientName));
-  return sameId || sameName;
+  if (item?.client_id && clientId) return item.client_id === clientId;
+  return Boolean(normalizeClientName(item?.client_name) && normalizeClientName(item.client_name) === normalizeClientName(clientName));
 }
 
 const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schiță de amplasament", "req"], ["cf", "Extras de carte funciară (CF / nr. cadastral)", "req"],
