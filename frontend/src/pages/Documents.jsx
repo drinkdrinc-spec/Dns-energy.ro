@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, fileUrl } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
 import { Upload, FileText, Trash2, Download } from "lucide-react";
@@ -97,7 +97,7 @@ export default function Documents() {
                   <div className="font-semibold text-sm truncate">{d.original_filename}</div>
                   <div className="text-[12px]" style={{ color: "var(--muted)" }}>{d.client_name} · {d.kind} · {d.doc_type}</div>
                 </div>
-                <a href={fileUrl(d.storage_path)} target="_blank" rel="noopener noreferrer" className="p-2 rounded hover:bg-[#eef4ff]" data-testid={`download-${d.id}`}><Download size={16} style={{ color: "var(--blue)" }} /></a>
+                <button type="button" onClick={() => openAuthenticatedFile("/files/" + d.storage_path)} aria-label="Deschide documentul" className="p-2 rounded hover:bg-[#eef4ff]" data-testid={`download-${d.id}`}><Download size={16} style={{ color: "var(--blue)" }} /></button>
                 <button onClick={() => remove(d.id)} className="p-2 rounded hover:bg-[#fff0f0]" data-testid={`del-doc-${d.id}`}><Trash2 size={16} style={{ color: "#b33333" }} /></button>
               </div>
             ))}
