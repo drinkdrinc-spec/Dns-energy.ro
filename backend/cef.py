@@ -81,7 +81,8 @@ def string_calc(s, inv, tmin):
 def check(cef: dict) -> dict:
     cef = cef or {}
     grid = cef.get("grid") or {}
-    tri_grid = "mono" not in str(grid.get("supply") or "Trifazat").lower()
+    supply_known = bool(grid.get("supply"))
+    tri_grid = "mono" not in str(grid.get("supply") or "").lower() if supply_known else False
     tmin = n(cef.get("tmin"), n(grid.get("tmin"), T_MIN_DEFAULT))
     invs = cef.get("inverters") or []
     shared = {b.get("id"): b for b in (cef.get("shared_batteries") or [])}
@@ -93,7 +94,8 @@ def check(cef: dict) -> dict:
         tag = f"Invertor {idx + 1}"
         unit_count = max(1, min(100, int(n(inv.get("count"), 1) or 1)))
         e, w, prop = [], [], {}
-        tri = "mono" not in str(inv.get("phases") or ("Trifazat" if tri_grid else "Monofazat")).lower()
+        phase_known = bool(inv.get("phases") or grid.get("supply"))
+        tri = "mono" not in str(inv.get("phases") or grid.get("supply") or "").lower() if phase_known else False
         p_nom, p_max = n(inv.get("p_nom_kw")), n(inv.get("p_max_kw")) or n(inv.get("p_nom_kw"))
         p_lim = n(inv.get("p_limit_kw")) or p_nom
         vdc_max, mmin, mmax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max"))
@@ -104,7 +106,7 @@ def check(cef: dict) -> dict:
         tot_export += min(p_lim, p_max or p_lim) * unit_count
         if p_lim > p_nom > 0:
             w.append(f"{tag}: limitarea configurată ({p_lim} kW) depășește puterea nominală ({p_nom} kW).")
-        if tri and not tri_grid:
+        if supply_known and tri and not tri_grid:
             e.append(f"{tag}: invertor trifazat pe branșament monofazat — configurație incompatibilă.")
         if not tri and tri_grid and grid.get("supply") and not inv.get("phase"):
             w.append(f"{tag}: invertor monofazat pe racord trifazat — specifică faza (L1/L2/L3).")
@@ -176,7 +178,7 @@ def check(cef: dict) -> dict:
 
         # AC cable & protection
         u = 400 if tri else 230
-        ib = (p_max * 1000 / (math.sqrt(3) * u * 0.95)) if tri else (p_max * 1000 / (u * 0.95))
+        ib = ((p_max * 1000 / (math.sqrt(3) * u * 0.95)) if tri else (p_max * 1000 / (u * 0.95))) if phase_known else 0
         ac = inv.get("ac") or {}
         mat, inst, L, k = ac.get("material") or "Cu", ac.get("install") or "C", n(ac.get("length_m")), n(ac.get("k_correction"), 1)
         loaded = 3 if tri else 2
@@ -186,8 +188,9 @@ def check(cef: dict) -> dict:
         for sct in SECTIONS:
             if p_in and iz(sct, mat, inst, loaded, k) >= p_in and (not L or vdrop_ac(ib, L, sct, mat, tri) <= 3):
                 p_s = sct; break
-        prop["ac"] = {"breaker_a": p_in, "section": p_s, "ib": round(ib, 1), "poles": "4P" if tri else "2P"}
-        if cur_in and cur_s:
+        prop["ac"] = {"breaker_a": p_in, "section": p_s, "ib": round(ib, 1) if phase_known else None,
+                      "poles": ("4P" if tri else "2P") if phase_known else None, "phase_known": phase_known}
+        if cur_in and cur_s and phase_known:
             izv = iz(cur_s, mat, inst, loaded, k)
             if cur_in < ib:
                 e.append(f"{tag}: disjunctor AC {cur_in:g} A sub curentul de calcul Ib = {ib:.1f} A.")
@@ -198,7 +201,10 @@ def check(cef: dict) -> dict:
                 w.append(f"{tag}: cădere de tensiune AC {du:.2f}% > 3% pe {L:g} m.")
             prop["ac"].update({"iz": round(izv, 1), "du": round(du, 2)})
         elif p_nom:
-            w.append(f"{tag}: completează disjunctorul și secțiunea cablului AC (propunere: {p_in} A, {p_s} mm² {mat}).")
+            if phase_known:
+                w.append(f"{tag}: completează disjunctorul și secțiunea cablului AC (propunere: {p_in} A, {p_s} mm² {mat}).")
+            else:
+                w.append(f"{tag}: fazele racordului/invertorului nu sunt precizate; secțiunea și protecția AC nu se propun până la confirmarea monofazat/trifazat.")
 
         # DC cable & protections
         dc = inv.get("dc") or {}
@@ -230,7 +236,7 @@ def check(cef: dict) -> dict:
         if spd and voc_cold_max and spd < voc_cold_max:
             e.append(f"{tag}: SPD DC Ucpv {spd:g} V sub Voc la rece ({voc_cold_max:.0f} V).")
 
-        out_inv.append({"index": idx + 1, "count": unit_count, "tri": tri, "kwp": round(kwp, 3), "p_nom": p_nom, "p_max": p_max, "p_limit": p_lim,
+        out_inv.append({"index": idx + 1, "count": unit_count, "tri": tri if phase_known else None, "phase_known": phase_known, "kwp": round(kwp, 3), "p_nom": p_nom, "p_max": p_max, "p_limit": p_lim,
                         "dc_ac_ratio": round(ratio, 2), "battery_kwh": round(b_kwh, 2), "strings": [{k2: (round(v, 1) if isinstance(v, float) else v) for k2, v in s.items()} for s in strings],
                         "isc_mppt_max": round(isc_max, 1), "voc_cold_max": round(voc_cold_max, 0), "proposals": prop, "errors": e, "warnings": w})
         errors += e; warnings += w
@@ -250,12 +256,12 @@ def check(cef: dict) -> dict:
     br_kw = n(grid.get("bransament_kw"))
     if br_kw and tot_export > br_kw:
         errors.append(f"Puterea evacuată totală ({tot_export:g} kW) depășește puterea aprobată a branșamentului ({br_kw:g} kW) — necesar spor de putere / ATR.")
-    if not tri_grid and tot_export > 3.68 * max(1, len(invs)) and invs:
+    if supply_known and not tri_grid and tot_export > 3.68 * max(1, len(invs)) and invs:
         warnings.append("Racord monofazat cu putere mare — verifică cerințele OD privind dezechilibrul (uzual trifazat peste ~3,7–5 kW).")
-    i_br = (br_kw * 1000 / (math.sqrt(3) * 400 * 0.95)) if tri_grid else (br_kw * 1000 / (230 * 0.95))
+    i_br = ((br_kw * 1000 / (math.sqrt(3) * 400 * 0.95)) if tri_grid else (br_kw * 1000 / (230 * 0.95))) if br_kw and supply_known else 0
     anti_auto = tot_kwp > 27 or tot_kw > 27 or i_br > 63
     anti = bool(grid.get("anti_required")) or anti_auto
-    main_proposal = up(MAIN_PROTECTION, i_br) if br_kw else None
+    main_proposal = up(MAIN_PROTECTION, i_br) if br_kw and supply_known else None
     anti_breaker_proposal = up(MAIN_BREAKERS, i_br) if anti and i_br else None
     if br_kw and i_br > MAIN_PROTECTION[-1]:
         warnings.append("Curentul de calcul al branșamentului depășește domeniul componentelor din catalogul de propuneri (2.000 A); este necesară proiectarea echipamentului de putere și selectivitatea protecțiilor.")
@@ -276,7 +282,7 @@ def check(cef: dict) -> dict:
             warnings.append("Coloana BMP–TG nu poate fi dimensionată automat în limitele tabelului disponibil (max. 120 mm² / pozare selectată). Pentru curenți mari sunt necesare conductoare în paralel și proiect dedicat; aplicația nu ghicește secțiunea.")
     selected_section = n(grid.get("column_section"))
     selected_breaker = n(grid.get("bmp_a")) or main_proposal or 0
-    if selected_section:
+    if selected_section and supply_known:
         selected_iz = iz(selected_section, column_material, column_install, 3 if tri_grid else 2, n(grid.get("column_k_correction"), 1))
         if selected_breaker > selected_iz:
             errors.append(f"Protecția BMP ({selected_breaker:g} A) depășește Iz = {selected_iz:.0f} A a coloanei BMP–TG ({selected_section:g} mm²) — cablul nu este protejat.")
@@ -284,11 +290,13 @@ def check(cef: dict) -> dict:
             selected_du = vdrop_ac(i_br, column_length, selected_section, column_material, tri_grid)
             if selected_du > 3:
                 warnings.append(f"Căderea de tensiune pe coloana BMP–TG este {selected_du:.2f}% > 3% recomandat.")
+    if selected_section and not supply_known:
+        warnings.append("Tipul branșamentului lipsește; secțiunea și protecția coloanei nu pot fi verificate.")
     return {"totals": {"kwp": round(tot_kwp, 3), "inverters_kw": round(tot_kw, 2), "inverters_kw_max": round(tot_kwmax, 2),
                        "export_kw": round(tot_export, 2), "storage_kwh": round(tot_kwh, 2),
                        "panels": sum(s["panels"] * i.get("count", 1) for i in out_inv for s in i["strings"]),
                        "inverters": sum(i.get("count", 1) for i in out_inv)},
-            "grid": {"tri": tri_grid, "bransament_kw": br_kw, "i_br": round(i_br, 1) if br_kw else 0,
+            "grid": {"tri": tri_grid if supply_known else None, "bransament_kw": br_kw, "i_br": round(i_br, 1) if br_kw and supply_known else 0,
                      "main_proposal": main_proposal, "main_section_proposal": column_section, "main_section_iz": round(column_iz, 1) if column_iz else None, "main_section_du": round(column_du, 2) if column_du is not None else None, "anti_breaker_proposal": anti_breaker_proposal, "anti_breaker_note": "întreruptor motorizat cu bobină de declanșare; confirmați curba, Icu/Ics și schema din ATR" if anti_breaker_proposal else None, "anti": anti, "anti_auto": anti_auto},
             "inverters": out_inv, "errors": errors, "warnings": warnings, "tmin": tmin,
             "note": "Valorile propuse sunt orientative (IEC 60364-5-52 / I7). Se validează de personal autorizat ANRE conform instrucțiunilor producătorului."}
@@ -333,14 +341,15 @@ def from_legacy(rec: dict) -> dict:
         return rec
     cnt = max(1, int(n(rec.get("inverter_count"), 1) or 1))
     pc = int(n(rec.get("panel_count"), 0) or 0)
-    tri = "mono" not in str(rec.get("supply") or "").lower()
+    legacy_supply = rec.get("supply") or (cef.get("grid") or {}).get("supply")
+    legacy_phase = ("Trifazat" if "mono" not in str(legacy_supply).lower() else "Monofazat") if legacy_supply else None
     bat = None
     if rec.get("battery") or rec.get("battery_kwh"):
         bat = {"model": rec.get("battery"), "kwh": n(rec.get("battery_kwh"), None), "voltage": n(rec.get("battery_v"), None), "ah": n(rec.get("battery_ah"), None), "modules": 1}
     invs = []
     for k in range(cnt):
         share = pc // cnt + (1 if k < pc % cnt else 0)
-        invs.append({"brand_model": rec.get("inverter"), "phases": "Trifazat" if tri else "Monofazat", "p_nom_kw": n(rec.get("inverter_kw"), None),
+        invs.append({"brand_model": rec.get("inverter"), **({"phases": legacy_phase} if legacy_phase else {}), "p_nom_kw": n(rec.get("inverter_kw"), None),
                      "type": "hibrid" if bat else "on-grid", "panel_model": rec.get("panels"), "panel_w": n(rec.get("panel_w"), None),
                      "strings": [{"panels": share, "mppt": 1, "aggregate": True}] if share else [],
                      "battery_mode": "own" if bat and k == 0 else "none", "battery": bat if k == 0 else None, "legacy": True})
