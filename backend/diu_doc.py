@@ -143,7 +143,7 @@ def doc_memoriu(ctx, r, pos):
             B("bullets", ["Protecția la suprasarcină și scurtcircuit se realizează cu întreruptoarele automate indicate în schema monofilară a tabloului.",
                           "Protecția împotriva șocurilor electrice prin atingere indirectă: dispozitive diferențiale (DDR) pe circuitele indicate și legare la pământ "
                           f"(sistem {ctx.v('earthing')}), valorile măsurate fiind consemnate în buletinele PRAM anexate.",
-                          "Verificările la punerea în funcțiune s-au efectuat conform HD 60364-6 și normativului I7/2011; rezultatele sunt cele din buletinele PRAM."]),
+                          "Verificările la punerea în funcțiune trebuie efectuate și documentate conform HD 60364-6 și normativului I7/2011. Acest memoriu nu atestă efectuarea măsurătorilor; anexați numai buletinele completate cu rezultate reale."]),
             B("b", "7. Normative aplicate"),
             B("bullets", ["Normativ I7/2011 — proiectarea, execuția și exploatarea instalațiilor electrice aferente clădirilor", "SR HD 60364 — instalații electrice de joasă tensiune",
                           "SR EN IEC 62446-1 — sisteme fotovoltaice (dacă este cazul)", "Regulamentul ANRE privind racordarea utilizatorilor la rețelele electrice de interes public"]),
