@@ -334,6 +334,11 @@ export default function ModulePage({ moduleKey }) {
   const hiddenTestCount = ["clients", "prosumator", "diu"].includes(key) ? items.filter(isTestRecord).length : 0;
   const onlyTestRecords = items.length > 0 && items.every(isTestRecord);
   const visibleItems = showTestRecords === true ? items : (["clients", "prosumator", "diu"].includes(key) ? items.filter((item) => !isTestRecord(item)) : items);
+  const showTestDossiers = () => {
+    setQ("");
+    setShowTestRecords(true);
+    window.setTimeout(() => document.querySelector('[data-testid="saved-records"]')?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  };
   const filtered = useMemo(() => {
     if (!q) return visibleItems;
     const ql = q.toLowerCase();
@@ -390,6 +395,10 @@ export default function ModulePage({ moduleKey }) {
               <Btn variant="secondary" onClick={openNew} data-testid="prosumer-manual-start"><Plus size={15} /> Introducere manuală</Btn>
             </div>
             <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Datele extrase rămân de verificat. Sistemul nu completează măsurători reale în locul instalatorului.</p>
+            {key === "prosumator" && hiddenTestCount > 0 && <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-dashed p-3" style={{ borderColor: "var(--line)", background: "#fff" }}>
+              <Btn variant="secondary" onClick={showTestDossiers} data-testid="show-test-dossiers">Deschide dosarele demonstrative ({hiddenTestCount})</Btn>
+              <span className="text-xs leading-5" style={{ color: "var(--muted)" }}>Înregistrări sintetice TEST, marcate separat; le poți folosi pentru a vedea dosarul, schema și documentele generate.</span>
+            </div>}
             {role === "admin" && hiddenTestCount === 0 && <div className="mt-4 rounded-xl border border-dashed p-3" style={{ borderColor: "var(--line)", background: "#fff" }}>
               <div className="flex flex-wrap items-center gap-3">
                 <Btn variant="secondary" onClick={createTestDossier} disabled={creatingTestDossier} data-testid="create-test-dossier">
@@ -488,7 +497,7 @@ export default function ModulePage({ moduleKey }) {
         </div>
       )}
 
-      <div className="den-panel">
+      <div className="den-panel" data-testid="saved-records">
         {onlyTestRecords && showTestRecords === true && <div className="mb-4 rounded-lg border px-3 py-2 text-xs font-medium" style={{ borderColor: "#f2d28c", background: "#fff9e9", color: "#73520b" }} role="status">Sunt afișate dosare demonstrative marcate TEST. Folosește-le numai pentru verificarea fluxului; nu conțin date reale și nu se depun.</div>}
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({visibleItems.length})</span></h2>
