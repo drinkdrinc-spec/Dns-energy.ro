@@ -550,7 +550,7 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
     official = (
         "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de",
         "sma-solar.com", "fox-ess.com", "aikosolar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
-        "risenenergy.com", "bydbatterybox.com", "dyness.com", "pylontech.com.cn", "pylontech.us", "solaxpower.com",
+        "risenenergy.com", "bydbatterybox.com", "dyness.com", "pylontech.com.cn", "pylontech.us", "solaxpower.com", "jinkosolar.eu",
         "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro",
     )
     if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in official):
@@ -923,7 +923,8 @@ async def seed_catalog(owner: str):
     await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
     await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
     existing = await db.catalog.find({"owner": owner}, {"id": 1, "category": 1, "brand_model": 1,
-        "datasheet_url": 1, "conformity_url": 1, "_id": 0}).to_list(10000)
+        "datasheet_url": 1, "conformity_url": 1, "datasheet_source_url": 1, "conformity_source_url": 1,
+        "_id": 0}).to_list(10000)
     by_key = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()): x for x in existing}
     missing = []
     for item in CATALOG_SEED:
@@ -932,7 +933,7 @@ async def seed_catalog(owner: str):
         if row:
             # Backfill manufacturer source links without overwriting a link the user already set.
             source_updates = {f"{kind}_url": item[f"{kind}_url"] for kind in ("datasheet", "conformity")
-                              if item.get(f"{kind}_url") and not row.get(f"{kind}_url")}
+                              if item.get(f"{kind}_url") and not row.get(f"{kind}_url") and not row.get(f"{kind}_source_url")}
             if source_updates:
                 await db.catalog.update_one({"id": row["id"], "owner": owner}, {"$set": source_updates})
             continue
