@@ -532,10 +532,10 @@ export default function ModulePage({ moduleKey }) {
                           <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/pif/pdf`, `pif_${it.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
                           <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/file/priza`, `pram_priza_${it.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
                           {diu && <>
-                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`)}>PRAM DI-U</button>
-                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_cont`)}>Continuitate</button>
-                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_izol`)}>Izolație</button>
-                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_ddr`)}>DDR</button>
+                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`, `pram_priza_diu_${diu.id.slice(0, 8)}.pdf`)}>Descarcă PRAM priză</button>
+                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_cont`, `pram_continuitate_${diu.id.slice(0, 8)}.pdf`)}>Descarcă continuitate</button>
+                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_izol`, `pram_izolatie_${diu.id.slice(0, 8)}.pdf`)}>Descarcă izolație</button>
+                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_ddr`, `pram_ddr_${diu.id.slice(0, 8)}.pdf`)}>Descarcă DDR</button>
                           </>}
                         </span>;
                       })()}
