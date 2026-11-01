@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, API, openAuthenticatedFile } from "@/lib/api";
+import { api, API, downloadAuthenticatedFile, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Slot } from "@/components/dossier/PowerDossier";
 import { Plus, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
@@ -281,6 +281,7 @@ export function AtrDossier({ id, form, setVal }) {
       <div className="flex flex-wrap gap-2 mt-4">
         {id ? <>
           <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(pdf(id, 0))} data-testid="atr-cerere-pdf">Precompletare ATR (PDF)</Btn>
+          <Btn type="button" onClick={() => downloadAuthenticatedFile(`/atr/${encodeURIComponent(id)}/package.zip`, "Pachet_ATR_anexe.zip")} data-testid="atr-package-zip" title="Cererea ATR și anexele disponibile pentru procedura și operatorul selectat">Cerere + anexe (ZIP)</Btn>
           <Btn type="button" onClick={() => openAuthenticatedFile(pdf(id, 1))} data-testid="atr-full-pdf">Dosar ATR — PDF unic</Btn>
           <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>
         </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați cererea pentru a genera documentele.</span>}
