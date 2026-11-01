@@ -586,7 +586,35 @@ export default function ModulePage({ moduleKey }) {
               </article>;
             })}
           </div>}
-          <div className={["clients", "prosumator"].includes(key) ? "hidden overflow-x-auto sm:block" : "overflow-x-auto"}>
+          {key === "atr" && <div className="grid gap-3 sm:hidden" data-testid="atr-mobile-cards">
+            {filtered.map((it) => {
+              const linked = linkedProsumer.find((p) => it.pros_id
+                ? p.id === it.pros_id && (!it.client_id || !p.client_id || p.client_id === it.client_id)
+                : Boolean(it.client_id && p.client_id === it.client_id && it.pod && p.pod === it.pod));
+              const isDeer = /deer|distributie energie electrica romania/i.test(String(it.operator || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, ""));
+              return <article key={it.id} className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: "var(--line)" }} data-testid={`atr-mobile-card-${it.id}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-sm font-bold">{it.client_name || "Solicitant necompletat"}</h3>
+                    <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{it.operator || "Operator necompletat"}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold" style={{ background: linked ? "#dcfce7" : "#fff7ed", color: linked ? "#166534" : "#9a6700" }}>{linked ? "Echipamente legate" : "Lipsește dosar PV"}</span>
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                  <div><dt style={{ color: "var(--muted)" }}>Procedură</dt><dd className="mt-0.5 font-semibold">{it.deer_case || it.request_type || "De selectat"}</dd></div>
+                  <div><dt style={{ color: "var(--muted)" }}>POD</dt><dd className="mt-0.5 font-semibold">{it.pod || "De completat"}</dd></div>
+                  <div><dt style={{ color: "var(--muted)" }}>Putere absorbită</dt><dd className="mt-0.5 font-semibold">{it.p_abs_kw ? `${it.p_abs_kw} kW` : "—"}</dd></div>
+                  <div><dt style={{ color: "var(--muted)" }}>Echipamente</dt><dd className="mt-0.5 font-semibold">{linked ? [...new Set((linked.cef?.inverters || []).map((item) => item.brand_model).filter(Boolean))].join(", ") || "În dosar" : "Se preiau din dosarul prosumator"}</dd></div>
+                </dl>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button type="button" className="min-h-10 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openEdit(it)} data-testid={`edit-mobile-${it.id}`}>Editează cererea</button>
+                  <button type="button" className="min-h-10 rounded-lg px-3 text-xs font-semibold text-white" style={{ background: "var(--blue)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/package.zip", "Pachet_ATR.zip")} data-testid={`atr-package-mobile-${it.id}`}>Descarcă dosarul ZIP</button>
+                  {isDeer && <button type="button" className="col-span-2 min-h-10 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/official-docx", "Anexa_DEER_completata_" + it.id.slice(0, 8) + ".docx")}>Descarcă Anexa DEER completată</button>}
+                </div>
+              </article>;
+            })}
+          </div>}
+          <div className={["clients", "prosumator", "atr"].includes(key) ? "hidden overflow-x-auto sm:block" : "overflow-x-auto"}>
             <table className="w-full text-sm" data-testid="items-table">
               <thead>
                 <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
