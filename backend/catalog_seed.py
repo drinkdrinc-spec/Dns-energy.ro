@@ -69,5 +69,12 @@ SEED = [
        "notes": "Parametri STC/coeficienți din fișa oficială Trina Vertex S+ NEG9R.28 v2024-C. Declarația/certificatele exacte se atașează separat din documentația modelului livrat."}
       for w, voc, vmp, isc, imp in [(430, 51.4, 43.2, 10.59, 9.96), (440, 52.2, 44.0, 10.67, 10.01),
                                     (450, 52.9, 44.6, 10.74, 10.09), (460, 53.8, 45.4, 10.81, 10.14)]),
+    # Huawei exact MB0 variants; ratings and DC limits transcribed from the official family datasheet.
+    *({"category": "Invertor", "brand_model": f"Huawei SUN2000-{kw}K-MB0", "type": "Hibrid", "phases": "Trifazat",
+       "p_nom_kw": kw, "p_max_kw": pmax, "vdc_max": 1100, "mppt_min": 200, "mppt_max": 1000,
+       "mppt_count": 2, "imax_mppt": 30, "battery_voltage": "HV (LUNA2000-S0/S1)",
+       "datasheet_url": "https://solar.huawei.com/admin/asset/v1/pro/view/07801fff280d458d8e4975b6dd9f411e.pdf",
+       "notes": "Date tehnice din fișa oficială Huawei MB0 v02-202403. Declarația UE de conformitate exactă nu este atașată în catalog; adăugați documentul potrivit SKU-ului și cerinței OD."}
+      for kw, pmax in [(12, 13.2), (15, 16.5), (17, 18.7), (20, 22), (25, 27.5)]),
 
 ]
