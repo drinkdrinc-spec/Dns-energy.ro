@@ -78,6 +78,15 @@ class Sheet:
         else:
             self.c.rect(x - 3, y - 1.1, 6, 2.2, stroke=1, fill=0); self.c.line(x - 3, y, x + 3, y)
 
+    def switch_vertical(self, x, y):
+        """Vertical DC breaker symbol; ratings come from the selected equipment data."""
+        self.lw(0.4)
+        self.c.line(x, y - 5, x, y - 3)
+        self.c.line(x, y + 3, x, y + 5)
+        self.c.rect(x - 2.2, y - 3, 4.4, 6, stroke=1, fill=0)
+        self.c.line(x - 1.4, y - 1.6, x + 1.4, y + 1.6)
+        self.lw()
+
     def switch(self, x, y, kind="Q"):
         """horizontal switching device occupying x-5..x+5. kind: Q breaker, S disconnector, LS switch-disconnector, K contactor"""
         c = self.c
@@ -182,10 +191,10 @@ def diagram(S, rec, res, client):
         nm = len({x["mppt"] for x in st}) or 1
         hh = max(13, 1.6 * (nm + 1))
         hs = max(len(st) * 14, 36, 2 * hh + 22) + 10
-        hb = 30 if inv.get("battery_mode") == "own" else (12 if (inv.get("backup") or {}).get("enabled") else 4)
+        hb = 40 if inv.get("battery_mode") == "own" else (12 if (inv.get("backup") or {}).get("enabled") else 4)
         rows.append((hs, hb + 2 * (hh - 13)))
     shared = cef.get("shared_batteries") or []
-    H = 12 + sum(a + b for a, b in rows) + (30 if shared else 0) + 18
+    H = 12 + sum(a + b for a, b in rows) + (46 if shared else 0) + 18
     W = 418 + A
     return W, H, lambda: _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, shared)
 
@@ -278,17 +287,18 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.wire(cx - 9, cy - 13, cx - 9, pe_y, "pe")
         S.text(cx - 12, cy - 16, "PE", 4.2, color=PEC, anchor="r")
         S.wire(2, pe_y, cx - 9, pe_y, "pe")
-        # battery own
+        # Battery branch: DC breaker, datasheet ratings and cable section from selected data.
         if inv.get("battery_mode") == "own":
             bt = inv.get("battery") or {}
-            S.wire(cx, cy - 13, cx, cy - 26, "dc")
-            S.fuse(cx, cy - 19, vertical=True)
+            S.wire(cx, cy - 13, cx, cy - 16, "dc")
+            S.switch_vertical(cx, cy - 19)
+            S.wire(cx, cy - 22, cx, cy - 26, "dc")
             S.battery(cx, cy - 26)
-            S.val(cx + 6, cy - 18.6, f"-F{i + 1}.B ", n(bt.get("fuse_a")), " A DC", size=4.6, w=28)
-            S.text(cx + 6, cy - 23.2, f"-G{i + 1}", 4.8, True)
-            S.val(cx + 6, cy - 25.6, "", bt.get("model"), size=4.6, w=28)
-            kwh = r["battery_kwh"]
-            S.val(cx + 6, cy - 28, "", kwh, f" kWh · {gv(n(bt.get('voltage')), ' V') or '— V'} · {bt.get('coupling') or 'DC'}", size=4.4, w=28)
+            S.val(cx + 6, cy - 17.2, f"-Q{i + 1}.B ", bt.get("breaker_a") or bt.get("fuse_a"),
+                  f" A DC · {gv(n(bt.get('voltage')), ' V') or '[lipsă V]'}", size=4.4, w=29)
+            S.text(cx + 6, cy - 22.4, f"-G{i + 1} {bt.get('model') or '[model baterie lipsă]'}", 4.4, True, w=29)
+            S.val(cx + 6, cy - 26.8, "Cablu ", bt.get("cable_section") or bt.get("section"), " mm² DC", size=4.4, w=29)
+            S.val(cx + 6, cy - 31.2, "I max ", bt.get("i_max"), " A", size=4.4, w=29)
         if (inv.get("backup") or {}).get("enabled"):
             b = inv["backup"]
             S.wire(cx + hh, cy - 10, 152, cy - 10); S.wire(152, cy - 10, 152, cy - 16); S.wire(152, cy - 16, 182, cy - 16)
@@ -316,18 +326,24 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.text(207, cy + 6.4, f"-F{i + 1}.1", 4.6, True)
         S.val(204, cy - 5.6, "", inv.get("rcd_type"), (f" {gv(n(inv.get('rcd_ma')), ' mA')}" if n(inv.get("rcd_ma")) else ""), size=4.4, w=25)
         S.node(BUS, cy)
-    # shared batteries
+    # Shared battery branch with separate DC breaker and visible technical data.
     for k, b in enumerate(shared):
         x = 134 + k * 30
         users = [i for i, inv in enumerate(invs) if inv.get("battery_mode") == "shared" and inv.get("shared_battery_id") == b.get("id")]
         for u in users:
-            S.wire(126 + 0, cys[u] - 13, 126, y_shared + 6, "dc")
+            S.wire(126, cys[u] - 13, 126, y_shared + 10, "dc")
         if users:
-            S.wire(126, y_shared + 6, x, y_shared + 6, "dc"); S.wire(x, y_shared + 6, x, y_shared + 1, "dc")
-        S.battery(x, y_shared)
-        S.text(x + 6, y_shared + 1, f"-G{len(invs) + k + 1} baterie comună", 4.8, True)
-        S.val(x + 6, y_shared - 1.6, "", b.get("model"), size=4.6, w=40)
-        S.text(x + 6, y_shared - 4.2, "INV " + ", ".join(str(u + 1) for u in users), 4.4, color=GREY)
+            S.wire(126, y_shared + 10, x, y_shared + 10, "dc")
+        S.wire(x, y_shared + 10, x, y_shared + 5, "dc")
+        S.switch_vertical(x, y_shared + 2)
+        S.wire(x, y_shared - 1, x, y_shared - 4, "dc")
+        S.battery(x, y_shared - 4)
+        S.text(x + 6, y_shared + 11, f"-G{len(invs) + k + 1} baterie comună", 4.5, True, w=38)
+        S.val(x + 6, y_shared + 7, f"-Q{k + 1}.B ", b.get("breaker_a") or b.get("fuse_a"),
+              f" A DC · {gv(n(b.get('voltage')), ' V') or '[lipsă V]'}", size=4.2, w=38)
+        S.text(x + 6, y_shared + 2.5, str(b.get("model") or "[model baterie lipsă]"), 4.2, w=38)
+        S.val(x + 6, y_shared - 2, "I max ", b.get("i_max"), " A", size=4.2, w=38)
+        S.val(x + 6, y_shared - 6.5, "Cablu ", b.get("cable_section") or b.get("section"), " mm²", size=4.2, w=38)
     # busbar + TG
     if cys:
         ytop, ybot = max(cys), min(cys)
@@ -421,9 +437,7 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
     kw = f"{t['inverters_kw']:g} kW" if t["inverters_kw"] else "[kW lipsă]"
     loc = ", ".join(str(x) for x in [get("address"), get("locality"), ("jud. " + str(get("county"))) if get("county") else None] if x)
     st = approval.get("status")
-    names = "; ".join(f"{a.get('name')} ({a.get('role_label')}, {str(a.get('at'))[:10]})" for a in (approval.get("approvals") or {}).values() if a.get("valid"))
-    stat = {"approved": f"APROBAT — {names or approval.get('name')}",
-            "stale": "APROBARE ANULATĂ — configurația s-a modificat", "draft": "CIORNĂ — neverificat / neaprobat"}.get(st, "CIORNĂ")
+    stat = {"approved": "APROBAT — validare internă înregistrată", "stale": "APROBARE ANULATĂ — configurația s-a modificat", "draft": "CIORNĂ — neverificat / neaprobat"}.get(st, "CIORNĂ")
     if demo:
         stat = "EXEMPLU DEMONSTRATIV — nu este document de execuție"
     rows = [
@@ -431,8 +445,8 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
         [("Beneficiar", get("name"), 110, False), ("Nr. proiect", get("project_no"), 70, False)],
         [("Adresă", loc or None, 110, False), ("Planșa", f"E-0{sheet} ({sheet}/{sheets})", 70, False)],
         [("Titlu", f"Schemă electrică monofilară — CEF {kwp} / {kw}" if sheet == 1 else "Tabel cabluri, aparate și verificări", 110, True), ("Format / scara", f"{fmt} orizontal · fără scară", 70, False)],
-        [("Proiectant", approval.get("designer"), 110, False), ("Data", docgen.ro_date(get("doc_date") or get("date")) or datetime.now().strftime("%d.%m.%Y"), 70, False)],
-        [("Verificator", approval.get("verifier"), 110, False), ("Revizie", str((rec.get("sld") or {}).get("revision") or 0), 70, False)],
+        [("Reprezentant firmă", settings.get("rep"), 110, False), ("Data", docgen.ro_date(get("doc_date") or get("date")) or datetime.now().strftime("%d.%m.%Y"), 70, False)],
+        [("Revizie", str((rec.get("sld") or {}).get("revision") or 0), 180, False)],
         [("Stare", stat, 180, True)],
     ]
     rh = tbh / len(rows)
@@ -561,7 +575,7 @@ def report(rec, client, settings, res, approval) -> bytes:
            Pp("RAPORT DE CALCUL ȘI VALIDARE — DIMENSIONARE TEHNICĂ CEF", "h"),
            Pp(f"Beneficiar: <b>{escape(str(get('name') or '[lipsă]'))}</b> · Proiect nr. {escape(str(get('project_no') or '[lipsă]'))} · "
               f"Putere instalată DC {t['kwp']:g} kWp · AC {t['inverters_kw']:g} kW" if t["kwp"] else "Putere instalată: [date lipsă]"),
-           Pp("<b>Statut:</b> " + {"approved": f"Verificat și asumat de {escape(str(approval.get('name')))} ({escape(str(approval.get('role_label')))}), {str(approval.get('at'))[:16].replace('T', ' ')} UTC",
+           Pp("<b>Statut:</b> " + {"approved": "validare internă înregistrată",
                                     "stale": "Aprobarea anterioară a fost anulată deoarece configurația s-a modificat."}.get(st, "PROPUNERE VERIFICABILĂ — neaprobată. Dimensionarea automată nu constituie aprobarea proiectului.")),
            Spacer(1, 4), Pp("1. Surse ale valorilor", "b"),
            Pp("<b>introdus</b> — valoare completată de utilizator; <b>catalog</b> — preluată din fișa tehnică a producătorului (catalog echipamente); "
@@ -598,7 +612,7 @@ def report(rec, client, settings, res, approval) -> bytes:
     out.append(tbl([[C_("Referință", True), C_("Domeniu", True)]] + [[C_(a), C_(b)] for a, b in res["standards"]] +
                    [[C_("Fișe tehnice / manuale producători"), C_("Limitele invertorului (Udc max, MPPT, Imax), panourilor (Voc, Vmp, Isc, βVoc), bateriei (Imax), cerința privind tipul DDR")]], [60, 122]))
     out.append(Spacer(1, 8))
-    out.append(Pp("Rezultatele sunt o propunere de dimensionare care trebuie verificată și asumată de persoana competentă (proiectant / verificator atestat) înainte de utilizarea oficială.", "small"))
+    out.append(Pp("Rezultatele sunt o propunere de dimensionare ce trebuie confirmată de reprezentantul firmei executante înainte de utilizarea oficială.", "small"))
     doc.build(out)
     return buf.getvalue()
 
@@ -655,9 +669,13 @@ def protections(rec, res):
         out.append((f"-Q{i + 1}.1", "Întreruptor automat AC invertor", (f"C{gv(n(ac.get('breaker_a')))} A {r['proposals']['ac']['poles']}" + (f", Icu {gv(n(ac.get('icu_ka')))} kA" if n(ac.get("icu_ka")) else "")) if n(ac.get("breaker_a")) else None, "-TFV"))
         out.append((f"-F{i + 1}.1", "Dispozitiv diferențial (DDR)", (f"{inv.get('rcd_type')} {gv(n(inv.get('rcd_ma')), ' mA') or ''}".strip()) if inv.get("rcd_type") else None, "-TFV"))
         if inv.get("battery_mode") == "own":
-            out.append((f"-F{i + 1}.B", "Protecție DC baterie", gv(n(bt.get("fuse_a")), " A DC"), f"-G{i + 1}"))
+            out.append((f"-Q{i + 1}.B", "Întreruptor DC baterie", f"{gv(n(bt.get('breaker_a') or bt.get('fuse_a')), ' A DC') or '[lipsă] A DC'} · {gv(n(bt.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(bt.get('cable_section') or bt.get('section')), ' mm²') or '[lipsă]'}", f"-G{i + 1}"))
         if (inv.get("backup") or {}).get("enabled"):
             out.append((f"-Q{i + 1}.EPS", "Întreruptor circuit backup / EPS", inv["backup"].get("breaker"), f"-TB{i + 1}"))
+    for k, battery in enumerate(cef.get("shared_batteries") or []):
+        rating = battery.get("breaker_a") or battery.get("fuse_a")
+        value = f"{rating if rating not in (None, '') else '[lipsă]'} A DC · {gv(n(battery.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(battery.get('cable_section') or battery.get('section')), ' mm²') or '[lipsă]'}"
+        out.append((f"-Q{len(cef.get('inverters') or []) + k + 1}.B", "Întreruptor DC baterie comună", value, f"-GC{k + 1}"))
     out.append(("-Q0.TG", "Întreruptor general TG", gv(n(grid.get("tg_breaker_a")), " A " + ("4P" if tri else "2P")), "-TG"))
     out.append(("-FA AC", "Descărcător SPD AC", grid.get("spd_ac"), "-TG"))
     if base["grid"]["anti"]:
@@ -699,9 +717,9 @@ def sheet_data(rec, client, settings, res, approval):
                        str(sum(s["panels"] for s in r["strings"]))])
         if inv.get("battery_mode") == "own":
             bt = inv.get("battery") or {}
-            eq.append([f"-G{i + 1}", "Baterie", bt.get("model"), f"{gv(r['battery_kwh'], ' kWh') or '—'} · {gv(n(bt.get('voltage')), ' V') or '—'} · cuplare {bt.get('coupling') or 'DC'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'}", str(int(n(bt.get("modules"), 1)) or 1)])
+            eq.append([f"-G{i + 1}", "Baterie", bt.get("model"), f"{gv(r['battery_kwh'], ' kWh') or '—'} · {gv(n(bt.get('voltage')), ' V') or '—'} · cuplare {bt.get('coupling') or 'DC'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'} · Q DC {gv(n(bt.get('breaker_a') or bt.get('fuse_a')), ' A') or '[lipsă]'} · cablu {gv(n(bt.get('cable_section') or bt.get('section')), ' mm²') or '[lipsă]'}", str(int(n(bt.get("modules"), 1)) or 1)])
     for k, b in enumerate(cef.get("shared_batteries") or []):
-        eq.append([f"-GC{k + 1}", "Baterie comună", b.get("model"), f"{gv(n(b.get('kwh')), ' kWh/modul') or '—'} · Imax {gv(n(b.get('i_max')), ' A') or '—'}", str(int(n(b.get("modules"), 1)) or 1)])
+        eq.append([f"-GC{k + 1}", "Baterie comună", b.get("model"), f"{gv(n(b.get('kwh')), ' kWh/modul') or '—'} · {gv(n(b.get('voltage')), ' V') or '—'} · Imax {gv(n(b.get('i_max')), ' A') or '—'} · Q DC {gv(n(b.get('breaker_a') or b.get('fuse_a')), ' A') or '[lipsă]'} · cablu {gv(n(b.get('cable_section') or b.get('section')), ' mm²') or '[lipsă]'}", str(int(n(b.get("modules"), 1)) or 1)])
     if grid.get("meter"):
         eq.append(["-P2", "Smart meter", grid.get("meter"), f"TC {grid.get('sm_ct_ratio')}" if grid.get("sm_ct_ratio") else "conectare directă", "1"])
     eq.append(["-P1", "Contor bidirecțional OD", "proprietate OD", f"măsură prin TC {grid.get('ct_ratio')}" if grid.get("ct_ratio") else "măsură directă", "1"])
@@ -713,7 +731,7 @@ def sheet_data(rec, client, settings, res, approval):
     issues = [f"LIPSĂ: {m['label']}" for m in res["missing"]] + [f"EROARE: {e}" for e in res["errors"]]
     aps = [a for a in (approval.get("approvals") or {}).values() if a.get("valid")]
     appr = "; ".join(f"{a['name']} ({a['role_label']}, {a.get('auth') or ''}), {a['at'][:10]}" for a in aps) if aps else "neaprobat"
-    return {"company": settings.get("company") or "DNS HOSTESS S.R.L.", "status": status, "sections": sec, "issues": issues, "approved_by": appr}
+    return {"company": settings.get("company") or "DNS HOSTESS S.R.L.", "status": status, "sections": sec, "issues": issues, "approved_by": ""}
 
 
 TS_TITLE = "FIȘĂ TEHNICĂ A INSTALAȚIEI DE PRODUCERE — ECHIPAMENTE, CABLURI ȘI PROTECȚII"
@@ -737,7 +755,7 @@ def tech_sheet(rec, client, settings, res, approval) -> bytes:
     if D["issues"]:
         out.append(Pp("5. Date lipsă / neconformități", "b"))
         out += [Pp(f"<font color='#b03a2e'>{escape(x)}</font>", "li") for x in D["issues"]]
-    out += [Spacer(1, 8), Pp("Verificat și aprobat: " + escape(D["approved_by"]), "small")]
+    out += [Spacer(1, 8), Pp("Document tehnic generat pentru semnarea reprezentantului firmei executante.", "small")]
     doc.build(out)
     return buf.getvalue()
 
@@ -773,7 +791,7 @@ def tech_sheet_docx(rec, client, settings, res, approval) -> bytes:
         d.add_paragraph().add_run("5. Date lipsă / neconformități").bold = True
         for x in D["issues"]:
             d.add_paragraph(x).runs[0].font.color.rgb = RGBColor(0xB0, 0x3A, 0x2E)
-    d.add_paragraph("Verificat și aprobat: " + D["approved_by"])
+    d.add_paragraph("Document tehnic generat pentru semnarea reprezentantului firmei executante.")
     o = io.BytesIO(); d.save(o)
     return o.getvalue()
 
