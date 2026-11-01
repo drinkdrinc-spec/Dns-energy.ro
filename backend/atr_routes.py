@@ -329,28 +329,35 @@ async def _fetch_registry_annex(form: dict, operator_key: str) -> tuple[bytes, s
         return data, f"{safe}.docx"
     raise ValueError("Linkul din registru nu a returnat un PDF sau un DOCX.")
 
-async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict | None = None) -> tuple[int | None, list[dict]]:
-    """Choose only official forms whose annex matches the selected ATR case."""
+def _annex_for_request(operator_key: str, rec: dict, pros: dict | None = None) -> int | None:
+    """Resolve one official annex from the selected request and verified case details."""
     if operator_key not in OP_DOMAINS:
-        return None, []
+        return None
     case = " ".join(str(rec.get(k) or "") for k in ("deer_case", "request_type")).casefold().replace("ț", "t").replace("ș", "s")
     request_type = ATR.rtype(rec)
-    if request_type in ("nou", "temp", "spor", "mod_dep"):
-        # All three operators use Annex 1 for new places and technical changes
-        # that exceed the previously approved power.
-        annex_no = 1
-    elif request_type == "admin":
-        annex_no = 3
-    elif "finant" in case:
-        # RER separates AFM/own-funds cases (Annex 2) from other funding
-        # programmes (Annex 4); Delgaz and Oltenia use Annex 4 for AFM cases.
+    funding_markers = ("finant", "afm", "casa verde", "fonduri proprii", "surse proprii", "program")
+    funding_case = any(mark in case for mark in funding_markers)
+
+    # A confirmed power increase / technical change uses Annex 1 even if an
+    # unrelated funding note is present on the record.
+    if request_type in ("spor", "mod_dep", "temp"):
+        return 1
+    if request_type == "admin":
+        return 3
+
+    # Existing-place financing routes have separate official forms. RER uses
+    # Annex 2 for AFM / own funds and Annex 4 for other programs; Delgaz and
+    # Oltenia use Annex 4 for financing cases.
+    if funding_case:
         if operator_key == "rer" and any(mark in case for mark in ("afm", "casa verde", "fonduri proprii", "surse proprii")):
-            annex_no = 2
-        else:
-            annex_no = 4
-    elif any(mark in case for mark in ("≤10,8", "<=10,8", "<=10.8", "≤ 10,8")):
-        annex_no = 5
-    elif request_type == "mod_fara":
+            return 2
+        return 4
+
+    if request_type == "nou":
+        return 1
+    if any(mark in case for mark in ("≤10,8", "<=10,8", "<=10.8", "≤ 10,8")):
+        return 5
+    if request_type == "mod_fara":
         pros = pros or {}
         cef = pros.get("cef") or {}
         panel_kwp = sum(
@@ -366,9 +373,13 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
             kwp = None
         supply = str(rec.get("supply") or pros.get("supply") or (cef.get("grid") or {}).get("supply") or "").casefold()
         single_phase = bool(supply) and not any(mark in supply for mark in ("trifaz", "400", "three-phase", "3 phase"))
-        annex_no = 5 if kwp is not None and kwp <= 10.8 and single_phase else 2
-    else:
-        annex_no = None
+        return 5 if kwp is not None and kwp <= 10.8 and single_phase else 2
+    return None
+
+
+async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict | None = None) -> tuple[int | None, list[dict]]:
+    """Choose only official forms whose annex matches the selected ATR case."""
+    annex_no = _annex_for_request(operator_key, rec, pros)
     if annex_no is None:
         return None, []
     # Prefer the curated direct operator PDFs; the optional registry can contain
