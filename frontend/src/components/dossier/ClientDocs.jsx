@@ -106,6 +106,11 @@ export function ClientDocs({ client, onChange }) {
       await persistDocs(nextDocs);
       const patch = fieldsFromExtraction(result.fields, client, slot);
       if (Object.keys(patch).length) {
+        if (!client.id) {
+          onChange(nextDocs, patch);
+          toast.success(`Document atașat; completate automat ${Object.keys(patch).length} câmpuri. Salvează clientul pentru a păstra datele.`);
+          return;
+        }
         try {
           await api.put(`/data/clients/${client.id}`, patch);
           onChange(nextDocs, patch);
