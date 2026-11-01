@@ -365,6 +365,8 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
                 continue
             if not (-1000 <= number <= 100000):
                 continue
+            if key not in {"coef_voc", "coef_vmp", "temp_pmax"} and number <= 0:
+                continue
             clean[key] = int(number) if number.is_integer() else round(number, 4)
         elif key == "phases":
             normalized = str(value).strip().casefold()
