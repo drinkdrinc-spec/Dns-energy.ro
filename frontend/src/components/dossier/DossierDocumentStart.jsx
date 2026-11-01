@@ -32,14 +32,15 @@ export function DossierDocumentStart({ onCreated }) {
     const list = Array.from(selected || []);
     if (!list.length) return;
     setBusy(kind);
-    try {
-      const mergedFiles = [...(files[kind] || [])];
-      let mergedValues = values;
-      const summaries = [];
-      for (const file of list) {
-        const officeExtractable = /\.(docx|xlsx)$/i.test(file.name);
+    const mergedFiles = [...(files[kind] || [])];
+    const initialCount = mergedFiles.length;
+    let mergedValues = values;
+    const summaries = [];
+    let failed = 0;
+    for (const file of list) {
+      try {
+        const officeExtractable = /\\.(docx|xlsx)$/i.test(file.name);
         const extractable = file.type === "application/pdf" || file.type.startsWith("image/") || officeExtractable;
-        let x = {};
         if (kind === "altele" && !extractable) {
           const fd = new FormData(); fd.append("file", file);
           const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
@@ -47,11 +48,11 @@ export function DossierDocumentStart({ onCreated }) {
           summaries.push(`${file.name}: atașat; formatul nu are citire automată, necesită verificare manuală`);
           continue;
         }
-        if (!extractable) throw new Error("Pentru citire automată folosește PDF, imagine, DOCX sau XLSX. DOC/XLS și alte formate se atașează pentru verificare manuală.");
+        if (!extractable) throw new Error("Formatul nu este acceptat pentru citire automată.");
         const fd = new FormData(); fd.append("file", file); fd.append("doc_type", kind === "altele" ? "other" : kind);
         const { data } = await api.post("/ai/extract", fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 240000 });
         mergedFiles.push(data.file);
-        x = data.data || {};
+        const x = data.data || {};
         if (kind === "ci") mergedValues = putNonempty(mergedValues, { client_name: x.client_name, cnp: x.cnp, hq_address: x.hq_address || x.address,
           county: x.county, phone: x.phone, email: x.email, ci_series: x.id_series && x.id_number ? `${x.id_series} ${x.id_number}` : x.id_series || x.id_number });
         if (kind === "factura") mergedValues = putNonempty(mergedValues, { client_name: mergedValues.client_name || x.client_name, cnp: mergedValues.cnp || x.cnp,
@@ -59,15 +60,20 @@ export function DossierDocumentStart({ onCreated }) {
           county: mergedValues.county || x.county, phone: mergedValues.phone || x.phone, email: mergedValues.email || x.email });
         if (kind === "cf") mergedValues = putNonempty(mergedValues, { cf_nr: x.cf_nr, cadastral_nr: x.cadastral_nr,
           client_name: mergedValues.client_name || x.owner_name });
-        if (kind === "ci") mergedValues = putNonempty(mergedValues, { ci_series: x.id_series && x.id_number ? `${x.id_series} ${x.id_number}` : x.id_series || x.id_number });
         if (kind === "altele" && x.summary) summaries.push(`${file.name}: ${x.doc_type || "document"} — ${x.summary}`);
+      } catch {
+        failed += 1;
       }
-      setFiles((prev) => ({ ...prev, [kind]: mergedFiles }));
-      setValues(mergedValues);
-      if (summaries.length) setNotes((prev) => ({ ...prev, altele: [...(prev.altele || []), ...summaries] }));
-      toast.success(`${list.length === 1 ? "Document citit" : `${list.length} documente citite`} — verifică datele extrase`);
-    } catch (e) { toast.error(e.response?.data?.detail || "Nu am putut citi documentul"); }
-    finally { setBusy(""); if (inputs.current[kind]) inputs.current[kind].value = ""; }
+    }
+    setFiles((prev) => ({ ...prev, [kind]: mergedFiles }));
+    setValues(mergedValues);
+    if (summaries.length) setNotes((prev) => ({ ...prev, altele: [...(prev.altele || []), ...summaries] }));
+    const imported = mergedFiles.length - initialCount;
+    if (failed && imported) toast.warning(`${imported} din ${list.length} documente preluate; ${failed} necesită reîncărcare.`);
+    else if (failed) toast.error(`Nu s-au putut prelua ${failed} documente. Încearcă să le reîncarci individual sau cu o imagine mai clară.`);
+    else toast.success(`${list.length === 1 ? "Document citit" : `${list.length} documente citite`} — verifică datele extrase`);
+    setBusy("");
+    if (inputs.current[kind]) inputs.current[kind].value = "";
   };
 
   const create = async () => {
