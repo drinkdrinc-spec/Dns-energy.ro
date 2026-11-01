@@ -156,7 +156,10 @@ async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict
             out += ev.content
         elif isinstance(ev, StreamDone):
             break
-    return _parse(out)
+    data = _parse(out)
+    if not data:
+        raise ValueError("AI nu a putut identifica date lizibile în document. Verifică fișierul sau completează datele manual.")
+    return data
 
 
 def _labeled_value(text: str, labels: str) -> str | None:
