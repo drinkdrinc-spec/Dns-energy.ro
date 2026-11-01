@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FileDown, Wand2, RefreshCw, ShieldCheck, Upload, X, Eye, Send } from "lucide-react";
-import { api, API, fileUrl, openAuthenticatedFile } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { SldChecks } from "./SldChecks";
@@ -67,7 +67,7 @@ export function SldPanel({ id, form, setVal }) {
           ))}
           <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
             <input ref={ref} type="file" accept="application/pdf" className="hidden" data-testid="sld-upload-input" onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; const up = await uploadFile(f); await source({ upload: up }); ref.current.value = ""; toast.success("Schemă încărcată"); }} />
-            {d.upload ? <a href={fileUrl(d.upload.storage_path)} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "var(--blue)" }} data-testid="sld-upload-link">{d.upload.original_filename}</a> : <span style={{ color: "var(--muted)" }}>Nicio schemă încărcată</span>}
+            {d.upload ? <button type="button" onClick={() => openAuthenticatedFile(`/files/${d.upload.storage_path}`)} className="underline text-left" style={{ color: "var(--blue)" }} data-testid="sld-upload-link">{d.upload.original_filename}</button> : <span style={{ color: "var(--muted)" }}>Nicio schemă încărcată</span>}
             <button onClick={() => ref.current.click()} className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} data-testid="sld-upload-btn"><Upload size={12} /> {d.upload ? "Înlocuiește" : "Încarcă PDF"}</button>
             {d.upload && <button onClick={() => source({ clear_upload: true })} data-testid="sld-upload-clear"><X size={13} style={{ color: "#b33333" }} /></button>}
           </div>
@@ -118,7 +118,7 @@ export function SldPanel({ id, form, setVal }) {
               <b>rev. {h.revision}</b><span>{String(h.at).slice(0, 16).replace("T", " ")} UTC</span><span>{h.role_label}: {h.name}</span>
               <span>{h.source === "uploaded" ? "schemă încărcată" : "schemă generată"}</span>
               <span className="font-bold" style={{ color: h.current ? "#1e7a46" : "var(--muted)" }}>{h.current ? "versiunea în vigoare" : "versiune anterioară"}</span>
-              {h.file && <a className="underline" style={{ color: "var(--blue)" }} href={fileUrl(h.file.storage_path)} target="_blank" rel="noopener noreferrer" data-testid={`sld-history-file-${i}`}>PDF</a>}
+              {h.file && <button type="button" className="underline" style={{ color: "var(--blue)" }} onClick={() => openAuthenticatedFile(`/files/${h.file.storage_path}`)} data-testid={`sld-history-file-${i}`}>PDF</button>}
             </div>
           ))}
           <SldCompare id={id} history={d.history} />
