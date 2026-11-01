@@ -3,12 +3,12 @@ import { Outlet, Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
-import { Menu, Home, FolderOpen, Receipt, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench } from "lucide-react";
+import { Menu, Home, FolderOpen, Receipt, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe } from "lucide-react";
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const workflowPaths = ["/clienti", "/prosumator", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/mono"];
+  const workflowPaths = ["/clienti", "/prosumator", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/dosare-anre", "/mono", "/portaluri-distribuitori"];
   const showWorkflow = workflowPaths.some((path) => location.pathname.startsWith(path));
   return (
     <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
@@ -45,7 +45,9 @@ const DOSSIER_STEPS = [
   { to: "/cerere-atr", label: "ATR / spor", icon: FileCheck2, matches: ["/cerere-atr", "/spor-putere"] },
   { to: "/diu", label: "DI-U", icon: Wrench, matches: ["/diu"] },
   { to: "/catalog-echipamente", label: "Echipamente", icon: Cpu, matches: ["/catalog-echipamente"] },
+  { to: "/dosare-anre", label: "Dosar ANRE", icon: FileCheck2, matches: ["/dosare-anre"] },
   { to: "/mono", label: "Schemă · PRAM", icon: CircuitBoard, matches: ["/mono"] },
+  { to: "/portaluri-distribuitori", label: "Portal OD", icon: Globe, matches: ["/portaluri-distribuitori"] },
 ];
 
 function DossierWorkflow({ pathname }) {
