@@ -83,7 +83,7 @@ export default function ModulePage({ moduleKey }) {
   const [items, setItems] = useState([]);
   const [linkedProsumer, setLinkedProsumer] = useState([]);
   const [linkedDiu, setLinkedDiu] = useState([]);
-  const [showTestRecords, setShowTestRecords] = useState(null);
+  const [showTestRecords, setShowTestRecords] = useState(() => new URLSearchParams(window.location.search).get("showTests") === "1");
   const [creatingTestDossier, setCreatingTestDossier] = useState(false);
   const [form, setForm] = useState(null); // null=hidden, {} = open
   const [editId, setEditId] = useState(null);
