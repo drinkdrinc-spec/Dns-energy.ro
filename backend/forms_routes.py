@@ -89,6 +89,14 @@ async def seed():
     for op, title, kind, url in SEED:
         await db.official_forms.update_one({"url": url}, {"$setOnInsert": {"id": str(uuid.uuid4()), "operator": op, "title": title, "kind": kind, "url": url,
                                            "version": "", "notes": "", "status": NEW, "created_at": now(), "history": []}}, upsert=True)
+    retired = {
+        "https://www.distributie-energie.ro/wp-content/uploads/2021/01/10-Cerere-loc-consum-existent-Spor-de-putere-Anexa-1.pdf":
+            "Formular istoric. Folosiți formularul curent Anexa 1 din sursa DEER.",
+        "https://delgaz.ro/getattachment/a49b57e4-6692-4772-87cd-314cd378657a/Cerere_de_racordare_prosumator.pdf":
+            "Formular istoric. Folosiți formularul curent Anexa 1 publicat de Delgaz Grid.",
+    }
+    for url, note in retired.items():
+        await db.official_forms.update_one({"url": url}, {"$set": {"status": "formular retras", "deprecated": True, "notes": note}})
 
 
 def detect_version(data: bytes, ct: str) -> str:
@@ -172,7 +180,7 @@ def pub(f: dict) -> dict:
 
 @api.get("/forms")
 async def forms_list(user: dict = Depends(get_current_user)):
-    return [pub(f) for f in await db.official_forms.find({}, {"_id": 0}).sort([("operator", 1), ("title", 1)]).to_list(500)]
+    return [pub(f) for f in await db.official_forms.find({"deprecated": {"$ne": True}}, {"_id": 0}).sort([("operator", 1), ("title", 1)]).to_list(500)]
 
 
 def plat(user: dict):
