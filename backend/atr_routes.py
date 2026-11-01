@@ -316,8 +316,10 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
         if parsed.scheme != "https" or not any(host == domain or host.endswith("." + domain) for domain in OP_DOMAINS[operator_key]):
             continue
         matches.append(form)
+    # A request maps to one annex. Including multiple versions of that same official
+    # form makes the package ambiguous; keep only the highest-priority registered source.
     matches.sort(key=lambda row: (bool(row.get("confirmed_at")), row.get("status") == "valid", str(row.get("title") or "")), reverse=True)
-    return annex_no, matches[:3]
+    return annex_no, matches[:1]
 
 
 # ---------------- complete downloadable package ----------------
