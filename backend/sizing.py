@@ -101,7 +101,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         si, sp = src_of(inv, "x", "catalog_id"), src_of(inv, "x", "panel_catalog_id")
         for k, lbl in [("brand_model", "Marcă și model invertor"), ("p_nom_kw", "Putere nominală AC (kW)"), ("p_max_kw", "Putere maximă AC (kW)"),
                        ("vdc_max", "Udc max (V)"), ("mppt_min", "MPPT min (V)"), ("mppt_max", "MPPT max (V)"), ("mppt_count", "Nr. MPPT"),
-                       ("imax_mppt", "Curent max / MPPT (A)")]:
+                       ("imax_mppt", "Curent max de funcționare / MPPT (A)"), ("isc_max_mppt", "Isc max admisibil / MPPT (A)")]:
             if o.need(f"cef.inverters.{i}.{k}", lbl, inv.get(k), T):
                 o.it(T, lbl, g(inv.get(k)), si)
         strings = r["strings"]
@@ -117,6 +117,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             if not strings:
                 o.missing.append({"path": f"cef.inverters.{i}.strings", "label": f"{T} — configurația stringurilor"})
         vdc_max, mmin, mmax, imax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max")), n(inv.get("imax_mppt"))
+        isc_limit = n(inv.get("isc_max_mppt"))
         for k, s in enumerate(strings):
             o.it(T, f"String {k + 1} (MPPT {s['mppt']}) — {s['panels']} panouri", g(s["kwp"], " kWp"), "calculat", "P = Ns · Pmod")
             o.it(T, f"String {k + 1} — Voc la {tmin:g}°C", g(s["voc_cold"], " V", 0), "calculat" if s["voc_cold"] is not None else "necalculat",
@@ -137,12 +138,17 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         per = {}
         for s in strings:
             per.setdefault(s["mppt"], []).append(s)
-        for m, ss in per.items():
-            isum = sum(x["isc"] for x in ss)
-            o.it(T, f"MPPT {m} — Isc total ({len(ss)} string)", g(isum, " A", 1), "calculat", "ΣIsc pe MPPT", (isum <= imax) if imax else None,
-                 f"≤ Imax MPPT {imax:g} A" if imax else "")
-        isc1 = max([s["isc"] for s in strings] or [0])
         imp = n(inv.get("panel_imp")) or (n(inv.get("panel_w")) / n(inv.get("panel_vmp")) if n(inv.get("panel_vmp")) else 0)
+        for m, ss in per.items():
+            isc_sum = sum(x["isc"] for x in ss)
+            operating_sum = imp * len(ss) if imp else 0
+            o.it(T, f"MPPT {m} — Isc total ({len(ss)} string)", g(isc_sum, " A", 1), "calculat", "ΣIsc pe MPPT; comparat separat cu Isc max din fișa invertorului", (isc_sum <= isc_limit) if isc_limit else None,
+                 f"≤ Isc max / MPPT {isc_limit:g} A" if isc_limit else "lipsește limita Isc max / MPPT din fișa invertorului")
+            o.it(T, f"MPPT {m} — Imp total în funcționare", g(operating_sum, " A", 1) if operating_sum else None,
+                 "calculat" if operating_sum else "necalculat", "Imp panou × număr stringuri în paralel",
+                 (operating_sum <= imax) if (operating_sum and imax) else None,
+                 f"≤ Imax / MPPT {imax:g} A" if imax and operating_sum else "lipsește Imp panou sau Imax / MPPT")
+        isc1 = max([s["isc"] for s in strings] or [0])
         voc_max = r["voc_cold_max"]
         if strings:
             # DC cable
