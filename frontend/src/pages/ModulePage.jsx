@@ -58,7 +58,7 @@ export default function ModulePage({ moduleKey }) {
   const [items, setItems] = useState([]);
   const [linkedProsumer, setLinkedProsumer] = useState([]);
   const [linkedDiu, setLinkedDiu] = useState([]);
-  const [showTestRecords, setShowTestRecords] = useState(false);
+  const [showTestRecords, setShowTestRecords] = useState(null);
   const [creatingTestDossier, setCreatingTestDossier] = useState(false);
   const [form, setForm] = useState(null); // null=hidden, {} = open
   const [editId, setEditId] = useState(null);
@@ -301,7 +301,7 @@ export default function ModulePage({ moduleKey }) {
   const isTestRecord = (item) => /\bTEST\b/i.test([item.number, item.name, item.client_name, item.idcode].filter(Boolean).join(" "));
   const hiddenTestCount = ["clients", "prosumator", "diu"].includes(key) ? items.filter(isTestRecord).length : 0;
   const onlyTestRecords = items.length > 0 && items.every(isTestRecord);
-  const visibleItems = showTestRecords === true ? items : (["clients", "prosumator", "diu"].includes(key) ? items.filter((item) => !isTestRecord(item)) : items);
+  const visibleItems = (showTestRecords === true || (showTestRecords === null && onlyTestRecords)) ? items : (["clients", "prosumator", "diu"].includes(key) ? items.filter((item) => !isTestRecord(item)) : items);
   const filtered = useMemo(() => {
     if (!q) return visibleItems;
     const ql = q.toLowerCase();
