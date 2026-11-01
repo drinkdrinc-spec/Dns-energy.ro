@@ -559,7 +559,34 @@ export default function ModulePage({ moduleKey }) {
               </article>;
             })}
           </div>}
-          <div className={key === "clients" ? "hidden overflow-x-auto sm:block" : "overflow-x-auto"}>
+          {key === "prosumator" && <div className="grid gap-3 sm:hidden" data-testid="mobile-prosumer-actions">
+            {filtered.map((it) => {
+              const normalize = (value) => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+              const diu = linkedDiu.find((d) => d.pros_id === it.id || (d.client_id ? d.client_id === it.client_id : normalize(d.client_name) === normalize(it.client_name)));
+              const actionClass = "inline-flex min-h-9 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold";
+              return <article key={it.id} className="rounded-xl border p-4 shadow-sm" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid={`prosumer-card-${it.id}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-bold">{it.client_name || it.number || "Dosar prosumator"}</h3>
+                    <p className="mt-1 text-xs leading-5" style={{ color: "var(--muted)" }}>{it.number || "Fără număr"} · {it.power || it._kwp || "Putere necompletată"} kW</p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>{it.operator || "Operator neales"} · {it.status || "În lucru"}</p>
+                  </div>
+                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => openEdit(it)}>Deschide</button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/export`)}>Dosar PDF</button>
+                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${it.id}/pdf`, `schema_monofilara_${it.id.slice(0, 8)}.pdf`)}>Schema</button>
+                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/file/priza`, `pram_priza_${it.id.slice(0, 8)}.pdf`)}>PRAM priză</button>
+                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${it.id}/pif/pdf`, `pif_${it.id.slice(0, 8)}.pdf`)}>Proces verbal PIF</button>
+                  {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}`}>Cerere ATR</a>}
+                  {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}&case=${encodeURIComponent("Loc existent — spor de putere — Anexa 1")}`}>Spor de putere</a>}
+                  {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu?new=diu&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}`}>Creează DI-U</a>}
+                  {diu && <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`, `pram_priza_diu_${diu.id.slice(0, 8)}.pdf`)}>PRAM DI-U</button>}
+                </div>
+              </article>;
+            })}
+          </div>}
+          <div className={["clients", "prosumator"].includes(key) ? "hidden overflow-x-auto sm:block" : "overflow-x-auto"}>
             <table className="w-full text-sm" data-testid="items-table">
               <thead>
                 <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
