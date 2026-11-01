@@ -40,11 +40,14 @@ export function AtrDossier({ id, form, setVal }) {
     if (!String(form.kind || "").includes("producere") || !form.client_name || !pros.length) return;
     const norm = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
     const current = pros.find((p) => p.id === form.pros_id);
-    if (current && norm(current.client_name) === norm(form.client_name)) return;
-    const matches = pros.filter((p) => norm(p.client_name) === norm(form.client_name));
+    const belongsToClient = (item) => form.client_id
+      ? item.client_id === form.client_id
+      : norm(item.client_name) === norm(form.client_name);
+    if (current && belongsToClient(current)) return;
+    const matches = pros.filter(belongsToClient);
     if (matches.length === 1) selectPros(matches[0].id);
     else if (current) setVal("pros_id", "");
-  }, [form.client_name, form.kind, form.pros_id, pros.length]);
+  }, [form.client_id, form.client_name, form.kind, form.pros_id, pros.length]);
   useEffect(() => {
     if (!form.operator) { setOfficialForms([]); return; }
     api.get(`/forms/operator-links?operator=${encodeURIComponent(form.operator)}&scope=atr`)
@@ -53,7 +56,8 @@ export function AtrDossier({ id, form, setVal }) {
   }, [form.operator]);
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
   const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
-  const selectedPros = pros.find((p) => p.id === form.pros_id) || null;
+  const selectedRecord = pros.find((p) => p.id === form.pros_id) || null;
+  const selectedPros = selectedRecord && (!form.client_id || selectedRecord.client_id === form.client_id) ? selectedRecord : null;
   const deerAnnexIssues = (() => {
     if (operatorSource?.id !== "deer" || !selectedDeerForm) return [];
     const issues = [];
@@ -79,7 +83,9 @@ export function AtrDossier({ id, form, setVal }) {
     return issues;
   })();
   const normClientName = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
-  const clientPros = form.client_name ? pros.filter((p) => normClientName(p.client_name) === normClientName(form.client_name)) : [];
+  const clientPros = form.client_id
+    ? pros.filter((p) => p.client_id === form.client_id)
+    : (form.client_name ? pros.filter((p) => normClientName(p.client_name) === normClientName(form.client_name)) : []);
   useEffect(() => {
     if (!form.pros_id) { setCatalogFiles([]); return; }
     let active = true;
@@ -137,7 +143,10 @@ export function AtrDossier({ id, form, setVal }) {
   const selectPros = (id) => {
     setVal("pros_id", id);
     const item = pros.find((p) => p.id === id);
-    if (!item) return;
+    if (!item || (form.client_id && item.client_id !== form.client_id)) {
+      setVal("pros_id", "");
+      return;
+    }
     const values = { pod: item.pod, operator: item.operator, address: item.address, supply: item.supply,
       p_abs_kw: item.bransament_kw, pv_kw: item.inverter_kw || item.cef?.total_kw, p_evac_kw: item.power || item.cef?.total_export_kw };
     Object.entries(values).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== "") setVal(key, value); });
