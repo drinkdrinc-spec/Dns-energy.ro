@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
-import { Menu, Home, Users, FolderOpen, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity } from "lucide-react";
+import { Menu, Home, Users, FolderOpen, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity, Download } from "lucide-react";
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
@@ -18,6 +18,7 @@ export default function Layout() {
           <button data-testid="menu-btn" onClick={() => setOpen(true)} aria-label="Deschide meniul"><Menu size={22} /></button>
           <BrandMark size={30} />
           <span className="font-extrabold tracking-wide">DNS ENERGY</span>
+          <PwaInstallButton />
         </header>
         <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto pb-24 md:pb-8">
           <PlanBanner />
@@ -36,6 +37,55 @@ export default function Layout() {
         </nav>
       </div>
     </div>
+  );
+}
+
+function PwaInstallButton() {
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installed, setInstalled] = useState(
+    () => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true
+  );
+
+  useEffect(() => {
+    const capturePrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    const markInstalled = () => setInstalled(true);
+    window.addEventListener("beforeinstallprompt", capturePrompt);
+    window.addEventListener("appinstalled", markInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", capturePrompt);
+      window.removeEventListener("appinstalled", markInstalled);
+    };
+  }, []);
+
+  if (installed) return null;
+
+  const install = async () => {
+    if (installPrompt) {
+      await installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      if (choice?.outcome === "accepted") setInstalled(true);
+      setInstallPrompt(null);
+      return;
+    }
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    if (isIOS) {
+      window.alert("Pentru a instala DNS Energy pe iPhone: apasă Partajare în Safari, apoi „Adăugați la ecranul principal”.");
+      return;
+    }
+    window.alert("Deschide meniul browserului și alege „Instalează aplicația” sau „Adaugă la ecranul principal”.");
+  };
+
+  return (
+    <button type="button" onClick={install} aria-label="Instalează DNS Energy pe telefon"
+      className="ml-auto inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-white/20 px-2.5 text-[11px] font-bold text-white"
+      style={{ touchAction: "manipulation" }}>
+      <Download size={16} aria-hidden="true" />
+      <span>Instalează</span>
+    </button>
   );
 }
 
