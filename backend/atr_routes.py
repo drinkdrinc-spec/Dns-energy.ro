@@ -451,6 +451,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
     panel_models = ", ".join(dict.fromkeys(str(x.get("panel_model")) for x in inverters if x.get("panel_model")))
     inverter_models = ", ".join(dict.fromkeys(str(x.get("brand_model")) for x in inverters if x.get("brand_model")))
     battery_models = ", ".join(dict.fromkeys(str(x.get("model")) for x in batteries if x.get("model")))
+
     def number(value):
         try:
             return float(str(value or 0).replace(",", "."))
@@ -462,6 +463,11 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         * max(1, int(number(inv.get("count")) or 1))
         for inv in inverters
     )
+    battery_kwh = sum(number(b.get("kwh")) for b in batteries)
+    battery_ah = ", ".join(str(b.get("ah")) for b in batteries if b.get("ah") not in (None, ""))
+    battery_voltage = ", ".join(str(b.get("voltage")) for b in batteries if b.get("voltage") not in (None, ""))
+    battery_modules = sum(int(number(b.get("modules")) or 0) for b in batteries)
+    battery_coupling = ", ".join(dict.fromkeys(str(b.get("coupling")) for b in batteries if b.get("coupling")))
     values = [
         (("numecomplet", "utilizator", "beneficiar", "solicitant", "denumireclient"), c.get("name")),
         (("prenume",), c.get("first_name")),
@@ -469,21 +475,26 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         (("cui", "codfiscal", "codinregistrarefiscala"), c.get("cui") or (c.get("idcode") if str(r.get("applicant_type") or "").lower() in ("pj", "persoana juridica") else None)),
         (("email",), c.get("email")),
         (("telefon", "telefonmobil", "phone"), c.get("phone")),
-        (("judet", "county"), c.get("county")),
-        (("localitate", "locality", "oras", "municipiu"), c.get("locality")),
+        (("judet", "county"), r.get("county") or c.get("county")),
+        (("localitate", "locality", "oras", "municipiu"), r.get("locality") or c.get("locality")),
         (("pod", "codpunctconsum"), r.get("pod") or c.get("pod")),
         (("numarcf", "nrcf", "cartefunciara"), r.get("cf_nr") or c.get("cf_nr")),
         (("numarcadastral", "cadastral"), r.get("cadastral_nr") or c.get("cadastral_nr")),
         (("adresalocconsum", "adresapunctconsum", "locconsum", "stradalocconsum"), r.get("address")),
-        (("adresadomiciliu", "adresasolicitant", "strada"), c.get("address")),
-        (("putereabsorbita", "pabs", "pmaxabsorbita"), r.get("p_abs_kw")),
-        (("putereevacuata", "pevacuare", "pmaxevacuata"), r.get("p_evac_kw") or p.get("power")),
-        (("modelpanou", "tip panou", "panoufotovoltaic"), panel_models or None),
-        (("numarpanouri", "nrpanouri", "panourifotovoltaice"), panel_count or None),
-        (("modelinvertor", "tipinvertor", "invertor"), inverter_models or None),
-        (("modelbaterie", "tipbaterie", "baterie"), battery_models or None),
+        (("adresadomiciliu", "adresasolicitant", "domiciliu", "clientaddress", "applicantaddress", "strada"), c.get("address")),
+        (("pabsorbita", "putereabsorbita", "pabs", "pmaxabsorbita"), r.get("p_abs_kw")),
+        (("putereevacuatakva", "pevackva", "pmaxevacuatakva"), r.get("p_evac_kva")),
+        (("putereevacuatakw", "pevackw", "pmaxevacuatakw", "putereevacuata", "pevacuare", "pmaxevacuata"), r.get("p_evac_kw") or p.get("power")),
+        (("modelpanou", "tipmodelpanou", "modelpanoufotovoltaic"), panel_models or None),
+        (("numarpanouri", "nrpanouri"), panel_count or None),
+        (("modelinvertor", "tipmodelinvertor", "marcainvertor"), inverter_models or None),
+        (("modelbaterie", "tipmodelbaterie", "marcabaterie"), battery_models or None),
+        (("capacitatebateriekwh", "capacitatekwh", "energieutilizabilakwh"), battery_kwh or None),
+        (("numarmodulebaterie", "modulebaterie", "numarbaterii"), battery_modules or None),
+        (("amperoribaterie", "baterieah", "capacitateah"), battery_ah or None),
+        (("tensiunebateriev", "bateriev", "tensiunesistemstocare"), battery_voltage or None),
+        (("cuplarebaterie", "modcuplare", "acdcoupling"), battery_coupling or None),
     ]
-
     def value_for(field_name):
         key = norm(field_name)
         if not key:
@@ -497,7 +508,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
 
     page_updates = []
     filled = 0
-    for page in reader.pages:
+    for page_index, page in enumerate(reader.pages):
         update = {}
         for field_name, field in fields.items():
             if field.get("/FT") != "/Tx":
@@ -506,15 +517,15 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
             if value is not None:
                 update[field_name] = value
         if update:
-            page_updates.append((page, update))
+            page_updates.append((page_index, update))
             filled += len(update)
     if not filled:
         return pdf_bytes, 0
     writer = PdfWriter()
     writer.clone_document_from_reader(reader)
-    for page, update in page_updates:
+    for page_index, update in page_updates:
         try:
-            writer.update_page_form_field_values(writer.pages[reader.pages.index(page)], update, auto_regenerate=False)
+            writer.update_page_form_field_values(writer.pages[page_index], update, auto_regenerate=False)
         except Exception:
             return pdf_bytes, 0
     out = io.BytesIO()
