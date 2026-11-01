@@ -268,20 +268,20 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
         P(f"{annex.upper()} — {escape(title)}", "h"),
         P("FIȘĂ DE PRECOMPLETARE PENTRU DOSARUL ATR", "sub"),
         P("Document de lucru generat din datele salvate în DNS Energy. Nu este formularul oficial DEER și trebuie verificat și transcris în formularul curent al operatorului înainte de depunere.", "small"),
-        Spacer(1, 4),
+        Spacer(1, 3),
         P("1. Solicitant și reprezentare", "b"),
         T([["Câmp", "Date din client / dosar"],
            ["Solicitant", g(c, "name")], ["Categorie solicitant", g(rec, "applicant_type")],
            ["CNP / CUI", g(c, "idcode")], ["Telefon", g(c, "phone")], ["E-mail", g(c, "email")],
            ["Reprezentant", g(c, "rep_name")], ["Modalitate depunere", g(rec, "submission_mode")]], [52, 126]),
-        Spacer(1, 4),
+        Spacer(1, 3),
         P("2. Loc de consum / obiectiv", "b"),
         T([["Câmp", "Date din cerere"],
            ["Denumire obiectiv", g(rec, "object_name")], ["Adresă", g({"address": address}, "address")],
            ["POD", g({"pod": pod}, "pod")], ["Carte funciară", g({"cf": cf}, "cf")],
            ["Număr cadastral", g({"cadastral": cadastral}, "cadastral")],
            ["Operator", g(rec, "operator")], ["Tip loc", g(rec, "kind")]], [52, 126]),
-        Spacer(1, 4),
+        Spacer(1, 3),
         P("3. Cerere și puteri solicitate", "b"),
         T([["Câmp", "Date din cerere"],
            ["Procedură DEER selectată", escape(str(rec.get("deer_case") or annex))],
@@ -290,7 +290,7 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
            ["Putere instalată producere (DC)", f"{g({'pv_kwp': pv_kwp}, 'pv_kwp')} kWp"],
            ["Putere maximă evacuată", f"{g(rec, 'p_evac_kw')} kW / {g(rec, 'p_evac_kva')} kVA"],
            ["Descriere modificări", g(rec, "current_supply_desc")]], [52, 126]),
-        Spacer(1, 4),
+        Spacer(1, 3),
         P("4. Echipamente din dosarul tehnic asociat", "b"),
     ]
     cef = (pros or {}).get("cef") or {}
@@ -319,13 +319,13 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
     for key, label, _ in DOCS:
         if key in required(rec):
             rows.append([escape(label), "Atașat" if key in attached else "Lipsește"])
-    story += [T(rows, [138, 40]), Spacer(1, 5),
+    story += [T(rows, [138, 40]), Spacer(1, 3),
               P("Formularul oficial selectat trebuie descărcat și verificat la sursa DEER:", "small"),
               P(f'<link href="{escape(url)}" color="blue">Deschide formularul oficial DEER</link>', "small"),
-              Spacer(1, 5),
+              Spacer(1, 3),
               P("Câmpurile care lipsesc din datele clientului sau din cerere rămân necompletate aici; nu se estimează și nu se inventează valori.", "small")]
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=8 * mm,
                             title=f"Precompletare {annex} — {title}")
     doc.build(story)
     return buf.getvalue()
