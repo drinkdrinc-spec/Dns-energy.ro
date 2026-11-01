@@ -65,7 +65,7 @@ const AUTH_DECLARATION_URL = "https://www.distributie-energie.ro/racordare-la-re
 const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
 const pdf = (id, full) => `/atr/${id}/pdf?full=${full}`
 
-export function AtrDossier({ id, form, setVal }) {
+export function AtrDossier({ id, form, setVal, clients = [] }) {
   const [pros, setPros] = useState([]);
   const [officialForms, setOfficialForms] = useState([]);
   const [catalogFiles, setCatalogFiles] = useState([]);
@@ -90,6 +90,18 @@ export function AtrDossier({ id, form, setVal }) {
   }, [form.operator]);
   const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
   const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
+  const selectedClient = (form.client_id
+    ? clients.find((item) => item.id === form.client_id)
+    : (() => {
+      const matches = clients.filter((item) => normalizeClientName(item.name) === normalizeClientName(form.client_name));
+      return matches.length === 1 ? matches[0] : null;
+    })()) || null;
+  const clientDocs = selectedClient?.docs || {};
+  const clientAuto = {
+    id: (clientDocs.ci || []).length > 0,
+    cf: (clientDocs.cf || []).length > 0,
+    constatator: (clientDocs.constatator || []).length > 0,
+  };
   const selectedRecord = pros.find((p) => p.id === form.pros_id) || null;
   const selectedPros = selectedRecord && belongsToClient(selectedRecord, form.client_id, form.client_name) ? selectedRecord : null;
   const deerAnnexIssues = (() => {
@@ -197,9 +209,12 @@ export function AtrDossier({ id, form, setVal }) {
         ...(caseKey === "existing" && prod ? ["schema", "fise"] : []), ...(caseKey === "large" ? ["memoriu", "schema", "fise"] : []),
         ...(form.applicant_type === "Persoană juridică" && prod ? ["constatator"] : [])])]
     : DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && caseKey === "spor")).map(([k]) => k);
-  const autoAvailable = (k) => !!form.pros_id && prod && (k === "schema"
+  const autoAvailable = (k) => Boolean(clientAuto[k]) || (!!form.pros_id && prod && (k === "schema"
     ? Boolean(selectedPros?.cef?.inverters?.length)
-    : k === "fise" ? catalogEquipmentComplete : false);
+    : k === "fise" ? catalogEquipmentComplete : false));
+  const autoLabel = (k) => clientAuto[k]
+    ? `preluat automat din fișa clientului (${(clientDocs[k === "id" ? "ci" : k] || []).length} fișier/e)`
+    : AUTO[k];
   const has = (k) => k === "fise"
     ? catalogEquipmentComplete
     : (att[k] || []).length > 0 || autoAvailable(k);
@@ -308,9 +323,10 @@ export function AtrDossier({ id, form, setVal }) {
       <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-documents-details">
         <summary className="cursor-pointer text-sm font-semibold">Documente anexate · {missing.length} obligatorii lipsă</summary>
         {operatorSource?.id === "deer" && <p className="text-xs mb-2"><a href={AUTH_DECLARATION_URL} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Descarcă declarația oficială de autenticitate DEER ↗</a></p>}
+        {Object.values(clientAuto).some(Boolean) && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }} data-testid="atr-client-docs-autofill">Actele încărcate în fișa clientului (CI, CF și constatator) se includ automat în PDF și ZIP. Factura și celelalte documente ale clientului se păstrează în ZIP.</p>}
         {need.includes("fise") && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Fișele tehnice sunt marcate automat complete numai când fiecare echipament selectat are în catalog atât fișa tehnică, cât și declarația de conformitate. Fișierele adăugate manual rămân incluse în PDF, dar trebuie verificate pentru fiecare model.</p>}
         {need.includes("fise") && catalogEvidenceMissing.length > 0 && <ul className="mb-2 list-disc pl-5 text-xs text-amber-800" data-testid="atr-catalog-evidence-missing">{catalogEvidenceMissing.map((item) => <li key={item}>{item}</li>)}</ul>}
-        <div className="mt-3">{DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={autoAvailable(k)} autoLabel={AUTO[k]} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}</div>
+        <div className="mt-3">{DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={autoAvailable(k)} autoLabel={autoLabel(k)} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}</div>
       </details>
       <div className="flex flex-wrap gap-2 mt-4">
         {id ? <>
