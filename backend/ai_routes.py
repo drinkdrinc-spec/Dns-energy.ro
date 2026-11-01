@@ -381,12 +381,25 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
         else:
             clean[key] = str(value).strip()[:100]
     clean = {k: v for k, v in clean.items() if v is not None}
-    # Never replace values already entered or confirmed by a person.
-    filled = {k: v for k, v in clean.items() if item.get(k) in (None, "")}
+    # Preserve valid values entered by a person, but treat zero/malformed values as
+    # missing for positive physical parameters such as power, voltage, capacity and current.
+    zero_allowed = {"coef_voc", "coef_vmp", "temp_pmax"}
+    def has_confirmed_value(key, value):
+        if value in (None, ""):
+            return False
+        if key not in numeric:
+            return bool(str(value).strip())
+        try:
+            current = float(str(value).replace(",", "."))
+        except (TypeError, ValueError):
+            return False
+        return current >= 0 if key in zero_allowed else current > 0
+
+    filled = {k: v for k, v in clean.items() if not has_confirmed_value(k, item.get(k))}
     if filled:
         await db.catalog.update_one({"id": item_id, "owner": user["id"]}, {"$set": {**filled, "extracted_from": doc.get("source_url") or doc.get("original_filename"), "extracted_at": now()}})
         await S.audit(user, "extragere date din fișă echipament", "catalog", item_id, list(filled))
-    return {"ok": True, "filled": filled, "skipped_existing": [k for k in clean if k not in filled],
+    return {"ok": True, "filled": filled, "skipped_existing": [k for k in clean if has_confirmed_value(k, item.get(k))],
             "source": doc.get("source_url") or doc.get("original_filename"),
             "message": "Valorile provin din fișa PDF. Verifică modelul, unitățile și valorile înainte de utilizarea în dimensionare."}
 
