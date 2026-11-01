@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { FileDown, RefreshCw, Download, FileType2 } from "lucide-react";
 import { toast } from "sonner";
-import { api, API, openAuthenticatedFile } from "@/lib/api";
+import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { DiuCircuits } from "./DiuCircuits";
 
@@ -97,6 +97,7 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
           <div className="flex items-center gap-2 shrink-0">
             <span className="font-bold rounded-full px-2 py-0.5" style={p.status === "semnat" ? { background: "#ecfdf3", color: "#166534" } : p.missing.length ? { background: "#fff0f0", color: "#9b2c2c" } : { background: "#eef4ff", color: "#1d4ed8" }} data-testid={`diu-doc-status-${p.key}`}>{p.status}{p.signed_at ? ` ${new Date(p.signed_at).toLocaleDateString("ro-RO")}` : ""}</span>
             <button type="button" onClick={() => openAuthenticatedFile(pdf(p.key))} title={p.signed_at ? "PDF semnat" : "PDF"} data-testid={`diu-doc-pdf-${p.key}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></button>
+            <button type="button" onClick={() => downloadAuthenticatedFile(pdf(p.key), `DIU_${p.key}_${id}.pdf`)} title="Descarcă PDF separat" aria-label={`Descarcă ${p.title} PDF`} data-testid={`diu-doc-download-${p.key}`}><Download size={15} style={{ color: "var(--blue)" }} /></button>
             {p.docx && <button type="button" onClick={() => openAuthenticatedFile(`/diu/${id}/pdf?doc=${p.key}&fmt=docx`)} title="Word (editabil)" data-testid={`diu-doc-docx-${p.key}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></button>}
           </div>
         </div>))}</div>
