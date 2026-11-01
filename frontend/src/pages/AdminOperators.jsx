@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FileDown } from "lucide-react";
-import { api, API } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { VisaPanel } from "@/components/anre/VisaPanel";
 
@@ -17,7 +17,7 @@ function Row({ o, onDone }) {
     <tr className="border-t align-top" style={{ borderColor: "var(--line)" }} data-testid={`operator-row-${o.cui}`}>
       <td className="py-2"><b>{o.company}</b><div className="text-xs">CUI {o.cui} · {o.email}</div></td>
       <td className="text-xs">nr. {o.attest_no}<br />{(o.attest_types || []).join(", ")} {o.attest_other || ""}<br />valabil: {o.attest_valid || "—"}<br />titular: {o.holder_name}</td>
-      <td className="text-xs">{o.has_document ? <a href={`${API}/admin/operators/${o.tenant}/document?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} data-testid={`operator-doc-${o.cui}`}><FileDown size={13} /> {o.doc_name}</a> : "lipsă"}</td>
+      <td className="text-xs">{o.has_document ? <button type="button" onClick={() => openAuthenticatedFile(`/admin/operators/${o.tenant}/document`)} className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} data-testid={`operator-doc-${o.cui}`}><FileDown size={13} /> {o.doc_name}</button> : "lipsă"}</td>
       <td className="text-xs" data-testid={`operator-visa-${o.cui}`}><input type="date" className="den-input !py-1 !text-xs" value={vd} onChange={(e) => setVd(e.target.value)} data-testid={`operator-visa-date-${o.cui}`} />
         <div className="mt-1">{o.visa_confirmed ? <b style={{ color: "#166534" }}>confirmată</b> : o.visa_date ? <b style={{ color: "#8a5a00" }}>de confirmat</b> : "—"}{o.visa_reminded_at && <> · memento trimis {new Date(o.visa_reminded_at).toLocaleDateString("ro-RO")}</>}</div>
         <button className="font-bold mt-1" style={{ color: "var(--blue)" }} onClick={() => visa(!o.visa_confirmed || vd !== o.visa_date)} data-testid={`operator-visa-confirm-${o.cui}`}>{o.visa_confirmed && vd === o.visa_date ? "Retrage confirmarea" : "Confirmă data"}</button></td>
