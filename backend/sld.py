@@ -353,8 +353,10 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.lw(0.35); S.c.rect(318, y + 4, 9, 5, stroke=1, fill=0); S.lw()
             S.text(322.5, y + 5.6, "PI", 5, True, anchor="c")
             S.wire(322.5, y + 4, 322.5, y + 2, "ctl"); S.wire(322.5, y + 2, 313, y + 2, "ctl")
-            S.val(304, y - 4, "-K1 ", grid.get("anti_breaker"), size=4.2, w=25)
-            S.val(304, y - 6.6, "-K2 releu ", grid.get("anti_relay"), size=4.2, w=25)
+            anti_breaker = grid.get("anti_breaker") or base["grid"].get("anti_breaker_proposal")
+            anti_relay = grid.get("anti_relay") or "model conform ATR / OD"
+            S.val(304, y - 4, "-K1 ", f"{anti_breaker} A (propus)" if anti_breaker and not grid.get("anti_breaker") else anti_breaker, size=4.2, w=25)
+            S.val(304, y - 6.6, "-K2 releu ", anti_relay, size=4.2, w=25)
         # smart meter
         mx = 306 + A
         if grid.get("meter"):
@@ -659,7 +661,10 @@ def protections(rec, res):
     out.append(("-Q0.TG", "Întreruptor general TG", gv(n(grid.get("tg_breaker_a")), " A " + ("4P" if tri else "2P")), "-TG"))
     out.append(("-FA AC", "Descărcător SPD AC", grid.get("spd_ac"), "-TG"))
     if base["grid"]["anti"]:
-        out.append(("-K1/-K2", "Element decuplare + releu protecție interfață", " / ".join(x for x in [grid.get("anti_breaker"), grid.get("anti_relay")] if x) or None, "-TAI"))
+        anti_breaker = grid.get("anti_breaker") or base["grid"].get("anti_breaker_proposal")
+        breaker_value = (f"{anti_breaker} A (propus)" if anti_breaker and not grid.get("anti_breaker") else f"{anti_breaker} A" if anti_breaker else "")
+        anti_relay = grid.get("anti_relay") or "model conform ATR / OD"
+        out.append(("-K1/-K2", "Întreruptor motorizat cu bobină + releu protecție interfață", " / ".join(x for x in [breaker_value, anti_relay] if x) or None, "-TAI"))
     out.append(("-Q0", "Întreruptor BMP (OD)", gv(n(grid.get("bmp_a")), " A " + ("4P" if tri else "2P")), "-BMP"))
     return out
 
