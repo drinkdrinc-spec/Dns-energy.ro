@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { api, fileUrl } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { Upload, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -84,7 +84,7 @@ function Slot({ k, label, files, add, remove }) {
       </div>
       {(files || []).map((f, i) => (
         <div key={f.storage_path} className="flex items-center justify-between text-xs mt-2">
-          <a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline" style={{ color: "var(--blue)" }}><FileText size={12} /> {f.original_filename}</a>
+          <button type="button" onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)} className="inline-flex items-center gap-1 underline text-left" style={{ color: "var(--blue)" }}><FileText size={12} /> {f.original_filename}</button>
           <button onClick={() => remove(k, i)} data-testid={`client-doc-remove-${k}-${i}`}><Trash2 size={13} style={{ color: "#b33333" }} /></button>
         </div>
       ))}
