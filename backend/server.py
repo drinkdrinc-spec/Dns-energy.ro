@@ -525,20 +525,48 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
     item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
     if not item:
         raise HTTPException(status_code=404, detail="Modelul nu există în catalog")
+    def allowed_official_url(candidate: str) -> tuple[str, object]:
+        parsed_candidate = urlparse(candidate)
+        candidate_host = (parsed_candidate.hostname or "").lower().rstrip(".")
+        try:
+            candidate_port = parsed_candidate.port
+        except ValueError:
+            candidate_port = -1
+        if (parsed_candidate.scheme != "https" or parsed_candidate.username or parsed_candidate.password
+                or candidate_port not in (None, 443)
+                or not any(candidate_host == domain or candidate_host.endswith("." + domain) for domain in official)):
+            raise HTTPException(status_code=400, detail="Redirecționarea a părăsit domeniul oficial permis.")
+        return candidate_host, parsed_candidate
+
     try:
+        from urllib.parse import urljoin
         chunks, total = [], 0
+        current_url = url
         async with httpx.AsyncClient(timeout=25, follow_redirects=False) as client:
-            async with client.stream("GET", url, headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"}) as response:
-                if response.status_code != 200:
-                    raise HTTPException(status_code=400, detail=f"Sursa a răspuns cu HTTP {response.status_code}; folosește linkul direct către PDF.")
-                length = response.headers.get("content-length")
-                if length and length.isdigit() and int(length) > 25 * 1024 * 1024:
-                    raise HTTPException(status_code=413, detail="Documentul depășește limita de 25 MB")
-                async for chunk in response.aiter_bytes(64 * 1024):
-                    total += len(chunk)
-                    if total > 25 * 1024 * 1024:
+            for hop in range(6):
+                async with client.stream("GET", current_url, headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"}) as response:
+                    if response.status_code in (301, 302, 303, 307, 308):
+                        location = response.headers.get("location")
+                        if not location:
+                            raise HTTPException(status_code=400, detail="Sursa a trimis o redirecționare fără destinație.")
+                        next_url = urljoin(current_url, location)
+                        allowed_official_url(next_url)
+                        current_url = next_url
+                        continue
+                    if response.status_code != 200:
+                        raise HTTPException(status_code=400, detail=f"Sursa a răspuns cu HTTP {response.status_code}; verifică linkul PDF.")
+                    final_host, _ = allowed_official_url(str(response.url))
+                    length = response.headers.get("content-length")
+                    if length and length.isdigit() and int(length) > 25 * 1024 * 1024:
                         raise HTTPException(status_code=413, detail="Documentul depășește limita de 25 MB")
-                    chunks.append(chunk)
+                    async for chunk in response.aiter_bytes(64 * 1024):
+                        total += len(chunk)
+                        if total > 25 * 1024 * 1024:
+                            raise HTTPException(status_code=413, detail="Documentul depășește limita de 25 MB")
+                        chunks.append(chunk)
+                    break
+            else:
+                raise HTTPException(status_code=400, detail="Sursa a depășit limita de 5 redirecționări.")
         data = b"".join(chunks)
     except httpx.HTTPError:
         raise HTTPException(status_code=400, detail="Documentul nu a putut fi preluat de la sursa oficială.")
@@ -546,8 +574,8 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
         raise HTTPException(status_code=415, detail="Linkul nu a returnat un PDF valid")
     stored = put_object(f"{APP_NAME}/catalog/{user['id']}/{item_id}/{kind}_{uuid.uuid4().hex}.pdf", data, "application/pdf")
     doc = {"storage_path": stored["path"], "original_filename": f"{item.get('brand_model', 'model')} — {kind}.pdf",
-           "content_type": "application/pdf", "size": len(data), "source_url": url, "source_host": host,
-           "imported_at": datetime.now(timezone.utc).isoformat()}
+           "content_type": "application/pdf", "size": len(data), "source_url": url, "source_host": final_host,
+           "resolved_url": current_url, "imported_at": datetime.now(timezone.utc).isoformat()}
     await db.catalog.update_one({"id": item_id, "owner": user["id"]}, {"$set": {kind: doc, f"{kind}_source_url": url}})
     await audit(user, "import document catalog", "catalog", item_id, [kind, "source_url"])
     return {"ok": True, "kind": kind, "source_url": url, "size": len(data)}
