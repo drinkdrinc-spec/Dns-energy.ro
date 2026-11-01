@@ -483,59 +483,49 @@ def doc_serii(ctx):
 def doc_pv_pif(ctx):
     st = storage(ctx)
     invs = inverters(ctx)
+    tests = ctx.r.get("tests") or {}
     dec = ctx.raw("pif_decision")
     pd = ro_date(ctx.raw("pif_date")) or M
     anti = ctx.raw("anti_relay_present")
+    result_rows = [["Verificare", "Rezultat DA/NU", "Valori măsurate / observații"]]
+    for i, label in enumerate(TESTS_A):
+        item = tests.get(f"a{i}") or {}
+        result_rows.append([label, escape(str(item.get("ok") or "")), escape(str(item.get("obs") or ""))])
+    for i, (freq, duration) in enumerate(FREQ):
+        item = tests.get(f"f{i}") or {}
+        result_rows.append([f"Frecvență {freq} · {duration}", escape(str(item.get("ok") or "")), escape(str(item.get("obs") or ""))])
+    for i, label in enumerate(CHECKS):
+        item = tests.get(f"c{i}") or {}
+        result_rows.append([label, escape(str(item.get("ok") or "")), escape(str(item.get("obs") or ""))])
+    has_results = any((tests.get(f"{prefix}{i}") or {}).get("ok") or (tests.get(f"{prefix}{i}") or {}).get("obs")
+                      for prefix, count in (("a", len(TESTS_A)), ("f", len(FREQ)), ("c", len(CHECKS)))
+                      for i in range(count))
     return hdr() + [
-        B("title", "PROCES-VERBAL DE PUNERE ÎN FUNCȚIUNE FINALĂ"),
+        B("title", "PROCES-VERBAL DE PUNERE ÎN FUNCȚIUNE — FIȘĂ DE LUCRU"),
         B("sub", f"a sistemului de producere a energiei electrice — Centrala electrică fotovoltaică CEF {ctx.cef_kw}"),
+        B("small", "Document precompletat cu datele salvate. Generarea nu confirmă efectuarea probelor, măsurători, conformitatea sau admiterea instalației. Completați constatările și decizia numai după verificarea efectivă; nu semnați o concluzie neconfirmată."),
         B("table", [["Denumire beneficiar", f"<b>{ctx.name}</b>"], ["Loc de consum", ctx.loc], ["POD", ctx.v("pod")],
-                    ["Tip cerere AFM", (escape(str(ctx.raw('afm'))).upper() if ctx.raw("afm") else M)]], [50, 124], False),
+                    ["Data introdusă pentru PIF", pd], ["Tip cerere AFM", (escape(str(ctx.raw('afm'))).upper() if ctx.raw("afm") else M)]], [50, 124], False),
         B("b", "Echipamente centrală fotovoltaică"),
-        B("bullets", [f"Model invertor utilizat (acreditat de Operatorul de Distribuție): <b>{'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}</b>",
-                      f"Număr + model panouri fotovoltaice: <b>{'; '.join(f'{p[chr(110)]} × {escape(p[chr(109)+chr(111)+chr(100)+chr(101)+chr(108)])} × {fmt(p[chr(119)], 0)} W' for p in panel_rows(ctx)) or M}</b>",
-                      f"Sistem stocare: <b>{'; '.join(escape(b.get('model')) for b in st) if st else 'NU'}</b>",
-                      f"Existența blocului de măsură și utilizare sigilabil, dimensionat conform puterii instalate în centrala fotovoltaică, între invertor și tabloul "
-                      f"electric al clientului: <b>{ctx.v('bmp_desc')}</b>",
-                      "Existența protecției suplimentare privind montarea releului de antiinsularizare la CEF cu P>30 kWp (cf. ORD. ANRE 132/2020 art. 1 pct. 6, art. 2a): "
-                      f"<b>{escape(str(anti)).upper() if anti else M}</b>"]),
-        B("b", "I. Date generale"),
-        B("p", f"Denumire instalator: {ctx.company}, {ctx.e('cui')}, {ctx.e('regcom')}, email: {ctx.e('email')}, telefon: {ctx.e('phone')}, contact: {ctx.rep}, ANRE: {ctx.e('anre_attest')}"),
-        B("p", f"Comisia de recepție convocată la data de {pd}."),
-        B("b", "II. Constatări"),
-        B("p", "În calitate de instalator autorizat ANRE, atestăm că această lucrare corespunde din punct de vedere tehnic și electric, cu respectarea cerințelor din "
-               "Ordinele ANRE 59/2013, 228/2018, 132/2020, 15/2022, 19/2022, 133/2022, 4/2023, a condițiilor tehnice în vigoare care permit punerea sub tensiune, inclusiv "
-               "a celor de protecție a muncii și PSI, normelor, prescripțiilor și normativelor în vigoare, respectiv a normativului I7, în vigoare cu actualizările aferente, "
-               "punându-se astfel sub tensiune în perioada de probă finală."),
-        B("p", "a) În urma examinării documentației prezentate, a rezultatelor probelor tehnologice și a cercetării pe teren a lucrărilor executate s-a constatat: "
-               "respectarea ORD ANRE 15/2022, ORD ANRE 19/2022, ORD ANRE 133/2022, ORD ANRE 132/2020. <b>INSTALAȚIA FOTOVOLTAICĂ POATE FI PUSĂ SUB TENSIUNE</b> de către "
-               "Operatorul de Distribuție / instalatorul sistemului fotovoltaic și respectă normativul I7."),
-        B("p", "b) Au fost efectuate probele și s-au verificat condițiile tehnice de racordare la rețelele electrice de interes public pentru prosumatorul cu injecție de "
-               "putere activă în rețea, în conformitate cu Ordinul ANRE nr. 228/2018 cu modificările și completările ulterioare, și s-au constatat următoarele:"),
-        B("bullets", [f"reconectarea instalațiilor de producere la rețeaua electrică s-a realizat după un interval de {ctx.v('reconnect_min')} minute de la reapariția tensiunii în rețea;",
-                      "s-a verificat nefuncționarea centralei în regim insularizat, prin dotarea cu protecții care întrerup injecția puterii active în rețea la apariția unui asemenea regim;",
-                      "s-a realizat protecția instalației de producere, a invertoarelor componente și a instalațiilor auxiliare, împotriva defectelor din instalațiile proprii sau împotriva impactului rețelei electrice asupra acestora;",
-                      "prosumatorul asigură în punctul de racordare/delimitare calitatea energiei electrice în conformitate cu standardele în vigoare;",
-                      "se respectă Standardul de Performanță privind evacuarea surplusului de energie electrică în rețeaua electrică de JT/MT aferentă Operatorului de Distribuție;",
-                      "se respectă ORD. ANRE 15/2022, actualizat prin ORD. ANRE 19/2022, privind montarea unui bloc de măsură și protecție sigilabil în instalația de utilizare, dimensionat conform puterii instalate, racordat între invertorul fotovoltaic și tabloul electric general al beneficiarului;",
-                      "se respectă ORD. ANRE 132/2020 privind implementarea reglajelor de interfață asupra invertorului, astfel încât la debitarea surplusului nivelul tensiunii în punctul de delimitare se încadrează în Standardul de Performanță."], False),
-        B("p", "În conformitate cu cele menționate anterior, declarăm pe propria răspundere faptul că Operatorul de Distribuție poate instala în cadrul blocului de măsură "
-               "și protecție montat în instalația de utilizare contorul de energie electrică ce va înregistra cantitatea de energie electrică produsă de centrala fotovoltaică "
-               "(cf. art. 45 alin. 1 lit. a1 din Legea nr. 123/2012)."),
-        B("p", "c) Alte constatări: prosumatorul are obligația să exploateze și să întrețină instalațiile proprii în conformitate cu prescripțiile în vigoare, fiind răspunzător "
-               "de orice modificare neautorizată ulterioară adusă instalației de producere fără înștiințarea Operatorului de Distribuție Regional."),
-        B("b", "III. Concluzii"),
-        B("p", f"1. Pe baza constatărilor și concluziilor consemnate mai sus, comisia de recepție hotărăște: <b>{escape(str(dec)) if dec else M}</b>."),
-        B("p", "2. Modificarea sistemului fotovoltaic, a protecțiilor și reglajelor de interfață, în mod diferit față de ORD. ANRE 132/2020, înainte, în cadrul perioadei de "
-               "probă sau după punerea în funcțiune finală, îi permite Operatorului de Distribuție deconectarea sistemului fotovoltaic de la rețea până la remedierea neconformităților."),
-        B("p", "3. Beneficiarul se angajează să informeze Operatorul de Distribuție pentru orice modificare survenită în instalația de utilizare a grupului generator, după "
-               "punerea în funcțiune a acestuia în perioada de probă / după emiterea Certificatului de Racordare tip Prosumator."),
-        B("p", f"4. Prezentul proces-verbal a fost încheiat azi {pd}, în două exemplare originale."),
-        B("p", "5. Cunoscând prevederile art. 326 din Codul Penal cu privire la falsul în declarații, declarăm (atât beneficiarul, cât și instalatorul sistemului fotovoltaic) "
-               "pe propria răspundere faptul că documentele depuse la Dosarul de Prosumator corespund realității, iar cele prezentate în format electronic sunt conforme cu originalul."),
-        B("small", "NOTĂ: după emiterea Certificatului de Racordare tip Prosumator, beneficiarul se angajează să informeze furnizorul de energie electrică în vederea întocmirii Contractului de Furnizare tip Prosumator."),
-        sign(ex_sig(ctx, "Instalator/Executant,"), ben_sig(ctx)),
-        B("p", "Observații OD: ________________________________________________________________")]
+        B("bullets", [f"Model invertor selectat: <b>{'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}</b>",
+                      f"Număr + model panouri: <b>{'; '.join(f'{p[chr(110)]} × {escape(p[chr(109)+chr(111)+chr(100)+chr(101)+chr(108)])} × {fmt(p[chr(119)], 0)} W' for p in panel_rows(ctx)) or M}</b>",
+                      f"Sistem stocare selectat: <b>{'; '.join(escape(b.get('model')) for b in st) if st else 'NU este declarat în dosar'}</b>",
+                      f"Bloc de măsură și utilizare: <b>{ctx.v('bmp_desc')}</b>",
+                      f"Protecție antiinsularizare: <b>{escape(str(anti)).upper() if anti else 'NECONFIRMATĂ'}</b>"]),
+        B("b", "I. Date executant"),
+        B("p", f"Denumire instalator: {ctx.company}, {ctx.e('cui')}, {ctx.e('regcom')}, email: {ctx.e('email')}, telefon: {ctx.e('phone')}, reprezentant: {ctx.rep}, ANRE: {ctx.e('anre_attest')}"),
+        B("b", "II. Verificări și constatări"),
+        B("p", "Verificați instalația și consemnați rezultatul real pentru fiecare probă. Valorile și observațiile nu se deduc din modelul echipamentului."),
+        B("table", result_rows, [78, 28, 68], True),
+        B("b", "III. Concluzie"),
+        B("p", f"Decizie introdusă în dosar: <b>{escape(str(dec)) if dec else 'NECOMPLETATĂ — se selectează după verificări'}</b>."),
+        B("p", "Punerea sub tensiune se aprobă numai după completarea și verificarea rezultatelor, a protecțiilor și a documentelor aplicabile."),
+        B("p", f"Nr. proces-verbal: {ctx.v('pif_no')} · Data PIF introdusă: {pd}"),
+        B("small", "Acest model nu înlocuiește măsurătorile, probele la fața locului sau verificarea și semnarea de către persoanele competente."),
+        sign(ex_sig(ctx, "Reprezentantul firmei executante,"), ben_sig(ctx)),
+    ]
+
+
 
 
 TESTS_A = ["Răspunsul la variațiile de frecvență — f > 50,2 Hz (RFA-CR)", "Răspunsul la variațiile de frecvență — f < 49,8 Hz (RFA-SC)",
@@ -555,53 +545,36 @@ def doc_pv_teste(ctx):
     invs = inverters(ctx)
     st = storage(ctx)
     t = ctx.r.get("tests") or {}
-    pd = ro_date(ctx.raw("pif_date")) or M
-    period = f"{ro_date(ctx.raw('test_from')) or M} — {ro_date(ctx.raw('test_to')) or M}"
-    out = [B("p", f"Nr. înregistrare OD …………………………………/…………………………………<br/>aferent cererii de punere sub tensiune nr. …………………………………<br/>POD <b>{ctx.v('pod')}</b>"),
-           B("title", "PROCES VERBAL"), B("sub", f"de efectuare a testelor și verificărilor de punere în funcțiune a instalației de utilizare și producere<br/>situată în {ctx.loc}"),
-           B("p", f"încheiat azi {pd} cu ocazia efectuării testelor și verificărilor de punere în funcțiune a instalației de utilizare/producere {ctx.cef_kw}"),
-           B("b", "Datele tehnice ale instalației de producere:"),
-           B("p", f"1. Seria invertorului: {'; '.join(escape(i.get('serial')) for i in invs if i.get('serial')) or M}<br/>tipul invertorului: "
-                  f"<b>{'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}</b>"),
-           B("p", f"2. Montajul CEF {ctx.cef_kw} este în conformitate cu ATR {ctx.v('atr')}"),
-           B("p", f"3. Tipul / seria contorului montat de prosumator pe partea de producere este {ctx.v('production_meter')}"),
-           B("p", f"4. Sistemul [ {'Da' if st else 'Nu'} ] are sistem de stocare"),
-           B("p", f"În perioada {period} au fost efectuate testele și s-au verificat condițiile tehnice de racordare la RED pentru prosumatorul cu injecție de "
-                  "putere activă în rețea, în conformitate cu Ord. ANRE 228/2018 cu modificările și completările ulterioare."),
-           B("p", "S-au constatat următoarele:"),
-           B("bullets", [f"1. Reconectarea instalațiilor de producere a energiei electrice aparținând prosumatorului, la rețeaua electrică s-a realizat după {ctx.v('reconnect_min')} minute de la reapariția tensiunii în rețea;",
-                         "2. S-a verificat nefuncționarea centralei în regim insularizat, aceasta realizându-se prin dotarea cu protecții/protecții integrate a echipamentului care să întrerupă injecția puterii active în rețea a prosumatorului la apariția unui asemenea regim;",
-                         "3. S-a realizat protecția instalației de producere a energiei electrice, a invertorului/invertoarelor componente și a instalațiilor auxiliare, (după caz a sistemului de stocare a energiei) și a instalației electrice aferente locului de consum împotriva defectelor din instalațiile proprii și împotriva impactului rețelei electrice asupra acestora, la acționarea protecțiilor de declanșare a prosumatorului ori la incidente în rețea (supratensiuni tranzitorii, acționări ale protecțiilor în rețea, scurtcircuite cu și fără punere la pământ), cât și în cazul apariției unor condiții tehnice excepționale/anormale de funcționare;",
-                         "4. Prosumatorul cu injecție de putere activă în rețea asigură în punctul de racordare/delimitare (după caz), calitatea energiei electrice în conformitate cu standardele în vigoare."], False),
-           B("p", f"Subsemnatul {ctx.rep}, reprezentant al firmei executante {ctx.company} (atestat ANRE {ctx.e('anre_attest')}, cu valabilitate până la "
-                  f"{ro_date(ctx.s.get('anre_valid')) or M}), declar că instalația de producere a fost realizată cu respectarea normativelor, reglementărilor, prescripțiilor și legislației în vigoare și se poate pune în funcțiune."),
-           B("p", "<b>Atât Executantul cât și Prosumatorul au obligația ca, până la încheierea contractului de vânzare-cumpărare între Prosumator și Furnizorul de energie "
-                  "electrică, SĂ NU INJECTEZE ENERGIE ELECTRICĂ în rețeaua operatorului de distribuție.</b> De asemenea, Prosumatorul și Executantul (cu drepturi de "
-                  "parametrizare a invertorului) își asumă responsabilitatea pentru menținerea în funcțiune a tuturor protecțiilor, respectiv menținerea parametrilor testați aferenți unității de producție (inclusiv a invertorului)."),
-           sign(ex_sig(ctx, "Reprezentantul firmei executante,"), []),
-           B("b", "Observații OD privind instalația de utilizare de la locul de consum și producere"),
-           B("p", "OD a sigilat: [  ] contorul pe partea de producere, din instalația prosumatorului<br/>[  ] contorul pe sistemul de stocare<br/>[  ] contorul în punctul de delimitare"),
-           B("p", "Observații (dacă este cazul)<br/>………………………………………………………………………………………………………<br/>………………………………………………………………………………………………………"),
-           B("p", "Data …………………………………<br/>Reprezentant OD,<br/>…………………………………"),
+    out = [B("p", f"Nr. înregistrare OD …………………………………<br/>Nr. cerere punere sub tensiune …………………………………<br/>POD <b>{ctx.v('pod')}</b>"),
+           B("title", "PROCES-VERBAL — TESTE ȘI VERIFICĂRI PIF"),
+           B("sub", f"aferente instalației de utilizare și producere situată în {ctx.loc}"),
+           B("small", "Fișă de lucru precompletată cu datele dosarului. Numărul se completează de operator; data de începere nu se precompletează. Nu sunt generate rezultate sau măsurători. Completați DA/NU și observațiile numai pe baza probelor efectuate."),
+           B("b", "Date tehnice ale instalației de producere"),
+           B("p", f"CEF {ctx.cef_kw} · POD {ctx.v('pod')}<br/>Serii invertor: {'; '.join(escape(i.get('serial')) for i in invs if i.get('serial')) or M}<br/>"
+                  f"Modele invertor: {'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}<br/>"
+                  f"Sistem de stocare declarat: {'DA' if st else 'NU / nespecificat'}"),
+           B("p", "Rezultatul probelor și verificărilor tehnice se consemnează mai jos numai după efectuarea lor efectivă."),
            B("pagebreak")] + hdr() + [
-           B("title", "Teste și Verificări"),
-           B("sub", "aferente Normei Tehnice „Condiții tehnice de racordare la rețelele electrice de interes public pentru prosumatorii cu injecție de putere activă în rețea” — "
-                    "Ordin ANRE nr. 228/2018 cu modificările și completările ulterioare —<br/>anexă la procesul verbal de efectuare a probelor de punere în funcțiune a instalației de utilizare și producere — de categorie A — (PGM)"),
-           B("table", [["Tip Test", "Categoria A", "Corespunde DA/NU", "Observații*"]] +
-             [[x, TESTS_A_CAT[i], escape(str((t.get(f"a{i}") or {}).get("ok") or "")), escape(str((t.get(f"a{i}") or {}).get("obs") or ""))] for i, x in enumerate(TESTS_A)],
-             [55, 70, 22, 27], True),
-           B("small", "* Acolo unde se fac teste se vor trece valorile obținute.<br/>Certificatul de echipament conține: domeniul de frecvență — durate, valoare frecvență; se verifică și protecțiile."),
-           B("table", [["Domeniul de frecvență", "Durata de funcționare", "Există (DA/NU)", "Observații"]] +
-             [[f, d, escape(str((t.get(f"f{i}") or {}).get("ok") or "")), escape(str((t.get(f"f{i}") or {}).get("obs") or ""))] for i, (f, d) in enumerate(FREQ)],
-             [45, 55, 30, 44], True),
-           B("table", [["", "Există (DA/NU)", "Observații"]] +
-             [[x, escape(str((t.get(f"c{i}") or {}).get("ok") or "")), escape(str((t.get(f"c{i}") or {}).get("obs") or ""))] for i, x in enumerate(CHECKS)],
-             [110, 30, 34], True),
-           B("b", "Notă"),
-           B("p", f"Prezenta se anexează la Procesul Verbal nr. {ctx.v('pif_no', '—')} din data de {pd} de efectuare a probelor de punere în funcțiune a instalației de utilizare și producere situată în {ctx.loc}."),
-           B("p", "Acolo unde verificarea conformității se bazează pe certificatele de echipamente ale unității generatoare, se vor anexa și acestea."),
-           sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
+           B("title", "Teste și verificări — rezultate"),
+           B("sub", "Ordin ANRE nr. 228/2018, cu modificările și completările aplicabile. Completați valorile obținute acolo unde se efectuează măsurători."),
+           B("table", [["Tip test", "Referință / cerință", "Corespunde DA/NU", "Valori măsurate / observații"]]
+             + [[x, TESTS_A_CAT[i], escape(str((t.get(f"a{i}") or {}).get("ok") or "")), escape(str((t.get(f"a{i}") or {}).get("obs") or ""))]
+                for i, x in enumerate(TESTS_A)], [48, 62, 22, 42], True),
+           B("table", [["Domeniul de frecvență", "Durata de funcționare", "Există DA/NU", "Observații"]]
+             + [[f, d, escape(str((t.get(f"f{i}") or {}).get("ok") or "")), escape(str((t.get(f"f{i}") or {}).get("obs") or ""))]
+                for i, (f, d) in enumerate(FREQ)], [42, 48, 30, 54], True),
+           B("table", [["Verificare", "Există DA/NU", "Valori / observații"]]
+             + [[x, escape(str((t.get(f"c{i}") or {}).get("ok") or "")), escape(str((t.get(f"c{i}") or {}).get("obs") or ""))]
+                for i, x in enumerate(CHECKS)], [90, 30, 54], True),
+           B("small", "Nu se bifează automat «DA» și nu se inventează valori. Dacă rezultatul sau observația lipsesc, câmpul rămâne necompletat."),
+           B("p", f"Nr. proces-verbal: {ctx.v('pif_no')} · Data efectivă a efectuării probelor: {ctx.v('pif_date')}"),
+           B("p", "Concluzia și declarația reprezentantului executantului se completează și se semnează numai după confirmarea rezultatelor de mai sus."),
+           sign(ex_sig(ctx, "Reprezentantul firmei executante,"), []),
+           B("p", "Observații OD: ________________________________________________________________"),
+           B("p", "Data OD: ________________________ · Reprezentant OD: ________________________")]
     return out
+
+
 
 
 def doc_buletin_priza(ctx):
