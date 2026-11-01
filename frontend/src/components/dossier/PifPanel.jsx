@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { api, API, formatApiErrorDetail } from "@/lib/api";
+import { api, formatApiErrorDetail, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { ClipboardCheck } from "lucide-react";
 
@@ -37,7 +37,7 @@ export function PifPanel({ id }) {
       <div className="den-field mt-3"><label>Observații</label><textarea rows={2} className="den-input" value={p.notes || ""} onChange={(e) => setP({ ...p, notes: e.target.value })} data-testid="pif-notes" /></div>
       <div className="flex flex-wrap gap-2 mt-3">
         <Btn type="button" onClick={save} data-testid="pif-save">Salvează măsurătorile</Btn>
-        <a href={`${API}/dossier/${id}/pif/pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" data-testid="pif-pdf"><Btn type="button" variant="secondary">Proces-verbal PIF (PDF)</Btn></a>
+        <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(`/dossier/${id}/pif/pdf`)} data-testid="pif-pdf">Proces-verbal PIF (PDF)</Btn>
       </div>
     </div>
   );
