@@ -207,7 +207,8 @@ def panel_rows(ctx):
     for inv in inverters(ctx):
         n = sum(int(num(s.get("panels"))) for s in inv.get("strings") or [])
         w = num(inv.get("panel_w"))
-        rows.append({"n": n, "model": inv.get("panel_model") or "", "w": w, "kw": n * w / 1000})
+        count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
+        rows.append({"n": n, "count": count, "model": inv.get("panel_model") or "", "w": w, "kw": n * w / 1000})
     return rows
 
 
@@ -250,9 +251,12 @@ def doc_notificare(ctx):
     rows = [["Nr. crt.", "Nr. panouri", "Tip panou", "Pi panou (c.c.) (kW)", "Pi total panouri (c.c.) (kW)", "Pmax debitat de panouri (c.c.) (kW)",
              "Pi total panouri pe 1 invertor (c.c.) (kW)", "Observaţii"]]
     for i, p in enumerate(pr):
-        rows.append([str(i + 1), str(p["n"] or ""), escape(p["model"]), f"{p['w'] / 1000:.3f}" if p["w"] else "", f"{p['kw']:.2f}" if p["kw"] else "",
-                     f"{p['kw']:.2f}" if p["kw"] else "", f"{p['kw']:.2f}" if p["kw"] else "", ""])
-    tk = sum(p["kw"] for p in pr)
+        total_panels = p["n"] * p["count"]
+        total_kw = p["kw"] * p["count"]
+        rows.append([str(i + 1), str(total_panels or ""), escape(p["model"]), f"{p['w'] / 1000:.3f}" if p["w"] else "",
+                     f"{total_kw:.2f}" if total_kw else "", f"{total_kw:.2f}" if total_kw else "",
+                     f"{p['kw']:.2f}" if p["kw"] else "", ""])
+    tk = sum(p["kw"] * p["count"] for p in pr)
     rows.append(["TOTAL:", "", "", "", f"{tk:.2f}" if tk else "", f"{tk:.2f}" if tk else "", "", ""])
     out.append(B("table", rows, [12, 16, 30, 20, 24, 26, 28, 18], True))
     out.append(B("b", "Invertoare:"))
@@ -260,10 +264,14 @@ def doc_notificare(ctx):
              "Pmax centrală formată din module generatoare (c.a.) (kW)", "Observaţii"]]
     tpi = tpm = 0
     for i, inv in enumerate(invs):
-        pi, pm = num(inv.get("p_nom_kw")), num(inv.get("p_limit_kw")) or num(inv.get("p_max_kw")) or num(inv.get("p_nom_kw"))
-        tpi += pi; tpm += pm
+        count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
+        pi = num(inv.get("p_nom_kw"))
+        pm = num(inv.get("p_limit_kw")) or num(inv.get("p_max_kw")) or pi
+        tpi += pi * count
+        tpm += pm * count
         un = "400" if "mono" not in str(inv.get("phases") or ("Trifazat" if tri else "Monofazat")).lower() else "230"
-        rows.append([str(i + 1), "1", escape(inv.get("brand_model") or ""), un, f"{pi:.2f}" if pi else "", f"{pm:.2f}" if pm else "", "", ""])
+        rows.append([str(i + 1), str(count), escape(inv.get("brand_model") or ""), un, f"{pi:.2f}" if pi else "",
+                     f"{pm:.2f}" if pm else "", f"{pm * count:.2f}" if pm else "", ""])
     rows.append(["TOTAL:", str(len(invs)) if invs else "", "", "", f"{tpi:.2f}" if tpi else "", f"{tpm:.2f}" if tpm else "", f"{tk:.2f}" if tk else "", ""])
     out += [B("table", rows, [12, 16, 34, 20, 20, 26, 30, 16], True),
             B("small", "NOTĂ:<br/>U.G. = unitate generatoare; panou = panou fotovoltaic; As - asincron; S - sincron; T - termo; H - hidro; E - eolian; "
@@ -282,6 +290,18 @@ def doc_notificare(ctx):
             B("p", "În sprijinul solicitării mele, transmit următoarele informaţii privind:"),
             B("p", "a) deţinerea de sisteme de stocare a energiei electrice produse din surse regenerabile:"),
             B("p", "[  ] NU DEŢIN.     [ X ] DEŢIN" if st else "[ X ] NU DEŢIN.     [  ] DEŢIN"),
+            B("b", "Detalii sistem de stocare (datele se preiau din modelul selectat / fișa tehnică):"),
+            B("table",
+              [["Producător / model", "Nr. unități", "Capacitate kWh/unitate", "Tensiune V", "Capacitate Ah/unitate", "Imax A", "Schema / cuplare"]]
+              + [[escape(str(b.get("model") or M)), escape(str(b.get("modules") if b.get("modules") is not None else M)),
+                  escape(str(b.get("kwh") if b.get("kwh") is not None else M)),
+                  escape(str(b.get("voltage") if b.get("voltage") is not None else M)),
+                  escape(str(b.get("ah") if b.get("ah") is not None else M)),
+                  escape(str(b.get("i_max") if b.get("i_max") is not None else M)),
+                  escape(str(b.get("coupling") or M))]
+                 for b in st]
+              if st else [["Nu este selectat", M, M, M, M, M, M]],
+              [30, 12, 23, 15, 20, 14, 25], True),
             B("p", "b) echipamentele de măsurare a energiei electrice montate în instalaţiile de utilizare, altele decât cele aparţinând operatorilor de distribuţie, "
                    "şi caracteristicile acestora, respectiv: serie contor, tip contor, date tehnice:"),
             B("p", "[  ] NU     [ X ] DA" if sl else "[ X ] NU     [  ] DA")]
