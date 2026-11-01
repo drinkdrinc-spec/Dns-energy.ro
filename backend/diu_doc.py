@@ -120,7 +120,7 @@ def doc_opis(ctx, r, pos):
                     B("p", f"Beneficiar: <b>{ctx.name}</b> · Obiectiv: {ctx.loc} · Nr. dosar: {e(r.get('number'))} · Data: {ctx.date}"),
                     B("table", rows, [8, 70, 22], True),
                     B("p", "Executantul declară că documentele de mai sus aparțin instalației de utilizare descrise și reflectă situația reală de la data întocmirii."),
-                    sign(ex_sig(ctx), ben_sig(ctx))]
+                    sign(ex_sig(ctx), [])]
 
 
 def doc_memoriu(ctx, r, pos):
@@ -147,7 +147,7 @@ def doc_memoriu(ctx, r, pos):
             B("b", "7. Normative aplicate"),
             B("bullets", ["Normativ I7/2011 — proiectarea, execuția și exploatarea instalațiilor electrice aferente clădirilor", "SR HD 60364 — instalații electrice de joasă tensiune",
                           "SR EN IEC 62446-1 — sisteme fotovoltaice (dacă este cazul)", "Regulamentul ANRE privind racordarea utilizatorilor la rețelele electrice de interes public"]),
-            sign(ex_sig(ctx, "Întocmit — executant,"), ben_sig(ctx))]
+            sign(ex_sig(ctx, "Întocmit — executant,"), [])]
     return out
 
 
@@ -265,7 +265,7 @@ def doc_garantie(ctx, r, pos):
                                   "Echipamentele (invertoare, panouri, baterii, aparataj) beneficiază de garanția producătorului, conform documentelor acestora.",
                                   "Garanția nu acoperă intervenții ale terților, modificări ale instalației, utilizare necorespunzătoare, supratensiuni atmosferice sau forță majoră.",
                                   "Defectele se notifică executantului în scris, la datele de contact de mai sus."]),
-                    sign(ex_sig(ctx), ben_sig(ctx))]
+                    sign(ex_sig(ctx), [])]
 
 
 def doc_receptie(ctx, r, pos):
@@ -279,7 +279,7 @@ def doc_receptie(ctx, r, pos):
         B("p", f"<b>{e(r.get('receptie_decision'))}</b>"),
         B("p", f"Observații consemnate: {e(r.get('receptie_findings'))}"),
         B("p", "Prezentul proces-verbal consemnează hotărârea și observațiile introduse pentru recepție. Valorile măsurate se consemnează în buletinele de verificare aferente."),
-        sign(ex_sig(ctx, "Executant,"), ben_sig(ctx))
+        sign(ex_sig(ctx, "Executant,"), [])
     ]
 
 
@@ -294,7 +294,7 @@ def doc_pif(ctx, r, pos):
         B("p", f"<b>{e(r.get('pif_decision'))}</b>"),
         B("p", f"Observații consemnate: {e(r.get('pif_findings'))}"),
         B("p", "Procesul-verbal nu completează automat rezultate de măsurare; acestea trebuie preluate din buletinele de verificare efectiv întocmite."),
-        sign(ex_sig(ctx, "Executant,"), ben_sig(ctx))
+        sign(ex_sig(ctx, "Executant,"), [])
     ]
 
 
@@ -305,7 +305,7 @@ def doc_conformitate(ctx, r, pos):
         B("p", f"Executantul <b>{ctx.company}</b>, reprezentat prin {ctx.rep}, declară că lucrările de instalații electrice executate la {ctx.loc}, pentru beneficiarul {ctx.name}, au fost realizate conform documentației tehnice aplicabile lucrării."),
         B("p", f"Tip instalație: {ctx.v('type')}; putere instalată: {ctx.v('power')} kW; alimentare: {ctx.v('supply')}."),
         B("p", f"Data declarației: {ro_date(r.get('doc_date') or r.get('date')) or M}. Rezultatele verificărilor sunt cele înscrise în buletinele de măsurare efectiv completate și anexate dosarului."),
-        sign(ex_sig(ctx, "Executant,"), ben_sig(ctx))
+        sign(ex_sig(ctx, "Executant,"), [])
     ]
 
 
