@@ -41,22 +41,19 @@ export default function Layout() {
 }
 
 function PwaInstallButton() {
-  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installPrompt, setInstallPrompt] = useState(() => window.__dnsEnergyInstallPrompt || null);
   const [installed, setInstalled] = useState(
-    () => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true
+    () => window.__dnsEnergyInstalled === true || window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true
   );
 
   useEffect(() => {
-    const capturePrompt = (event) => {
-      event.preventDefault();
-      setInstallPrompt(event);
-    };
+    const syncPrompt = () => setInstallPrompt(window.__dnsEnergyInstallPrompt || null);
     const markInstalled = () => setInstalled(true);
-    window.addEventListener("beforeinstallprompt", capturePrompt);
-    window.addEventListener("appinstalled", markInstalled);
+    window.addEventListener("dns-energy-install-ready", syncPrompt);
+    window.addEventListener("dns-energy-app-installed", markInstalled);
     return () => {
-      window.removeEventListener("beforeinstallprompt", capturePrompt);
-      window.removeEventListener("appinstalled", markInstalled);
+      window.removeEventListener("dns-energy-install-ready", syncPrompt);
+      window.removeEventListener("dns-energy-app-installed", markInstalled);
     };
   }, []);
 
@@ -66,6 +63,7 @@ function PwaInstallButton() {
     if (installPrompt) {
       await installPrompt.prompt();
       const choice = await installPrompt.userChoice;
+      window.__dnsEnergyInstallPrompt = null;
       if (choice?.outcome === "accepted") setInstalled(true);
       setInstallPrompt(null);
       return;
