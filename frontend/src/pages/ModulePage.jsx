@@ -561,7 +561,7 @@ export default function ModulePage({ moduleKey }) {
           </div>}
           {key === "prosumator" && <div className="grid gap-3 sm:hidden" data-testid="mobile-prosumer-actions">
             {filtered.map((it) => {
-              const normalize = (value) => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+              const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
               const diu = linkedDiu.find((d) => d.pros_id === it.id || (d.client_id ? d.client_id === it.client_id : normalize(d.client_name) === normalize(it.client_name)));
               const actionClass = "inline-flex min-h-9 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold";
               return <article key={it.id} className="rounded-xl border p-4 shadow-sm" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid={`prosumer-card-${it.id}`}>
@@ -591,7 +591,7 @@ export default function ModulePage({ moduleKey }) {
               const linked = linkedProsumer.find((p) => it.pros_id
                 ? p.id === it.pros_id && (!it.client_id || !p.client_id || p.client_id === it.client_id)
                 : Boolean(it.client_id && p.client_id === it.client_id && it.pod && p.pod === it.pod));
-              const isDeer = /deer|distributie energie electrica romania/i.test(String(it.operator || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, ""));
+              const isDeer = /deer|distributie energie electrica romania/i.test(String(it.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
               return <article key={it.id} className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: "var(--line)" }} data-testid={`atr-mobile-card-${it.id}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
