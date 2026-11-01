@@ -14,21 +14,21 @@ function SharedBatteries({ list, set, catalog }) {
       <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Folosește doar dacă arhitectura producătorului permite funcționarea în paralel pe aceeași baterie.</p>
       {list.map((b, i) => (
         <div key={b.id} className="grid sm:grid-cols-4 gap-3 mb-3 pb-3 border-b" style={{ borderColor: "var(--line)" }} data-testid={`shared-${i}`}>
-          <CatalogPick items={catalog} category="Baterie" testid={`shared-${i}-pick`} onQueryChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, i_max: undefined, coupling: undefined })} onPick={(it) => upd(i, { catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, i_max: it.i_max, coupling: it.coupling || "DC" })} />
+          <CatalogPick items={catalog} category="Baterie" testid={`shared-${i}-pick`} onQueryChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, i_max: undefined, coupling: undefined })} onPick={(it) => upd(i, { catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, i_max: it.i_max, coupling: it.coupling || "" })} />
           <F label="Model" value={b.model} onChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, i_max: undefined, coupling: undefined })} testid={`shared-${i}-model`} />
           <F label="kWh / modul" type="number" value={b.kwh} onChange={(v) => upd(i, { kwh: v })} testid={`shared-${i}-kwh`} />
           <F label="Nr. module" type="number" value={b.modules} onChange={(v) => upd(i, { modules: v })} testid={`shared-${i}-modules`} />
           <F label="Ah" type="number" value={b.ah} onChange={(v) => upd(i, { ah: v })} testid={`shared-${i}-ah`} />
           <F label="Tensiune (V)" type="number" value={b.voltage} onChange={(v) => upd(i, { voltage: v })} testid={`shared-${i}-v`} />
           <F label="Curent max descărcare (A)" type="number" value={b.i_max} onChange={(v) => upd(i, { i_max: v })} testid={`shared-${i}-imax`} />
-          <F label="Cuplare" value={b.coupling || "DC"} onChange={(v) => upd(i, { coupling: v })} options={["DC", "AC"]} testid={`shared-${i}-coupling`} />
+          <F label="Cuplare" value={b.coupling || ""} onChange={(v) => upd(i, { coupling: v })} options={["DC", "AC"]} testid={`shared-${i}-coupling`} />
           <div className="flex items-end gap-3 pb-2">
             <Check label="Producătorul permite paralel" value={b.parallel_supported} onChange={(v) => upd(i, { parallel_supported: v })} testid={`shared-${i}-parallel`} />
             <button onClick={() => set(list.filter((_, j) => j !== i))} data-testid={`shared-${i}-remove`}><Trash2 size={15} style={{ color: "#b33333" }} /></button>
           </div>
         </div>
       ))}
-      <button onClick={() => set([...list, { id: uid(), coupling: "DC", modules: 1 }])} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="add-shared-battery"><Plus size={13} /> Adaugă baterie comună</button>
+      <button onClick={() => set([...list, { id: uid(), coupling: "", modules: 1 }])} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="add-shared-battery"><Plus size={13} /> Adaugă baterie comună</button>
     </div>
   );
 }
