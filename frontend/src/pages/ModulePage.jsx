@@ -94,12 +94,35 @@ export default function ModulePage({ moduleKey }) {
   const [diuPre, setDiuPre] = useState(false);
   const [catalogImportsBusy, setCatalogImportsBusy] = useState(false);
 
-  const load = () => api.get(`/data/${key}`).then((r) => {
-    setItems(r.data);
+  const load = () => api.get(`/data/${key}`).then(async (r) => {
+    const rows = Array.isArray(r.data) ? r.data : [];
+    setItems(rows);
     const eid = new URLSearchParams(window.location.search).get("edit");
-    const it = eid && r.data.find((x) => x.id === eid);
-    if (it) { setForm({ ...it }); setEditId(it.id); setChecks(it.checklist || {}); window.history.replaceState(null, "", window.location.pathname); }
-  }).catch(() => {});
+    if (!eid) return;
+    let it = rows.find((x) => x.id === eid);
+    if (!it) {
+      try {
+        const detail = await api.get(`/data/${key}/${encodeURIComponent(eid)}`);
+        it = detail.data;
+        if (it?.id) setItems((current) => current.some((x) => x.id === it.id) ? current : [it, ...current]);
+      } catch (error) {
+        const message = error?.response?.data?.detail || "Înregistrarea nu a putut fi încărcată. Verifică dacă ai acces la dosar.";
+        toast.error(message);
+        return;
+      }
+    }
+    if (it?.id) {
+      setForm({ ...it });
+      setEditId(it.id);
+      setChecks(it.checklist || {});
+      window.history.replaceState(null, "", window.location.pathname);
+    } else {
+      toast.error("Înregistrarea din link nu conține un identificator valid.");
+    }
+  }).catch((error) => {
+    const message = error?.response?.data?.detail || "Nu s-au putut încărca înregistrările. Încearcă din nou.";
+    toast.error(message);
+  });
 
   useEffect(() => {
     setForm(null); setEditId(null); setChecks({}); setQ("");
