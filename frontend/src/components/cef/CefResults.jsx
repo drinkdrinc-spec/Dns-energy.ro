@@ -10,7 +10,7 @@ export function Issues({ errors = [], warnings = [], testid }) {
   );
 }
 
-export function Totals({ res }) {
+export function Totals({ res, grid = {}, inverters = [] }) {
   if (!res) return null;
   const t = res.totals;
   const items = [["Panouri", `${t.kwp} kWp`, "tot-kwp"], ["Invertoare", `${t.inverters_kw} kW`, "tot-kw"], ["Evacuat", `${t.export_kw} kW`, "tot-export"],
@@ -28,6 +28,22 @@ export function Totals({ res }) {
           <><AlertTriangle size={14} color="#fbbf24" /> {res.errors.length} erori · {res.warnings.length} avertizări</>}
         {res.grid.anti && <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "#7f1d1d" }}>Tablou antiinsularizare inclus</span>}
       </div>
+      {res.inverters?.length > 0 && <div className="mt-3 rounded-lg border border-white/15 bg-white/5 p-3" data-testid="cef-auto-sizing">
+        <b className="block text-xs">Propuneri automate de protecții și cabluri</b>
+        {res.grid?.main_proposal && <p className="mt-2 text-xs">Branșament: disjunctor general propus {res.grid.main_proposal} A · Ib {res.grid.i_br} A.</p>}
+        <div className="mt-2 space-y-1.5">
+          {res.inverters.map((inv, index) => {
+            const ac = inv.proposals?.ac || {};
+            const dc = inv.proposals?.dc || {};
+            const units = inv.count > 1 ? ` · ${inv.count} buc.` : "";
+            return <p key={inv.index || index} className="text-xs leading-relaxed" data-testid={`cef-auto-sizing-${inv.index || index + 1}`}>
+              Invertor {inv.index || index + 1}{units}: AC {ac.breaker_a ? `${ac.breaker_a} A` : "protecție nedeterminată"} / {ac.section ? `${ac.section} mm²` : "secțiune nedeterminată"} · DC {dc.section ? `${dc.section} mm²` : "secțiune nedeterminată"}{dc.spd_ucpv ? ` · SPD ${dc.spd_ucpv} V` : ""}{dc.fuse ? ` · gPV ${dc.fuse} A` : ""}
+            </p>;
+          })}
+        </div>
+        {inverters.length > 0 && inverters.some((inv) => !Number(inv.ac?.length_m) || !Number(inv.dc?.length_m)) &&
+          <p className="mt-2 text-[11px] leading-relaxed text-amber-100">Lungimea unuia sau mai multor trasee nu este introdusă: secțiunile sunt propuneri după curent, iar căderea de tensiune nu este verificată complet. Confirmarea proiectantului autorizat rămâne necesară.</p>}
+      </div>}
     </div>
   );
 }
