@@ -466,7 +466,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
     battery_kwh = sum(number(b.get("kwh")) * max(1, int(number(b.get("modules")) or 1)) for b in batteries)
     battery_ah = ", ".join(str(b.get("ah")) for b in batteries if b.get("ah") not in (None, ""))
     battery_voltage = ", ".join(str(b.get("voltage")) for b in batteries if b.get("voltage") not in (None, ""))
-    battery_modules = sum(int(number(b.get("modules")) or 0) for b in batteries)
+    battery_modules = sum(max(1, int(number(b.get("modules")) or 1)) for b in batteries)
     battery_coupling = ", ".join(dict.fromkeys(str(b.get("coupling")) for b in batteries if b.get("coupling")))
     values = [
         (("numecomplet", "utilizator", "beneficiar", "solicitant", "denumireclient"), c.get("name")),
