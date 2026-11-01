@@ -87,7 +87,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     const canReplaceStrings = existingStrings.length === 0 || existingStrings.every((x) => x.auto_generated);
     if (kind === "inverter") Object.assign(inv, item ? {
       catalog_id: item.id, brand_model: item.brand_model, type: item.type, phases: item.phases, p_nom_kw: item.p_nom_kw, p_max_kw: item.p_max_kw,
-      vdc_max: item.vdc_max, mppt_min: item.mppt_min, mppt_max: item.mppt_max, mppt_count: item.mppt_count, imax_mppt: item.imax_mppt,
+      vdc_max: item.vdc_max, mppt_min: item.mppt_min, mppt_max: item.mppt_max, mppt_count: item.mppt_count, imax_mppt: item.imax_mppt, bat_i_max: item.bat_i_max,
       red_limit_mode: item.red_limit_mode || "Nu este declarată", count: Math.max(1, Number(form.inverter_count) || 1),
     } : { catalog_id: "", brand_model: "", p_nom_kw: "", p_max_kw: "", type: "", phases: "", count: 1 });
     if (kind === "panel") Object.assign(inv, item ? {
@@ -95,7 +95,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       panel_isc: item.isc, panel_coef_voc: item.coef_voc, panel_coef_vmp: item.coef_vmp,
     } : { panel_catalog_id: "", panel_model: "", panel_w: "", panel_voc: "", panel_vmp: "", panel_isc: "", panel_coef_voc: "", panel_coef_vmp: "" });
     if (kind === "battery") Object.assign(inv, item ? {
-      battery_mode: "own", battery: { ...(inv.battery || {}), catalog_id: item.id, model: item.brand_model, kwh: item.kwh, ah: item.ah, voltage: item.voltage, coupling: item.coupling || "DC", modules: Number(form.battery_count || 1) },
+      battery_mode: "own", battery: { ...(inv.battery || {}), catalog_id: item.id, model: item.brand_model, kwh: item.kwh, ah: item.ah, voltage: item.voltage, i_max: item.i_max, coupling: item.coupling || "DC", modules: Number(form.battery_count || 1) },
     } : { battery_mode: "none", battery: {} });
     if (kind === "meter") setVal("cef", { ...cef, grid: { ...(cef.grid || {}), meter: item?.brand_model || "", meter_catalog_id: item?.id || "" } });
     else {
