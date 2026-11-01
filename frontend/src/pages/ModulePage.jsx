@@ -92,7 +92,7 @@ export default function ModulePage({ moduleKey }) {
       if (params.get("new") === "atr" && clientId) {
         Promise.all([api.get("/data/clients"), api.get("/data/prosumator")]).then(([clientsRes, prosRes]) => {
           const client = (clientsRes.data || []).find((item) => item.id === clientId);
-          const linkedPros = (prosRes.data || []).filter((item) => item.client_id === clientId);
+          const linkedPros = (prosRes.data || []).filter((item) => item.client_id === clientId || (client && String(item.client_name || "").trim().toLocaleLowerCase("ro-RO") === String(client.name || "").trim().toLocaleLowerCase("ro-RO")));
           const requestedProsId = params.get("prosId");
           const pros = requestedProsId
             ? linkedPros.find((item) => item.id === requestedProsId)
@@ -136,7 +136,7 @@ export default function ModulePage({ moduleKey }) {
       if (params.get("new") === "diu" && clientId) {
         Promise.all([api.get("/data/clients"), prosId ? api.get("/data/prosumator") : Promise.resolve({ data: [] })]).then(([clientsRes, prosRes]) => {
           const client = (clientsRes.data || []).find((item) => item.id === clientId);
-          const linkedPros = (prosRes.data || []).filter((item) => item.client_id === clientId);
+          const linkedPros = (prosRes.data || []).filter((item) => item.client_id === clientId || (client && String(item.client_name || "").trim().toLocaleLowerCase("ro-RO") === String(client.name || "").trim().toLocaleLowerCase("ro-RO")));
           const pros = prosId
             ? linkedPros.find((item) => item.id === prosId)
             : linkedPros.length === 1 ? linkedPros[0] : null;
