@@ -486,6 +486,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
     battery_ah = ", ".join(str(b.get("ah")) for b in batteries if b.get("ah") not in (None, ""))
     battery_voltage = ", ".join(str(b.get("voltage")) for b in batteries if b.get("voltage") not in (None, ""))
     battery_modules = sum(max(1, int(number(b.get("modules")) or 1)) for b in batteries)
+    battery_i_max = ", ".join(str(b.get("i_max")) for b in batteries if b.get("i_max") not in (None, ""))
     battery_coupling = ", ".join(dict.fromkeys(str(b.get("coupling")) for b in batteries if b.get("coupling")))
     values = [
         (("numecomplet", "utilizator", "beneficiar", "solicitant", "denumireclient"), c.get("name")),
@@ -514,6 +515,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         (("amperoribaterie", "baterieah", "capacitateah"), battery_ah or None),
         (("tensiunebateriev", "bateriev", "tensiunesistemstocare"), battery_voltage or None),
         (("cuplarebaterie", "modcuplare", "acdcoupling"), battery_coupling or None),
+        (("curentmaxbaterie", "curentdescarcarebaterie", "amperajbaterie", "baterieimax"), battery_i_max or None),
     ]
     def value_for(field_name):
         key = norm(field_name)
