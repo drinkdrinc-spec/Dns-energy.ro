@@ -140,7 +140,23 @@ async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict
     if mime == "application/pdf":
         text = _pdf_selectable_text(content)
         if len(text) >= 80:
-            return await extract_gpt_text(text, doc_type)
+            # Hybrid PDFs can contain a selectable text layer that omits the
+            # identity or POD fields. Prefer the cheaper text pass when it
+            # finds the fields needed for the selected document type; otherwise
+            # retry the rendered pages with vision OCR.
+            try:
+                fields = await extract_gpt_text(text, doc_type)
+                key_fields = {
+                    "ci": ("client_name", "cnp", "hq_address", "id_series", "id_number"),
+                    "factura": ("client_name", "pod", "consumption_address", "address", "operator"),
+                    "cf": ("owner_name", "client_name", "cf_nr", "cadastral_nr"),
+                }.get(doc_type, ("client_name", "cnp", "pod", "cf_nr", "cadastral_nr", "address", "owner_name"))
+                if any(fields.get(key) not in (None, "", "null") for key in key_fields):
+                    return fields
+            except Exception:
+                # Keep the visual fallback: text extraction errors are common
+                # for PDFs with partial OCR layers and embedded forms.
+                pass
     chat = LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=f"extract-{uuid.uuid4()}",
                    system_message="Extragi date structurate din documente tehnice românești. Răspunzi doar JSON.").with_model("openai", "gpt-4.1-mini")
     out = ""
