@@ -1288,24 +1288,29 @@ async def apply_selected_client_defaults(owner: str, module: str, data: dict) ->
         raise HTTPException(status_code=400, detail="Clientul selectat nu există în agenda contului. Reîncarcă lista și selectează un client salvat.")
     def pick(*keys):
         return next((client.get(key) for key in keys if client.get(key) not in (None, "")), None)
+    kind = str(pick("kind", "type") or "").strip().casefold()
+    is_company = "jurid" in kind or kind in ("pj", "company", "firmă", "firma")
+    applicant_type = "Persoană juridică" if is_company else "Persoană fizică" if ("fiz" in kind or "pf" == kind or "person" in kind) else None
+    identifier = pick("idcode")
     defaults = {
         "client_name": pick("name", "full_name"),
-        "client_kind": pick("kind", "type"),
-        "applicant_type": pick("kind", "type"),
-        "cnp": pick("cnp"),
-        "cui": pick("cui"),
-        "id_series": pick("id_series", "series"),
+        "client_kind": applicant_type or pick("kind", "type"),
+        "applicant_type": applicant_type,
+        "cnp": pick("cnp") or (identifier if not is_company else None),
+        "cui": pick("cui") or (identifier if is_company else None),
+        "id_series": pick("id_series", "ci_series", "series"),
         "id_number": pick("id_number", "id_no"),
         "phone": pick("phone", "telephone"),
         "email": pick("email"),
         "county": pick("county"),
+        "locality": pick("locality"),
         "operator": pick("operator"),
         "pod": pick("pod"),
         "cf_nr": pick("cf_nr", "land_registry_number"),
         "cadastral_nr": pick("cadastral_nr", "cadastral_number"),
         "supply": pick("supply", "connection_type"),
-        "client_address": pick("id_address", "address"),
-        "consumption_address": pick("consumption_address", "pod_address"),
+        "client_address": pick("hq_address", "address"),
+        "consumption_address": pick("consumption_address", "pod_address", "address"),
     }
     if client.get("same_address_as_client") or client.get("same_address"):
         defaults["address"] = pick("consumption_address", "pod_address", "address")
@@ -1315,7 +1320,6 @@ async def apply_selected_client_defaults(owner: str, module: str, data: dict) ->
         if value not in (None, "") and data.get(key) in (None, ""):
             data[key] = value
     return data
-
 
 async def get_client(owner: str, rec: dict) -> dict:
     c = None
