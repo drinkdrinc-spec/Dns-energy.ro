@@ -647,7 +647,6 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
         raise HTTPException(status_code=400, detail="Citire automată pentru PDF, imagini, DOCX și XLSX. Alte formate pot fi atașate și verificate manual.")
     if doc_type not in {"auto", "ci", "factura", "cf", "other"}:
         raise HTTPException(status_code=400, detail="Tip de document invalid")
-    stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
     use_gpt = has_feature(user, "ai_gpt") and "ai_gpt" not in user["plan"].get("disabled", [])
     try:
         if ct in office_types:
@@ -664,6 +663,7 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
         if ct == "application/pdf" and not os.environ.get("OPENAI_API_KEY") and not isinstance(e, ValueError):
             raise HTTPException(status_code=503, detail="PDF-ul pare scanat sau nu are etichete text recunoscute. Pentru citirea AI a scanurilor trebuie configurată cheia OPENAI_API_KEY în serviciul API.")
         raise HTTPException(status_code=502, detail=str(e) if isinstance(e, ValueError) else "Nu am putut citi documentul. Încearcă din nou.")
+    stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
     engine = fields.pop("_engine", "OpenAI (GPT-4.1 mini)")
     return {"data": fields, "engine": engine, "file": {"storage_path": stored["path"], "original_filename": file.filename,
                                       "content_type": ct, "size": len(data)}}
