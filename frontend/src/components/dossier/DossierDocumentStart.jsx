@@ -125,13 +125,33 @@ export function DossierDocumentStart({ onCreated }) {
             {(files[kind] || []).map((f) => <div key={f.storage_path} className="mt-1 text-[11px] flex gap-1 items-center"><FileText size={12} />{f.original_filename}</div>)}
           </div>)}
         </div>
-        <div className="grid sm:grid-cols-2 gap-3 pt-2">
-          {field("client_name", "Nume client *")}{field("cnp", "CNP / CUI")}{field("id_series", "Serie CI")}{field("id_number", "Număr CI")}
-          {field("hq_address", "Domiciliu din CI")}{field("address", "Adresa locului de consum din factură")}
-          {field("pod", "POD din factură")}{field("operator", "Operator de distribuție")}
-          {field("cf_nr", "Număr carte funciară")}{field("cadastral_nr", "Număr cadastral")}
-          {field("county", "Județ")}{field("supplier", "Furnizor energie")}
-          {field("phone", "Telefon (dacă apare în document)")}{field("email", "E-mail (dacă apare în document)")}
+        <div className="space-y-3 pt-2">
+          <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>1. Identificare client</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {field("client_name", "Nume client *")}{field("cnp", "CNP / CUI")}
+              {field("id_series", "Serie CI")}{field("id_number", "Număr CI")}
+              {field("hq_address", "Domiciliu din CI")}
+            </div>
+          </section>
+          <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>2. Loc de consum</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {field("address", "Adresa locului de consum")}{field("pod", "POD")}
+              {field("operator", "Operator de distribuție")}
+            </div>
+          </section>
+          <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>3. Imobil</div>
+            <div className="grid sm:grid-cols-2 gap-3">{field("cf_nr", "Număr carte funciară")}{field("cadastral_nr", "Număr cadastral")}</div>
+          </section>
+          <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
+            <summary className="cursor-pointer text-xs font-semibold">Date suplimentare (se preiau dacă apar în acte)</summary>
+            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+              {field("county", "Județ")}{field("supplier", "Furnizor energie")}
+              {field("phone", "Telefon")}{field("email", "E-mail")}
+            </div>
+          </details>
         </div>
         {notes.altele?.length > 0 && <div className="rounded-lg bg-slate-50 p-3 text-xs"><b>Documente suplimentare:</b><ul className="list-disc pl-5">{notes.altele.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
         <div className="flex justify-end gap-2 pt-2"><Btn variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
