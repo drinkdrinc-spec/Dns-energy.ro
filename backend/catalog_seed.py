@@ -1,5 +1,18 @@
 NOTE = "Date orientative — verificați fișa tehnică oficială a modelului exact."
 
+SEED_BACKFILL_FIELDS = ("i_max", "coupling", "voltage_1ph", "voltage_3ph", "i_max_source_url")
+
+
+def missing_seed_values(existing: dict, seed: dict) -> dict:
+    """Return only documented values that are absent from an existing catalogue row."""
+    updates = {}
+    for field in SEED_BACKFILL_FIELDS:
+        current = existing.get(field)
+        is_missing = current is None or current == "" or (field == "i_max" and current == 0)
+        if is_missing and seed.get(field) not in (None, ""):
+            updates[field] = seed[field]
+    return updates
+
 SEED = [
     {"category": "Invertor", "brand_model": "Solis S6-EH3P12K02-NV-YD-L", "type": "Hibrid", "phases": "Trifazat", "p_nom_kw": 12, "p_max_kw": 13.2,
      "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850, "mppt_count": 2, "imax_mppt": 20, "battery_voltage": "LV 48 V",
@@ -36,9 +49,11 @@ SEED = [
     {"category": "Baterie", "brand_model": "Pylontech US5000", "kwh": 4.8, "ah": 100, "voltage": 48, "tech": "LV"},
     {"category": "Baterie", "brand_model": "Deye SE-G5.1 Pro", "kwh": 5.12, "ah": 100, "voltage": 51.2, "tech": "LV",
      "datasheet_url": "https://deyeess.com/wp-content/uploads/2023/08/SE-G5.1-Pro-V1.5.pdf"},
-    {"category": "Baterie", "brand_model": "Huawei LUNA2000-5-S0", "kwh": 5, "ah": 100, "voltage": 450, "tech": "HV",
+    {"category": "Baterie", "brand_model": "Huawei LUNA2000-5-S0", "kwh": 5, "ah": 100, "voltage": 450, "voltage_1ph": 450, "voltage_3ph": 600, "i_max": 7.5, "coupling": "DC", "tech": "HV",
+     "i_max_source_url": "https://solar.huawei.com/-/media/Solar/attachment/pdf/eu/certificate/residential/LUNA2000-5KW-C0_E0_IEC62477_CB_cert.pdf",
      "datasheet_url": "https://solar.huawei.com/admin/asset/v1/pro/view/cc3f55c9603845749334087ea716cc23.pdf",
-     "conformity_url": "https://solar.huawei.com/-/media/Solar/attachment/pdf/eu/certificate/residential/LUNA2000-5-S0_CERT_N8A.pdf"},
+     "conformity_url": "https://solar.huawei.com/-/media/Solar/attachment/pdf/eu/certificate/residential/LUNA2000-5-S0_CERT_N8A.pdf",
+     "notes": "Imax baterie 7,5 A din certificatul Huawei/TÜV pentru LUNA2000-5-E0. Tensiune nominală sistem: 450 V monofazat / 600 V trifazat; confirmați compatibilitatea cu invertorul ales. Siguranța DC maximă nu este declarată aici și nu se auto-completează."},
     {"category": "Smart meter", "brand_model": "Eastron SDM630 Modbus", "phases": "Trifazat"},
 
     # Modele solicitate pentru configurarea reală a sistemelor. Parametrii care diferă
