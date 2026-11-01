@@ -41,6 +41,15 @@ DELGaz_FORM_PDFS = {
     5: "https://delgaz.ro/getattachment/f0d42548-d9fe-4275-b694-6bfc075842f3/Notificare_racordare_10-8kW-Anexa-5.pdf",
 }
 
+OLTENIA_FORMS_URL = "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html"
+OLTENIA_FORM_PDFS = {
+    1: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2024%2F26.01.2024%2F&fileName=01-03-01_P03-F16_Cerere+racordare+prosumatori_LC+noi+sau+spor+putere_anexa+1_rev06.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files",
+    2: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2023%2F&fileName=01-03-01_P03-F18_Notificare+racordare+prosumator+LC+existent+_anexa+2_rev05.doc.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files",
+    3: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FFormulare%20racordare%2F2023%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F17_Notificare%20certificarea%20calitatii%20de%20prosumator%20LC%20producator%20existent_anexa%203_rev05.doc.pdf",
+    4: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FProsumatori%2F2023%2F11.09.2023%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F15_CerereDeRacordProsuMPtLcExistCareAccesProgDeFinan%C8%9BPrivInstlDeCE-PtProdDeEnElDin%20SursRegen_Anexa%204_rev05.pdf",
+    5: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FProsumatori%2F2023%2F08.06.2023%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F28_NotifRacordLC_LC%26proddin%20surse%20renerabileProsumPutereSub%2010%2C8kw_rev_01.pdf",
+}
+
 RER_FORM_PDFS = {
     1: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-1-cerere-racordare.pdf",
     2: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-2-cerere-racordare.pdf",
@@ -249,6 +258,14 @@ async def operator_form_links(operator: str = "", scope: str = "atr", user: dict
                 out.append({"id": f"builtin-delgaz-annex-{annex_no}", "operator": "Delgaz Grid",
                             "title": title, "url": url, "status": "sursă oficială", "version": "formular curent",
                             "source_url": DELGaz_FORMS_URL})
+    if op == "oltenia" and scope == "atr":
+        existing_titles = {str(row.get("title") or "").casefold() for row in out}
+        for annex_no, url in OLTENIA_FORM_PDFS.items():
+            title = f"Distribuție Oltenia — Anexa {annex_no} prosumatori"
+            if title.casefold() not in existing_titles:
+                out.append({"id": f"builtin-oltenia-annex-{annex_no}", "operator": "Distribuție Oltenia",
+                            "title": title, "url": url, "status": "sursă oficială", "version": "formular curent",
+                            "source_url": OLTENIA_FORMS_URL})
     return sorted(out, key=lambda f: (f.get("status") in ("link invalid", "versiune nouă detectată"), str(f.get("title") or "")))
 
 
@@ -389,6 +406,16 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
             "status": "sursă oficială",
             "version": "formular curent",
         }]
+    if operator_key == "oltenia" and annex_no in OLTENIA_FORM_PDFS:
+        return annex_no, [{
+            "operator": "Distribuție Oltenia",
+            "kind": "prosumator atr",
+            "title": f"Anexa {annex_no} — formular prosumator Distribuție Oltenia",
+            "url": OLTENIA_FORM_PDFS[annex_no],
+            "source_url": OLTENIA_FORMS_URL,
+            "status": "sursă oficială",
+            "version": "formular curent",
+        }]
     return annex_no, []
 
 
@@ -483,7 +510,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                 note.append(f"Nu există în registru un formular oficial Anexa {annex_no} verificabil pentru operatorul și tipul cererii selectate.")
                 official_pages = {
                     "delgaz": DELGaz_FORMS_URL,
-                    "oltenia": "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html",
+                    "oltenia": OLTENIA_FORMS_URL,
                     "rer": RER_FORMS_URL,
                 }
                 if op_key in official_pages:
