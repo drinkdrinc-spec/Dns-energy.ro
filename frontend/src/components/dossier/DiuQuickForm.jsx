@@ -28,6 +28,10 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
     ? p.client_id ? p.client_id === selectedClient.id : norm(p.client_name) === norm(selectedClient.label)
     : false).filter((p) => showTests || !/\bTEST\b/i.test([p.number, p.client_name].filter(Boolean).join(" ")));
   const chosenPros = linked.find((p) => p.id === form.pros_id) || null;
+  useEffect(() => {
+    const operator = chosenPros?.operator || selectedClient?.operator || "";
+    if (operator && !form.operator) setVal("operator", operator);
+  }, [chosenPros?.id, selectedClient?.id, form.operator]);
   const choosePros = (id) => {
     setVal("pros_id", id);
     const p = linked.find((item) => item.id === id);
