@@ -93,7 +93,7 @@ export function PowerDossier({ id, form, setVal }) {
       </section>}
       <div className="flex flex-wrap gap-4 mt-3">{chk("ask_atr", "Aviz tehnic de racordare + certificare prosumator", true)}{chk("ask_meter", "Înlocuire contor cu contor bidirecțional")}{chk("ask_probe", "Punere sub tensiune pentru probe")}</div>
       <div className="mt-4 text-xs font-bold">1.3 Lista receptoarelor</div>
-      {recs.map((r, i) => <div key={i} className="grid grid-cols-[1fr_90px_1fr_24px] gap-2 mt-1" data-testid={`power-rec-${i}`}>
+      {recs.map((r, i) => <div key={i} className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_90px_minmax(0,1fr)_24px] gap-2 mt-2 sm:mt-1" data-testid={`power-rec-${i}`}>
         <input className="den-input" placeholder="Denumire" value={r.name || ""} onChange={(e) => setR(i, "name", e.target.value)} />
         <input className="den-input" placeholder="kW" value={r.kw || ""} onChange={(e) => setR(i, "kw", e.target.value)} />
         <input className="den-input" placeholder="Observații / regim" value={r.notes || ""} onChange={(e) => setR(i, "notes", e.target.value)} />
