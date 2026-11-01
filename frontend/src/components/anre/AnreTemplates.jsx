@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Upload, FileDown, Trash2 } from "lucide-react";
 import { api, openAuthenticatedFile } from "@/lib/api";
 
-undefinedexport function AnreTemplates() {
+export function AnreTemplates() {
   const [d, setD] = useState(null);
   const [help, setHelp] = useState(false);
   useEffect(() => { api.get("/admin/anre/templates").then((r) => setD(r.data)); }, []);
