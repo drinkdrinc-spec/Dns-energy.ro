@@ -133,7 +133,7 @@ def _pdf_selectable_text(content: bytes, limit: int = 24000) -> str:
             parts.append(text[:remaining])
             remaining -= len(text)
     doc.close()
-    return "\\n".join(parts).strip()
+    return "\n".join(parts).strip()
 
 
 async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict:
