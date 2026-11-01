@@ -57,10 +57,12 @@ def items(d):
 # Minimum electrician qualifications by attestation type, transcribed from
 # Annex 8 of ANRE Order 134/2021. Each entry is the required count per grade.
 ANRE_MIN_STAFF = {
+    "A": {"IIIB": 1, "IVB": 1},
     "A1": {"IIB": 2}, "A2": {"IIB": 1, "IIIB": 1}, "A3": {"IIB": 1, "IIIB": 1},
-    "B": {"IIA": 1, "IIB": 1}, "Bi": {"IIB": 2}, "Bp": {"IIA": 2},
+    "B": {"IIA": 1, "IIB": 1}, "Be": {"IIB": 2}, "Bi": {"IIB": 2}, "Bp": {"IIA": 2},
     "C1A": {"IIIA": 2}, "C1B": {"IVA": 2}, "C2A": {"IIIB": 2}, "C2B": {"IVB": 2},
     "D1": {"IVA": 2}, "D2": {"IVB": 2}, "E1": {"IVA": 2}, "E2": {"IVB": 2},
+    "E2PA": {"IIIB": 1, "IVB": 1},
 }
 
 
@@ -88,7 +90,10 @@ def check(d):
     if d.get("kind") in ("nou", "b_c1a", "b_c2a", "vizare"):
         if not [x for x in d.get("equipment") or [] if x.get("name")]:
             rep["incomplete"].append("Lista dotărilor tehnico-materiale este goală (minimul din Anexa nr. 6)")
-        target_types = list(dict.fromkeys(str(x).strip() for x in (d.get("target_types") or []) if str(x).strip()))
+        raw_target_types = d.get("target_types") or []
+        if isinstance(raw_target_types, str):
+            raw_target_types = [raw_target_types]
+        target_types = list(dict.fromkeys(str(x).strip() for x in raw_target_types if str(x).strip()))
         if not target_types:
             rep["incomplete"].append("Tipul de atestat solicitat nu este ales")
         named_staff = {}
