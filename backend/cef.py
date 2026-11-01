@@ -64,6 +64,51 @@ def vdrop_dc(i, length, section, material, v):
     return 2 * length * i * RHO.get(material, RHO["Cu"]) / section / v * 100
 
 
+def battery_cable_proposal(battery: dict) -> dict:
+    """Conservative BESS proposal; only rates cable/fuse when manufacturer inputs exist."""
+    battery = battery or {}
+    current = n(battery.get("i_max"))
+    voltage = n(battery.get("voltage"))
+    length = n(battery.get("cable_length"))
+    max_fuse = n(battery.get("max_fuse_a"))
+    material = str(battery.get("cable_material") or "Cu")
+    options = battery.get("cable_ampacities") or []
+    if current <= 0:
+        return {"section": None, "fuse_a": None, "i_design": None, "iz": None, "du": None,
+                "note": "Lipsește Imax din fișa tehnică a bateriei.", "source": "lipsă Imax"}
+    design_current = current * 1.25
+    fuse = up(BREAKERS, design_current)
+    if not fuse or (max_fuse and fuse > max_fuse):
+        fuse = None
+    chosen = None
+    drop = None
+    for option in sorted(options, key=lambda item: n(item.get("section"), 1e9)):
+        section = n(option.get("section"))
+        ampacity = n(option.get("ampacity_a"))
+        if section <= 0 or ampacity < design_current:
+            continue
+        candidate_drop = None
+        if length > 0:
+            if voltage <= 0:
+                continue
+            candidate_drop = vdrop_dc(current, length, section, material, voltage)
+            if candidate_drop > 1:
+                continue
+        chosen, drop = option, candidate_drop
+        break
+    if chosen:
+        return {"section": n(chosen.get("section")), "fuse_a": fuse,
+                "i_design": round(design_current, 2), "iz": round(n(chosen.get("ampacity_a")), 1),
+                "du": round(drop, 2) if drop is not None else None,
+                "note": "Propunere calculată din Imax, ampacitatea cablului și lungime; verificați limita de siguranță și cablarea din manualul producătorului.",
+                "source": "calculated"}
+    note = "Lipsește limita maximă a siguranței din manualul bateriei." if not max_fuse else "Introduceți opțiunile reale de cablu (secțiune și ampacitate) din fișa cablului."
+    if length > 0 and voltage <= 0:
+        note = "Introduceți tensiunea nominală a bateriei pentru verificarea căderii de tensiune."
+    return {"section": None, "fuse_a": fuse, "i_design": round(design_current, 2),
+            "iz": None, "du": None, "note": note, "source": "incomplete manufacturer data"}
+
+
 def string_calc(s, inv, tmin):
     """Calculate string values only from supplied model parameters; never invent temperature coefficients."""
     cnt = int(n(s.get("panels")))
