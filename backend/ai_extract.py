@@ -21,9 +21,18 @@ Folosește null pentru valorile lipsă."""
 
 
 def _parse(text: str) -> dict:
-    m = re.search(r"\{.*\}", text, re.S)
-    data = json.loads(m.group(0)) if m else {}
-    return {k: v for k, v in data.items() if v not in (None, "", "null")}
+    # Model output may wrap valid JSON in Markdown or a short explanation.
+    # Decode one JSON object at a time instead of using a greedy brace match,
+    # which can swallow trailing examples or multiple objects.
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text or ""):
+        try:
+            data, _ = decoder.raw_decode(text[match.start():])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if v not in (None, "", "null")}
+    return {}
 
 
 def _images(content: bytes, mime: str) -> list:
