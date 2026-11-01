@@ -36,13 +36,14 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
   const isTestRecord = (value) => /\bTEST\b/i.test(String(value || ""));
   const isTestDiu = isTestRecord(form.number) || isTestRecord(form.client_name);
   const normalizeClient = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
+  const matchesClient = (item) => (form.client_id && item.client_id)
+    ? form.client_id === item.client_id
+    : Boolean(normalizeClient(form.client_name) && normalizeClient(form.client_name) === normalizeClient(item.client_name));
   const availablePros = pros.filter((item) => {
     const isTestPros = isTestRecord([item.number, item.client_name].filter(Boolean).join(" "));
-    if (isTestPros !== isTestDiu) return false;
-    if (!isTestDiu) return true;
-    return (form.client_id && item.client_id === form.client_id)
-      || normalizeClient(item.client_name) === normalizeClient(form.client_name);
+    return isTestPros === isTestDiu && matchesClient(item);
   });
+  useEffect(() => { setPid(form.pros_id || ""); }, [id, form.pros_id]);
   const loadDocs = () => api.get(`/diu/${id}/docs`).then((r) => setDocs(r.data)).catch(() => {});
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); loadDocs(); }, [id]); // eslint-disable-line
   useEffect(() => { if (savedAt) loadDocs(); }, [savedAt]); // eslint-disable-line
