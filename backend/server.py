@@ -1340,6 +1340,45 @@ async def get_client(owner: str, rec: dict) -> dict:
         c = await db.clients.find_one({"owner": owner, "name": rec["client_name"]}, {"_id": 0})
     return c or {}
 
+def _normalize_atr_match(value: str) -> str:
+    import unicodedata
+    text = unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode("ascii").casefold()
+    return "".join(char for char in text if char.isalnum())
+
+
+async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None) -> dict | None:
+    """Resolve a linked prosumer dossier only when the client and consumption point are unambiguous."""
+    rec, client = rec or {}, client or {}
+    query = scope_q(user, "prosumator")
+    expected_client_id = str(rec.get("client_id") or client.get("id") or "")
+    expected_name = _normalize_atr_match(rec.get("client_name") or client.get("name"))
+    selected_id = str(rec.get("pros_id") or "")
+    if selected_id:
+        selected = await db.prosumator.find_one({**query, "id": selected_id}, {"_id": 0})
+        if selected:
+            selected_client_id = str(selected.get("client_id") or "")
+            selected_name = _normalize_atr_match(selected.get("client_name"))
+            same_client = (selected_client_id == expected_client_id) if expected_client_id and selected_client_id else bool(expected_name and selected_name == expected_name)
+            if same_client:
+                return selected
+
+    if expected_client_id:
+        candidates = await db.prosumator.find({**query, "client_id": expected_client_id}, {"_id": 0}).to_list(500)
+    elif expected_name:
+        rows = await db.prosumator.find(query, {"_id": 0}).to_list(500)
+        candidates = [item for item in rows if _normalize_atr_match(item.get("client_name")) == expected_name]
+    else:
+        return None
+
+    pod = _normalize_atr_match(rec.get("pod") or client.get("pod"))
+    address = _normalize_atr_match(rec.get("address") or client.get("consumption_address"))
+    if pod:
+        candidates = [item for item in candidates if _normalize_atr_match(item.get("pod")) == pod]
+    elif address:
+        candidates = [item for item in candidates if _normalize_atr_match(item.get("address")) == address]
+    return candidates[0] if len(candidates) == 1 else None
+
+
 async def dossier_ctx(owner, item_id: str):
     if isinstance(owner, dict):
         await check_access(owner, "prosumator", item_id); owner = owner["id"]
@@ -1597,9 +1636,14 @@ async def atr_pack(user: dict, rec: dict, full: int):
     client = await get_client(user["id"], rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     pros, info = None, None
-    if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
-        pros, pclient, base, info = await dossier_ctx(user, rec["pros_id"])
-        client = client or pclient
+    linked_pros = await resolve_atr_prosumer(user, rec, client)
+    if linked_pros:
+        pros, pclient, base, info = await dossier_ctx(user, linked_pros["id"])
+        client = {**(pclient or {}), **(client or {})}
+        rec = {**rec, "pros_id": linked_pros["id"]}
+        # A linked prosumer dossier is authoritative evidence that this ATR covers production.
+        if "producere" not in str(rec.get("kind") or "").casefold():
+            rec["kind"] = "loc de consum și de producere"
     att = rec.get("attachments") or {}
     auto = {}
     if info and ATR.is_prod(rec):
