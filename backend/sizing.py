@@ -330,7 +330,7 @@ def apply(cef: dict) -> tuple[dict, list]:
             # A DC fuse is only proposed when the selected battery datasheet
             # explicitly permits that rating. Never infer the manufacturer's
             # maximum from a generic multiple of battery current.
-            proposal = battery_cable_proposal(bat)
+            proposal = C.battery_cable_proposal(bat)
             put(bat, "fuse_a", proposal.get("fuse_a"), f"cef.inverters.{i}.battery.fuse_a")
     gd = cef.setdefault("grid", {})
     put(gd, "bmp_a", base["grid"]["main_proposal"], "cef.grid.bmp_a")
