@@ -656,7 +656,7 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
             else:
                 fields = extract_office_local(data, ct, doc_type)
         else:
-            fields = await (extract_gpt if use_gpt else extract_pdf)(data, ct, doc_type)
+            fields = await extract_pdf(data, ct, doc_type, use_ai=use_gpt)
     except Exception as e:
         logger.error(f"AI extract failed: {e}")
         if ct in image_types and not os.environ.get("OPENAI_API_KEY"):
