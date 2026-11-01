@@ -1417,7 +1417,7 @@ async def atr_official_docx(item_id: str, authorization: str = Header(None), aut
     pros = None
     if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
         pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
-        client = client or pclient
+        client = {**(pclient or {}), **(client or {})}
     try:
         payload = ATR.render_deer_official_docx(rec, client or {}, settings, pros or {})
     except ValueError as exc:
@@ -1487,10 +1487,22 @@ async def atr_pack(user: dict, rec: dict, full: int):
         if not catalog_documents_complete(pros, (info or {}).get("positions", [])):
             attached.discard("fise")
     parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
-    if full and ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) == "deer":
-        annex_pdf = ATR.render_deer_annex(rec, client, base, pros or {}, attached)
-        if annex_pdf:
-            parts.append(annex_pdf)
+    if full:
+        operator_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
+        if operator_key == "deer":
+            annex_pdf = ATR.render_deer_annex(rec, client, base, pros or {}, attached)
+            if annex_pdf:
+                parts.append(annex_pdf)
+        elif operator_key:
+            # Use the same annex selector and equipment data as the ZIP package.
+            # This puts the operator-specific prefill sheet in the full PDF too.
+            from atr_routes import _registry_forms_for_request
+            annex_no, forms = await _registry_forms_for_request(operator_key, rec, pros or {})
+            if annex_no:
+                annex_pdf = ATR.render_operator_annex_prep(
+                    rec, client, pros or {}, operator_key, annex_no,
+                    forms[0].get("title", "") if forms else "")
+                parts.append(annex_pdf)
     unavailable = []
     if full:
         for k, title, _ in ATR.DOCS:
