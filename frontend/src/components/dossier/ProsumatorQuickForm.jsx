@@ -33,12 +33,13 @@ function proposeStrings(inv, totalPanels) {
   return panelCounts.map((panels, i) => ({ panels, mppt: i + 1, auto_generated: true }));
 }
 
-export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
+export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBusyChange }) {
   const [catalog, setCatalog] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [problem, setProblem] = useState("");
   const [catalogSearch, setCatalogSearch] = useState({});
   const [addingModel, setAddingModel] = useState({});
+  const [catalogDocStatus, setCatalogDocStatus] = useState("");
   useEffect(() => {
     api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setProblem("Catalogul nu s-a putut încărca. Poți salva datele de bază și selecta echipamentele ulterior.")).finally(() => setCatalogLoading(false));
   }, []);
@@ -131,6 +132,37 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
       setVal("system_type", item ? "Hibrid cu baterie" : "On-grid");
     } else setVal("smart_meter_type", item?.brand_model || "");
     cefUpdate(kind, item, id, panelCountOverride);
+    if (item && kind !== "meter") {
+      const documents = ["datasheet", "conformity"].filter((documentKind) =>
+        item[documentKind + "_url"] && !item[documentKind]?.storage_path
+      );
+      if (documents.length) {
+        onImportsBusyChange?.(true);
+        const docLabels = { datasheet: "fișa tehnică", conformity: "declarația de conformitate" };
+        setCatalogDocStatus("Se preiau automat " + documents.map((key) => docLabels[key]).join(" și ") + " pentru " + item.brand_model + "…");
+        Promise.all(documents.map(async (documentKind) => {
+          try {
+            await api.post("/catalog/" + encodeURIComponent(item.id) + "/import-document", { kind: documentKind, url: item[documentKind + "_url"] }, { timeout: 45000 });
+            return { kind: documentKind, ok: true };
+          } catch (error) {
+            return { kind: documentKind, ok: false, reason: error.response?.data?.detail || "sursa oficială nu a putut fi preluată" };
+          }
+        })).then(async (results) => {
+          const failures = results.filter((result) => !result.ok);
+          if (results.some((result) => result.ok)) {
+            const refreshed = await api.get("/data/catalog").catch(() => null);
+            if (Array.isArray(refreshed?.data)) setCatalog(refreshed.data);
+          }
+          setCatalogDocStatus(failures.length
+            ? "Modelul a fost ales, dar unele documente nu s-au preluat: " + failures.map((failure) => docLabels[failure.kind] + " — " + failure.reason).join("; ") + "."
+            : "Documentele oficiale pentru " + item.brand_model + " au fost importate și se atașează la salvarea dosarului.");
+        }).finally(() => onImportsBusyChange?.(false));
+      } else if (item.datasheet?.storage_path || item.conformity?.storage_path) {
+        setCatalogDocStatus("Documentele deja încărcate pentru " + item.brand_model + " se vor atașa la salvarea dosarului.");
+      } else {
+        setCatalogDocStatus("Nu există link oficial pentru documentele " + item.brand_model + ". Modelul rămâne selectat; adaugă sursele în Catalog echipamente.");
+      }
+    }
   };
 
   const addCatalogModel = async (kind, rawName) => {
@@ -288,6 +320,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
           }
         }} /> Există la instalație</span></label>
         {form.smart_meter_present === true && catalogSelect("meter", "Model smart meter (opțional)")}
+        {catalogDocStatus && <p className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs leading-5" role="status" style={{ borderColor: "var(--line)", color: "var(--muted)", background: "#fff" }}>{catalogDocStatus}</p>}
         <label className="den-field"><span>Backup</span><span className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={form.backup === true || form.backup === "Da"} onChange={(e) => { const on = e.target.checked; setVal("backup", on); setVal("anti_relay_present", on ? "DA" : "NU"); const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] }; setVal("cef", { ...cef, grid: { ...(cef.grid || {}), anti_required: on }, inverters: (cef.inverters || []).map((x, i) => i ? x : { ...x, backup: { ...(x.backup || {}), enabled: on } }) }); }} /> Include ieșire de rezervă</span></label>
       </div>
       {(() => { const strings = form.cef?.inverters?.[0]?.strings || []; return strings.some((x) => x.auto_generated)
