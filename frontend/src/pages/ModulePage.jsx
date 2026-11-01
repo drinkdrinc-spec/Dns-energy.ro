@@ -107,7 +107,8 @@ export default function ModulePage({ moduleKey }) {
     const refs = [...new Set((cfg.fields || []).filter((f) => f.type === "ref").map((f) => f.ref))];
     refs.forEach((ref) => {
       api.get(`/data/${ref}`).then((r) => {
-        const rows = ref === "clients" ? r.data.filter((item) => !/\bTEST\b/i.test(String(item.name || ""))) : r.data;
+        const showTestRecords = new URLSearchParams(window.location.search).get("showTests") === "1";
+        const rows = ref === "clients" && !showTestRecords ? r.data.filter((item) => !/\bTEST\b/i.test(String(item.name || ""))) : r.data;
         setRefOptions((prev) => ({ ...prev, [ref]: rows.map((x) => ({ ...x, id: x.id, label: MODULES[ref].display(x) })) }));
       }).catch(() => {});
     });
