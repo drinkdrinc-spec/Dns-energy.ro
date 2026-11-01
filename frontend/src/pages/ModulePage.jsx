@@ -454,7 +454,7 @@ export default function ModulePage({ moduleKey }) {
                   <tr key={it.id} className="border-t hover:bg-[#fafcff]" style={{ borderColor: "var(--line)" }}>
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
                     {key === "atr" && (() => {
-                      const normalize = (value) => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+                      const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
                       const linked = linkedProsumer.find((p) => p.id === it.pros_id || (it.client_id && p.client_id === it.client_id) || (!it.client_id && normalize(p.client_name) === normalize(it.client_name)));
                       const inverters = linked?.cef?.inverters || [];
                       const panels = [...new Set(inverters.map((x) => x.panel_model).filter(Boolean))];
