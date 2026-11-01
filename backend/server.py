@@ -854,18 +854,24 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     is_power_increase = str(rec.get("request_type") or "").strip() == "Spor de putere + prosumator"
     client = await get_client(user["id"], rec)
     annex1 = None
+    annex1_worksheet = None
     if is_power_increase:
         # Use the actual Annex 1 PDF registered for the client's distribution operator.
         operator = str(rec.get("operator") or client.get("operator") or "").lower()
         if "delgaz" in operator:
+            operator_key = "delgaz"
             op_names = ["delgaz grid", "delgaz"]
         elif "rețele electrice" in operator or "retele electrice" in operator or "e-distribu" in operator:
+            operator_key = "rer"
             op_names = ["rețele electrice românia", "rețele electrice"]
         elif "oltenia" in operator:
+            operator_key = "oltenia"
             op_names = ["distribuție energie oltenia", "distributie energie oltenia"]
         elif "deer" in operator or "distribuție energie electrică" in operator or "distributie energie electrica" in operator:
+            operator_key = "deer"
             op_names = ["deer", "distribuție energie electrică romania", "distributie energie electrica romania"]
         else:
+            operator_key = ""
             op_names = []
         if op_names:
             rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
@@ -883,11 +889,34 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
                         break
                 except Exception as exc:
                     logger.warning("Nu s-a putut descărca Anexa 1 oficială: %s", exc)
+        if annex1:
+            try:
+                import atr_routes as ATR_ROUTES
+                annex1["bytes"], annex1["prefilled_fields"] = ATR_ROUTES._prefill_official_pdf(
+                    annex1["bytes"], rec, client, rec
+                )
+                if operator_key:
+                    annex1_worksheet = ATR.render_operator_annex_prep(
+                        rec, client, rec, operator_key, 1, annex1.get("title") or "Anexa 1 oficială"
+                    )
+            except Exception:
+                logger.exception("Nu s-a putut pregăti fișa de completare pentru Anexa 1")
         if doc_type == "notificare":
             if not annex1:
                 raise HTTPException(status_code=404, detail="Nu există un PDF Anexa 1 disponibil în Registrul formularelor pentru distribuitorul selectat. Verificați/înregistrați formularul oficial; Anexa 2 nu va fi folosită la spor de putere.")
-            return Response(content=annex1["bytes"], media_type="application/pdf",
-                            headers={"Content-Disposition": disp("inline", f"Anexa_1_spor_putere_{(rec.get('client_name') or 'prosumator').replace(' ', '_')}.pdf")})
+            if annex1_worksheet:
+                writer = PdfWriter()
+                for page in PdfReader(io.BytesIO(annex1_worksheet)).pages:
+                    writer.add_page(page)
+                for page in PdfReader(io.BytesIO(annex1["bytes"])).pages:
+                    writer.add_page(page)
+                out = io.BytesIO()
+                writer.write(out)
+                annex_content = out.getvalue()
+            else:
+                annex_content = annex1["bytes"]
+            return Response(content=annex_content, media_type="application/pdf",
+                            headers={"Content-Disposition": disp("attachment", f"Anexa_1_spor_putere_{(rec.get('client_name') or 'prosumator').replace(' ', '_')}_COMPLETARE.pdf")})
 
     if doc_type == "all":
         # Dosarul complet include schema CEF o singură dată.
@@ -905,8 +934,11 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
 
     if doc_type == "all" and is_power_increase and annex1:
         try:
-            # Anexa 1 ocupa primul loc al notificării în dosar; Anexa 2 nu este generată pentru spor.
+            # Fișa de precompletare precedă formularul oficial; Anexa 2 nu se folosește pentru spor.
             writer = PdfWriter()
+            if annex1_worksheet:
+                for page in PdfReader(io.BytesIO(annex1_worksheet)).pages:
+                    writer.add_page(page)
             for page in PdfReader(io.BytesIO(annex1["bytes"])).pages:
                 writer.add_page(page)
             for page in PdfReader(io.BytesIO(pdf)).pages:
