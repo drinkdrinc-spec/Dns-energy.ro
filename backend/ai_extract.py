@@ -144,17 +144,20 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
     # intentionally leaves ambiguous name/address fields empty rather than guessing.
     fields = {}
     labels = {
-        "client_name": r"(?:titular(?:ul)?(?:\s+(?:contractului|locului de consum))?|nume(?:le)?(?:\s+(?:clientului|beneficiarului|titularului))?|beneficiar)",
+        "client_name": r"(?:titular(?:ul)?(?:\s+(?:contractului|locului\s+de\s+consum))?|nume(?:le)?(?:\s+(?:clientului|beneficiarului|titularului))?|beneficiar)",
         "consumption_address": r"(?:adresa\s+locului\s+de\s+consum|locul\s+de\s+consum|adresa\s+de\s+consum)",
-        "hq_address": r"(?:domiciliu(?:l)?(?:\s+din\s+actul\s+de\s+identitate)?)",
+        "hq_address": r"(?:domiciliu(?:l)?(?:\s+din\s+actul\s+de\s+identitate)?|adresa\s+de\s+domiciliu|domiciliat(?:ă)?\s+în)",
         "pod": r"(?:POD|CLC|codul?\s+punctului\s+de\s+consum)",
         "supplier": r"(?:furnizor(?:ul)?\s+(?:de\s+)?energie)",
         "operator": r"(?:operator(?:ul)?\s+de\s+distribuție|operator(?:ul)?\s+de\s+distributie)",
+        "owner_name": r"(?:proprietar(?:ul)?(?:\s+tabular)?|titular(?:ul)?\s+dreptului\s+de\s+proprietate)",
         "cf_nr": r"(?:carte\s+funciară(?:\s+nr\.?)?|număr(?:ul)?\s+CF)",
         "cadastral_nr": r"(?:număr(?:ul)?\s+cadastral|nr\.\s+cadastral)",
+        "county": r"(?:județ|judet)",
         "phone": r"(?:telefon|tel\.?)",
         "email": r"(?:e-mail|email)",
     }
+
     for key, pattern in labels.items():
         value = _labeled_value(text, pattern)
         if value:
@@ -170,10 +173,22 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
             fields["id_series"] = series.group(1).upper()
         if number:
             fields["id_number"] = number.group(1)
+        surname = _labeled_value(text, r"(?:nume(?:le)?(?:\s+de\s+familie)?)")
+        given_name = _labeled_value(text, r"(?:prenume(?:le)?)")
+        if surname and given_name:
+            fields.setdefault("client_name", f"{surname} {given_name}")
+        elif surname:
+            fields.setdefault("client_name", surname)
     elif doc_type == "factura":
         cnp = re.search(r"(?:CNP|CUI|cod\s+numeric\s+personal|cod\s+unic\s+de\s+înregistrare)\s*[:：-]?\s*(\d{8,13})\b", text, re.I)
         if cnp:
             fields["cnp"] = cnp.group(1)
+        approved_power = re.search(
+            r"(?:putere\\s+aprobată|putere\\s+aprobata|puterea\\s+aprobată|puterea\\s+aprobata|putere\\s+contractată|putere\\s+contractata)\\s*[:：-]?\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:kW)?\\b",
+            text, re.I,
+        )
+        if approved_power:
+            fields["bransament_kw"] = float(approved_power.group(1).replace(",", "."))
 
     operator_text = text.lower()
     for key, needles in {
