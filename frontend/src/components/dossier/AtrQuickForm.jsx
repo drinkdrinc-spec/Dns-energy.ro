@@ -73,6 +73,10 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
     setVal("p_abs_kw", record.bransament_kw || form.p_abs_kw || "");
     setVal("current_supply_desc", [record.request_type, ...equipmentSummary(record).inverters.map((value) => `Invertor: ${value}`), ...equipmentSummary(record).panels.map((value) => `Panouri: ${value}`), ...equipmentSummary(record).batteries.map((value) => `Baterie: ${value}`)].filter(Boolean).join("; "));
   };
+  useEffect(() => {
+    const id = form.pros_id || (linkedPros.length === 1 ? linkedPros[0].id : "");
+    if (id && linkedPros.some((item) => item.id === id) && form.pros_id !== id) choosePros(id);
+  }, [linkedProsKey, form.pros_id, form.client_id]);
   const renderField = (f) => {
     const common = {
       className: "den-input w-full",
