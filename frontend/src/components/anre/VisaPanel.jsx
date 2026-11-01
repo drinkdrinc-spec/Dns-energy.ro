@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { FileSpreadsheet, Mail, Phone, Megaphone } from "lucide-react";
-import { api, API } from "@/lib/api";
+import { api, downloadAuthenticatedFile } from "@/lib/api";
 import { VisaEmailDialog } from "@/components/anre/VisaEmailDialog";
 import { VisaCampaign } from "@/components/anre/VisaCampaign";
 import { VisaCallDialog } from "@/components/anre/VisaCallDialog";
@@ -20,7 +20,7 @@ export function VisaPanel({ reloadKey }) {
   return (
     <div className="den-panel mb-4 overflow-x-auto" data-testid="visa-panel">
       <div className="flex items-center justify-between mb-1"><h3 className="font-bold">Vizări ANRE apropiate (90 de zile) și depășite</h3>
-        <div className="flex gap-3"><button className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} onClick={() => setCamp(true)} data-testid="visa-campaign-open"><Megaphone size={14} /> Campanie e-mail (30 zile)</button><a href={`${API}/admin/operators/visas.xlsx?auth=${localStorage.getItem("den_token")}`} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="visa-export-xlsx"><FileSpreadsheet size={14} /> Descarcă Excel</a></div></div>
+        <div className="flex gap-3"><button className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} onClick={() => setCamp(true)} data-testid="visa-campaign-open"><Megaphone size={14} /> Campanie e-mail (30 zile)</button><button type="button" onClick={() => downloadAuthenticatedFile("/admin/operators/visas.xlsx", "atestari_anre.xlsx")} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="visa-export-xlsx"><FileSpreadsheet size={14} /> Descarcă Excel</button></div></div>
       <table className="w-full text-xs"><thead><tr className="text-left" style={{ color: "var(--muted)" }}><th className="py-1">Firmă</th><th>Atestat</th><th>Data vizării</th><th>Termen</th><th>Contact</th><th>Memento / contact</th><th>Ultimul apel</th><th></th></tr></thead>
         <tbody>{list.map((v) => (
           <tr key={v.tenant} className="border-t" style={{ borderColor: "var(--line)", background: v.days_left < 0 ? "#fdecec" : undefined }} data-testid={`visa-row-${v.cui}`}>
