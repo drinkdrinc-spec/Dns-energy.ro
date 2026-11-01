@@ -226,8 +226,10 @@ def check(cef: dict) -> dict:
                 w.append(f"{tag}: cablul DC al bateriei nu poate fi dimensionat din datele disponibile — {battery_proposal.get('note')}")
             elif battery_proposal.get("source", "").startswith("IEC 60364-5-52"):
                 w.append(f"{tag}: secțiune baterie propusă preliminar din tabel IEC conservator — confirmă tipul cablului, instalarea și limitele din manual.")
-            if battery_proposal.get("fuse_a") is None:
-                w.append(f"{tag}: siguranța DC a bateriei nu poate fi stabilită fără limita maximă admisă din fișa producătorului.")
+            if battery_proposal.get("fuse_a") is None and not bat.get("breaker_integrated"):
+                w.append(f"{tag}: protecția DC externă a bateriei nu poate fi stabilită fără limita maximă admisă din fișa producătorului.")
+            if bat.get("breaker_integrated") and n(bat.get("breaker_a")) <= 0:
+                w.append(f"{tag}: întrerupătorul este marcat integrat, dar lipsește curentul nominal documentat.");
             b_kwh = n(bat.get("kwh")) * (int(n(bat.get("modules"), 1)) or 1)
             if not b_kwh and n(bat.get("ah")) and n(bat.get("voltage")):
                 b_kwh = n(bat.get("ah")) * n(bat.get("voltage")) / 1000 * (int(n(bat.get("modules"), 1)) or 1)
