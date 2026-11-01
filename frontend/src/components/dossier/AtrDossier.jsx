@@ -74,7 +74,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     if (!form.client_name || !pros.length) return;
     const current = pros.find((p) => p.id === form.pros_id);
     const matchesClient = (item) => belongsToClient(item, form.client_id, form.client_name);
-    if (current && belongsToClient(current)) return;
+    if (current && belongsToClient(current, form.client_id, form.client_name)) return;
     const candidates = pros.filter(matchesClient);
     const locationValue = form.pod || form.address;
     const locationKey = normalizeLocation(locationValue);
