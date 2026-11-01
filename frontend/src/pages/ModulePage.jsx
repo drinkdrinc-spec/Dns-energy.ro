@@ -49,6 +49,10 @@ function installedPanelKwp(pros) {
   return pros.cef?.total_kwp || pros.panel_kwp || pros._kwp || "";
 }
 
+function normalizeClientName(value) {
+  return String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+}
+
 function Field({ f, value, onChange, refOptions, ai }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
   const common = { className: "den-input", value: value ?? "", onChange: (e) => onChange(f.name, e.target.value), placeholder: f.placeholder || "", "data-testid": `field-${f.name}` };
@@ -112,7 +116,7 @@ export default function ModulePage({ moduleKey }) {
       if (params.get("new") === "atr" && clientId) {
         Promise.all([api.get("/data/clients"), api.get("/data/prosumator")]).then(([clientsRes, prosRes]) => {
           const client = (clientsRes.data || []).find((item) => item.id === clientId);
-          const linkedPros = (prosRes.data || []).filter((item) => item.client_id === clientId || (client && String(item.client_name || "").trim().toLocaleLowerCase("ro-RO") === String(client.name || "").trim().toLocaleLowerCase("ro-RO")));
+          const linkedPros = (prosRes.data || []).filter((item) => item.client_id ? item.client_id === clientId : Boolean(client && normalizeClientName(item.client_name) === normalizeClientName(client.name)));
           const requestedProsId = params.get("prosId");
           const pros = requestedProsId
             ? linkedPros.find((item) => item.id === requestedProsId)
@@ -156,7 +160,7 @@ export default function ModulePage({ moduleKey }) {
       if (params.get("new") === "diu" && clientId) {
         Promise.all([api.get("/data/clients"), prosId ? api.get("/data/prosumator") : Promise.resolve({ data: [] })]).then(([clientsRes, prosRes]) => {
           const client = (clientsRes.data || []).find((item) => item.id === clientId);
-          const linkedPros = (prosRes.data || []).filter((item) => item.client_id === clientId || (client && String(item.client_name || "").trim().toLocaleLowerCase("ro-RO") === String(client.name || "").trim().toLocaleLowerCase("ro-RO")));
+          const linkedPros = (prosRes.data || []).filter((item) => item.client_id ? item.client_id === clientId : Boolean(client && normalizeClientName(item.client_name) === normalizeClientName(client.name)));
           const pros = prosId
             ? linkedPros.find((item) => item.id === prosId)
             : linkedPros.length === 1 ? linkedPros[0] : null;
