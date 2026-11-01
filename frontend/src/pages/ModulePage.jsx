@@ -55,14 +55,15 @@ function normalizeClientName(value) {
 }
 
 function resolveLinkedProsumer(atr, prosumers) {
+  const explicit = atr.pros_id ? prosumers.find((prosumer) => prosumer.id === atr.pros_id) : null;
+  if (explicit) return { linked: explicit, ambiguous: false };
+
   const name = normalizeClientName(atr.client_name);
-  const candidates = prosumers.filter((prosumer) => {
-    if (atr.client_id && prosumer.client_id) return prosumer.client_id === atr.client_id;
-    return Boolean(name && normalizeClientName(prosumer.client_name) === name);
-  });
-  const exact = atr.pros_id ? candidates.find((prosumer) => prosumer.id === atr.pros_id) : null;
-  if (exact) return { linked: exact, ambiguous: false };
-  if (candidates.length === 1) return { linked: candidates[0], ambiguous: false };
+  const sameName = prosumers.filter((prosumer) => name && normalizeClientName(prosumer.client_name) === name);
+  const byClient = atr.client_id ? sameName.filter((prosumer) => prosumer.client_id === atr.client_id) : [];
+  const hasConflictingClientId = Boolean(atr.client_id && !byClient.length && sameName.some((prosumer) => prosumer.client_id && prosumer.client_id !== atr.client_id));
+  const candidates = byClient.length ? byClient : sameName;
+  if (candidates.length === 1 && !hasConflictingClientId) return { linked: candidates[0], ambiguous: false };
 
   const location = atr.pod || atr.address;
   if (location) {
@@ -71,11 +72,11 @@ function resolveLinkedProsumer(atr, prosumers) {
       const candidateLocation = atr.pod ? prosumer.pod : prosumer.address;
       return candidateLocation && normalizeLocation(candidateLocation) === normalizeLocation(location);
     });
-    if (matches.length === 1) return { linked: matches[0], ambiguous: false };
-    if (matches.length > 1) return { linked: null, ambiguous: true };
+    if (matches.length === 1 && !hasConflictingClientId) return { linked: matches[0], ambiguous: false };
+    if (matches.length > 0) return { linked: null, ambiguous: true };
   }
 
-  return { linked: null, ambiguous: candidates.length > 1 };
+  return { linked: null, ambiguous: candidates.length > 1 || hasConflictingClientId };
 }
 
 function Field({ f, value, onChange, refOptions, ai }) {
