@@ -177,7 +177,7 @@ async def diu_package(item_id: str, authorization: str = Header(None), auth: str
             manifest.append("")
             manifest.append("Fișiere omise:")
             manifest.extend(f"- {issue}" for issue in client_issues)
-        bundle.writestr("00_CITESTE.txt", "\\n".join(manifest))
+        bundle.writestr("00_CITESTE.txt", "\n".join(manifest))
     name = (client.get("name") or r.get("client_name") or "dosar").replace(" ", "_")
     return Response(content=out.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": S.disp("attachment", f"DIU_{name}.zip")})
