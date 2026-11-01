@@ -1337,7 +1337,7 @@ async def get_client(owner: str, rec: dict) -> dict:
     c = None
     if rec.get("client_id"):
         c = await db.clients.find_one({"owner": owner, "id": rec["client_id"]}, {"_id": 0})
-    if not c and rec.get("client_name"):
+    if not c and not rec.get("client_id") and rec.get("client_name"):
         c = await db.clients.find_one({"owner": owner, "name": rec["client_name"]}, {"_id": 0})
     return c or {}
 
@@ -1364,7 +1364,18 @@ async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None
                 return selected
 
     if expected_client_id:
-        candidates = await db.prosumator.find({**query, "client_id": expected_client_id}, {"_id": 0}).to_list(500)
+        rows = await db.prosumator.find(query, {"_id": 0}).to_list(500)
+        candidates = [
+            item for item in rows
+            if (
+                str(item.get("client_id") or "") == expected_client_id
+                or (
+                    not item.get("client_id")
+                    and expected_name
+                    and _normalize_atr_match(item.get("client_name")) == expected_name
+                )
+            )
+        ]
     elif expected_name:
         rows = await db.prosumator.find(query, {"_id": 0}).to_list(500)
         candidates = [item for item in rows if _normalize_atr_match(item.get("client_name")) == expected_name]
