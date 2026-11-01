@@ -683,6 +683,7 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
         P("1. Solicitant", "b"),
         T([["Câmp", "Date disponibile"], ["Nume / denumire", v(client.get("name") or rec.get("client_name"))],
            ["Tip solicitant", v(rec.get("applicant_type"))], ["CNP / CUI", v(client.get("idcode") or client.get("cui"))],
+           ["Domiciliu / sediu din act", v(client.get("hq_address"))],
            ["Telefon", v(client.get("phone"))], ["E-mail", v(client.get("email"))],
            ["Reprezentant", v(client.get("rep_name"))]], [48, 130]),
         Spacer(1, 4),
