@@ -499,6 +499,16 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         key = norm(field_name)
         if not key:
             return None
+        if "reprezentant" in key or "imputernicit" in key:
+            if "cnp" in key:
+                value = c.get("rep_idcode") or r.get("rep_idcode")
+            elif any(token in key for token in ("calitate", "functie", "rol")):
+                value = c.get("rep_role") or r.get("rep_role")
+            elif any(token in key for token in ("nume", "name")):
+                value = c.get("rep_name") or r.get("rep_name")
+            else:
+                value = None
+            return str(value) if value not in (None, "") else None
         for aliases, value in values:
             if value in (None, ""):
                 continue
