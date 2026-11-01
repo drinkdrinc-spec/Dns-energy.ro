@@ -27,6 +27,18 @@ LINK_DAYS = 30
 DEER_GDPR_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf"
 DEER_FORMS_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/"
 
+# Current official Retele Electrice (RER) forms. The operator page is the
+# source of truth; direct PDF URLs are used only when the registry is empty.
+RER_FORMS_URL = "https://www.reteleelectrice.ro/cereri-documente/"
+RER_FORM_PDFS = {
+    1: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-1-cerere-racordare.pdf",
+    2: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-2-cerere-racordare.pdf",
+    3: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-3-cerere-racordare.pdf",
+    4: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-4-cerere-racordare.pdf",
+    5: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-5-cerere-racordare.pdf",
+}
+
+
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -210,6 +222,14 @@ async def operator_form_links(operator: str = "", scope: str = "atr", user: dict
             continue
         out.append({k: f.get(k) for k in ("id", "operator", "title", "url", "status", "version")} |
                    {"checked": (f.get("last_check") or {}).get("at")})
+    if op == "rer" and scope == "atr":
+        existing_titles = {str(row.get("title") or "").casefold() for row in out}
+        for annex_no, url in RER_FORM_PDFS.items():
+            title = f"Retele Electrice — Anexa {annex_no} prosumatori"
+            if title.casefold() not in existing_titles:
+                out.append({"id": f"builtin-rer-annex-{annex_no}", "operator": "Retele Electrice",
+                            "title": title, "url": url, "status": "sursă oficială", "version": "formular curent",
+                            "source_url": RER_FORMS_URL})
     return sorted(out, key=lambda f: (f.get("status") in ("link invalid", "versiune nouă detectată"), str(f.get("title") or "")))
 
 
@@ -321,7 +341,21 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
     # A request maps to one annex. Including multiple versions of that same official
     # form makes the package ambiguous; keep only the highest-priority registered source.
     matches.sort(key=lambda row: (bool(row.get("confirmed_at")), row.get("status") == "valid", str(row.get("title") or "")), reverse=True)
-    return annex_no, matches[:1]
+    if matches:
+        return annex_no, matches[:1]
+    # RER publishes stable direct PDFs on its official forms page. Use these when
+    # the tenant's optional forms registry has not been populated.
+    if operator_key == "rer" and annex_no in RER_FORM_PDFS:
+        return annex_no, [{
+            "operator": "Retele Electrice",
+            "kind": "prosumator atr",
+            "title": f"Anexa {annex_no} — formular prosumator Retele Electrice",
+            "url": RER_FORM_PDFS[annex_no],
+            "source_url": RER_FORMS_URL,
+            "status": "sursă oficială",
+            "version": "formular curent",
+        }]
+    return annex_no, []
 
 
 # ---------------- complete downloadable package ----------------
@@ -386,7 +420,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                 "Pachet ATR — formular oficial pentru operator",
                 f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
                 f"Tip solicitare: {ATR.rtype(rec) or 'neselectat'}",
-                f"Anexă căutată în registrul oficial: {annex_no or 'nedeterminată'}",
+                f"Anexă oficială selectată pentru tipul cererii: {annex_no or 'nedeterminată'}",
                 "",
                 "Fișa de precompletare din arhivă este inclusă și în PDF-ul principal; ambele sunt generate din aceleași date salvate.",
                 "Formularele oficiale atașate rămân originale și necompletate. Verificați versiunea, eligibilitatea și semnați formularul oficial înainte de depunere.",
@@ -394,7 +428,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
             ]
             if forms:
                 for form in forms:
-                    note.extend(["", f"Sursă oficială: {form.get('url')}", f"Titlu în registru: {form.get('title')}", f"Stare verificare link: {form.get('status') or 'neverificat'}"])
+                    note.extend(["", f"Sursă oficială: {form.get('source_url') or form.get('url')}", f"Formular: {form.get('title')}", f"Stare link: {form.get('status') or 'neverificat'}"])
                     try:
                         annex, official_name = await _fetch_registry_annex(form, op_key)
                         archive.writestr(f"Anexe oficiale/{official_name}", annex)
