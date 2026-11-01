@@ -63,9 +63,15 @@ export default function DistributionPortals() {
   const selectPros = (id) => {
     setProsId(id);
     const item = pros.find((entry) => entry.id === id);
-    if (!item) return;
+    if (!item) {
+      setPod("");
+      setManual("");
+      return;
+    }
     setPod(item.pod || "");
-    setManual(operatorId(item.operator));
+    // Keep manual as an explicit user override only; otherwise derive the
+    // portal from the current POD and fall back to the dossier's operator.
+    setManual("");
   };
 
   return (
