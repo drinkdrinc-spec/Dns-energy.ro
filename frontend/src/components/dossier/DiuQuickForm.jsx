@@ -10,7 +10,9 @@ function Field({ f, form, setVal, refOptions }) {
   const common = { className: "den-input", value, onChange: (e) => setVal(f.name, e.target.value), "data-testid": `field-${f.name}` };
   return <label className={`den-field ${f.full ? "sm:col-span-2" : ""}`} key={f.name}><span>{f.label}</span>
     {f.type === "textarea" ? <textarea {...common} rows={3} />
-      : f.type === "select" ? <select {...common}><option value="">Alege...</option>{(f.options || []).map((option) => <option key={option} value={option}>{option}</option>)}</select>
+      : f.type === "select" ? <select {...common}><option value="">Alege...</option>
+        {value && !(f.options || []).includes(value) && <option value={value}>{value} · de confirmat</option>}
+        {(f.options || []).map((option) => <option key={option} value={option}>{option}</option>)}</select>
         : f.type === "ref" ? <select {...common}><option value="">Alege...</option>{(refOptions[f.ref] || []).map((option) => <option key={option.id} value={option.label}>{option.label}</option>)}</select>
           : <input {...common} type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"} step={f.type === "number" ? "any" : undefined} />}
   </label>;
