@@ -160,7 +160,7 @@ export default function EquipmentCatalog() {
                   <td className="px-3 py-3 whitespace-nowrap">{spec(i)}</td>
                   <td className="px-3 py-3"><div className="flex flex-col gap-1">
                     <DocSlot item={i} k="datasheet" label="Fișă tehnică" onUploaded={load} />
-                    <DocSlot item={i} k="conformity" label="Declarație conformitate" onUploaded={load} />
+                    <DocSlot item={i} k="conformity" label="Certificat / declarație de conformitate" onUploaded={load} />
                   </div></td>
                   <td className="px-3 py-3 text-right whitespace-nowrap">
                     <button onClick={() => setForm({ ...i })} className="p-1.5 rounded hover:bg-[#eef4ff]" data-testid={`catalog-edit-${i.id}`}><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
