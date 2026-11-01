@@ -607,18 +607,37 @@ REGLAJ = [("u1", "Funcția protecție tensiune maximală treapta I"), ("u2", "Fu
 def doc_buletin_reglaj(ctx):
     rg = ctx.r.get("reglaj") or {}
     invs = inverters(ctx)
-    return hdr() + [
-        B("title", "BULETIN REGLAJ"),
+    values_complete = all(
+        str((rg.get(key) or {}).get("val") or "").strip()
+        and str((rg.get(key) or {}).get("t") or "").strip()
+        for key, _ in REGLAJ
+    )
+    verified = rg.get("verified_by_installer") is True and values_complete
+    title = "BULETIN REGLAJ" if verified else "FIȘĂ DE LUCRU — REGLAJE INVERTOR"
+    intro = (
+        "a fost programat conform valorilor de protecție prezentate mai jos, verificate efectiv pe invertor, "
+        "cu funcțiile de protecție active, conform Ordinului ANRE nr. 132/2020."
+        if verified else
+        "Document de lucru generat din datele dosarului. Valorile de mai jos nu confirmă programarea sau testarea invertorului. "
+        "Completați după măsurare/verificare efectivă, apoi marcați confirmarea instalatorului."
+    )
+    rows = [[lbl, escape(str((rg.get(key) or {}).get("val") or "")), escape(str((rg.get(key) or {}).get("t") or ""))] for key, lbl in REGLAJ]
+    story = [
+        B("title", title),
         B("p", f"<b>Denumire beneficiar:</b> {ctx.name}<br/><b>Loc de consum centrală fotovoltaică:</b> {ctx.loc}<br/><b>CEF:</b> {ctx.cef_kw} · <b>POD:</b> {ctx.v('pod')}"),
-        B("p", f"Noi, firma <b>{ctx.company}</b>, cu sediul în {ctx.e('address')}, declarăm că invertorul:"),
-        B("p", "<br/>".join(f"Model invertor utilizat: <b>{escape(i.get('brand_model') or M)}</b> · Putere: <b>{fmt(num(i.get('p_nom_kw')))} kW</b>" for i in invs) or M),
-        B("p", "a fost programat conform valorilor de protecție prezentate mai jos în tabelul reglajelor, cu funcțiile de protecție active și implementate în unitatea de "
-               "producție fotovoltaică executată la adresa mai sus menționată, conform Ordinului ANRE nr. 132/2020."),
-        B("table", [["PROTECȚIE", "Valoare setată", "Timp (sec)"]] +
-          [[lbl, escape(str((rg.get(k) or {}).get("val") or "")), escape(str((rg.get(k) or {}).get("t") or ""))] for k, lbl in REGLAJ], [110, 34, 30], True),
-        B("p", f"Subsemnatul <b>{ctx.name}</b>, în calitate de beneficiar, mă oblig să nu modific setările de protecție mai sus menționate și să nu permit accesul "
-               "persoanelor neautorizate în instalația CEF executată, în scopul modificării parametrilor de funcționare implementați în invertor la punerea în funcțiune."),
-        sign(ex_sig(ctx, "Instalator,"), ben_sig(ctx)), B("p", f"Data: {ctx.date}")]
+        B("p", f"<b>Firmă:</b> {ctx.company} · {ctx.e('address')}"),
+        B("p", "<br/>".join(f"Model invertor: <b>{escape(i.get('brand_model') or M)}</b> · Putere: <b>{fmt(num(i.get('p_nom_kw')))} kW</b>" for i in invs) or M),
+        B("p", intro),
+        B("table", [["PROTECȚIE", "Valoare declarată", "Timp (sec)"]] + rows, [110, 34, 30], True),
+    ]
+    if verified:
+        story += [
+            B("p", f"Subsemnatul <b>{ctx.name}</b>, în calitate de beneficiar, mă oblig să nu modific setările de protecție verificate mai sus."),
+            sign(ex_sig(ctx, "Instalator,"), ben_sig(ctx)),
+            B("p", f"Data: {ctx.date}"),
+        ]
+    return hdr() + story
+
 
 
 def doc_autenticitate(ctx):
