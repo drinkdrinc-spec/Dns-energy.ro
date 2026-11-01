@@ -187,9 +187,28 @@ def _labeled_value(text: str, labels: str) -> str | None:
     return value[:160] or None
 
 
+def _infer_document_type(text: str, selected: str) -> str:
+    """Resolve an automatic document choice only from explicit document markers."""
+    if selected not in ("auto", "other", "", None):
+        return selected
+    folded = (text or "").casefold()
+    if any(marker in folded for marker in ("carte funciară", "carte funciara", "extras de carte funciară", "extras de carte funciara", "număr cf", "numarul cf", "nr. cadastral", "număr cadastral")):
+        return "cf"
+    if any(marker in folded for marker in ("factură de energie", "factura de energie", "factura energie", "energie electrică", "energie electrica", "cod pod", "codul pod", "pod:")):
+        return "factura"
+    if any(marker in folded for marker in ("carte de identitate", "buletin de identitate", "seria și numărul", "seria si numarul")):
+        return "ci"
+    # A labelled CNP plus a labelled series is a strong CI marker; do not
+    # classify an arbitrary technical document from a bare 13-digit number.
+    if re.search(r"(?:CNP|cod numeric personal)\s*[:：-]?\s*\d{13}\b", text or "", re.I) and re.search(r"(?:seria|serie)\s*[:：-]?\s*[A-Z]{2}\b", text or "", re.I):
+        return "ci"
+    return selected if selected in ("auto", "other") else "other"
+
+
 def _fallback_text_fields(text: str, doc_type: str) -> dict:
     # Extract only explicitly labelled values from selectable PDF text. This
     # intentionally leaves ambiguous name/address fields empty rather than guessing.
+    doc_type = _infer_document_type(text, doc_type)
     fields = {}
     labels = {
         "client_name": r"(?:titular(?:ul)?(?:\s+(?:contractului|locului\s+de\s+consum))?|nume(?:le)?(?:\s+(?:clientului|beneficiarului|titularului))?|beneficiar)",
