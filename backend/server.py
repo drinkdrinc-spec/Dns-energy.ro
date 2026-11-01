@@ -745,9 +745,11 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
                      "pod": d.get("pod"), "operator": d.get("operator"), "cadastral_nr": d.get("cadastral_nr"),
                      "cf_nr": d.get("cf_nr"), "supplier": d.get("supplier"), "rep_name": d.get("rep_name"),
                      "regcom": d.get("regcom"), "kind": d.get("kind")}
+    client_updates = {}
     for key, value in client_values.items():
-        if value not in (None, ""):
+        if value not in (None, "") and client.get(key) in (None, ""):
             client[key] = value
+            client_updates[key] = value
     d["client_id"] = client["id"]
     if not d.get("number"):
         year = datetime.now().year
@@ -779,7 +781,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
             "kind": "Dosar prosumator", "doc_type": f.get("doc_type") or "Document importat",
             **clean_file, "pros_ref": pros["id"]}))
     await db.clients.update_one({"id": client["id"], "owner": user["id"]}, {"$set": {
-        **{k: v for k, v in client_values.items() if v not in (None, "")},
+        **client_updates,
         "docs": client["docs"], "updated_at": datetime.now(timezone.utc).isoformat()}})
     return clean(pros)
 
