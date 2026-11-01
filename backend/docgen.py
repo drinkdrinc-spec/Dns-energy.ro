@@ -567,7 +567,7 @@ def doc_pv_teste(ctx):
              + [[x, escape(str((t.get(f"c{i}") or {}).get("ok") or "")), escape(str((t.get(f"c{i}") or {}).get("obs") or ""))]
                 for i, x in enumerate(CHECKS)], [90, 30, 54], True),
            B("small", "Nu se bifează automat «DA» și nu se inventează valori. Dacă rezultatul sau observația lipsesc, câmpul rămâne necompletat."),
-           B("p", f"Nr. proces-verbal: {ctx.v('pif_no')} · Data efectivă a efectuării probelor: {ctx.v('pif_date')}"),
+           B("p", f"Nr. proces-verbal: {ctx.v('pif_no')}"),
            B("p", "Concluzia și declarația reprezentantului executantului se completează și se semnează numai după confirmarea rezultatelor de mai sus."),
            sign(ex_sig(ctx, "Reprezentantul firmei executante,"), []),
            B("p", "Observații OD: ________________________________________________________________"),
