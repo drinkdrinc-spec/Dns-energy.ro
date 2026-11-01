@@ -53,7 +53,7 @@ export default function DistributionPortals() {
   }, []);
   const selectedPros = pros.find((item) => item.id === prosId) || null;
   const result = useMemo(() => detectOperator(pod), [pod]);
-  const selectedId = result.match || manual || operatorId(selectedPros?.operator);
+  const selectedId = manual || result.match || operatorId(selectedPros?.operator);
   const selected = PORTALS.find((p) => p.id === selectedId);
   // DEER routes all new applications through the unified dedicated portal.
   // Legacy regional portals remain useful only for historical records.
@@ -94,15 +94,13 @@ export default function DistributionPortals() {
           {result.match ? <CheckCircle2 size={18} className="shrink-0 mt-0.5" /> : <AlertTriangle size={18} className="shrink-0 mt-0.5" />}
           <span>{result.message}</span>
         </div>
-        {!result.match && (
-          <div className="mt-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="portal-manual">Selectează manual operatorul</label>
-            <select id="portal-manual" className="den-input w-full" value={manual} onChange={(e) => setManual(e.target.value)}>
-              <option value="">Alege operatorul de pe factură...</option>
-              {PORTALS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-        )}
+        <div className="mt-4">
+          <label className="block text-sm font-bold mb-2" htmlFor="portal-manual">Confirmă operatorul de pe factură</label>
+          <select id="portal-manual" className="den-input w-full" value={manual} onChange={(e) => setManual(e.target.value)}>
+            <option value="">Folosește sugestia după POD</option>
+            {PORTALS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
         {selected && (
           <div className="mt-5 p-4 rounded-xl border" style={{ borderColor: "var(--line)", background: "var(--bg)" }}>
             <div className="font-bold">{selected.name}</div>
