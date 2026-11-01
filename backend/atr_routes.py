@@ -716,6 +716,20 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                         note.append(f"{title} nu a putut fi atașat la generare: {exc}")
             archive.writestr("Anexe oficiale/INFO_completare.txt", "\n".join(note))
         
+        # Include the original client-profile documents in the submission package.
+        # These are copied only from the authenticated user's upload namespace.
+        client_documents, client_document_issues = S.atr_client_documents(user, client)
+        client_doc_notes = ["Documente încărcate la fișa clientului; copiile originale sunt păstrate aici."]
+        for index, document in enumerate(client_documents, 1):
+            filename = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(document.get("name") or "document.pdf").replace("/", "_").replace("\\\\", "_")).strip("._") or "document.pdf"
+            slot = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(document.get("slot") or "document"))
+            archive.writestr(f"Documente client/{slot}/{index:02d}_{filename}", document["data"])
+            client_doc_notes.append(f"Inclus: {document.get('label') or slot} — {filename}.")
+        client_doc_notes.extend(client_document_issues)
+        if not client_documents:
+            client_doc_notes.append("Fișa clientului nu are documente încărcate în pozițiile standard.")
+        archive.writestr("Documente client/INFO_documente.txt", "\\n".join(client_doc_notes))
+
         # Carry the selected prosumer equipment evidence into the ATR submission
         # package. The catalogue documents are copied as stored; no missing
         # datasheet or conformity declaration is fabricated.
