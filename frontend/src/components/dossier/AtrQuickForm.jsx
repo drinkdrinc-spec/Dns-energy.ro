@@ -6,16 +6,27 @@ const label = (f) => (f.label || "").replace(/\\s*\\*$/, "");
 function equipmentSummary(pros) {
   const cef = pros?.cef || {};
   const inverters = cef.inverters || [];
-  const panels = inverters.filter((x) => x.panel_model).map((x) => x.panel_model);
+  const panelCounts = new Map();
+  for (const inverter of inverters) {
+    const model = String(inverter.panel_model || "").trim();
+    if (!model) continue;
+    const inverterCount = Math.max(1, Number(inverter.count) || 1);
+    const stringPanelCount = (inverter.strings || []).reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
+    if (stringPanelCount > 0) panelCounts.set(model, (panelCounts.get(model) || 0) + stringPanelCount * inverterCount);
+  }
   const batteries = [
     ...inverters.filter((x) => x.battery_mode === "own" && x.battery?.model).map((x) => ({ ...x.battery, modules: (Number(x.battery.modules) || 1) * (Number(x.count) || 1) })),
     ...(cef.shared_batteries || []),
   ];
   const strings = inverters.flatMap((x) => x.strings || []);
-  const panelCount = strings.length ? strings.reduce((n, x) => n + (Number(x.panels) || 0), 0) : Number(pros?.panel_count) || 0;
+  const declaredPanelCount = Math.max(0, Number(pros?.panel_count) || 0);
+  if (panelCounts.size === 1 && ![...panelCounts.values()][0] && declaredPanelCount) {
+    const model = panelCounts.keys().next().value;
+    panelCounts.set(model, declaredPanelCount);
+  }
   return {
     inverters: inverters.length ? inverters.map((x) => [x.brand_model, x.count > 1 ? `× ${x.count}` : "", x.p_nom_kw ? `${x.p_nom_kw} kW` : ""].filter(Boolean).join(" · ")).filter(Boolean) : [pros?.inverter, pros?.inverter_kw ? `${pros.inverter_kw} kW` : ""].filter(Boolean),
-    panels: [...new Set(panels)].map((model) => `${model}${panelCount ? ` · ${panelCount} buc.` : ""}`).concat(!panels.length && pros?.panels ? [`${pros.panels}${panelCount ? ` · ${panelCount} buc.` : ""}`] : []),
+    panels: [...panelCounts.entries()].map(([model, count]) => `${model}${count ? ` · ${count} buc.` : ""}`).concat(!panelCounts.size && pros?.panels ? [`${pros.panels}${declaredPanelCount ? ` · ${declaredPanelCount} buc.` : ""}`] : []),
     batteries: batteries.map((x) => [x.model, x.modules ? `× ${x.modules}` : "", x.kwh ? `${Number(x.kwh) * (Number(x.modules) || 1)} kWh` : "", x.ah ? `${x.ah} Ah` : "", x.voltage ? `${x.voltage} V` : "", x.coupling ? `cuplare ${x.coupling}` : ""].filter(Boolean).join(" · ")).concat(!batteries.length && pros?.battery ? [`${pros.battery}${pros.battery_kwh ? ` · ${pros.battery_kwh} kWh` : ""}`] : []),
     power: pros?.power || pros?.p_evac_kw || pros?.inverter_kw || "",
     strings: strings.map((x, i) => `${i + 1}(${x.panels || "?"})`).join(", "),
