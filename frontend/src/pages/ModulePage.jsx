@@ -511,7 +511,49 @@ export default function ModulePage({ moduleKey }) {
         {filtered.length === 0 ? (
           <div className="text-sm py-8 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>Nu există înregistrări încă.</div>
         ) : (
-          <div className="overflow-x-auto">
+          {key === "clients" && <div className="grid gap-3 sm:hidden" data-testid="mobile-client-actions">
+            {filtered.map((it) => {
+              const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
+              const prosList = linkedProsumer.filter((p) => p.client_id ? p.client_id === it.id : normalize(p.client_name) === normalize(it.name));
+              const pros = prosList.length === 1 ? prosList[0] : null;
+              const diuList = linkedDiu.filter((d) => (d.client_id ? d.client_id === it.id : normalize(d.client_name) === normalize(it.name)) || (d.pros_id && d.pros_id === pros?.id));
+              const diu = diuList.length === 1 ? diuList[0] : null;
+              const base = "/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (pros ? "&prosId=" + encodeURIComponent(pros.id) : "");
+              const actionClass = "inline-flex min-h-9 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold";
+              return <article key={it.id} className="rounded-xl border p-4 shadow-sm" style={{ borderColor: "var(--line)", background: "#fff" }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate font-bold">{it.name || "Client"}</h3>
+                    <p className="mt-1 text-xs leading-5" style={{ color: "var(--muted)" }}>{[it.address, it.locality, it.county].filter(Boolean).join(", ") || "Adresă loc de consum necompletată"}</p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>POD: {it.pod || "—"} · {it.operator || "Operator neales"}</p>
+                  </div>
+                  <button type="button" className="shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openEdit(it)}>Editează</button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base}>Cerere ATR</a>
+                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base + "&case=" + encodeURIComponent("Loc existent — spor de putere — Anexa 1")}>Spor de putere</a>
+                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={"/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (pros ? "&prosId=" + encodeURIComponent(pros.id) : "")}>Creează DI-U</a>
+                </div>
+                {(pros || diu) && <details className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
+                  <summary className="cursor-pointer text-xs font-semibold" style={{ color: "var(--blue)" }}>Descarcă documentele disponibile</summary>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {pros && <>
+                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => openAuthenticatedFile("/dossier/" + pros.id + "/export")}>Dosar prosumator</button>
+                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/sld/" + pros.id + "/pdf", "schema_monofilara_" + pros.id.slice(0, 8) + ".pdf")}>Schema monofilara</button>
+                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/dossier/" + pros.id + "/file/priza", "pram_priza_" + pros.id.slice(0, 8) + ".pdf")}>Buletin PRAM</button>
+                    </>}
+                    {diu && <>
+                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/diu/" + diu.id + "/pdf?doc=pram_priza", "pram_priza_diu_" + diu.id.slice(0, 8) + ".pdf")}>PRAM priză DI-U</button>
+                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/diu/" + diu.id + "/pdf?doc=pram_cont", "pram_continuitate_" + diu.id.slice(0, 8) + ".pdf")}>Continuitate DI-U</button>
+                    </>}
+                  </div>
+                </details>}
+                {prosList.length > 1 && <p className="mt-2 text-xs text-amber-700">Există mai multe dosare prosumator; deschide-l pe cel potrivit din lista de dosare.</p>}
+                {diuList.length > 1 && <p className="mt-1 text-xs text-amber-700">Există mai multe dosare DI-U pentru acest client.</p>}
+              </article>;
+            })}
+          </div>}
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full text-sm" data-testid="items-table">
               <thead>
                 <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
