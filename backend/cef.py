@@ -224,6 +224,8 @@ def check(cef: dict) -> dict:
             prop["battery"] = battery_proposal
             if battery_proposal.get("section") is None:
                 w.append(f"{tag}: cablul DC al bateriei nu poate fi dimensionat din datele disponibile — {battery_proposal.get('note')}")
+            elif battery_proposal.get("source", "").startswith("IEC 60364-5-52"):
+                w.append(f"{tag}: secțiune baterie propusă preliminar din tabel IEC conservator — confirmă tipul cablului, instalarea și limitele din manual.")
             if battery_proposal.get("fuse_a") is None:
                 w.append(f"{tag}: siguranța DC a bateriei nu poate fi stabilită fără limita maximă admisă din fișa producătorului.")
             b_kwh = n(bat.get("kwh")) * (int(n(bat.get("modules"), 1)) or 1)
