@@ -3,6 +3,16 @@ import { useEffect, useState } from "react";
 const BASIC = new Set(["client_name", "pod", "operator", "kind", "request_type", "deer_case", "applicant_type", "submission_mode", "address", "supply", "p_abs_kw"]);
 const label = (f) => (f.label || "").replace(/\s*\*$/, "");
 
+function panelCapacityKwp(pros) {
+  const inverters = pros?.cef?.inverters || [];
+  const derived = inverters.reduce((total, inv) => {
+    const watts = Number(inv.panel_w) || 0;
+    const count = (inv.strings || []).reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
+    return total + watts * count * Math.max(1, Number(inv.count) || 1) / 1000;
+  }, 0);
+  return derived || (Number(pros?.panel_count) > 0 && Number(pros?.panel_w) > 0 ? Number(pros.panel_count) * Number(pros.panel_w) / 1000 : Number(pros?._kwp || pros?.panel_kwp) || 0);
+}
+
 function equipmentSummary(pros) {
   const cef = pros?.cef || {};
   const inverters = cef.inverters || [];
@@ -29,6 +39,7 @@ function equipmentSummary(pros) {
     panels: [...panelCounts.entries()].map(([model, count]) => `${model}${count ? ` · ${count} buc.` : ""}`).concat(!panelCounts.size && pros?.panels ? [`${pros.panels}${declaredPanelCount ? ` · ${declaredPanelCount} buc.` : ""}`] : []),
     batteries: batteries.map((x) => [x.model, x.modules ? `× ${x.modules}` : "", x.kwh ? `${Number(x.kwh) * (Number(x.modules) || 1)} kWh` : "", x.ah ? `${x.ah} Ah` : "", x.voltage ? `${x.voltage} V` : "", x.coupling ? `cuplare ${x.coupling}` : ""].filter(Boolean).join(" · ")).concat(!batteries.length && pros?.battery ? [`${pros.battery}${pros.battery_kwh ? ` · ${pros.battery_kwh} kWh` : ""}`] : []),
     power: pros?.power || pros?.p_evac_kw || pros?.inverter_kw || "",
+    panelPower: panelCapacityKwp(pros),
     strings: strings.map((x, i) => `${i + 1}(${x.panels || "?"})`).join(", "),
   };
 }
@@ -61,11 +72,7 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
     setVal("pros_id", id);
     if (!record) return;
     const invs = record.cef?.inverters || [];
-    const panelKwp = invs.reduce((total, inv) => {
-      const watts = Number(inv.panel_w) || 0;
-      const count = (inv.strings || []).reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
-      return total + watts * count * Math.max(1, Number(inv.count) || 1) / 1000;
-    }, 0) || (Number(record.panel_count) > 0 && Number(record.panel_w) > 0 ? Number(record.panel_count) * Number(record.panel_w) / 1000 : 0);
+    const panelKwp = panelCapacityKwp(record);
     setVal("kind", "Loc de consum și de producere (prosumator)");
     setVal("supply", record.supply || record.cef?.grid?.supply || form.supply || "");
     setVal("pv_kw", panelKwp ? Number(panelKwp.toFixed(3)) : record._kwp || "");
@@ -75,7 +82,21 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
   };
   useEffect(() => {
     const id = form.pros_id || (linkedPros.length === 1 ? linkedPros[0].id : "");
-    if (id && linkedPros.some((item) => item.id === id) && form.pros_id !== id) choosePros(id);
+    const record = linkedPros.find((item) => item.id === id);
+    if (!record) return;
+    setSelectedProsId(id);
+    if (form.pros_id !== id) {
+      choosePros(id);
+      return;
+    }
+    const equipment = equipmentSummary(record);
+    if (!form.kind) setVal("kind", "Loc de consum și de producere (prosumator)");
+    if (!form.supply && (record.supply || record.cef?.grid?.supply)) setVal("supply", record.supply || record.cef.grid.supply);
+    if (!form.pv_kw && equipment.panelPower) setVal("pv_kw", Number(equipment.panelPower.toFixed(3)));
+    if (!form.p_evac_kw && equipment.power) setVal("p_evac_kw", equipment.power);
+    if (!form.current_supply_desc) {
+      setVal("current_supply_desc", [record.request_type, ...equipment.inverters.map((value) => `Invertor: ${value}`), ...equipment.panels.map((value) => `Panouri: ${value}`), ...equipment.batteries.map((value) => `Baterie: ${value}`)].filter(Boolean).join("; "));
+    }
   }, [linkedProsKey, form.pros_id, form.client_id]);
   const renderField = (f) => {
     const common = {
@@ -113,7 +134,7 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
       </div>
       {!selectedPros ? <p className="mt-3 text-sm text-amber-800">{linkedPros.length ? "Selectează dosarul prosumator pentru a transfera echipamentele și puterile în cererea ATR." : "Clientul nu are încă un dosar prosumator asociat. Cererea ATR poate fi salvată, dar echipamentele și puterile nu vor fi completate automat."}</p>
         : <div className="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
-          {[["Invertor(e)", equipment.inverters], ["Panouri", equipment.panels], ["Baterie / BESS", equipment.batteries], ["Putere evacuată", equipment.power ? [`${equipment.power} kW`] : []], ["Stringuri", equipment.strings ? [equipment.strings] : []], ["Branșament", [selectedPros.supply || selectedPros.cef?.grid?.supply].filter(Boolean)]].map(([name, values]) =>
+          {[["Invertor(e)", equipment.inverters], ["Panouri", equipment.panels], ["Putere panouri c.c.", equipment.panelPower ? [`${equipment.panelPower.toFixed(3)} kWp`] : []], ["Baterie / BESS", equipment.batteries], ["Putere evacuată c.a.", equipment.power ? [`${equipment.power} kW`] : []], ["Stringuri", equipment.strings ? [equipment.strings] : []], ["Branșament", [selectedPros.supply || selectedPros.cef?.grid?.supply].filter(Boolean)]].map(([name, values])
             <div key={name} className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
               <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{name}</div>
               <div className="mt-1 font-semibold">{values.length ? values.join(", ") : "Nu este completat în dosarul prosumator"}</div>
