@@ -1930,6 +1930,57 @@ async def atr_pack(user: dict, rec: dict, full: int):
     name = f"{'DOSAR_ATR' if full else 'CERERE_ATR'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and incomplete else ''}.pdf"
     return o.getvalue(), name
 
+@api_router.get("/power/{item_id}/official-docx")
+async def power_official_docx(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    """Generate the official DEER Annex 1 DOCX for a power-increase request."""
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "power", item_id)
+    client = await get_client(user["id"], rec)
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros = {}
+    if rec.get("pros_id") and await db.prosumator.find_one(
+        {**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}
+    ):
+        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
+        client = {**(pclient or {}), **(client or {})}
+
+    operator = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
+    if operator != "deer":
+        raise HTTPException(status_code=422, detail="Formularul DOCX completabil este disponibil pentru DEER. Pentru alți operatori, folosiți formularele oficiale din registrul OD.")
+    client_kind = str(client.get("kind") or rec.get("applicant_type") or "").strip().casefold()
+    applicant_type = rec.get("applicant_type")
+    if not applicant_type:
+        if "jurid" in client_kind or client_kind in ("pj", "company", "firmă", "firma"):
+            applicant_type = "Persoană juridică"
+        elif "fizic" in client_kind or client_kind in ("pf", "individual"):
+            applicant_type = "Persoană fizică"
+        else:
+            raise HTTPException(status_code=422, detail="Selectați tipul clientului (persoană fizică sau juridică) în fișa clientului înainte de generarea formularului oficial.")
+
+    case = "loc nou" if rec.get("request_kind") == "nou" else "spor de putere"
+    official_rec = {
+        **rec,
+        "operator": rec.get("operator") or pros.get("operator") or client.get("operator") or "DEER",
+        "deer_case": case,
+        "request_type": "nou" if rec.get("request_kind") == "nou" else "spor",
+        "applicant_type": applicant_type,
+    }
+    if rec.get("requested_kva") not in (None, "") and official_rec.get("p_abs_kva") in (None, ""):
+        official_rec["p_abs_kva"] = rec["requested_kva"]
+    try:
+        payload = ATR.render_deer_official_docx(official_rec, client or {}, settings, pros or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:
+        logger.exception("DEER power-increase official DOCX generation failed")
+        raise HTTPException(status_code=500, detail="Nu am putut genera formularul DEER. Verificați dacă șablonul oficial este disponibil.")
+    safe_name = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in str((client or {}).get("name") or "client")).strip().replace(" ", "_")
+    case_name = "loc_nou" if rec.get("request_kind") == "nou" else "spor_putere"
+    filename = f"DEER_Anexa1_{case_name}_{safe_name}.docx"
+    return Response(content=payload, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": disp("attachment", filename)})
+
+
 @api_router.get("/power/{item_id}/pdf")
 async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
