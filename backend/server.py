@@ -547,7 +547,7 @@ async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_
 
 @api_router.post("/catalog/{item_id}/import-document")
 async def catalog_import_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Import a technical PDF from an allowlisted manufacturer or distributor domain."""
+    """Import a technical PDF from a manufacturer or approved distributor domain."""
     guard("catalog", user, write=True)
     body = await request.json()
     kind = body.get("kind")
@@ -558,14 +558,14 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
     import httpx
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower().rstrip(".")
-    official = (
+    trusted_document_domains = (
         "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de",
         "sma-solar.com", "fox-ess.com", "aikosolar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
-        "risenenergy.com", "bydbatterybox.com", "dyness.com", "pylontech.com.cn", "pylontech.us", "solaxpower.com", "jinkosolar.eu",
+        "risenenergy.com", "bydbatterybox.com", "dyness.com", "pylontech.com.cn", "pylontech.us", "solarshop.baywa-re.lv", "solaxpower.com", "jinkosolar.eu",
         "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro",
     )
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in official):
-        raise HTTPException(status_code=400, detail="Folosește un link HTTPS de pe domeniul oficial al producătorului/operatorului.")
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in trusted_document_domains):
+        raise HTTPException(status_code=400, detail="Folosește un link HTTPS de la producător sau distribuitorul autorizat.")
     item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
     if not item:
         raise HTTPException(status_code=404, detail="Modelul nu există în catalog")
@@ -578,7 +578,7 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
             candidate_port = -1
         if (parsed_candidate.scheme != "https" or parsed_candidate.username or parsed_candidate.password
                 or candidate_port not in (None, 443)
-                or not any(candidate_host == domain or candidate_host.endswith("." + domain) for domain in official)):
+                or not any(candidate_host == domain or candidate_host.endswith("." + domain) for domain in trusted_document_domains)):
             raise HTTPException(status_code=400, detail="Redirecționarea a părăsit domeniul oficial permis.")
         return candidate_host, parsed_candidate
 
