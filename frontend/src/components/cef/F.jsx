@@ -23,7 +23,7 @@ export function CatalogPick({ items, category, onPick, testid, label = "Caută m
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const list = items.filter((i) => i.category === category);
-  const fold = (value) => String(value || "").normalize("NFD").replace(/\\p{Diacritic}/gu, "").toLocaleLowerCase("ro-RO");
+  const fold = (value) => String(value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("ro-RO");
   const filtered = list.filter((item) => fold(item.brand_model).includes(fold(query)));
   const pick = (item) => {
     onPick(item);
