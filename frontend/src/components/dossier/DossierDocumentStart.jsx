@@ -14,6 +14,10 @@ const TYPES = [
 
 const EMPTY = { client_name: "", cnp: "", hq_address: "", county: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "" };
 
+// Some mobile document pickers report a blank or generic MIME type even when the
+// filename is a supported PDF/image. Use the extension as a safe fallback.
+const READABLE_EXTENSIONS = /\.(pdf|jpe?g|png|webp|heic|heif|docx|xlsx)$/i;
+
 function putNonempty(base, next) {
   const out = { ...base };
   for (const [k, v] of Object.entries(next)) if (v !== null && v !== undefined && String(v).trim()) out[k] = String(v).trim();
@@ -42,7 +46,9 @@ export function DossierDocumentStart({ onCreated }) {
     for (const file of list) {
       try {
         const officeExtractable = /\.(docx|xlsx)$/i.test(file.name);
-        const extractable = file.type === "application/pdf" || file.type.startsWith("image/") || officeExtractable;
+        const mime = String(file.type || "").toLowerCase().split(";")[0].trim();
+        const extensionExtractable = READABLE_EXTENSIONS.test(file.name || "");
+        const extractable = mime === "application/pdf" || mime.startsWith("image/") || officeExtractable || extensionExtractable;
         if (kind === "altele" && !extractable) {
           const fd = new FormData(); fd.append("file", file);
           const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
@@ -134,4 +140,3 @@ export function DossierDocumentStart({ onCreated }) {
     </Dialog>
   </>;
 }
-
