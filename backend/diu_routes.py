@@ -1,5 +1,6 @@
 import io
 import uuid
+import unicodedata
 from datetime import datetime, timezone
 
 from pypdf import PdfReader, PdfWriter
@@ -136,6 +137,22 @@ async def diu_import(item_id: str, request: Request, user: dict = Depends(get_cu
     p = await db.prosumator.find_one({**S.scope_q(user, "prosumator"), "id": pid}, {"_id": 0}) if pid else None
     if not p:
         raise HTTPException(status_code=404, detail="Dosar de prosumator inexistent")
+
+    def name_key(value):
+        value = unicodedata.normalize("NFD", str(value or ""))
+        value = "".join(ch for ch in value if unicodedata.category(ch) != "Mn")
+        return " ".join(value.casefold().split())
+
+    rec_client_id, pros_client_id = rec.get("client_id"), p.get("client_id")
+    if rec_client_id and pros_client_id:
+        same_client = rec_client_id == pros_client_id
+    else:
+        diu_name = rec.get("client_name") or rec.get("name")
+        pros_name = p.get("client_name") or p.get("name")
+        same_client = bool(diu_name and pros_name and name_key(diu_name) == name_key(pros_name))
+    if not same_client:
+        raise HTTPException(status_code=409, detail="Dosarul prosumator selectat nu aparține aceluiași client ca dosarul DI-U.")
+
     p = CEF.from_legacy(p)
     cef = p.get("cef") or {}
     g = cef.get("grid") or {}
