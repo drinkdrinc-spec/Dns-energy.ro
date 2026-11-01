@@ -29,9 +29,13 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
   const missing = (item) => {
     const absent = [];
     const name = String(item.brand_model || "");
-    if (/model de completat|series|famil(?:y|ie)|\\(test\\)|^solis s6 \\d+\\s*kw$|^(?:aiko(?: solar)? )?neostar \\d+\\s*w$|^jinkosolar tiger neo \\d+\\s*w$/i.test(name)) {
-      absent.push("codul exact al modelului");
-    }
+    const foldedName = fold(name);
+    const isGenericModel = foldedName.includes("model de completat") || foldedName.includes("series") ||
+      foldedName.includes("family") || foldedName.includes("familie") || foldedName.includes("(test)") ||
+      (foldedName.startsWith("solis s6 ") && foldedName.endsWith(" kw")) ||
+      (foldedName.startsWith("aiko neostar ") && foldedName.endsWith(" w")) ||
+      (foldedName.startsWith("jinkosolar tiger neo ") && foldedName.endsWith(" w"));
+    if (isGenericModel) absent.push("codul exact al modelului");
     if (!(item.datasheet?.storage_path || item.datasheet_url)) absent.push("fișa tehnică oficială");
     if (!(item.conformity?.storage_path || item.conformity_url)) absent.push("documentul de conformitate");
     const required = category === "Invertor" ? [
