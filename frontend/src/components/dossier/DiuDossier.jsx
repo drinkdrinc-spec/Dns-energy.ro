@@ -88,7 +88,8 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
           {docs ? (docs.complete ? "Toate documentele sunt complete" : "Unele documente au date lipsă (export CIORNĂ)") : ""} · stările se actualizează după „Salvează”</div>
         <div className="flex gap-2">
           <Btn variant="secondary" onClick={loadDocs} data-testid="diu-docs-refresh"><RefreshCw size={14} /> Actualizează</Btn>
-          <Btn onClick={() => openAuthenticatedFile(pdf("all"))} data-testid="diu-export"><FileDown size={14} /> Dosar DI-U complet PDF</Btn>
+          <Btn onClick={() => downloadAuthenticatedFile(`/diu/${id}/package`, `DIU_${id}.zip`)} data-testid="diu-package"><FileDown size={14} /> Descarcă dosarul + acte + fișe (ZIP)</Btn>
+          <Btn variant="secondary" onClick={() => openAuthenticatedFile(pdf("all"))} data-testid="diu-export"><FileDown size={14} /> PDF DI-U</Btn>
         </div>
       </div>
       <div className="mt-2 space-y-1">{(docs?.positions || []).map((p) => (
