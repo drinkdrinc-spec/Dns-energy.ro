@@ -205,7 +205,7 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto") -> dict
             raise
         import pymupdf
         doc = pymupdf.open(stream=content, filetype="pdf")
-        text = "\\n".join(page.get_text("text") for page in list(doc)[:12]).strip()
+        text = "\n".join(page.get_text("text") for page in list(doc)[:12]).strip()
         if not text:
             raise
         return _fallback_text_fields(text, doc_type)
