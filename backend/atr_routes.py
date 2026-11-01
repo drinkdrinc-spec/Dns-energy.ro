@@ -27,6 +27,7 @@ DEFAULT_TERMS = {"check_days": 10, "issue_days": 30, "remind_days": 3}
 LINK_DAYS = 30
 DEER_GDPR_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf"
 DEER_FORMS_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/"
+DEER_IMPUTERNICIRE_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/07/Model-de-imputernicire.pdf"
 
 # Current official Retele Electrice (RER) forms. The operator page is the
 # source of truth; direct PDF URLs are used only when the registry is empty.
@@ -632,6 +633,15 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                 deer_notes.append("Nota oficială DEER privind prelucrarea datelor personale (v1/2026) a fost inclusă.")
             except (httpx.HTTPError, ValueError) as exc:
                 deer_notes.append(f"Nota GDPR oficială nu a putut fi preluată acum; descărcați-o de aici: {DEER_GDPR_URL} ({exc})")
+            if str(rec.get("submission_mode") or "").strip().casefold() == "prin împuternicit".casefold():
+                try:
+                    mandate, mandate_name = await _fetch_registry_annex(
+                        {"title": "Model împuternicire DEER — iulie 2026", "url": DEER_IMPUTERNICIRE_URL}, "deer")
+                    archive.writestr(f"Anexe oficiale/Împuternicire/{mandate_name}", mandate)
+                    deer_notes.append("Modelul oficial DEER de împuternicire (iulie 2026) a fost inclus necompletat pentru semnare.")
+                except (httpx.HTTPError, ValueError) as exc:
+                    deer_notes.append(f"Modelul oficial de împuternicire nu a putut fi preluat acum; descărcați-l de aici: {DEER_IMPUTERNICIRE_URL} ({exc})")
+
             archive.writestr("Anexe oficiale/INFO_DEER.txt", "\n".join(deer_notes))
         else:
             annex_no, forms = await _registry_forms_for_request(op_key, rec, pros)
