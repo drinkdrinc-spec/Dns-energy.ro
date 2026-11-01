@@ -244,7 +244,7 @@ export const MODULES = {
   anti: {
     key: "anti", nav: "Antiinsularizare", icon: "ShieldAlert", group: "Tehnic",
     eyebrow: "Protecții de racordare", title: "Tablou antiinsularizare",
-    sub: "Evidență pentru protecția de interfață și documentele aferente.",
+    sub: "Alege echipamentele conform ATR-ului. Ordinul ANRE 228/2018 prevede protecții externe la >30 kVA sau racordare MT; la JT și ≤30 kVA se folosesc funcțiile invertorului dacă acestea sunt conforme și operatorul nu cere completări. BESS AC separat are cerințe proprii de interfață.",
     addLabel: "Fișă nouă",
     display: (i) => i.diu_ref || "Fișă",
     columns: [
