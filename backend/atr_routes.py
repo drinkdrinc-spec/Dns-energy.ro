@@ -591,9 +591,13 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
     client = await S.get_client(user["id"], rec) or {}
     settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     pros = {}
-    if rec.get("pros_id") and await db.prosumator.find_one({**S.scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
-        pros, pros_client, settings, _ = await S.dossier_ctx(user, rec["pros_id"])
+    linked_pros = await S.resolve_atr_prosumer(user, rec, client)
+    if linked_pros:
+        pros, pros_client, settings, _ = await S.dossier_ctx(user, linked_pros["id"])
         client = {**(pros_client or {}), **(client or {})}
+        rec = {**rec, "pros_id": linked_pros["id"]}
+        if "producere" not in str(rec.get("kind") or "").casefold():
+            rec["kind"] = "loc de consum și de producere"
 
     pdf, pdf_name = await S.atr_pack(user, rec, 1)
     bundle = io.BytesIO()
