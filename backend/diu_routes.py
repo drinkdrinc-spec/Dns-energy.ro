@@ -1,6 +1,7 @@
 import io
 import uuid
 import unicodedata
+import zipfile
 from datetime import datetime, timezone
 
 from pypdf import PdfReader, PdfWriter
@@ -105,6 +106,81 @@ async def diu_pdf(item_id: str, doc: str = "all", fmt: str = "pdf", orig: int = 
             w.add_page(pg)
     o = io.BytesIO(); w.write(o)
     return Response(content=o.getvalue(), media_type="application/pdf", headers={"Content-Disposition": S.disp("inline", base + ("_CIORNA" if draft else "") + ".pdf")})
+
+
+@api.get("/diu/{item_id}/package")
+async def diu_package(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    """Download the generated DI-U PDF together with selected client and equipment evidence."""
+    user = await S.user_from_token(authorization, auth)
+    rec, r, client, s = await diu_ctx(user, item_id)
+    keys = [k for k, _ in DD.applicable_docs(r)]
+    signed = r.get("signed") or {}
+    pos = {p["key"]: p for p in DD.positions(r, s)}
+    draft = any(pos[k]["missing"] for k in keys if not signed.get(k))
+    writer = PdfWriter()
+    for key in keys:
+        is_signed = bool(signed.get(key))
+        part = doc_pdf(key, r, s, client, True)
+        part_writer = PdfWriter()
+        for page in PdfReader(io.BytesIO(part)).pages:
+            part_writer.add_page(page)
+        if not is_signed and pos[key]["missing"]:
+            OPIS.watermark(part_writer)
+        if not is_signed and r.get("is_test"):
+            OPIS.watermark(part_writer, "DOSAR DE TEST — NEOFICIAL", 38)
+        for page in part_writer.pages:
+            writer.add_page(page)
+    pdf_out = io.BytesIO()
+    writer.write(pdf_out)
+
+    client_docs, client_issues = S.atr_client_documents(user, client)
+    evidence = []
+    if rec.get("pros_id"):
+        pros = await db.prosumator.find_one(
+            {**S.scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"_id": 0}
+        )
+        if pros:
+            evidence = await S.catalog_files(user["id"], CEF.flatten(CEF.from_legacy(pros)))
+    used = 0
+    max_total = 100 * 1024 * 1024
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr("DI-U/00_Dosar_DI-U.pdf" if not draft else "DI-U/00_Dosar_DI-U_CIORNA.pdf", pdf_out.getvalue())
+        manifest = ["Pachet DI-U — documente generate și documente justificative selectate."]
+        if draft:
+            manifest.append("ATENȚIE: dosarul PDF este ciornă; lipsesc date reale necesare completării/verificării.")
+        for item in client_docs:
+            data = item["data"]
+            if used + len(data) > max_total:
+                client_issues.append(f"{item['label']} — omisă, limita de 100 MB a pachetului a fost atinsă.")
+                continue
+            used += len(data)
+            name = str(item["name"]).replace("\\", "_").replace("/", "_")
+            bundle.writestr(f"Documente client/{item['label']} — {name}", data)
+            manifest.append(f"Client: {item['label']} — {name}")
+        for item in evidence:
+            try:
+                data, _ = S.get_object(item["storage_path"])
+                if used + len(data) > max_total:
+                    client_issues.append(f"{item.get('kind')} {item.get('model')} — omis, limita de 100 MB a fost atinsă.")
+                    continue
+                used += len(data)
+                name = str(item.get("original_filename") or "document").replace("\\", "_").replace("/", "_")
+                label = str(item.get("kind") or "Document echipament")
+                model = str(item.get("model") or "echipament")
+                bundle.writestr(f"Echipamente/{label} — {model} — {name}", data)
+                manifest.append(f"Echipament: {label} — {model} — {name}")
+            except Exception as exc:
+                client_issues.append(f"{item.get('kind')} {item.get('model')} — fișierul nu a putut fi citit.")
+                S.logger.warning("DI-U catalog evidence could not be read: %s", exc)
+        if client_issues:
+            manifest.append("")
+            manifest.append("Fișiere omise:")
+            manifest.extend(f"- {issue}" for issue in client_issues)
+        bundle.writestr("00_CITESTE.txt", "\\n".join(manifest))
+    name = (client.get("name") or r.get("client_name") or "dosar").replace(" ", "_")
+    return Response(content=out.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": S.disp("attachment", f"DIU_{name}.zip")})
 
 
 @api.post("/diu/{item_id}/sign")
