@@ -27,25 +27,31 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
   const hasValue = (value) => value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
   const positive = (value) => hasValue(value) && Number(value) > 0;
   const missing = (item) => {
-    if (category === "Invertor") return [
+    const absent = [];
+    const name = String(item.brand_model || "");
+    if (/model de completat|series|famil(?:y|ie)|\\(test\\)|^solis s6 \\d+\\s*kw$|^(?:aiko(?: solar)? )?neostar \\d+\\s*w$|^jinkosolar tiger neo \\d+\\s*w$/i.test(name)) {
+      absent.push("codul exact al modelului");
+    }
+    if (!(item.datasheet?.storage_path || item.datasheet_url)) absent.push("fișa tehnică oficială");
+    if (!(item.conformity?.storage_path || item.conformity_url)) absent.push("documentul de conformitate");
+    const required = category === "Invertor" ? [
       [positive(item.p_nom_kw), "puterea nominală"],
       [!!item.phases, "numărul de faze"],
       [!!item.type, "tipul invertorului"],
-    ].filter(([ok]) => !ok).map(([, name]) => name);
-    if (category === "Panou") return [
+    ] : category === "Panou" ? [
       [positive(item.w), "puterea panoului"],
       [positive(item.voc), "Voc"],
       [positive(item.vmp), "Vmp"],
       [positive(item.isc), "Isc"],
       [hasValue(item.coef_voc), "coeficientul Voc"],
-    ].filter(([ok]) => !ok).map(([, name]) => name);
-    if (category === "Baterie") return [
+    ] : category === "Baterie" ? [
       [positive(item.kwh) || positive(item.ah), "capacitatea (kWh sau Ah)"],
       [positive(item.voltage), "tensiunea"],
       [positive(item.i_max), "curentul maxim"],
       [!!item.coupling, "tipul de cuplare AC/DC"],
-    ].filter(([ok]) => !ok).map(([, name]) => name);
-    return [];
+    ] : [];
+    required.filter(([ok]) => !ok).forEach(([, label]) => absent.push(label));
+    return absent;
   };
   const filtered = list.filter((item) => fold(item.brand_model).includes(fold(query)));
   const pick = (item) => {
