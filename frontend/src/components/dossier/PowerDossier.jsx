@@ -33,7 +33,7 @@ export function PowerDossier({ id, form, setVal }) {
   const recs = form.receptors || [];
   const selectedPros = pros.find((item) => item.id === form.pros_id);
   const operatorLabel = form.operator || selectedPros?.operator || "";
-  const isDeer = /\\bdeer\\b|distributie energie|transilvania|muntenia nord/i.test(operatorLabel);
+  const isDeer = /\bdeer\b|distributie energie|transilvania|muntenia nord/i.test(operatorLabel);
   const equipment = selectedPros?.cef?.inverters || [];
   const totalPanels = equipment.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1), 0);
   const panelKwp = equipment.reduce((sum, inv) => sum + (Number(inv.panel_w) || 0) * (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1) / 1000, 0)
