@@ -51,3 +51,28 @@ def test_string_power_and_stc_values_remain_available_without_coefficients():
     assert string["kwp"] == 5
     assert string["voc_stc"] == 450
     assert string["vmp_stc"] == 370
+
+
+def test_battery_cable_proposal_uses_conservative_standard_table():
+    result = cef.battery_cable_proposal({"i_max": 40, "voltage": 51.2})
+    assert result["section"] == 10
+    assert result["iz"] == 57
+    assert result["fuse_a"] is None  # manufacturer maximum fuse is still unknown
+    assert result["source"].startswith("IEC 60364-5-52")
+    assert "preliminară" in result["note"]
+
+
+def test_battery_cable_proposal_checks_voltage_drop_when_length_is_known():
+    result = cef.battery_cable_proposal({"i_max": 40, "voltage": 51.2, "cable_length": 3})
+    assert result["section"] == 16
+    assert result["du"] <= 1
+    assert result["fuse_a"] is None
+
+
+def test_battery_cable_proposal_does_not_guess_without_battery_current_or_voltage():
+    missing_current = cef.battery_cable_proposal({"voltage": 51.2})
+    assert missing_current["section"] is None
+    assert missing_current["fuse_a"] is None
+    missing_voltage = cef.battery_cable_proposal({"i_max": 40, "cable_length": 3})
+    assert missing_voltage["section"] is None
+    assert "tensiunea nominală" in missing_voltage["note"]
