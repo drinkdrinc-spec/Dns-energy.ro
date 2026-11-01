@@ -634,8 +634,7 @@ async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> 
 @api_router.post("/ai/extract")
 async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"), user: dict = Depends(get_current_user)):
     guard("prosumator", user, write=True)
-    need(user, "ai_extract", True)
-    data = await file.read()
+    # Document intake is part of the prosumer workflow. The route already checks the\n    # prosumer module entitlement above; do not require a second AI-only feature for\n    # selectable-text PDFs and local Office extraction. GPT/OCR remains feature-gated below.\n    data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Fișierul este gol")
     if len(data) > 25 * 1024 * 1024:
