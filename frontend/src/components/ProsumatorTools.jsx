@@ -78,6 +78,10 @@ export function GeneratedDocs({ id, files, form }) {
         {id && <Btn onClick={() => openAuthenticatedFile(docUrl("all", id))} data-testid="doc-all"><FileDown size={15} /> Dosar complet (PDF)</Btn>}
         {id && <Btn variant="secondary" onClick={() => openAuthenticatedFile(schemaUrl(id))} data-testid="doc-schema"><FileDown size={15} /> Schema monofilară (PDF)</Btn>}
       </div>
+      {id && <div className="mb-3 flex flex-wrap gap-2" aria-label="Descarcă separat documentele de predare">
+        <Btn variant="secondary" onClick={() => openAuthenticatedFile(docUrl("buletin_priza", id))} data-testid="doc-pram-standalone"><FileDown size={15} /> Buletin PRAM separat (PDF)</Btn>
+        <Btn variant="secondary" onClick={() => openAuthenticatedFile(docUrl("pv_pif", id))} data-testid="doc-pif-standalone"><FileDown size={15} /> Proces-verbal PIF separat (PDF)</Btn>
+      </div>}
       {!id ? <p className="text-xs" style={{ color: "var(--muted)" }}>Salvează dosarul pentru a genera documentele.</p> : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {DOCS.map(([k, label]) => (
