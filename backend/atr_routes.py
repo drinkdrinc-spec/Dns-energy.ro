@@ -767,6 +767,35 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
         equipment_notes = ["Documentele de mai jos provin din catalogul echipamentelor asociat dosarului prosumator."]
         if pros:
             catalog_docs = await S.catalog_files(user["id"], pros)
+            cef = pros.get("cef") or {}
+            expected = []
+            for inverter in cef.get("inverters") or []:
+                inv_model = str(inverter.get("brand_model") or "").strip()
+                if inv_model:
+                    expected.append((inv_model, "invertor"))
+                panel_model = str(inverter.get("panel_model") or "").strip()
+                if panel_model:
+                    expected.append((panel_model, "panou"))
+                battery_model = str((inverter.get("battery") or {}).get("model") or "").strip()
+                if battery_model:
+                    expected.append((battery_model, "baterie"))
+            for battery in cef.get("shared_batteries") or []:
+                battery_model = str(battery.get("model") or "").strip()
+                if battery_model:
+                    expected.append((battery_model, "baterie"))
+            present = {
+                (str(item.get("model") or "").strip().casefold(), str(item.get("kind") or "").strip().casefold())
+                for item in catalog_docs
+            }
+            for model, equipment_kind in dict.fromkeys(expected):
+                missing_kinds = [
+                    label for label in ("Fișă tehnică", "Declarație de conformitate")
+                    if (model.casefold(), label.casefold()) not in present
+                ]
+                if missing_kinds:
+                    equipment_notes.append(
+                        f"Lipsă în catalog pentru {equipment_kind} {model}: {', '.join(missing_kinds)}."
+                    )
             included = 0
             for index, item in enumerate(catalog_docs, 1):
                 storage_path = item.get("storage_path")
