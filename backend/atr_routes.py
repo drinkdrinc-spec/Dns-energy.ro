@@ -486,6 +486,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         (("adresalocconsum", "adresapunctconsum", "locconsum", "stradalocconsum"), r.get("address")),
         (("adresadomiciliu", "adresasolicitant", "domiciliu", "clientaddress", "applicantaddress", "strada"), applicant_address),
         (("pabsorbita", "putereabsorbita", "pabs", "pmaxabsorbita"), r.get("p_abs_kw")),
+        (("putereinstalatapv", "putereinstalataproducere", "putereinstalatafotovoltaica", "puterepanouri", "kwpinstalat"), ATR.installed_pv_kwp_for_record(r, p)),
         (("putereevacuatakva", "pevackva", "pmaxevacuatakva"), r.get("p_evac_kva")),
         (("putereevacuatakw", "pevackw", "pmaxevacuatakw", "putereevacuata", "pevacuare", "pmaxevacuata"), r.get("p_evac_kw") or p.get("power")),
         (("modelpanou", "modelulinpanou", "tipmodelpanou", "tippanou", "tipulpanoului", "modulefotovoltaic"), panel_models or None),
