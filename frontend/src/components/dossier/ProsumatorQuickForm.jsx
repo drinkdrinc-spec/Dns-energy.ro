@@ -95,7 +95,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       panel_isc: item.isc, panel_coef_voc: item.coef_voc, panel_coef_vmp: item.coef_vmp,
     } : { panel_catalog_id: "", panel_model: "", panel_w: "", panel_voc: "", panel_vmp: "", panel_isc: "", panel_coef_voc: "", panel_coef_vmp: "" });
     if (kind === "battery") Object.assign(inv, item ? {
-      battery_mode: "own", battery: { ...(inv.battery || {}), catalog_id: item.id, model: item.brand_model, kwh: item.kwh, ah: item.ah, voltage: item.voltage, i_max: item.i_max, coupling: item.coupling || "DC", modules: Number(form.battery_count || 1) },
+      battery_mode: "own", battery: { ...(inv.battery || {}), catalog_id: item.id, model: item.brand_model, kwh: item.kwh, ah: item.ah, voltage: item.voltage, i_max: item.i_max, coupling: item.coupling || "", modules: Number(form.battery_count || 1) },
     } : { battery_mode: "none", battery: {} });
     if (kind === "meter") setVal("cef", { ...cef, grid: { ...(cef.grid || {}), meter: item?.brand_model || "", meter_catalog_id: item?.id || "" } });
     else {
