@@ -370,8 +370,8 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
         annex_no = None
     if annex_no is None:
         return None, []
-    # RER publishes stable direct PDFs on its official forms page. Use these when
-    # the tenant's optional forms registry has not been populated.
+    # Prefer the curated direct operator PDFs; the optional registry can contain
+    # stale versions even when a newer official form is published.
     if operator_key == "rer" and annex_no in RER_FORM_PDFS:
         return annex_no, [{
             "operator": "Retele Electrice",
