@@ -33,6 +33,10 @@ RER_FORMS_URL = "https://www.reteleelectrice.ro/cereri-documente/"
 RER_STORAGE_FORM_URL = "https://www.reteleelectrice.ro/wp-content/uploads/Anexa-aferenta-instalatiilor-de-stocare.pdf"
 
 DELGaz_FORMS_URL = "https://delgaz.ro/energie-electrica/prosumatori"
+DELGaz_GDPR_URLS = {
+    "Nota de informare privind prelucrarea datelor personale": "https://delgaz.ro/getattachment/d30fba83-32ae-405a-b5fe-c36bfe4ad767/Nota-de-informare-cu-privire-la-prelucrarea-datelor-cu-caracter-personal.pdf",
+    "Nota de informare DEGR supliment": "https://delgaz.ro/getattachment/9928a34a-405a-4061-9ffd-7204ed908dd3/Nota-de-infromare-DEGR-supliment.pdf",
+}
 DELGaz_FORM_PDFS = {
     1: "https://delgaz.ro/getattachment/91755a0d-890c-4357-917a-ac5128ec735a/Cerere_de_racordare_prosumator-Anexa-1.pdf",
     2: "https://delgaz.ro/getattachment/90cf84fa-708e-46a7-b60b-266364c50098/Notificare_racordare_prosumator-Anexa-2.pdf",
@@ -519,7 +523,15 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                     note.append(f"Pagina oficială cu formulare și reguli: {official_pages[op_key]}")
             else:
                 note.append("Tipul cererii curente nu are încă o mapare automată la o anexă oficială în registrul aplicației.")
-            archive.writestr("Anexe oficiale/INFO_completare.txt", "\n".join(note))
+            if op_key == "delgaz":
+                for title, url in DELGaz_GDPR_URLS.items():
+                    try:
+                        privacy_doc, privacy_name = await _fetch_registry_annex({"title": title, "url": url}, op_key)
+                        archive.writestr(f"Anexe oficiale/{privacy_name}", privacy_doc)
+                        note.append(f"Document oficial atașat: {title}.")
+                    except (httpx.HTTPError, ValueError) as exc:
+                        note.append(f"{title} nu a putut fi atașat la generare: {exc}")
+            archive.writestr("Anexe oficiale/INFO_completare.txt", "\\n".join(note))
     name = re.sub(r"[^A-Za-z0-9_.-]+", "_", pdf_name.rsplit(".", 1)[0]) + "_pachet.zip"
     return Response(content=bundle.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": S.disp("attachment", name), "Cache-Control": "no-store"})
