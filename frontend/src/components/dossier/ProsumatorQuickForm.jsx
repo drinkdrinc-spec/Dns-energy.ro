@@ -196,18 +196,19 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
     );
   };
 
-  return <div className="space-y-5" data-testid="prosumator-quick-form">
-    <section>
-      <h3 className="text-sm font-bold mb-3">1. Client și loc de consum</h3>
-      <div className="grid sm:grid-cols-2 gap-3">
+  return <div className="space-y-4" data-testid="prosumator-quick-form">
+    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Dosar prosumator</p>
+          <h3 className="mt-1 text-lg font-bold">Date esențiale și echipamente</h3>
+          <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>Alege clientul și modelele. Datele disponibile se preiau din dosarul clientului și din catalog.</p></div>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Completare asistată</span>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="den-field sm:col-span-2"><span>{title(field(cfg, "client_name"), "Beneficiar / client")} *</span>
           <select className="den-input" value={form.client_name || ""} onChange={(e) => {
-            const v = e.target.value;
-            const c = clients.find((x) => x.label === v);
-            setVal("client_name", v);
-            setVal("client_id", c?.id || "");
-            // Switching client replaces the identity and supply-point fields together,
-            // so the dossier cannot silently keep another client's POD or address.
+            const v = e.target.value; const c = clients.find((x) => x.label === v);
+            setVal("client_name", v); setVal("client_id", c?.id || "");
             for (const [k, value] of [
               ["cnp", c?.cnp || c?.idcode || ""], ["phone", c?.phone || ""], ["email", c?.email || ""],
               ["hq_address", c?.hq_address || ""], ["address", c?.address || ""], ["county", c?.county || ""],
@@ -217,24 +218,31 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
             setVal("address_same_as_ci", false);
           }}><option value="">Alege client...</option>{form.client_name && !clients.some((x) => x.label === form.client_name) && <option value={form.client_name}>{form.client_name} · extras din document</option>}{clients.map((c) => <option key={c.id} value={c.label}>{c.label}</option>)}</select>
         </label>
-        {input("cnp", "CNP / CUI")}
-        {input("phone", "Telefon")}
-        {input("email", "Email")}
-        {input("hq_address", "Adresă din CI / sediu")}
         {input("address", "Adresa locului de consum")}
         {input("pod", "POD")}
-        {input("request_type", title(field(cfg, "request_type"), "Tip cerere"), "text", field(cfg, "request_type")?.options)}
-        {input("operator", "Operator de distribuție", "text", field(cfg, "operator")?.options)}
-        {input("power", "Putere evacuată cerută (kW)", "number")}
-        {input("supply", title(field(cfg, "supply"), "Branșament"), "text", field(cfg, "supply")?.options)}
-        {input("bransament_kw", "Putere branșament aprobată / cerută (kW)", "number")}
-        <label className="den-field sm:col-span-2"><span>Adresă loc de consum</span><span className="flex items-center gap-2 min-h-10"><input type="checkbox" checked={form.address_same_as_ci === true} onChange={(e) => { setVal("address_same_as_ci", e.target.checked); if (e.target.checked) setVal("address", form.hq_address || ""); }} /> Este aceeași cu adresa din CI</span></label>
+        {input("power", "Putere solicitată (kW)", "number")}
       </div>
-      <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Încarcă CI, factura și actul de proprietate cu „Import din PDF (AI)”. Verifică datele extrase înainte de salvare.</p>
-    </section>
-    <section className="border-t pt-4" style={{ borderColor: "var(--line)" }}>
-      <h3 className="text-sm font-bold mb-3">2. Echipamente</h3>
-      <div className="grid sm:grid-cols-2 gap-3">
+      <details className="mt-3 rounded-xl border px-3" style={{ borderColor: "var(--line)" }}>
+        <summary className="cursor-pointer py-3 text-sm font-semibold">Date administrative și branșament</summary>
+        <div className="grid gap-3 pb-3 sm:grid-cols-2">
+          {input("cnp", "CNP / CUI")}
+          {input("phone", "Telefon")}
+          {input("email", "Email")}
+          {input("hq_address", "Adresă din CI / sediu")}
+          {input("request_type", title(field(cfg, "request_type"), "Tip cerere"), "text", field(cfg, "request_type")?.options)}
+          {input("operator", "Operator de distribuție", "text", field(cfg, "operator")?.options)}
+          {input("supply", title(field(cfg, "supply"), "Branșament"), "text", field(cfg, "supply")?.options)}
+          {input("bransament_kw", "Putere branșament (kW)", "number")}
+          <label className="den-field sm:col-span-2"><span className="flex items-center gap-2"><input type="checkbox" checked={form.address_same_as_ci === true} onChange={(e) => { setVal("address_same_as_ci", e.target.checked); if (e.target.checked) setVal("address", form.hq_address || ""); }} /> Locul de consum are aceeași adresă ca în CI</span></label>
+        </div>
+      </details>
+      <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Importă CI, factura și actul de proprietate din zona de documente. Verifică datele extrase automat înainte de salvare.</p>
+    </div>
+
+    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Configurare</p><h3 className="mt-1 text-lg font-bold">Echipamente și dimensionare</h3></div>
+        {catalogLoading ? <span className="text-xs" style={{ color: "var(--muted)" }}>Se încarcă catalogul…</span> : <span className="text-xs" style={{ color: "var(--muted)" }}>{catalog.length} modele în catalog</span>}</div>
+      <div className="grid gap-3 sm:grid-cols-2">
         {catalogSelect("inverter", "Invertor")}
         {input("inverter_count", "Număr invertoare", "number")}
         {catalogSelect("panel", "Panou fotovoltaic")}
@@ -242,20 +250,20 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions }) {
         {catalogSelect("battery", "Baterie (opțional)")}
         {input("battery_count", "Număr baterii", "number")}
         {catalogSelect("meter", "Smart meter (opțional)")}
-        <label className="den-field"><span>Backup</span><span className="flex items-center gap-2 min-h-10"><input type="checkbox" checked={form.backup === true || form.backup === "Da"} onChange={(e) => { const on = e.target.checked; setVal("backup", on); setVal("anti_relay_present", on ? "DA" : "NU"); const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] }; setVal("cef", { ...cef, grid: { ...(cef.grid || {}), anti_required: on }, inverters: (cef.inverters || []).map((x, i) => i ? x : { ...x, backup: { ...(x.backup || {}), enabled: on } }) }); }} /> Instalația include ieșire backup</span></label>
+        <label className="den-field"><span>Backup</span><span className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={form.backup === true || form.backup === "Da"} onChange={(e) => { const on = e.target.checked; setVal("backup", on); setVal("anti_relay_present", on ? "DA" : "NU"); const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] }; setVal("cef", { ...cef, grid: { ...(cef.grid || {}), anti_required: on }, inverters: (cef.inverters || []).map((x, i) => i ? x : { ...x, backup: { ...(x.backup || {}), enabled: on } }) }); }} /> Include ieșire de rezervă</span></label>
       </div>
-      {(() => {
-        const inv = form.cef?.inverters?.[0];
-        const strings = inv?.strings || [];
-        return strings.some((x) => x.auto_generated)
-          ? <p className="text-xs mt-2 rounded-lg bg-blue-50 px-3 py-2 text-blue-900">Stringuri propuse din fișele tehnice: {strings.filter((x) => x.auto_generated).map((x, i) => String(i + 1) + "(" + x.panels + ")").join(", ")}. Verifică configurația și limitele din manualul echipamentului înainte de proiectare.</p>
-          : null;
-      })()}
-      <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Datele tehnice sunt preluate din catalog și folosite de configuratorul schemei. Valorile calculate sunt propuneri pentru verificare; măsurătorile și rezultatele testelor trebuie introduse din documentele reale.</p>
-      {problem && <p className="text-xs mt-2 text-amber-700">{problem}</p>}
-      {catalogLoading && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Se încarcă modelele din catalog…</p>}
-      {!catalogLoading && catalog.length === 0 && !problem && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Catalog gol. Adaugă modelele și fișele lor în Catalog echipamente.</p>}
-      <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Variantele cu date vechi care contrazic fișa oficială sunt excluse din configurare. Alege modelul exact al producătorului.</p>
-    </section>
+      {(() => { const strings = form.cef?.inverters?.[0]?.strings || []; return strings.some((x) => x.auto_generated)
+        ? <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-900">Propunere stringuri din datele catalogului: {strings.filter((x) => x.auto_generated).map((x, i) => String(i + 1) + "(" + x.panels + ")").join(", ")}. Verifică limitele din manualul exact al echipamentului.</p> : null; })()}
+      <details className="mt-3 rounded-xl border px-3" style={{ borderColor: "var(--line)" }}>
+        <summary className="cursor-pointer py-3 text-sm font-semibold">Verificare documente și date tehnice</summary>
+        <div className="space-y-2 pb-3 text-xs" style={{ color: "var(--muted)" }}>
+          <p>Datele tehnice selectate sunt preluate din catalog și folosite la generarea schemei. Parametrii care lipsesc nu sunt estimați automat.</p>
+          <p>Valorile calculate sunt propuneri pentru verificare; măsurătorile și rezultatele testelor trebuie introduse din documentele reale.</p>
+          <p>Variantele cu date cunoscute ca fiind în contradicție cu fișa oficială sunt excluse din configurare. Alege modelul exact al producătorului.</p>
+          {problem && <p className="text-amber-700">{problem}</p>}
+          {!catalogLoading && catalog.length === 0 && !problem && <p>Catalog gol. Adaugă modele și documente în Catalog echipamente.</p>}
+        </div>
+      </details>
+    </div>
   </div>;
 }
