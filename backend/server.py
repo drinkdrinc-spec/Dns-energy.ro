@@ -380,6 +380,14 @@ async def create_item(module: str, request: Request, user: dict = Depends(get_cu
         data.pop("assigned_to", None)
     await db[module].insert_one(dict(data))
     await audit(user, "creare", module, data["id"], list(data.keys()))
+    if module == "prosumator":
+        try:
+            await sync_catalog_files_to_documents(user, data)
+            data = await db[module].find_one({"id": data["id"], "owner": user["id"]}) or data
+        except Exception as e:
+            # The dossier is already saved; optional catalog documents must not turn
+            # a successful create into a client-visible failure.
+            logger.exception("Catalog document sync failed after prosumer dossier create: %s", e)
     return clean(data)
 
 @api_router.get("/data/{module}/{item_id}")
