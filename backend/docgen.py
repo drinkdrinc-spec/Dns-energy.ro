@@ -553,7 +553,7 @@ def doc_pv_teste(ctx):
            B("p", "<b>Atât Executantul cât și Prosumatorul au obligația ca, până la încheierea contractului de vânzare-cumpărare între Prosumator și Furnizorul de energie "
                   "electrică, SĂ NU INJECTEZE ENERGIE ELECTRICĂ în rețeaua operatorului de distribuție.</b> De asemenea, Prosumatorul și Executantul (cu drepturi de "
                   "parametrizare a invertorului) își asumă responsabilitatea pentru menținerea în funcțiune a tuturor protecțiilor, respectiv menținerea parametrilor testați aferenți unității de producție (inclusiv a invertorului)."),
-           sign(["Prosumator,", f"<b>{ctx.name}</b>", "semnătura"], ["Reprezentant firmă executantă<br/>care a verificat și efectuat testele,", ctx.rep, "semnătura și ștampila"]),
+           sign(ex_sig(ctx, "Reprezentantul firmei executante,"), []),
            B("b", "Observații OD privind instalația de utilizare de la locul de consum și producere"),
            B("p", "OD a sigilat: [  ] contorul pe partea de producere, din instalația prosumatorului<br/>[  ] contorul pe sistemul de stocare<br/>[  ] contorul în punctul de delimitare"),
            B("p", "Observații (dacă este cazul)<br/>………………………………………………………………………………………………………<br/>………………………………………………………………………………………………………"),
@@ -575,7 +575,7 @@ def doc_pv_teste(ctx):
            B("b", "Notă"),
            B("p", f"Prezenta se anexează la Procesul Verbal nr. {ctx.v('pif_no', '—')} din data de {pd} de efectuare a probelor de punere în funcțiune a instalației de utilizare și producere situată în {ctx.loc}."),
            B("p", "Acolo unde verificarea conformității se bazează pe certificatele de echipamente ale unității generatoare, se vor anexa și acestea."),
-           sign(["Prosumator,", f"<b>{ctx.name}</b>", "semnătura"], ["Reprezentant firmă executantă<br/>care a verificat și efectuat testele,", ctx.rep, "semnătura și ștampila"])]
+           sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
     return out
 
 
@@ -597,7 +597,7 @@ def doc_buletin_priza(ctx):
                     [f"Concluzii — corespunde (da/nu){f' · valoare admisă ≤ {fmt(lim)} Ω' if lim is not None else ''}", f"<b>{ok}</b>"]], [140, 34], True),
         B("p", f"<b>Aparat de măsură folosit:</b> {ctx.e('meter_device')} · seria {ctx.e('meter_serial')} · buletin metrologic valabil până la {ro_date(ctx.s.get('meter_valid')) or M}"),
         B("small", f"Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la <b>{valid}</b>."),
-        sign(["Verificat,", f"<b>{ctx.company}</b>", ctx.rep, "semnătura și ștampila"], ben_sig(ctx))]
+        sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
 
 
 REGLAJ = [("u1", "Funcția protecție tensiune maximală treapta I"), ("u2", "Funcția protecție tensiune minimală treapta II"),
@@ -738,8 +738,12 @@ def pdf_sign(left, right, s=None):
         row = Table([imgs], colWidths=[37 * mm] * len(imgs))
         row.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
         return [Paragraph("<br/>".join(top), S["sig"]), row, Paragraph(foot, S["sig"])]
-    t = Table([[col(left), col(right)]], colWidths=[87 * mm, 87 * mm])
-    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    if not right:
+        t = Table([[col(left)]], colWidths=[174 * mm])
+        t.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    else:
+        t = Table([[col(left), col(right)]], colWidths=[87 * mm, 87 * mm])
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     return KeepTogether([Spacer(1, 14), t, Spacer(1, 8)])
 
 
