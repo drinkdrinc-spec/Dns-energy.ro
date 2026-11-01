@@ -327,7 +327,11 @@ def apply(cef: dict) -> tuple[dict, list]:
             put(dc, "switch", f"{up(UCPV, vm)} V / {up(SWITCH_A, 1.25 * im)} A DC-PV2", f"cef.inverters.{i}.dc.switch")
         bat = inv.get("battery") or {}
         if inv.get("battery_mode") == "own" and n(bat.get("i_max")):
-            put(bat, "fuse_a", up(BAT_FUSE, 1.25 * n(bat.get("i_max"))), f"cef.inverters.{i}.battery.fuse_a")
+            # A DC fuse is only proposed when the selected battery datasheet
+            # explicitly permits that rating. Never infer the manufacturer's
+            # maximum from a generic multiple of battery current.
+            proposal = battery_cable_proposal(bat)
+            put(bat, "fuse_a", proposal.get("fuse_a"), f"cef.inverters.{i}.battery.fuse_a")
     gd = cef.setdefault("grid", {})
     put(gd, "bmp_a", base["grid"]["main_proposal"], "cef.grid.bmp_a")
     cef["auto_filled"] = sorted(set((cef.get("auto_filled") or []) + filled))
