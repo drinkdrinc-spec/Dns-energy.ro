@@ -640,8 +640,13 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
         raise HTTPException(status_code=400, detail="Fișierul este gol")
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "pdf"
-    ct = file.content_type or MIME_TYPES.get(ext, "application/pdf")
+    filename = str(file.filename or "document.pdf")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+    ct = str(file.content_type or "").split(";", 1)[0].strip().lower()
+    # Mobile pickers sometimes send application/octet-stream (or no MIME type).
+    # Infer the supported type from the extension in those cases.
+    if not ct or ct == "application/octet-stream":
+        ct = MIME_TYPES.get(ext, "application/octet-stream")
     office_types = {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
