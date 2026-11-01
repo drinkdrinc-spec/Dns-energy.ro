@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
 const field = (cfg, name) => (cfg.fields || []).find((f) => f.name === name);
@@ -40,6 +40,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
   const [catalogSearch, setCatalogSearch] = useState({});
   const [addingModel, setAddingModel] = useState({});
   const [catalogDocStatus, setCatalogDocStatus] = useState("");
+  const pendingDocImports = useRef(0);
   useEffect(() => {
     api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setProblem("Catalogul nu s-a putut încărca. Poți salva datele de bază și selecta echipamentele ulterior.")).finally(() => setCatalogLoading(false));
   }, []);
@@ -137,6 +138,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         item[documentKind + "_url"] && !item[documentKind]?.storage_path
       );
       if (documents.length) {
+        pendingDocImports.current += 1;
         onImportsBusyChange?.(true);
         const docLabels = { datasheet: "fișa tehnică", conformity: "declarația de conformitate" };
         setCatalogDocStatus("Se preiau automat " + documents.map((key) => docLabels[key]).join(" și ") + " pentru " + item.brand_model + "…");
@@ -156,7 +158,10 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
           setCatalogDocStatus(failures.length
             ? "Modelul a fost ales, dar unele documente nu s-au preluat: " + failures.map((failure) => docLabels[failure.kind] + " — " + failure.reason).join("; ") + "."
             : "Documentele oficiale pentru " + item.brand_model + " au fost importate și se atașează la salvarea dosarului.");
-        }).finally(() => onImportsBusyChange?.(false));
+        }).finally(() => {
+          pendingDocImports.current = Math.max(0, pendingDocImports.current - 1);
+          if (pendingDocImports.current === 0) onImportsBusyChange?.(false);
+        });
       } else if (item.datasheet?.storage_path || item.conformity?.storage_path) {
         setCatalogDocStatus("Documentele deja încărcate pentru " + item.brand_model + " se vor atașa la salvarea dosarului.");
       } else {
