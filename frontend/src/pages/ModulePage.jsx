@@ -349,6 +349,36 @@ export default function ModulePage({ moduleKey }) {
           <Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>
         </div>} />
 
+      {key === "atr" && <section className="mb-6 overflow-hidden rounded-2xl border shadow-sm" aria-label="Flux cerere ATR" data-testid="atr-workflow" style={{ borderColor: "var(--line)", background: "#fff" }}>
+        <div className="grid lg:grid-cols-[1.35fr_1fr]">
+          <div className="p-5 sm:p-7 lg:p-8" style={{ background: "linear-gradient(135deg, #f0f6ff 0%, #ffffff 72%)" }}>
+            <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--blue)" }}>Flux de lucru · ATR</div>
+            <h2 className="mt-2 max-w-2xl text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: "#13243d" }}>Cererea pornește din datele clientului</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "var(--muted)" }}>Alege clientul și dosarul prosumator asociat. Datele cunoscute, puterile și echipamentele se preiau automat; verifică procedura și valorile înainte de generare.</p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <Btn onClick={openNew} data-testid="atr-start-new"><Plus size={15} /> Cerere ATR nouă</Btn>
+              <a href="/clienti" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-4 text-sm font-semibold" style={{ borderColor: "var(--line)", color: "#31425c" }}>Alege din clienți</a>
+            </div>
+            <p className="mt-3 text-xs leading-5" style={{ color: "var(--muted)" }}>Pachetul ATR include formularul de lucru și anexele oficiale disponibile pentru operatorul selectat. Formularele PDF oficiale se păstrează ca surse; verifică cerințele operatorului înainte de depunere.</p>
+          </div>
+          <div className="border-t p-5 sm:p-7 lg:border-l lg:border-t-0" style={{ borderColor: "var(--line)", background: "#fbfcfe" }}>
+            <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--muted)" }}>Pașii dosarului</div>
+            <ol className="mt-4 grid gap-2">
+              {[
+                ["01", "Client și loc de consum", "CI, adresă, POD și operator"],
+                ["02", "Tipul solicitării", "ATR nou, spor sau modificare"],
+                ["03", "Instalația", "Preia invertorul, panourile și bateria"],
+                ["04", "Documente", "Descarcă cererea, anexele și schema separat"],
+              ].map(([n, title, body]) => <li key={n} className="flex gap-3 rounded-xl px-3 py-3" style={{ background: "#fff" }}>
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{n}</span>
+                <span><b className="block text-sm">{title}</b><span className="mt-1 block text-xs leading-5" style={{ color: "var(--muted)" }}>{body}</span></span>
+              </li>)}
+            </ol>
+            <a href="/formulare-oficiale" className="mt-4 inline-flex text-xs font-semibold" style={{ color: "var(--blue)" }}>Deschide formularele oficiale →</a>
+          </div>
+        </div>
+      </section>}
+
       {key === "prosumator" && <section className="mb-6 overflow-hidden rounded-2xl border shadow-sm" aria-label="Flux dosar prosumator" data-testid="prosumer-workflow" style={{ borderColor: "var(--line)", background: "#fff" }}>
         <div className="grid lg:grid-cols-[1.35fr_1fr]">
           <div className="p-5 sm:p-7 lg:p-8" style={{ background: "linear-gradient(135deg, #f0f6ff 0%, #ffffff 72%)" }}>
