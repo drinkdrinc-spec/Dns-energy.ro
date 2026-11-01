@@ -171,7 +171,7 @@ def check_inverters(user: dict, d: dict):
                             "Dosarul nu poate fi salvat sau finalizat — treceți la abonamentul PRO sau FULL pentru dosare cu mai multe invertoare.")
 
 # ---------------- Object storage ----------------
-# DNS Energy uses Cloudflare R2 directly. No Emergent proxy or fallback.
+# New files use MongoDB GridFS; legacy files are read-through migrated only when the old source remains accessible.
 from gridfs_storage import init_storage, put_object, get_object, LegacyObjectUnavailable
 
 @app.exception_handler(LegacyObjectUnavailable)
@@ -2242,7 +2242,7 @@ async def startup():
     await forms_routes.seed()
     # Fail fast: do not report a healthy API when private file storage is unavailable.
     init_storage()
-    logger.info("Cloudflare R2 storage initialized")
+    logger.info("MongoDB GridFS object storage initialized")
 
 @app.on_event("shutdown")
 async def shutdown():
