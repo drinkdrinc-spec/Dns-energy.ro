@@ -108,6 +108,7 @@ export function PowerDossier({ id, form, setVal }) {
           <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(pdf(id, 0))} data-testid="power-anexa1-pdf">Anexa 1 model (PDF)</Btn>
           {operatorLabel && <Btn type="button" variant="secondary" onClick={() => downloadAuthenticatedFile(`/power/${id}/official-annex`, isDeer ? "Anexa1_DEER.docx" : "Anexa1_OD")} data-testid="power-official-annex">{isDeer ? "Anexa 1 oficială DEER (DOCX)" : "Formular oficial OD (Anexa 1)"}</Btn>}
           <Btn type="button" onClick={() => openAuthenticatedFile(pdf(id, 1))} data-testid="power-full-pdf">Dosar spor de putere — PDF unic</Btn>
+          <Btn type="button" variant="secondary" onClick={() => downloadAuthenticatedFile(`/power/${id}/package.zip`, "Pachet_depunere_spor.zip")} data-testid="power-package">Pachet pentru portal OD (ZIP)</Btn>
         </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați fișa pentru a genera Anexa 1 și dosarul.</span>}
         {id && operatorLabel && !isDeer && <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Formularele PDF se precompletează doar când au câmpuri semantice compatibile; DOCX-ul se descarcă oficial și se verifică manual.</span>}
         {id && <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>}
