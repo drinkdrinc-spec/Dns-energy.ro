@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, API } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Copy, Link2, Ban, RefreshCw, FileDown, ChevronDown, Plus, MessageCircle, Mail, Smartphone } from "lucide-react";
 import { toast } from "sonner";
@@ -51,7 +51,7 @@ function Req({ r, token, reload, setToken }) {
       <div className="flex flex-wrap gap-3 mt-2 text-xs">
         {!closed && <button className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} onClick={() => act("new-link", { expires_days: 7 })} data-testid={`sign-newlink-${r.id}`}><RefreshCw size={13} /> {token ? "Link nou" : "Generează link nou / retrimite"}</button>}
         {!closed && r.status !== "Expirat" && <button className="inline-flex items-center gap-1 font-bold" style={{ color: "#9b2c2c" }} onClick={() => window.confirm("Revoci linkul?") && act("revoke")} data-testid={`sign-revoke-${r.id}`}><Ban size={13} /> Revocă</button>}
-        {r.has_signed_file && <a className="inline-flex items-center gap-1 font-bold" style={{ color: "#166534" }} href={`${API}/sign/requests/${r.id}/file?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" data-testid={`sign-download-${r.id}`}><FileDown size={13} /> PDF semnat</a>}
+        {r.has_signed_file && <button type="button" className="inline-flex items-center gap-1 font-bold" style={{ color: "#166534" }} onClick={() => openAuthenticatedFile(`/sign/requests/${r.id}/file`)} data-testid={`sign-download-${r.id}`}><FileDown size={13} /> PDF semnat</button>}
         <button className="inline-flex items-center gap-1" onClick={() => setOpen(!open)} data-testid={`sign-history-${r.id}`}><ChevronDown size={13} /> Istoric ({r.history.length})</button>
       </div>
       {open && <div className="mt-2 text-[11px] space-y-1" data-testid={`sign-history-list-${r.id}`}>{r.history.map((h, i) => <div key={i}><b>{new Date(h.at).toLocaleString("ro-RO")}</b> — {h.action}{h.detail ? `: ${h.detail}` : ""}{h.ip ? ` · IP ${h.ip}` : ""}</div>)}
