@@ -518,7 +518,8 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
     official = (
         "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de",
         "sma-solar.com", "fox-ess.com", "aikosolar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
-        "risenenergy.com", "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro",
+        "risenenergy.com", "bydbatterybox.com", "dyness.com", "pylontech.com.cn", "pylontech.us", "solaxpower.com",
+        "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro",
     )
     if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in official):
         raise HTTPException(status_code=400, detail="Folosește un link HTTPS de pe domeniul oficial al producătorului/operatorului.")
