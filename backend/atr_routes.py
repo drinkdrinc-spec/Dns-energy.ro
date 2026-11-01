@@ -451,9 +451,15 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
     panel_models = ", ".join(dict.fromkeys(str(x.get("panel_model")) for x in inverters if x.get("panel_model")))
     inverter_models = ", ".join(dict.fromkeys(str(x.get("brand_model")) for x in inverters if x.get("brand_model")))
     battery_models = ", ".join(dict.fromkeys(str(x.get("model")) for x in batteries if x.get("model")))
+    def number(value):
+        try:
+            return float(str(value or 0).replace(",", "."))
+        except (TypeError, ValueError):
+            return 0.0
+
     panel_count = sum(
-        sum(int(float(str(st.get("panels") or 0).replace(",", "."))) for st in (inv.get("strings") or []))
-        * max(1, int(float(str(inv.get("count") or 1).replace(",", "."))))
+        sum(int(number(st.get("panels"))) for st in (inv.get("strings") or []))
+        * max(1, int(number(inv.get("count")) or 1))
         for inv in inverters
     )
     values = [
@@ -508,7 +514,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
     writer.clone_document_from_reader(reader)
     for page, update in page_updates:
         try:
-            writer.update_page_form_field_values(page, update, auto_regenerate=False)
+            writer.update_page_form_field_values(writer.pages[reader.pages.index(page)], update, auto_regenerate=False)
         except Exception:
             return pdf_bytes, 0
     out = io.BytesIO()
@@ -589,8 +595,14 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                     note.extend(["", f"Sursă oficială: {form.get('source_url') or form.get('url')}", f"Formular: {form.get('title')}", f"Stare link: {form.get('status') or 'neverificat'}"])
                     try:
                         annex, official_name = await _fetch_registry_annex(form, op_key)
-                        archive.writestr(f"Anexe oficiale/{official_name}", annex)
-                        note.append("Formular oficial descărcat în acest pachet.")
+                        archive.writestr(f"Anexe oficiale/Formulare originale/{official_name}", annex)
+                        completed, filled_fields = _prefill_official_pdf(annex, rec, client, pros)
+                        if filled_fields:
+                            stem = re.sub(r"[^A-Za-z0-9_-]+", "_", official_name.rsplit(".", 1)[0]).strip("_")
+                            archive.writestr(f"Anexe oficiale/{stem}_completata.pdf", completed)
+                            note.append(f"Formular PDF oficial completat automat în {filled_fields} câmpuri etichetate; copia originală a fost păstrată.")
+                        else:
+                            note.append("Formular oficial descărcat; nu are câmpuri text etichetate compatibile pentru completare automată. Rămâne disponibil originalul și fișa de precompletare.")
                     except (httpx.HTTPError, ValueError) as exc:
                         note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
                 if op_key == "rer" and ATR.storage_details(pros, rec):
