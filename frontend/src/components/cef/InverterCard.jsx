@@ -40,7 +40,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
         <button onClick={remove} className="p-1.5 rounded hover:bg-[#fff0f0]" data-testid={`${t}-remove`} title="Elimină invertorul"><Trash2 size={15} style={{ color: "#b33333" }} /></button>
       </div>
       <div className="grid sm:grid-cols-4 gap-3">
-        <CatalogPick items={catalog} category="Invertor" testid={`${t}-pick`} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, bat_i_max: it.bat_i_max, red_limit_mode: it.red_limit_mode || "Nu este declarată" })} />
+        <CatalogPick items={catalog} category="Invertor" testid={`${t}-pick`} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, isc_max_mppt: it.isc_max_mppt, bat_i_max: it.bat_i_max, red_limit_mode: it.red_limit_mode || "Nu este declarată" })} />
         <F label="Marcă și model" value={inv.brand_model} onChange={s("brand_model")} testid={`${t}-model`} className="sm:col-span-2" />
         <F label="Limită injecție în rețea (kW)" type="number" value={inv.p_limit_kw} onChange={s("p_limit_kw")} testid={`${t}-plim`} />
         <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Detalii invertor · completate din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
@@ -59,14 +59,15 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           <F label="Baterie: U max invertor (V)" type="number" value={inv.bat_v_max} onChange={s("bat_v_max")} testid={`${t}-batvmax`} />
           <F label="Baterie: I max încărcare/descărcare invertor (A)" type="number" value={inv.bat_i_max} onChange={s("bat_i_max")} testid={`${t}-batimax`} />
         </>}
-        <F label="Curent max/MPPT (A)" type="number" value={inv.imax_mppt} onChange={s("imax_mppt")} testid={`${t}-imax`} />
+        <F label="Curent maxim de funcționare / MPPT (A)" type="number" value={inv.imax_mppt} onChange={s("imax_mppt")} testid={`${t}-imax`} />
+          <F label="Isc maxim admisibil / MPPT (A)" type="number" value={inv.isc_max_mppt} onChange={s("isc_max_mppt")} testid={`${t}-iscmax`} />
         </div></details>
       </div>
       <div className="mt-2"><Check label="Echipament existent (extindere)" value={inv.existing} onChange={s("existing")} testid={`${t}-existing`} /></div>
 
       <Section title="Panouri și stringuri">
         <div className="grid sm:grid-cols-4 gap-3">
-          <CatalogPick items={catalog} category="Panou" testid={`${t}-panel-pick`} onPick={(it) => set({ ...inv, panel_catalog_id: it.id, panel_model: it.brand_model, panel_w: it.w, panel_voc: it.voc, panel_vmp: it.vmp, panel_isc: it.isc, panel_coef_voc: it.coef_voc })} />
+          <CatalogPick items={catalog} category="Panou" testid={`${t}-panel-pick`} onPick={(it) => set({ ...inv, panel_catalog_id: it.id, panel_model: it.brand_model, panel_w: it.w, panel_voc: it.voc, panel_vmp: it.vmp, panel_isc: it.isc, panel_imp: it.imp, panel_coef_voc: it.coef_voc, panel_coef_vmp: it.coef_vmp })} />
           <F label="Model panou" value={inv.panel_model} onChange={s("panel_model")} testid={`${t}-panel-model`} />
           <F label="Putere panou (W)" type="number" value={inv.panel_w} onChange={s("panel_w")} testid={`${t}-panel-w`} />
           <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Parametri panou din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
