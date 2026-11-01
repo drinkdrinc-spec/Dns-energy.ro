@@ -46,7 +46,7 @@ def missing(key, r, s):
         m = need([(r.get("tg_breaker_a"), "Întreruptor general TG (A)")]) + ([] if cs else ["Circuitele tabloului"])
         m += [f"Circuit „{c['name']}”: întreruptor / secțiune cablu" for c in cs if not c.get("breaker_a") or not c.get("section")]
     elif key.startswith("pram_"):
-        m = need([(p.get("date"), "Data măsurătorilor"), (p.get("instrument"), "Aparat de măsură (tip, serie)"), (p.get("verifier"), "Verificator PRAM")])
+        m = need([(p.get("date"), "Data măsurătorilor"), (p.get("instrument"), "Aparat de măsură (tip, serie)")])
         if key == "pram_priza":
             m += need([(p.get("earth_ohm"), "Rezistența de dispersie măsurată (Ω)"), (p.get("earth_limit"), "Valoarea admisă (Ω)")])
         if key == "pram_cont":
@@ -102,12 +102,12 @@ def pram_head(ctx, r, title, norm):
     p = r.get("pram_m") or {}
     return hdr() + [B("title", title), B("sub", norm),
                     B("p", f"Beneficiar: <b>{ctx.name}</b> · Obiectiv: {ctx.loc} · Dosar DI-U: {e(r.get('number'))}"),
-                    B("p", f"Data măsurătorilor: {ro_date(p.get('date')) or M} · Aparat de măsură: {e(p.get('instrument'))} · Verificator: {e(p.get('verifier'))}"),
+                    B("p", f"Data măsurătorilor: {ro_date(p.get('date')) or M} · Aparat de măsură: {e(p.get('instrument'))}"),
                     *([B("p", f"Buletin metrologic valabil până la: {ro_date(s.get('meter_valid'))}")] if s.get("meter_valid") else [])]
 
 
 def pram_sign(ctx, r):
-    return sign(["Verificator PRAM,", e((r.get("pram_m") or {}).get("verifier")), "numele și semnătura"], ex_sig(ctx))
+    return sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])
 
 
 def verdict(ok):
