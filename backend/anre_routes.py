@@ -31,8 +31,8 @@ async def get_d(user, did):
 
 
 def paid_or_403(d, user):
-    if d.get("payment_status") != "plătit" and not is_pf(user):
-        raise HTTPException(status_code=402, detail="Serviciul Dosare ANRE (3.200 lei + TVA) se activează după confirmarea plății prin OP de către administrator")
+    if d.get("payment_status") not in ("plătit", "intern") and not is_pf(user):
+        raise HTTPException(status_code=402, detail="Serviciul ANRE comandat (3.200 lei + TVA) se activează după confirmarea plății prin OP de către administrator")
 
 
 def items(d):
@@ -103,21 +103,23 @@ async def anre_create(request: Request, user: dict = Depends(get_current_user)):
     if b.get("kind") not in AD.TYPES:
         raise HTTPException(status_code=400, detail="Alegeți tipul solicitării")
     op = await db.operators.find_one({"tenant": user["id"]}, {"_id": 0}) or {}
-    cfg = await S.billing_cfg()
-    vat = round(PRICE * float(cfg.get("vat_rate", 21)) / 100, 2)
+    internal = b.get("mode") == "intern"
+    cfg = await S.billing_cfg() if not internal else {}
+    vat = round(PRICE * float(cfg.get("vat_rate", 21)) / 100, 2) if not internal else 0
     d = {"id": str(uuid.uuid4()), "owner": user["id"], "kind": b["kind"], "target_types": b.get("target_types") or [], "status": "Ciornă", "created_at": now(), "updated_at": now(),
-         "created_by": user.get("email"), "payment_status": "neplătit", "price": {"net": PRICE, "vat": vat, "total": round(PRICE + vat, 2), "note": "Serviciu D-ENERGY; tarifele ANRE se plătesc separat"},
+         "created_by": user.get("email"), "creation_mode": "intern" if internal else "serviciu", "payment_status": "intern" if internal else "neplătit", "price": {"net": 0 if internal else PRICE, "vat": vat, "total": 0 if internal else round(PRICE + vat, 2), "note": "Dosar intern — fără comandă de servicii" if internal else "Serviciu D-ENERGY; tarifele ANRE se plătesc separat"},
          "company": {"name": op.get("company"), "cui": op.get("cui"), "regcom": op.get("regcom"), "email": op.get("contact_email"), "phone": op.get("contact_phone"),
                      "rep_name": op.get("contact_name"), "rep_role": op.get("holder_role"), "attest_no": op.get("attest_no"), "attest_types": ", ".join(op.get("attest_types") or []), "attest_valid": op.get("attest_valid")},
-         "docs": {}, "staff": [], "equipment": [], "org": [], "history": [{"at": now(), "by": user.get("email"), "event": "comandă creată"}]}
-    import billing_routes as BR
-    inv = await BR.service_invoice(user["id"], user.get("email"), f"Serviciu D-ENERGY — pregătire Dosar ANRE ({AD.TYPES[b['kind']]}), ref. {d['id'][:8]}", PRICE, user.get("email"),
-                                   {"client_type": "pj", "company_name": op.get("company"), "cui": op.get("cui"), "regcom": op.get("regcom"), "billing_email": op.get("contact_email") or user.get("email"),
+         "docs": {}, "staff": [], "equipment": [], "org": [], "history": [{"at": now(), "by": user.get("email"), "event": "dosar intern creat" if internal else "comandă creată"}]}
+    if not internal:
+        import billing_routes as BR
+        inv = await BR.service_invoice(user["id"], user.get("email"), f"Serviciu D-ENERGY — pregătire Dosar ANRE ({AD.TYPES[b['kind']]}), ref. {d['id'][:8]}", PRICE, user.get("email"),
+                                       {"client_type": "pj", "company_name": op.get("company"), "cui": op.get("cui"), "regcom": op.get("regcom"), "billing_email": op.get("contact_email") or user.get("email"),
                                     "phone": op.get("contact_phone"), "rep_name": op.get("contact_name"), "country": "România"})
-    d.update({"invoice_id": inv["id"], "invoice_number": inv["number"], "transfer": inv["transfer"]})
-    d["history"].append({"at": now(), "by": "sistem", "event": f"proformă emisă: {inv['number']}"})
+        d.update({"invoice_id": inv["id"], "invoice_number": inv["number"], "transfer": inv["transfer"]})
+        d["history"].append({"at": now(), "by": "sistem", "event": f"proformă emisă: {inv['number']}"})
     await db.anre_dossiers.insert_one(dict(d))
-    await S.audit(user, "comandă dosar ANRE", "anre", d["id"], [d["kind"], inv["number"]])
+    await S.audit(user, "dosar ANRE intern creat" if internal else "comandă dosar ANRE", "anre", d["id"], [d["kind"], d.get("invoice_number") or "intern"])
     return pub(d)
 
 
