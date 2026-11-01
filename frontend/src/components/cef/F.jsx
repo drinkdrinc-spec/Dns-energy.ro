@@ -50,7 +50,7 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
       [hasValue(item.coef_voc), "coeficientul Voc"],
     ] : category === "Baterie" ? [
       [positive(item.kwh) || positive(item.ah), "capacitatea (kWh sau Ah)"],
-      [positive(item.voltage), "tensiunea"],
+      [(positive(item.voltage) || (positive(item.voltage_1ph) && positive(item.voltage_3ph))), "tensiunea compatibilă cu fazele invertorului"],
       [positive(item.i_max), "curentul maxim"],
       [!!item.coupling, "tipul de cuplare AC/DC"],
     ] : [];
