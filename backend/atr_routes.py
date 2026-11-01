@@ -357,7 +357,9 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
         single_phase = bool(supply) and not any(mark in supply for mark in ("trifaz", "400", "three-phase", "3 phase"))
         annex_no = 5 if kwp is not None and kwp <= 10.8 and single_phase else 2
     else:
-        annex_no = {"nou": 1, "spor": 1, "mod_dep": 2, "admin": 3}.get(request_type)
+        # All three operators use Annex 1 for new places and technical changes
+        # that exceed the previously approved power.
+        annex_no = {"nou": 1, "temp": 1, "spor": 1, "mod_dep": 1, "admin": 3}.get(request_type)
     if annex_no is None:
         return None, []
     rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
