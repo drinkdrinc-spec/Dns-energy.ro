@@ -445,6 +445,9 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode("ascii").lower())
 
     c, r, p = client or {}, rec or {}, pros or {}
+    applicant_type = str(r.get("applicant_type") or "").casefold()
+    is_company = "jurid" in applicant_type or applicant_type == "pj"
+    applicant_address = (c.get("hq_address") or c.get("address")) if is_company else (c.get("address") or c.get("hq_address"))
     cef = p.get("cef") or {}
     inverters = cef.get("inverters") or []
     batteries = ATR.storage_details(p, r)
@@ -481,7 +484,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         (("numarcf", "nrcf", "cartefunciara"), r.get("cf_nr") or c.get("cf_nr")),
         (("numarcadastral", "cadastral"), r.get("cadastral_nr") or c.get("cadastral_nr")),
         (("adresalocconsum", "adresapunctconsum", "locconsum", "stradalocconsum"), r.get("address")),
-        (("adresadomiciliu", "adresasolicitant", "domiciliu", "clientaddress", "applicantaddress", "strada"), c.get("address")),
+        (("adresadomiciliu", "adresasolicitant", "domiciliu", "clientaddress", "applicantaddress", "strada"), applicant_address),
         (("pabsorbita", "putereabsorbita", "pabs", "pmaxabsorbita"), r.get("p_abs_kw")),
         (("putereevacuatakva", "pevackva", "pmaxevacuatakva"), r.get("p_evac_kva")),
         (("putereevacuatakw", "pevackw", "pmaxevacuatakw", "putereevacuata", "pevacuare", "pmaxevacuata"), r.get("p_evac_kw") or p.get("power")),
