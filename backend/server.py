@@ -410,6 +410,9 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
         except Exception as e:
             logger.error(f"auto approval request: {e}")
     doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
+    if module == "prosumator":
+        await sync_catalog_files_to_documents(user, doc)
+        doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
     return clean(doc)
 
 @api_router.delete("/data/{module}/{item_id}")
@@ -752,6 +755,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     d = derive_cef(d)
     pros = _new(user, d)
     await db.prosumator.insert_one(dict(pros))
+    await sync_catalog_files_to_documents(user, pros)
     sz = docgen.sizing(d)
     await db.works.insert_one(_new(user, {"title": f"Sistem fotovoltaic {docgen.fmt(sz['kwp'] or docgen.num(d.get('power')))} kWp — {name}",
         "client_name": name, "type": "Sistem fotovoltaic", "status": "Finalizat" if d.get("status") == "Prosumator activ" else "În execuție",
@@ -1204,6 +1208,36 @@ async def catalog_files(owner: str, rec: dict) -> list:
                 out.append({"catalog_id": cid, "model": it.get("brand_model"), "kind": label, **f})
     return out
 
+async def sync_catalog_files_to_documents(user: dict, rec: dict) -> int:
+    """Attach selected equipment datasheets and conformity declarations to the client dossier."""
+    owner = user["id"]
+    client_name = rec.get("client_name", "")
+    client = await db.clients.find_one(
+        {**scope_q(user, "clients"), "name": client_name}, {"_id": 0, "id": 1}
+    ) or {}
+    added = 0
+    for f in await catalog_files(owner, rec):
+        exists = await db.documents.find_one({
+            "owner": owner,
+            "storage_path": f["storage_path"],
+            "client_name": client_name,
+        }, {"_id": 1})
+        if exists:
+            continue
+        await db.documents.insert_one(_new(user, {
+            "client_id": client.get("id", ""),
+            "client_name": client_name,
+            "kind": "Catalog",
+            "doc_type": f"{f['kind']} — {f['model']}",
+            "storage_path": f["storage_path"],
+            "original_filename": f.get("original_filename"),
+            "content_type": f.get("content_type"),
+            "size": f.get("size"),
+            "pros_ref": rec.get("id"),
+        }))
+        added += 1
+    return added
+
 @api_router.get("/prosumator/{item_id}/catalog-files")
 async def pros_catalog_files(item_id: str, user: dict = Depends(get_current_user)):
     rec = await check_access(user, "prosumator", item_id)
@@ -1217,15 +1251,7 @@ async def attach_catalog(item_id: str, user: dict = Depends(get_current_user)):
     rec = await check_access(user, "prosumator", item_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
-    client = await db.clients.find_one({"owner": user["id"], "name": rec.get("client_name")}, {"_id": 0}) or {}
-    added = 0
-    for f in await catalog_files(user["id"], rec):
-        if await db.documents.find_one({"owner": user["id"], "storage_path": f["storage_path"], "client_name": rec.get("client_name")}):
-            continue
-        await db.documents.insert_one(_new(user, {"client_id": client.get("id", ""), "client_name": rec.get("client_name", ""),
-            "kind": "Catalog", "doc_type": f"{f['kind']} — {f['model']}", "storage_path": f["storage_path"],
-            "original_filename": f.get("original_filename"), "content_type": f.get("content_type"), "size": f.get("size"), "pros_ref": item_id}))
-        added += 1
+    added = await sync_catalog_files_to_documents(user, rec)
     return {"added": added}
 
 def merge_pdfs(base: bytes, extra: list) -> bytes:
