@@ -140,7 +140,8 @@ def check(cef: dict) -> dict:
             per_mppt.setdefault(s["mppt"], []).append(s)
         for m, ss in per_mppt.items():
             i_sum = sum(x["isc"] for x in ss)
-            i_work = n(inv.get("panel_imp")) * len(ss)
+            imp_panel = n(inv.get("panel_imp")) or (n(inv.get("panel_w")) / n(inv.get("panel_vmp")) if n(inv.get("panel_vmp")) else 0)
+            i_work = imp_panel * len(ss)
             if len({x["panels"] for x in ss}) > 1:
                 e.append(f"{tag} / MPPT {m}: stringuri în paralel cu număr diferit de panouri.")
             if imax and i_work and i_work > imax:
