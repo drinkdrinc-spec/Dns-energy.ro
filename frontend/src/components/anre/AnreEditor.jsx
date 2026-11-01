@@ -49,7 +49,7 @@ export function AnreEditor({ id, platform, onBack }) {
   const load = () => api.get(`/anre/dossiers/${id}`).then((r) => setD(r.data));
   useEffect(() => { load(); }, [id]); // eslint-disable-line
   if (!d) return null;
-  const paid = d.payment_status === "plătit" || platform;
+  const paid = d.payment_status === "plătit" || d.creation_mode === "intern" || platform;
   const save = async (extra = {}) => { try { const { data } = await api.put(`/anre/dossiers/${id}`, { company: d.company, staff: d.staff, equipment: d.equipment, target_types: d.target_types, ...extra }); setD(data); toast.success("Salvat"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   const up = async (key, file) => { const fd = new FormData(); fd.append("file", file); fd.append("issued", key === "cert_constatator" ? (window.prompt("Data emiterii certificatului (AAAA-LL-ZZ):") || "") : "");
     try { const { data } = await api.post(`/anre/dossiers/${id}/docs/${key}`, fd, { headers: { "Content-Type": "multipart/form-data" } }); setD(data); toast.success("Document încărcat"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
@@ -63,6 +63,7 @@ export function AnreEditor({ id, platform, onBack }) {
         <h2 className="text-xl font-extrabold">{d.types[d.kind]}</h2><span className="text-xs rounded-full px-2 py-0.5 bg-slate-100" data-testid="anre-progress">{d.progress}% verificat</span>
         <select className="den-input !py-1 !text-sm ml-auto" style={{ width: 210 }} value={d.status} disabled={!paid} onChange={(e) => save({ status: e.target.value, ...filing })} data-testid="anre-status">{d.statuses.map((s) => <option key={s}>{s}</option>)}</select>
       </div>
+      {d.creation_mode === "intern" && <div className="den-panel text-sm" style={{ background: "#eef4ff" }} data-testid="anre-internal-draft">Dosar intern — poți completa și verifica documentele fără să emiți o comandă sau o proformă.</div>}
       {!paid && <div className="den-panel text-sm" style={{ background: "#fff8e6" }} data-testid="anre-unpaid">Serviciul costă <b>{d.price.net} lei + TVA ({d.price.total} lei)</b>. Plătiți prin OP cu mențiunea „{d.invoice_number || `Dosar ANRE ${d.id.slice(0, 8)}`}”; dosarul se deblochează după confirmarea plății de către administrator. {d.price.note}.
         {d.transfer && <div className="mt-2 text-xs grid sm:grid-cols-3 gap-1" data-testid="anre-transfer"><span>Beneficiar: <b>{d.transfer.beneficiary}</b></span><span>CUI: {d.transfer.cui || "—"}</span><span>IBAN: <b>{d.transfer.iban || "—"}</b></span><span>Banca: {d.transfer.bank || "—"}</span><span>Suma: <b>{d.transfer.amount} lei</b></span><span>Mențiune OP: <b>{d.transfer.reference}</b></span></div>}</div>}
       {d.invoice_id && <a href={`${API}/billing/invoices/${d.invoice_id}/pdf?auth=${tok()}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="anre-proforma-pdf"><FileDown size={14} /> Proforma {d.invoice_number} (PDF)</a>}
