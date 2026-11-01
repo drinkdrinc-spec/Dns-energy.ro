@@ -1,5 +1,6 @@
 """Local, network-free regression tests for catalogue-derived PV string calculations."""
 import cef
+import sizing
 
 
 def sample_inverter():
@@ -83,3 +84,24 @@ def test_battery_fuse_is_proposed_only_below_documented_maximum():
     assert valid["fuse_a"] == 50
     too_low = cef.battery_cable_proposal({"i_max": 40, "max_fuse_a": 40})
     assert too_low["fuse_a"] is None
+
+def test_sizing_autofill_does_not_guess_battery_fuse_without_datasheet_limit():
+    inverter = {
+        **sample_inverter(),
+        "battery_mode": "own",
+        "battery": {"model": "Baterie test", "i_max": 40, "voltage": 51.2},
+    }
+    result, filled = sizing.apply({"grid": {"supply": "Trifazat"}, "inverters": [inverter]})
+    assert "fuse_a" not in result["inverters"][0]["battery"]
+    assert not any(path.endswith(".battery.fuse_a") for path in filled)
+
+
+def test_sizing_autofill_respects_battery_datasheet_fuse_limit():
+    inverter = {
+        **sample_inverter(),
+        "battery_mode": "own",
+        "battery": {"model": "Baterie test", "i_max": 40, "voltage": 51.2, "max_fuse_a": 50},
+    }
+    result, filled = sizing.apply({"grid": {"supply": "Trifazat"}, "inverters": [inverter]})
+    assert result["inverters"][0]["battery"]["fuse_a"] == 50
+    assert "cef.inverters.0.battery.fuse_a" in filled
