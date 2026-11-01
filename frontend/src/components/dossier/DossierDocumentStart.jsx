@@ -37,6 +37,7 @@ export function DossierDocumentStart({ onCreated }) {
     let mergedValues = values;
     const summaries = [];
     let failed = 0;
+    let firstFailure = "";
     for (const file of list) {
       try {
         const officeExtractable = /\.(docx|xlsx)$/i.test(file.name);
@@ -61,16 +62,17 @@ export function DossierDocumentStart({ onCreated }) {
         if (kind === "cf") mergedValues = putNonempty(mergedValues, { cf_nr: x.cf_nr, cadastral_nr: x.cadastral_nr,
           client_name: mergedValues.client_name || x.owner_name });
         if (kind === "altele" && x.summary) summaries.push(`${file.name}: ${x.doc_type || "document"} — ${x.summary}`);
-      } catch {
+      } catch (error) {
         failed += 1;
+        firstFailure ||= error.response?.data?.detail || error.message || "Eroare necunoscută la citirea documentului.";
       }
     }
     setFiles((prev) => ({ ...prev, [kind]: mergedFiles }));
     setValues(mergedValues);
     if (summaries.length) setNotes((prev) => ({ ...prev, altele: [...(prev.altele || []), ...summaries] }));
     const imported = mergedFiles.length - initialCount;
-    if (failed && imported) toast.warning(`${imported} din ${list.length} documente preluate; ${failed} necesită reîncărcare.`);
-    else if (failed) toast.error(`Nu s-au putut prelua ${failed} documente. Încearcă să le reîncarci individual sau cu o imagine mai clară.`);
+    if (failed && imported) toast.warning(`${imported} din ${list.length} documente preluate; ${failed} au eșuat. Primul motiv: ${firstFailure}`);
+    else if (failed) toast.error(firstFailure || `Nu s-au putut prelua ${failed} documente.`);
     else toast.success(`${list.length === 1 ? "Document citit" : `${list.length} documente citite`} — verifică datele extrase`);
     setBusy("");
     if (inputs.current[kind]) inputs.current[kind].value = "";
