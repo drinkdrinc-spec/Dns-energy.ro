@@ -32,7 +32,7 @@ DEER_IMPUTERNICIRE_URL = "https://www.distributie-energie.ro/wp-content/uploads/
 # Current official Retele Electrice (RER) forms. The operator page is the
 # source of truth; direct PDF URLs are used only when the registry is empty.
 RER_FORMS_URL = "https://www.reteleelectrice.ro/cereri-documente/"
-RER_STORAGE_FORM_URL = "https://www.reteleelectrice.ro/wp-content/uploads/Anexa-aferenta-instalatiilor-de-stocare.pdf"
+RER_STORAGE_FORM_URL = "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-aferenta-instalatiilor-de-stocare.pdf"
 
 DELGaz_FORMS_URL = "https://delgaz.ro/energie-electrica/prosumatori"
 DELGaz_GDPR_URLS = {
