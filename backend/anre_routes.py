@@ -1,4 +1,6 @@
 import io
+import re
+import unicodedata
 import uuid
 import zipfile
 from datetime import datetime, timezone, date
@@ -52,6 +54,28 @@ def items(d):
     return out
 
 
+# Minimum electrician qualifications by attestation type, transcribed from
+# Annex 8 of ANRE Order 134/2021. Each entry is the required count per grade.
+ANRE_MIN_STAFF = {
+    "A1": {"IIB": 2}, "A2": {"IIB": 1, "IIIB": 1}, "A3": {"IIB": 1, "IIIB": 1},
+    "B": {"IIA": 1, "IIB": 1}, "Bi": {"IIB": 2}, "Bp": {"IIA": 2},
+    "C1A": {"IIIA": 2}, "C1B": {"IVA": 2}, "C2A": {"IIIB": 2}, "C2B": {"IVB": 2},
+    "D1": {"IVA": 2}, "D2": {"IVB": 2}, "E1": {"IVA": 2}, "E2": {"IVB": 2},
+}
+
+
+def staff_grades(value):
+    normalized = unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode("ascii").upper()
+    normalized = re.sub(r"[^A-Z0-9]", "", normalized)
+    return set(re.findall(r"IV[AB]|III[AB]|II[AB]", normalized))
+
+
+def staff_name_key(value):
+    normalized = unicodedata.normalize("NFD", str(value or ""))
+    normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    return " ".join(normalized.casefold().split())
+
+
 def check(d):
     its = items(d)
     c = d.get("company") or {}
@@ -62,17 +86,37 @@ def check(d):
         if not c.get(k):
             rep["incomplete"].append(f"Date firmă: lipsește {l}")
     if d.get("kind") in ("nou", "b_c1a", "b_c2a", "vizare"):
-        if len([s for s in d.get("staff") or [] if s.get("name") and s.get("grade")]) < 2:
-            rep["incomplete"].append("Fișa de personal: minimum 2 electricieni autorizați cu grad/tip de autorizare (Anexa nr. 8)")
         if not [x for x in d.get("equipment") or [] if x.get("name")]:
             rep["incomplete"].append("Lista dotărilor tehnico-materiale este goală (minimul din Anexa nr. 6)")
-        if not d.get("target_types"):
+        target_types = list(dict.fromkeys(str(x).strip() for x in (d.get("target_types") or []) if str(x).strip()))
+        if not target_types:
             rep["incomplete"].append("Tipul de atestat solicitat nu este ales")
+        named_staff = {}
+        for person in d.get("staff") or []:
+            key = staff_name_key(person.get("name"))
+            if key:
+                named_staff.setdefault(key, person)
+        for target in target_types:
+            requirements = ANRE_MIN_STAFF.get(target)
+            if not requirements:
+                rep["issues"].append(f"Tipul de atestat {target} nu are o regulă de personal mapată; verificați Anexa nr. 8 înainte de finalizare")
+                continue
+            for grade, required_count in requirements.items():
+                found = sum(1 for person in named_staff.values() if grade in staff_grades(person.get("grade")))
+                if found < required_count:
+                    rep["incomplete"].append(
+                        f"Personal insuficient pentru {target}: lipsesc {required_count - found} electrician(i) cu autorizare {grade} conform Anexei nr. 8"
+                    )
+        for person in named_staff.values():
+            if person.get("grade") and not person.get("license"):
+                rep["incomplete"].append(f"Fișa de personal: lipsește numărul legitimației ANRE pentru {person.get('name')}")
     if d.get("kind") in ("b_c1a", "b_c2a") and "B" not in str(c.get("attest_types") or ""):
         rep["issues"].append("Solicitare de extindere de la B, dar atestatul existent declarat nu conține tipul B — verificați eligibilitatea")
     for s in d.get("staff") or []:
         if s.get("license_valid") and s["license_valid"] < date.today().isoformat():
             rep["issues"].append(f"Autorizarea ANRE a lui {s.get('name')} este expirată ({s['license_valid']})")
+        elif s.get("name") and s.get("grade") and not s.get("license_valid"):
+            rep["issues"].append(f"Valabilitatea autorizației ANRE a lui {s.get('name')} nu este precizată — verificați legitimația")
     rep["actions"] = [f"Încărcați / verificați: {x}" for x in rep["missing"] + rep["review"]] + [f"Completați: {x}" for x in rep["incomplete"]] + [f"Clarificați: {x}" for x in rep["issues"]]
     rep["ok"] = not (rep["missing"] or rep["review"] or rep["incomplete"] or rep["issues"])
     return rep
