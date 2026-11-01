@@ -13,6 +13,7 @@ from html import escape as hesc
 from typing import Optional
 
 from fastapi import HTTPException, Request, Depends, BackgroundTasks, Response
+from pypdf import PdfReader, PdfWriter
 
 import server as S
 import atr_doc as ATR
@@ -427,6 +428,92 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
     if matches:
         return annex_no, matches[:1]
     return annex_no, []
+
+
+def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict) -> tuple[bytes, int]:
+    """Fill only semantically named text fields in official PDF forms; never infer values."""
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes), strict=False)
+        fields = reader.get_fields() or {}
+    except Exception:
+        return pdf_bytes, 0
+    if not fields:
+        return pdf_bytes, 0
+
+    def norm(value):
+        import unicodedata
+        return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode("ascii").lower())
+
+    c, r, p = client or {}, rec or {}, pros or {}
+    cef = p.get("cef") or {}
+    inverters = cef.get("inverters") or []
+    batteries = ATR.storage_details(p, r)
+    panel_models = ", ".join(dict.fromkeys(str(x.get("panel_model")) for x in inverters if x.get("panel_model")))
+    inverter_models = ", ".join(dict.fromkeys(str(x.get("brand_model")) for x in inverters if x.get("brand_model")))
+    battery_models = ", ".join(dict.fromkeys(str(x.get("model")) for x in batteries if x.get("model")))
+    panel_count = sum(
+        sum(int(float(str(st.get("panels") or 0).replace(",", "."))) for st in (inv.get("strings") or []))
+        * max(1, int(float(str(inv.get("count") or 1).replace(",", "."))))
+        for inv in inverters
+    )
+    values = [
+        (("numecomplet", "utilizator", "beneficiar", "solicitant", "denumireclient"), c.get("name")),
+        (("prenume",), c.get("first_name")),
+        (("cnp",), c.get("idcode") if str(r.get("applicant_type") or "").lower() not in ("pj", "persoana juridica") else None),
+        (("cui", "codfiscal", "codinregistrarefiscala"), c.get("cui") or (c.get("idcode") if str(r.get("applicant_type") or "").lower() in ("pj", "persoana juridica") else None)),
+        (("email",), c.get("email")),
+        (("telefon", "telefonmobil", "phone"), c.get("phone")),
+        (("judet", "county"), c.get("county")),
+        (("localitate", "locality", "oras", "municipiu"), c.get("locality")),
+        (("pod", "codpunctconsum"), r.get("pod") or c.get("pod")),
+        (("numarcf", "nrcf", "cartefunciara"), r.get("cf_nr") or c.get("cf_nr")),
+        (("numarcadastral", "cadastral"), r.get("cadastral_nr") or c.get("cadastral_nr")),
+        (("adresalocconsum", "adresapunctconsum", "locconsum", "stradalocconsum"), r.get("address")),
+        (("adresadomiciliu", "adresasolicitant", "strada"), c.get("address")),
+        (("putereabsorbita", "pabs", "pmaxabsorbita"), r.get("p_abs_kw")),
+        (("putereevacuata", "pevacuare", "pmaxevacuata"), r.get("p_evac_kw") or p.get("power")),
+        (("modelpanou", "tip panou", "panoufotovoltaic"), panel_models or None),
+        (("numarpanouri", "nrpanouri", "panourifotovoltaice"), panel_count or None),
+        (("modelinvertor", "tipinvertor", "invertor"), inverter_models or None),
+        (("modelbaterie", "tipbaterie", "baterie"), battery_models or None),
+    ]
+
+    def value_for(field_name):
+        key = norm(field_name)
+        if not key:
+            return None
+        for aliases, value in values:
+            if value in (None, ""):
+                continue
+            if any(norm(alias) in key for alias in aliases):
+                return str(value)
+        return None
+
+    page_updates = []
+    filled = 0
+    for page in reader.pages:
+        update = {}
+        for field_name, field in fields.items():
+            if field.get("/FT") != "/Tx":
+                continue
+            value = value_for(field_name)
+            if value is not None:
+                update[field_name] = value
+        if update:
+            page_updates.append((page, update))
+            filled += len(update)
+    if not filled:
+        return pdf_bytes, 0
+    writer = PdfWriter()
+    writer.clone_document_from_reader(reader)
+    for page, update in page_updates:
+        try:
+            writer.update_page_form_field_values(page, update, auto_regenerate=False)
+        except Exception:
+            return pdf_bytes, 0
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue(), filled
 
 
 # ---------------- complete downloadable package ----------------
