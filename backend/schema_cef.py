@@ -242,8 +242,6 @@ def story(ctx, P, table, S):
                      [150 * mm, 70 * mm, 53 * mm]))
     tbl.append(P("CARTUȘ PLANȘĂ", "b"))
     tbl.append(table([["Denumire planșă", "Nr. proiect / planșă", "Prestator", "Beneficiar", "Adresă CEF", "POD"],
-                      [f"CEF {t['kwp']:g} kWp — Schemă monofilară", ctx.v("project_no"), ctx.company, ctx.name, ctx.loc, ctx.v("pod")],
-                      ["Proiectat", "Desenat", "Verificator", "Data", "Alimentare TEG", ""],
-                      [ctx.v("designer", ctx.rep), ctx.v("drawn_by", ctx.rep), ctx.e("verifier"), ctx.date, ctx.v("teg_supply"), ""]],
+                      [f"CEF {t['kwp']:g} kWp — Schemă monofilară", ctx.v("project_no"), ctx.company, ctx.name, ctx.loc, ctx.v("pod")]],
                      [50 * mm, 40 * mm, 40 * mm, 45 * mm, 60 * mm, 38 * mm]))
     return out, tbl
