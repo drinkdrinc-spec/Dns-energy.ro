@@ -46,7 +46,7 @@ def _battery_items(pros: dict, rec: dict, flat: dict) -> list:
 
 
 def _battery_table(items: list) -> list:
-    rows = [["Model baterie", "Buc.", "Capacitate totală", "Ah / unitate", "Tensiune", "Cuplare"]]
+    rows = [["Model baterie", "Buc.", "Capacitate totală", "Ah / unitate", "Tensiune", "Imax / unitate", "Cuplare"]]
     for b in items:
         modules, kwh = b.get("modules"), b.get("kwh")
         total = M
@@ -59,7 +59,7 @@ def _battery_table(items: list) -> list:
             total = f"{kwh} kWh / unitate" if kwh not in (None, "") else M
         rows.append([escape(str(b.get("model") or M)), escape(str(modules or M)), escape(total),
                      escape(str(b.get("ah") or M)), escape(str(b.get("voltage") or M)),
-                     escape(str(b.get("coupling") or M)).upper()])
+                     escape(str(b.get("i_max") or M)), escape(str(b.get("coupling") or M)).upper()])
     return rows
 
 
@@ -149,7 +149,7 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, o
     story += [P("În sprijinul solicitării mele transmit următoarele informaţii privind:"),
               P(f"a) deţinerea de sisteme de stocare a energiei electrice: {box(not bat)} NU {box(bat)} DA."
                 + (f" Detalii scheme de alimentare: {', '.join(str(b.get('coupling') or 'nespecificată').upper() for b in batteries)}." if bat else "")),
-              *([T(_battery_table(batteries), [52, 12, 42, 20, 22, 30])] if bat else []),
+              *([T(_battery_table(batteries), [40, 10, 38, 18, 18, 22, 32])] if bat else []),
               P(f"b) echipamente de măsurare montate în instalaţiile de utilizare, altele decât ale operatorului: {box(not p.get('smart_meter_type'))} NU {box(p.get('smart_meter_type'))} DA"),
               T([["Nr. crt.", "Serie contor", "Tip contor", "Date tehnice"], ["1", g(p, "smart_meter_serial") if p.get("smart_meter_type") else "", g(p, "smart_meter_type") if p.get("smart_meter_type") else "",
                  g(p, "smart_meter_data") if p.get("smart_meter_type") else ""]], [8, 30, 30, 32]),
