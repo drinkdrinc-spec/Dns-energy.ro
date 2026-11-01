@@ -483,7 +483,7 @@ export default function ModulePage({ moduleKey }) {
             </div>
           </details>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
-          {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
+          {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} clients={refOptions.clients || []} />}
           {key === "diu" && <DossierExtras form={form} setVal={setVal} compact />}
           {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} savedAt={savedAt} />}
           {key === "diu" && editId && <SignRequests dossierId={editId} module="diu" />}
