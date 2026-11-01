@@ -7,6 +7,12 @@ function Section({ title, children }) {
   return <div className="mt-4"><div className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--blue)" }}>{title}</div>{children}</div>;
 }
 
+function batteryVoltageForPhase(battery, phases) {
+  return String(phases || "").toLowerCase().includes("tri")
+    ? (battery?.voltage_3ph ?? battery?.voltage)
+    : (battery?.voltage_1ph ?? battery?.voltage);
+}
+
 export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   const s = (k) => (v) => set({ ...inv, [k]: v });
   const catalogModelText = (model, idKey, fields) => {
@@ -18,7 +24,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   };
   const batteryModelText = (model) => set({
     ...inv,
-    battery: { ...(inv.battery || {}), model, catalog_id: undefined, kwh: undefined, ah: undefined, voltage: undefined, i_max: undefined, max_fuse_a: undefined, coupling: undefined, protection: undefined, fuse_a: undefined, cable_section: undefined },
+    battery: { ...(inv.battery || {}), model, catalog_id: undefined, kwh: undefined, ah: undefined, voltage: undefined, voltage_1ph: undefined, voltage_3ph: undefined, i_max: undefined, max_fuse_a: undefined, coupling: undefined, protection: undefined, fuse_a: undefined, cable_section: undefined },
   });
   const sub = (obj, k) => (v) => set({ ...inv, [obj]: { ...(inv[obj] || {}), [k]: v } });
   const strings = inv.strings || [];
@@ -51,7 +57,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
         <button onClick={remove} className="p-1.5 rounded hover:bg-[#fff0f0]" data-testid={`${t}-remove`} title="Elimină invertorul"><Trash2 size={15} style={{ color: "#b33333" }} /></button>
       </div>
       <div className="grid sm:grid-cols-4 gap-3">
-        <CatalogPick items={catalog} category="Invertor" testid={`${t}-pick`} onQueryChange={(model) => catalogModelText(model, "catalog_id", ["type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "red_limit_mode"])} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, isc_max_mppt: it.isc_max_mppt, bat_i_max: it.bat_i_max, red_limit_mode: it.red_limit_mode || "Nu este declarată" })} />
+        <CatalogPick items={catalog} category="Invertor" testid={`${t}-pick`} onQueryChange={(model) => catalogModelText(model, "catalog_id", ["type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "red_limit_mode"])} onPick={(it) => { const battery = inv.battery?.catalog_id ? { ...inv.battery, voltage: batteryVoltageForPhase(inv.battery, it.phases) } : inv.battery; set({ ...inv, ...(battery ? { battery } : {}), catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, isc_max_mppt: it.isc_max_mppt, bat_i_max: it.bat_i_max, red_limit_mode: it.red_limit_mode || "Nu este declarată" }); }} />
         <F label="Marcă și model" value={inv.brand_model} onChange={(model) => catalogModelText(model, "catalog_id", ["type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "red_limit_mode"])} testid={`${t}-model`} className="sm:col-span-2" />
         <F label="Limită injecție în rețea (kW)" type="number" value={inv.p_limit_kw} onChange={s("p_limit_kw")} testid={`${t}-plim`} />
         <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Detalii invertor · completate din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
@@ -109,7 +115,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           <F label="Baterie" value={inv.battery_mode || "none"} onChange={(v) => set({ ...inv, battery_mode: v, ...(v === "shared" && !inv.shared_battery_id && shared.length === 1 ? { shared_battery_id: shared[0].id } : {}) })} options={[["none", "Fără baterie"], ["own", "Baterie proprie"], ["shared", "Baterie comună"]]} testid={`${t}-bat-mode`} />
           {inv.battery_mode === "shared" && <F label="Baterie comună" value={inv.shared_battery_id} onChange={s("shared_battery_id")} options={shared.map((b, i) => [b.id, b.model || `Baterie comună ${i + 1}`])} testid={`${t}-bat-shared`} />}
           {inv.battery_mode === "own" && <>
-            <CatalogPick items={catalog} category="Baterie" testid={`${t}-bat-pick`} onQueryChange={batteryModelText} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, i_max: it.i_max, max_fuse_a: it.max_fuse_a, coupling: it.coupling || "" } })} />
+            <CatalogPick items={catalog} category="Baterie" testid={`${t}-bat-pick`} onQueryChange={batteryModelText} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: batteryVoltageForPhase(it, inv.phases), voltage_1ph: it.voltage_1ph, voltage_3ph: it.voltage_3ph, i_max: it.i_max, i_max_source_url: it.i_max_source_url, max_fuse_a: it.max_fuse_a, coupling: it.coupling || "" } })} />
             <F label="Model baterie" value={inv.battery?.model} onChange={batteryModelText} testid={`${t}-bat-model`} />
             <F label="Cuplare" value={inv.battery?.coupling || ""} onChange={sub("battery", "coupling")} options={["DC", "AC"]} testid={`${t}-bat-coupling`} />
             <F label="kWh / modul" type="number" value={inv.battery?.kwh} onChange={sub("battery", "kwh")} testid={`${t}-bat-kwh`} />
