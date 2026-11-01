@@ -126,7 +126,7 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
     {form.client_id && <section className="rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-linked-equipment">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h3 className="text-sm font-bold">Echipamente transferate în cererea ATR</h3>
-          <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Date preluate din dosarul prosumator ales; apar și în pachetul de anexe unde formularul operatorului le cere.</p></div>
+          <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Date preluate din dosarul prosumator ales. Fișele tehnice și declarațiile existente în catalog intră automat în ZIP-ul ATR.</p></div>
         {linkedPros.length > 1 && <label className="den-field min-w-[240px]"><span>Alege dosarul prosumator</span>
           <select className="den-input" value={selectedProsId} onChange={(e) => choosePros(e.target.value)}>
             <option value="">Alege dosarul...</option>{linkedPros.map((p) => <option key={p.id} value={p.id}>{p.number || p.client_name || "Dosar"} · {p.operator || "operator neconfirmat"}</option>)}
