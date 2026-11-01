@@ -957,7 +957,7 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
 
 # ---------------- CEF checks & catalog ----------------
 import cef as CEF
-from catalog_seed import SEED as CATALOG_SEED, NOTE as CATALOG_NOTE
+from catalog_seed import SEED as CATALOG_SEED, NOTE as CATALOG_NOTE, missing_seed_values as missing_catalog_seed_values
 from pypdf import PdfReader, PdfWriter
 import io
 
@@ -967,6 +967,7 @@ async def seed_catalog(owner: str):
     await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
     existing = await db.catalog.find({"owner": owner}, {"id": 1, "category": 1, "brand_model": 1,
         "datasheet_url": 1, "conformity_url": 1, "datasheet_source_url": 1, "conformity_source_url": 1,
+        "i_max": 1, "coupling": 1, "voltage_1ph": 1, "voltage_3ph": 1, "i_max_source_url": 1,
         "_id": 0}).to_list(10000)
     by_key = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()): x for x in existing}
     missing = []
@@ -977,8 +978,11 @@ async def seed_catalog(owner: str):
             # Backfill manufacturer source links without overwriting a link the user already set.
             source_updates = {f"{kind}_url": item[f"{kind}_url"] for kind in ("datasheet", "conformity")
                               if item.get(f"{kind}_url") and not row.get(f"{kind}_url") and not row.get(f"{kind}_source_url")}
-            if source_updates:
-                await db.catalog.update_one({"id": row["id"], "owner": owner}, {"$set": source_updates})
+            verified_updates = missing_catalog_seed_values(row, item)
+            if source_updates or verified_updates:
+                updates = {**source_updates, **verified_updates}
+                await db.catalog.update_one({"id": row["id"], "owner": owner}, {"$set": updates})
+                row.update(updates)
             continue
         created = _new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE})
         missing.append(created)
