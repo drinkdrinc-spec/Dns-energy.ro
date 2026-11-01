@@ -1515,6 +1515,7 @@ async def atr_pack(user: dict, rec: dict, full: int):
         if not catalog_documents_complete(pros, (info or {}).get("positions", [])):
             attached.discard("fise")
     parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
+    annex_registry_issue = ""
     if full:
         operator_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
         if operator_key == "deer":
@@ -1522,15 +1523,32 @@ async def atr_pack(user: dict, rec: dict, full: int):
             if annex_pdf:
                 parts.append(annex_pdf)
         elif operator_key:
-            # Use the same annex selector and equipment data as the ZIP package.
-            # This puts the operator-specific prefill sheet in the full PDF too.
-            from atr_routes import _registry_forms_for_request
+            # Use the same annex selector as the ZIP package, and include a validated
+            # official PDF copy when the registry has one. DOC/DOCX originals remain
+            # in the ZIP; the main PDF stays explicit about that limitation.
+            from atr_routes import _registry_forms_for_request, _fetch_registry_annex
             annex_no, forms = await _registry_forms_for_request(operator_key, rec, pros or {})
             if annex_no:
                 annex_pdf = ATR.render_operator_annex_prep(
                     rec, client, pros or {}, operator_key, annex_no,
                     forms[0].get("title", "") if forms else "")
                 parts.append(annex_pdf)
+                if not forms:
+                    annex_registry_issue = f"Nu există în registrul aplicației un formular oficial verificat pentru Anexa {annex_no} a operatorului selectat; fișa de precompletare nu înlocuiește formularul oficial."
+                else:
+                    try:
+                        official_data, official_name = await _fetch_registry_annex(forms[0], operator_key)
+                        if official_name.lower().endswith(".pdf"):
+                            parts.append(official_data)
+                        else:
+                            annex_registry_issue = f"Formularul oficial pentru Anexa {annex_no} este disponibil ca {official_name}; originalul se găsește în pachetul ZIP, nu în PDF-ul combinat."
+                    except Exception as exc:
+                        logger.warning("ATR official annex PDF include failed: %s", exc)
+                        annex_registry_issue = f"Formularul oficial pentru Anexa {annex_no} nu a putut fi descărcat la generare; verificați pachetul ZIP și registrul formularelor."
+            else:
+                annex_registry_issue = "Tipul cererii nu are o mapare de anexă verificată pentru operatorul selectat."
+        else:
+            annex_registry_issue = "Operatorul de distribuție nu este selectat; anexa oficială aplicabilă nu poate fi stabilită."
     unavailable = []
     if full:
         for k, title, _ in ATR.DOCS:
@@ -1559,6 +1577,8 @@ async def atr_pack(user: dict, rec: dict, full: int):
         missing_titles.insert(0, "Tipul solicitării ATR nu este selectat sau nu este recunoscut")
     annex_issues = ATR.deer_annex_issues(rec, pros or {})
     missing_titles.extend(annex_issues)
+    if annex_registry_issue:
+        missing_titles.append(annex_registry_issue)
     report = OPIS._incomplete_report({"positions": [], "common_missing": missing_titles}, unavailable)
     if full and report:
         parts.append(report)
@@ -1570,7 +1590,7 @@ async def atr_pack(user: dict, rec: dict, full: int):
         except Exception as e:
             logger.error(f"atr merge: {e}")
     o = io.BytesIO(); w.write(o)
-    incomplete = bool(miss or unavailable or request_type_missing or annex_issues)
+    incomplete = bool(miss or unavailable or request_type_missing or annex_issues or annex_registry_issue)
     name = f"{'DOSAR_ATR' if full else 'CERERE_ATR'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and incomplete else ''}.pdf"
     return o.getvalue(), name
 
