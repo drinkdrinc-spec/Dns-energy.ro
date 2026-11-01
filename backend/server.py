@@ -559,7 +559,7 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower().rstrip(".")
     trusted_document_domains = (
-        "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de",
+        "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "deyeess.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de",
         "sma-solar.com", "fox-ess.com", "aikosolar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
         "risenenergy.com", "bydbatterybox.com", "dyness.com", "pylontech.com.cn", "pylontech.us", "solarshop.baywa-re.lv", "solaxpower.com", "jinkosolar.eu",
         "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro",
