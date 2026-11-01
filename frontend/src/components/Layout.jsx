@@ -29,7 +29,7 @@ export default function Layout() {
           <MobileNavItem to="/prosumator" icon={FolderOpen} label="Dosare" />
           <MobileNavItem to="/oferte" icon={Receipt} label="Oferte" />
           <MobileNavItem to="/catalog-echipamente" icon={Cpu} label="Catalog" />
-          <button type="button" onClick={() => setOpen(true)} aria-label="Mai multe module" className="flex flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={{ color: "var(--muted)" }}>
+          <button type="button" onClick={() => setOpen(true)} aria-label="Mai multe module" className="flex min-h-[44px] flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={{ color: "var(--muted)" }}>
             <MoreHorizontal size={20} />
             <span>Mai mult</span>
           </button>
@@ -60,7 +60,7 @@ function DossierWorkflow({ pathname }) {
         {DOSSIER_STEPS.map(({ to, label, icon: Icon, matches }, index) => {
           const active = matches.some((path) => pathname.startsWith(path));
           return <li key={to} className="min-w-0">
-            <NavLink to={to} aria-current={active ? "step" : undefined} className="flex min-h-10 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-semibold transition hover:border-blue-300" style={active
+            <NavLink to={to} aria-current={active ? "step" : undefined} className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-semibold transition hover:border-blue-300" style={active
               ? { background: "#eaf1ff", borderColor: "var(--blue)", color: "var(--blue)" }
               : { background: "#fff", borderColor: "var(--line)", color: "#475569" }}>
               <span className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={active ? { background: "var(--blue)", color: "#fff" } : { background: "#f1f5f9", color: "#475569" }}>{index + 1}</span>
@@ -75,7 +75,7 @@ function DossierWorkflow({ pathname }) {
 
 function MobileNavItem({ to, icon: Icon, label }) {
   return (
-    <Link to={to} className="flex flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={{ color: "var(--muted)" }}>
+    <Link to={to} className="flex min-h-[44px] flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={{ color: "var(--muted)" }}>
       <Icon size={20} />
       <span className="truncate max-w-full">{label}</span>
     </Link>
