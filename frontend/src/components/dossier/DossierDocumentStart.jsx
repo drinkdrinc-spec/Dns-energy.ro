@@ -36,6 +36,7 @@ export function DossierDocumentStart({ onCreated }) {
     const initialCount = mergedFiles.length;
     let mergedValues = values;
     const summaries = [];
+    const extractionWarnings = [];
     let failed = 0;
     let firstFailure = "";
     for (const file of list) {
@@ -53,6 +54,7 @@ export function DossierDocumentStart({ onCreated }) {
         const fd = new FormData(); fd.append("file", file); fd.append("doc_type", kind === "altele" ? "other" : kind);
         const { data } = await api.post("/ai/extract", fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 240000 });
         mergedFiles.push(data.file);
+        if (data.warning) extractionWarnings.push(`${file.name}: ${data.warning}`);
         const x = data.data || {};
         if (kind === "ci") mergedValues = putNonempty(mergedValues, { client_name: x.client_name, cnp: x.cnp, hq_address: x.hq_address || x.address,
           county: x.county, phone: x.phone, email: x.email, ci_series: x.id_series && x.id_number ? `${x.id_series} ${x.id_number}` : x.id_series || x.id_number });
@@ -73,6 +75,7 @@ export function DossierDocumentStart({ onCreated }) {
     const imported = mergedFiles.length - initialCount;
     if (failed && imported) toast.warning(`${imported} din ${list.length} documente preluate; ${failed} au eșuat. Primul motiv: ${firstFailure}`);
     else if (failed) toast.error(firstFailure || `Nu s-au putut prelua ${failed} documente.`);
+    else if (extractionWarnings.length) toast.warning(extractionWarnings[0]);
     else toast.success(`${list.length === 1 ? "Document citit" : `${list.length} documente citite`} — verifică datele extrase`);
     setBusy("");
     if (inputs.current[kind]) inputs.current[kind].value = "";
