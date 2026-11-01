@@ -637,6 +637,10 @@ async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> 
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Utilizator inexistent")
+    if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
+        admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+        if not admin_email or user.get("email", "").lower() != admin_email or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
     if user.get("status", "active") != "active":
         raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
     return await finish_user(user)
