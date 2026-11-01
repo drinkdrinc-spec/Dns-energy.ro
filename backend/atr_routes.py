@@ -334,7 +334,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
     pros = {}
     if rec.get("pros_id") and await db.prosumator.find_one({**S.scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
         pros, pros_client, settings, _ = await S.dossier_ctx(user, rec["pros_id"])
-        client = client or pros_client or {}
+        client = {**(pros_client or {}), **(client or {})}
 
     pdf, pdf_name = await S.atr_pack(user, rec, 1)
     bundle = io.BytesIO()
@@ -388,7 +388,8 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                 f"Tip solicitare: {ATR.rtype(rec) or 'neselectat'}",
                 f"Anexă căutată în registrul oficial: {annex_no or 'nedeterminată'}",
                 "",
-                "Formularele oficiale atașate sunt originale și rămân necompletate. Datele cunoscute și anexele generate de aplicație sunt în PDF-ul principal al pachetului.",
+                "Fișa de precompletare din arhivă este inclusă și în PDF-ul principal; ambele sunt generate din aceleași date salvate.",
+                "Formularele oficiale atașate rămân originale și necompletate. Verificați versiunea, eligibilitatea și semnați formularul oficial înainte de depunere.",
                 "Verificați versiunea și eligibilitatea în portalul operatorului înainte de depunere. Valorile lipsă nu sunt inventate.",
             ]
             if forms:
