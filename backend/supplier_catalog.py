@@ -43,9 +43,10 @@ CATEGORY_TERMS = {
     "Panou": ("panou", "photovoltaic", "solar module", "solar panel"),
     "Baterie": ("baterie", "acumulator", "battery", "storage"),
 }
+DOCUMENT_DOMAINS = ("depozitsolar.ro", "solarhev.ro", "solartech.ro", "deyeinverter.com", "hqsmartcloud.com", "huawei.com", "goodwe.com", "sungrowpower.com", "solis.com", "jinkosolar.com", "canadiansolar.com", "trinasolar.com", "aikosolar.com", "dyness.com", "bydbatterybox.com")
 PDF_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
-    "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "test certificate", "iec certificate", "certificat de conformitate"),
+    "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "test certificate", "iec certificate", "certificat de conformitate", "certificat conformitate"),
 }
 
 
@@ -66,6 +67,14 @@ async def _get(client: httpx.AsyncClient, url: str, host: str):
     except httpx.HTTPError:
         pass
     return None
+
+
+def _safe_document_url(url: str) -> bool:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    return parsed.scheme == "https" and not parsed.username and not parsed.password and any(
+        host == domain or host.endswith("." + domain) for domain in DOCUMENT_DOMAINS
+    )
 
 
 def _text(node):
@@ -137,7 +146,7 @@ async def _detail(client, source_name, source, category, url):
     for a in doc.xpath("//a[@href]"):
         href = urljoin(url, a.get("href", "").strip())
         label = (_text(a) + " " + a.get("href", "")).lower()
-        if ".pdf" not in href.lower() or not _safe_url(href, source["host"]):
+        if ".pdf" not in href.lower() or not _safe_document_url(href):
             continue
         for key, words in PDF_LABELS.items():
             out_key = key + "_url"
