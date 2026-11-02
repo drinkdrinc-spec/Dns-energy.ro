@@ -20,6 +20,7 @@ on:
       - "backend/tests/test_technical_parameter_safety.py"
       - "backend/templates/deer/**"
       - ".github/workflows/dossier-core-tests.yml"
+      - "frontend/**"
   pull_request:
     branches: [deployment-prep]
     paths:
@@ -39,6 +40,7 @@ on:
       - "backend/tests/test_technical_parameter_safety.py"
       - "backend/templates/deer/**"
       - ".github/workflows/dossier-core-tests.yml"
+      - "frontend/**"
 
 permissions:
   contents: read
@@ -66,3 +68,23 @@ jobs:
           tests/test_deer_annex2_battery.py
           tests/test_pram_document_truthfulness.py
           tests/test_supplier_catalog.py
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Install frontend dependencies
+        run: corepack enable && yarn install --frozen-lockfile
+      - name: Build staging frontend
+        env:
+          DISABLE_VISUAL_EDITS: "true"
+          DISABLE_EMERGENT_OVERLAY: "true"
+          REACT_APP_BACKEND_URL: ""
+        run: yarn build
