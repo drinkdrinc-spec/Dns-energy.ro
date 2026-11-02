@@ -88,3 +88,23 @@ def test_storage_details_ignores_undeclared_batteries():
     }
     rec = {"battery": "Fără baterie", "storage": ""}
     assert atr_doc.storage_details(pros, rec) == []
+
+def test_storage_details_preserves_legacy_numeric_fields():
+    rec = {
+        "battery_kwh": 12.5,
+        "battery_count": 2,
+        "battery_v": 51.2,
+        "battery_ah": 200,
+        "battery_i_max": 100,
+        "battery_coupling": "DC",
+    }
+
+    details = atr_doc.storage_details({}, rec)
+
+    assert len(details) == 1
+    assert details[0]["kwh"] == 12.5
+    assert details[0]["modules"] == 2
+    assert details[0]["voltage"] == 51.2
+    assert details[0]["ah"] == 200
+    assert details[0]["i_max"] == 100
+    assert details[0]["coupling"] == "DC"
