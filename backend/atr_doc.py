@@ -213,24 +213,27 @@ def storage_details(pros: dict, rec: dict) -> list:
     for inv in cef.get("inverters") or []:
         if inv.get("battery_mode") == "own":
             battery = inv.get("battery") or {}
-            if battery:
+            if CEF.has_storage({"battery": battery}):
                 quantity = max(1, int(D.num(inv.get("count")) or 1))
                 modules = max(1, int(D.num(battery.get("modules")) or 1))
                 details.append({**battery, "modules": modules * quantity})
-    details.extend(cef.get("shared_batteries") or [])
-    if not details and ((rec or {}).get("battery") or (rec or {}).get("storage")):
-        value = (rec or {}).get("battery") or (rec or {}).get("storage")
-        details.append({
-            "model": value if isinstance(value, str) else value.get("model"),
-            "modules": (rec or {}).get("battery_count"),
-            "kwh": (rec or {}).get("battery_kwh"),
-            "ah": (rec or {}).get("battery_ah"),
-            "voltage": (rec or {}).get("battery_v"),
-            "i_max": (rec or {}).get("battery_i_max"),
-            "coupling": (rec or {}).get("battery_coupling"),
-        })
+    details.extend(battery for battery in (cef.get("shared_batteries") or [])
+                   if CEF.has_storage({"battery": battery}))
+    if not details:
+        legacy = next((value for value in ((rec or {}).get("battery"), (rec or {}).get("storage"))
+                       if CEF.has_storage({"battery": value})), None)
+        if legacy is not None:
+            value = legacy if isinstance(legacy, dict) else {}
+            details.append({
+                "model": legacy if isinstance(legacy, str) else value.get("model"),
+                "modules": value.get("modules") or (rec or {}).get("battery_count"),
+                "kwh": value.get("kwh") or (rec or {}).get("battery_kwh"),
+                "ah": value.get("ah") or (rec or {}).get("battery_ah"),
+                "voltage": value.get("voltage") or (rec or {}).get("battery_v"),
+                "i_max": value.get("i_max") or (rec or {}).get("battery_i_max"),
+                "coupling": value.get("coupling") or (rec or {}).get("battery_coupling"),
+            })
     return details
-
 
 def storage_row(battery: dict) -> list:
     modules = battery.get("modules")
