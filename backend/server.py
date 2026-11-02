@@ -586,6 +586,13 @@ async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_
     return {"storage_path": result["path"], "original_filename": filename[:255],
             "content_type": expected_type, "size": result.get("size", len(data))}
 
+@api_router.get("/catalog/supplier-search")
+async def catalog_supplier_search(q: str = Query(""), category: str = Query("Invertor"), user: dict = Depends(get_current_user)):
+    """Search public product listings from the configured Romanian equipment retailers."""
+    guard("catalog", user)
+    return await search_supplier_products(q, category)
+
+
 @api_router.post("/catalog/{item_id}/import-document")
 async def catalog_import_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Import a technical PDF from a manufacturer or approved distributor domain."""
@@ -603,7 +610,7 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
         "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "deyeess.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de",
         "sma-solar.com", "fox-ess.com", "aikosolar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
         "risenenergy.com", "bydbatterybox.com", "dyness.com", "pylontech.com.cn", "pylontech.us", "solarshop.baywa-re.lv", "solaxpower.com", "jinkosolar.eu",
-        "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro",
+        "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro", "depozitsolar.ro", "solarhev.ro", "solartech.ro",
     )
     if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in trusted_document_domains):
         raise HTTPException(status_code=400, detail="Folosește un link HTTPS de la producător sau distribuitorul autorizat.")
@@ -999,6 +1006,7 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
 
 # ---------------- CEF checks & catalog ----------------
 import cef as CEF
+from supplier_catalog import search_supplier_products
 from catalog_seed import SEED as CATALOG_SEED, NOTE as CATALOG_NOTE, missing_seed_values as missing_catalog_seed_values
 from pypdf import PdfReader, PdfWriter
 import io
