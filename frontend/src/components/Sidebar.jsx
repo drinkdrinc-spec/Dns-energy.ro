@@ -12,14 +12,14 @@ const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, Shiel
 const NAV = [
   { label: "Flux dosare", items: [
     { to: "/clienti", icon: "Users", text: "Clienți și documente", testid: "nav-clients" },
-    { to: "/prosumator", icon: "SunMedium", text: "Dosar prosumator", testid: "nav-prosumator" },
     { to: "/cerere-atr", icon: "FileCheck2", text: "Cerere ATR", testid: "nav-atr" },
     { to: "/spor-putere", icon: "PlugZap", text: "Spor de putere", testid: "nav-power" },
+    { to: "/prosumator", icon: "SunMedium", text: "Dosar prosumator", testid: "nav-prosumator" },
     { to: "/diu", icon: "FolderOpen", text: "Dosar DIU", testid: "nav-diu" },
+    { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
+    { to: "/mono", icon: "GitBranch", text: "Schema monofilară", testid: "nav-mono" },
     { to: "/dosare-anre", icon: "Briefcase", text: "Dosare ANRE", testid: "nav-anre" },
     { to: "/catalog-echipamente", icon: "Cpu", text: "Catalog echipamente", testid: "nav-equipment-catalog" },
-    { to: "/mono", icon: "GitBranch", text: "Schema monofilară", testid: "nav-mono" },
-    { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
   ]},
   { label: "Principal", items: [
     { to: "/", icon: "LayoutDashboard", text: "Panou principal", testid: "nav-home" },
