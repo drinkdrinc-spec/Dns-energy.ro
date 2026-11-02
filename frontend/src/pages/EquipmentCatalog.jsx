@@ -101,6 +101,9 @@ export default function EquipmentCatalog() {
   const [cat, setCat] = useState("Invertor");
   const [q, setQ] = useState("");
   const [form, setForm] = useState(null);
+  const [supplierResults, setSupplierResults] = useState([]);
+  const [supplierLoading, setSupplierLoading] = useState(false);
+  const [supplierImporting, setSupplierImporting] = useState("");
   const load = async () => {
     setLoading(true);
     setLoadError("");
@@ -123,6 +126,54 @@ export default function EquipmentCatalog() {
     toast.success("Salvat"); setForm(null); load();
   };
   const remove = async (id) => { if (!window.confirm("Ștergi modelul din catalog?")) return; await api.delete(`/data/catalog/${id}`); load(); };
+
+  const searchSuppliers = async () => {
+    if (q.trim().length < 2) return toast.info("Scrie cel puțin două caractere pentru căutarea la furnizori.");
+    setSupplierLoading(true);
+    try {
+      const { data } = await api.get("/catalog/supplier-search", { params: { q: q.trim(), category: cat } });
+      setSupplierResults(Array.isArray(data.products) ? data.products : []);
+      if (!data.products?.length) toast.info(data.message || "Nu s-au găsit produse.");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Căutarea la furnizori nu este disponibilă acum.");
+    } finally { setSupplierLoading(false); }
+  };
+
+  const importSupplierProduct = async (product) => {
+    const key = product.product_url;
+    setSupplierImporting(key);
+    try {
+      const existing = items.find((item) => item.category === cat && item.brand_model?.trim().toLowerCase() === product.brand_model?.trim().toLowerCase());
+      let item = existing;
+      if (!item) {
+        const notes = [`Sursă: ${product.supplier}`, product.price_text && `Preț afișat: ${product.price_text}`, product.availability && `Stoc afișat: ${product.availability}`, `Produs: ${product.product_url}`].filter(Boolean).join(" · ");
+        const { data } = await api.post("/data/catalog", { category: cat, brand_model: product.brand_model, notes });
+        item = data;
+      }
+      let docsImported = 0;
+      for (const kind of ["datasheet", "conformity"]) {
+        const url = product[`${kind}_url`];
+        if (url && !item?.[kind]) {
+          try {
+            await api.post(`/catalog/${item.id}/import-document`, { kind, url });
+            docsImported += 1;
+          } catch (e) {
+            console.warn(`Documentul ${kind} nu a putut fi importat:`, e.response?.data?.detail || e.message);
+          }
+        }
+      }
+      if (product.datasheet_url && docsImported) {
+        try { await api.post(`/ai/catalog/${item.id}/extract`); } catch (e) {
+          console.warn("Extragerea parametrilor din fișa tehnică nu a reușit:", e.response?.data?.detail || e.message);
+        }
+      }
+      await load();
+      toast.success(existing ? "Modelul există deja; am actualizat documentele disponibile." : "Modelul a fost adăugat în catalog.");
+      if (!docsImported && !item?.datasheet && !item?.conformity) toast.warning("Furnizorul nu a expus linkuri PDF directe; modelul a fost adăugat fără documente.");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Produsul nu a putut fi adăugat în catalog.");
+    } finally { setSupplierImporting(""); }
+  };
 
   const [importingOfficial, setImportingOfficial] = useState(false);
   const importOfficialDocuments = async () => {
@@ -180,6 +231,36 @@ export default function EquipmentCatalog() {
           {!form.id && <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>După salvare poți încărca fișa tehnică și declarația de conformitate din listă.</p>}
         </div>
       )}
+      <section className="den-panel mb-4" aria-label="Căutare la furnizori" data-testid="supplier-search-panel">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold">Caută modele la furnizori</h2>
+            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Caută după model sau marcă în Depozit Solar, SolarHev și SolarTech. Prețul și stocul sunt afișate de comerciant și pot varia.</p>
+          </div>
+          <Btn onClick={searchSuppliers} disabled={supplierLoading} data-testid="supplier-search-btn">
+            {supplierLoading ? "Se caută…" : "Caută în magazine"}
+          </Btn>
+        </div>
+        {supplierResults.length > 0 && <div className="grid md:grid-cols-2 gap-3 mt-4">
+          {supplierResults.map((product) => <article key={product.product_url} className="rounded-xl border p-3" style={{ borderColor: "var(--line)" }}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--blue)" }}>{product.supplier}</div>
+                <h3 className="font-bold text-sm mt-1">{product.brand_model}</h3>
+                <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{[product.price_text, product.availability].filter(Boolean).join(" · ") || "Preț/stoc vezi la furnizor"}</p>
+              </div>
+              <a href={product.product_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold whitespace-nowrap" style={{ color: "var(--blue)" }}>Produs ↗</a>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3 text-[11px]">
+              {product.datasheet_url ? <a href={product.datasheet_url} target="_blank" rel="noopener noreferrer" className="underline">Fișă tehnică PDF ↗</a> : <span style={{ color: "var(--muted)" }}>Fișă tehnică: indisponibilă direct</span>}
+              {product.conformity_url && <a href={product.conformity_url} target="_blank" rel="noopener noreferrer" className="underline">Conformitate PDF ↗</a>}
+            </div>
+            <button onClick={() => importSupplierProduct(product)} disabled={supplierImporting === product.product_url} className="mt-3 rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50" style={{ borderColor: "var(--line)" }}>
+              {supplierImporting === product.product_url ? "Se adaugă și se citesc documentele…" : "Adaugă modelul și documentele în DNS"}
+            </button>
+          </article>)}
+        </div>}
+      </section>
       <div className="den-panel">
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <h2 className="text-lg font-bold">{cat} <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({rows.length})</span></h2>
