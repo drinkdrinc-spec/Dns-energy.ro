@@ -480,21 +480,39 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
             limit = f"{unit_limit:g}" if unit_limit is not None and unit_limit > 0 else ""
             plant_max = rated * count if rated is not None and rated > 0 else ""
             note = f"Limitare evacuare configurată: {unit_limit:g} kW/invertor" if unit_limit is not None and unit_limit > 0 else ""
-            if not is_annex2 and inv.get("battery_mode") == "own" and (inv.get("battery") or {}).get("model"):
-                battery = inv["battery"]
+            battery_descriptions = []
+
+            def battery_description(battery, module_multiplier=1):
+                if not battery.get("model"):
+                    return ""
+                module_count = max(1, int(D.num(battery.get("modules")) or 1)) * max(1, int(module_multiplier or 1))
                 details = []
-                for key, label in (("kwh", "kWh/modul"), ("voltage", "V DC"), ("ah", "Ah"), ("i_max", "I max/modul A")):
+                capacity = D.num(battery.get("kwh"))
+                if capacity is not None and capacity > 0:
+                    details.append(f"{capacity * module_count:g} kWh total ({module_count} × {capacity:g} kWh/modul)")
+                for key, label in (("voltage", "V DC"), ("ah", "Ah/modul"), ("i_max", "I max/modul A")):
                     value = D.num(battery.get(key))
                     if value is not None and value > 0:
                         details.append(f"{value:g} {label}")
                 if battery.get("coupling"):
                     details.append("cuplare " + str(battery["coupling"]))
-                description = "Baterie: " + str(battery["model"])
-                if battery.get("modules"):
-                    description += " × " + str(battery["modules"])
-                if details:
-                    description += " (" + ", ".join(details) + ")"
-                note = (note + "; " if note else "") + description
+                description = f"Baterie/BESS: {battery['model']} × {module_count} modul(e)"
+                return description + (" (" + ", ".join(details) + ")" if details else "")
+
+            if inv.get("battery_mode") == "own":
+                battery = inv.get("battery") or {}
+                description = battery_description(battery, count)
+                if description:
+                    battery_descriptions.append(description)
+            # Shared BESS equipment is listed once in the first inverter row so
+            # it is visible beside the inverter without pretending its kWh are kW.
+            if idx == 1:
+                for battery in cef.get("shared_batteries") or []:
+                    description = battery_description(battery)
+                    if description:
+                        battery_descriptions.append(description)
+            if battery_descriptions:
+                note = (note + "; " if note else "") + "; ".join(battery_descriptions)
             _deer_table_row(table, row, [str(idx), count, model, "",
                 f"{rated:g}" if rated is not None and rated > 0 else "", limit,
                 f"{plant_max:g}" if plant_max else "", note])
