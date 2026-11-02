@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ExternalLink, ShieldCheck, Search, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { PageHeader, Btn } from "@/components/Layout";
 import { api } from "@/lib/api";
@@ -59,6 +60,10 @@ export default function DistributionPortals() {
   // Legacy regional portals remain useful only for historical records.
   const historicalPortalUrl = selectedId === "deer" ? deerRegionalPortal(selectedPros?.county) : null;
   const portalUrl = selected?.url;
+  const powerIncrease = /spor de putere/i.test(String(selectedPros?.request_type || ""));
+  const atrCreateUrl = selectedPros?.client_id
+    ? `/cerere-atr?new=atr&clientId=${encodeURIComponent(selectedPros.client_id)}${powerIncrease ? "&case=power-increase" : ""}`
+    : "";
 
   const selectPros = (id) => {
     setProsId(id);
@@ -112,7 +117,8 @@ export default function DistributionPortals() {
             <div className="font-bold">{selected.name}</div>
             <div className="text-sm mt-1" style={{ color: "var(--muted)" }}>{selected.detail}</div>
             {selectedId === "deer" && <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Pentru cereri și documente noi, DEER indică portalul dedicat unificat. Portalurile regionale vechi sunt doar pentru consultarea istoricului.</div>}
-            <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-4 rounded-lg px-4 py-3 text-sm font-bold text-white" style={{ background: "var(--blue)" }} data-testid="portal-open-selected">
+            {atrCreateUrl && <Link to={atrCreateUrl} className="inline-flex items-center gap-2 mt-4 rounded-lg border px-4 py-3 text-sm font-bold" style={{ borderColor: "var(--blue)", color: "var(--blue)", background: "#fff" }} data-testid="portal-create-prefilled-atr"><CheckCircle2 size={16} /> Pregătește cererea ATR din acest dosar</Link>}
+            <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-4 ml-2 rounded-lg px-4 py-3 text-sm font-bold text-white" style={{ background: "var(--blue)" }} data-testid="portal-open-selected">
               <ExternalLink size={16} /> Deschide portalul operatorului
             </a>
             {historicalPortalUrl && <a href={historicalPortalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-4 ml-2 rounded-lg border px-4 py-3 text-sm font-semibold" style={{ borderColor: "var(--line)" }}>Portal regional istoric · {selectedPros?.county || "zona DEER"} ↗</a>}
