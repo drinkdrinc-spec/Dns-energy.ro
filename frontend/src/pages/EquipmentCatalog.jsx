@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api, openAuthenticatedFile } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { F, Check } from "@/components/cef/F";
@@ -95,11 +96,14 @@ function DocSlot({ item, k, label, onUploaded }) {
 }
 
 export default function EquipmentCatalog() {
+  const location = useLocation();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [cat, setCat] = useState("Invertor");
-  const [q, setQ] = useState("");
+  const initialSearch = new URLSearchParams(location.search);
+  const initialCategory = initialSearch.get("category");
+  const [cat, setCat] = useState(CATS.includes(initialCategory) ? initialCategory : "Invertor");
+  const [q, setQ] = useState(initialSearch.get("q") || "");
   const [form, setForm] = useState(null);
   const [supplierResults, setSupplierResults] = useState([]);
   const [supplierLoading, setSupplierLoading] = useState(false);
@@ -117,6 +121,12 @@ export default function EquipmentCatalog() {
     }
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const nextCategory = params.get("category");
+    if (params.has("q")) setQ(params.get("q") || "");
+    if (CATS.includes(nextCategory)) setCat(nextCategory);
+  }, [location.search]);
   const rows = useMemo(() => items.filter((i) => i.category === cat && !/\bTEST\b/i.test(String(i.brand_model || "")) && (!q || i.brand_model?.toLowerCase().includes(q.toLowerCase()))), [items, cat, q]);
 
   const save = async () => {
