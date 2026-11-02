@@ -12,7 +12,7 @@ const TYPES = [
   ["altele", "4. Alte documente", "PDF, imagini, DOCX și XLSX pot fi citite și rezumate; DOC/XLS și alte formate se atașează pentru verificare manuală."],
 ];
 
-const EMPTY = { client_name: "", cnp: "", hq_address: "", county: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "" };
+const EMPTY = { client_name: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "" };
 
 // Some mobile document pickers report a blank or generic MIME type even when the
 // filename is a supported PDF/image. Use the extension as a safe fallback.
@@ -65,10 +65,14 @@ export function DossierDocumentStart({ onCreated }) {
         attached = true;
         if (data.warning) extractionWarnings.push(`${file.name}: ${data.warning}`);
         const x = data.data || {};
-        if (kind === "ci") mergedValues = putNonempty(mergedValues, { client_name: x.client_name, cnp: x.cnp, hq_address: x.hq_address || x.address,
-          county: x.county, phone: x.phone, email: x.email, id_series: x.id_series, id_number: x.id_number });
+        if (kind === "ci") {
+          const homeAddress = x.hq_address || x.address;
+          mergedValues = putNonempty(mergedValues, { client_name: x.client_name, cnp: x.cnp, hq_address: homeAddress,
+            ...(mergedValues.address_same_as_ci && homeAddress ? { address: homeAddress } : {}),
+            county: x.county, phone: x.phone, email: x.email, id_series: x.id_series, id_number: x.id_number });
+        }
         if (kind === "factura") mergedValues = putNonempty(mergedValues, { client_name: mergedValues.client_name || x.client_name, cnp: mergedValues.cnp || x.cnp,
-          address: x.consumption_address || x.address, pod: x.pod, operator: x.operator, supplier: x.supplier,
+          address: mergedValues.address_same_as_ci ? mergedValues.hq_address : x.consumption_address || x.address, pod: x.pod, operator: x.operator, supplier: x.supplier,
           county: mergedValues.county || x.county, phone: mergedValues.phone || x.phone, email: mergedValues.email || x.email });
         if (kind === "cf") mergedValues = putNonempty(mergedValues, { cf_nr: x.cf_nr, cadastral_nr: x.cadastral_nr,
           client_name: mergedValues.client_name || x.owner_name });
@@ -123,7 +127,11 @@ export function DossierDocumentStart({ onCreated }) {
   };
 
   const field = (key, label) => <label className="den-field" key={key}><span>{label}</span>
-    <input className="den-input" value={values[key] || ""} onChange={(e) => setValues((p) => ({ ...p, [key]: e.target.value }))} data-testid={`intake-${key}`} /></label>;
+    <input className="den-input" value={values[key] || ""} onChange={(e) => setValues((prev) => {
+      const next = { ...prev, [key]: e.target.value };
+      if (key === "hq_address" && prev.address_same_as_ci) next.address = e.target.value;
+      return next;
+    })} data-testid={`intake-${key}`} /></label>;
 
   return <>
     <Btn variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Începe dosarul din documente</Btn>
@@ -158,6 +166,13 @@ export function DossierDocumentStart({ onCreated }) {
               {field("address", "Adresa locului de consum")}{field("pod", "POD")}
               {field("operator", "Operator de distribuție")}
             </div>
+            <label className="mt-3 inline-flex items-center gap-2 text-xs font-medium" data-testid="intake-address-same-as-ci">
+              <input type="checkbox" checked={values.address_same_as_ci === true} onChange={(e) => setValues((prev) => ({
+                ...prev, address_same_as_ci: e.target.checked,
+                ...(e.target.checked && prev.hq_address ? { address: prev.hq_address } : {}),
+              }))} />
+              Adresa locului de consum este aceeași cu adresa din CI
+            </label>
           </section>
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>3. Imobil</div>
