@@ -13,6 +13,34 @@ function batteryVoltageForPhase(battery, phases) {
     : (battery?.voltage_1ph ?? battery?.voltage);
 }
 
+function batteryCatalogData(item, phases) {
+  const breakerCurrent = item.breaker_a ?? item.dc_switch_current_a;
+  const breakerVoltage = item.breaker_voltage_dc ?? item.dc_switch_voltage_v;
+  return {
+    catalog_id: item.id,
+    model: item.brand_model,
+    kwh: item.kwh,
+    ah: item.ah,
+    voltage: batteryVoltageForPhase(item, phases),
+    voltage_1ph: item.voltage_1ph,
+    voltage_3ph: item.voltage_3ph,
+    i_max: item.i_max,
+    i_max_source_url: item.i_max_source_url,
+    max_fuse_a: item.max_fuse_a,
+    coupling: item.coupling || "",
+    breaker_a: breakerCurrent,
+    breaker_voltage_dc: breakerVoltage,
+    breaker_integrated: item.breaker_integrated,
+    breaker_poles: item.breaker_poles,
+    breaker_icu_ka: item.breaker_icu_ka,
+    dc_switch_voltage_v: item.dc_switch_voltage_v ?? breakerVoltage,
+    dc_switch_current_a: item.dc_switch_current_a ?? breakerCurrent,
+    breaker_source_url: item.breaker_source_url,
+    datasheet_url: item.datasheet_url,
+    conformity_url: item.conformity_url,
+  };
+}
+
 export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   const s = (k) => (v) => set({ ...inv, [k]: v });
   const catalogModelText = (model, idKey, fields) => {
@@ -24,7 +52,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   };
   const batteryModelText = (model) => set({
     ...inv,
-    battery: { ...(inv.battery || {}), model, catalog_id: undefined, kwh: undefined, ah: undefined, voltage: undefined, voltage_1ph: undefined, voltage_3ph: undefined, i_max: undefined, max_fuse_a: undefined, coupling: undefined, protection: undefined, fuse_a: undefined, cable_section: undefined },
+    battery: { ...(inv.battery || {}), model, catalog_id: undefined, kwh: undefined, ah: undefined, voltage: undefined, voltage_1ph: undefined, voltage_3ph: undefined, i_max: undefined, i_max_source_url: undefined, max_fuse_a: undefined, coupling: undefined, protection: undefined, fuse_a: undefined, cable_section: undefined, breaker_a: undefined, breaker_voltage_dc: undefined, breaker_integrated: undefined, breaker_poles: undefined, breaker_icu_ka: undefined, dc_switch_voltage_v: undefined, dc_switch_current_a: undefined, breaker_source_url: undefined, datasheet_url: undefined, conformity_url: undefined },
   });
   const sub = (obj, k) => (v) => set({ ...inv, [obj]: { ...(inv[obj] || {}), [k]: v } });
   const strings = inv.strings || [];
@@ -115,7 +143,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           <F label="Baterie" value={inv.battery_mode || "none"} onChange={(v) => set({ ...inv, battery_mode: v, ...(v === "shared" && !inv.shared_battery_id && shared.length === 1 ? { shared_battery_id: shared[0].id } : {}) })} options={[["none", "Fără baterie"], ["own", "Baterie proprie"], ["shared", "Baterie comună"]]} testid={`${t}-bat-mode`} />
           {inv.battery_mode === "shared" && <F label="Baterie comună" value={inv.shared_battery_id} onChange={s("shared_battery_id")} options={shared.map((b, i) => [b.id, b.model || `Baterie comună ${i + 1}`])} testid={`${t}-bat-shared`} />}
           {inv.battery_mode === "own" && <>
-            <CatalogPick items={catalog} category="Baterie" testid={`${t}-bat-pick`} onQueryChange={batteryModelText} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: batteryVoltageForPhase(it, inv.phases), voltage_1ph: it.voltage_1ph, voltage_3ph: it.voltage_3ph, i_max: it.i_max, i_max_source_url: it.i_max_source_url, max_fuse_a: it.max_fuse_a, coupling: it.coupling || "" } })} />
+            <CatalogPick items={catalog} category="Baterie" testid={`${t}-bat-pick`} onQueryChange={batteryModelText} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), ...batteryCatalogData(it, inv.phases) } })} />
             <F label="Model baterie" value={inv.battery?.model} onChange={batteryModelText} testid={`${t}-bat-model`} />
             <F label="Cuplare" value={inv.battery?.coupling || ""} onChange={sub("battery", "coupling")} options={["DC", "AC"]} testid={`${t}-bat-coupling`} />
             <F label="kWh / modul" type="number" value={inv.battery?.kwh} onChange={sub("battery", "kwh")} testid={`${t}-bat-kwh`} />
