@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api, openAuthenticatedFile } from "@/lib/api";
 import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
@@ -11,12 +12,16 @@ const DOC_TYPES = {
 };
 
 export default function Documents() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [docs, setDocs] = useState([]);
   const [clientId, setClientId] = useState("");
   const [kind, setKind] = useState("PF");
   const [docType, setDocType] = useState("");
   const [uploading, setUploading] = useState(false);
+  const selectedDocId = new URLSearchParams(location.search).get("docId");
+  const visibleDocs = selectedDocId ? docs.filter((doc) => doc.id === selectedDocId) : docs;
   const fileRef = useRef();
 
   const load = () => {
@@ -85,13 +90,16 @@ export default function Documents() {
       </div>
 
       <div className="den-panel">
-        <h2 className="text-lg font-bold mb-4">Documente încărcate ({docs.length})</h2>
-        {docs.length === 0 ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-bold">{selectedDocId ? "Document găsit" : `Documente încărcate (${docs.length})`}</h2>
+          {selectedDocId && <button type="button" onClick={() => navigate("/documente")} className="text-xs font-semibold underline" style={{ color: "var(--blue)" }}>Arată toate documentele</button>}
+        </div>
+        {visibleDocs.length === 0 ? (
           <div className="text-sm py-8 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>Nu sunt documente încărcate.</div>
         ) : (
           <div className="divide-y" style={{ borderColor: "var(--line)" }}>
-            {docs.map((d) => (
-              <div key={d.id} className="flex items-center gap-3 py-3">
+            {visibleDocs.map((d) => (
+              <div key={d.id} className={`flex items-center gap-3 rounded-lg py-3 ${selectedDocId === d.id ? "bg-blue-50 px-2" : ""}`}>
                 <div className="h-9 w-9 rounded-lg grid place-items-center" style={{ background: "#eef4ff" }}><FileText size={18} style={{ color: "var(--blue)" }} /></div>
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-sm truncate">{d.original_filename}</div>
