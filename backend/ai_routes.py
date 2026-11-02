@@ -319,7 +319,7 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
     fields = {
         "Invertor": ("type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "battery_voltage", "bat_i_max"),
         "Panou": ("w", "voc", "vmp", "isc", "imp", "coef_voc", "coef_vmp", "temp_noct", "temp_pmax"),
-        "Baterie": ("kwh", "ah", "voltage", "i_max", "max_fuse_a", "tech", "coupling"),
+        "Baterie": ("kwh", "ah", "voltage", "i_max", "max_fuse_a", "tech", "coupling", "breaker_a", "breaker_voltage_dc", "breaker_poles", "breaker_icu_ka", "breaker_integrated"),
         "Smart meter": ("phases",),
     }
     category = item.get("category")
@@ -365,7 +365,7 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
         if not extracted:
             raise HTTPException(status_code=502, detail="AI-ul nu a putut extrage datele, iar PDF-ul nu conține suficiente valori etichetate pentru completare locală.")
         engine = "local_text"
-    numeric = set(allowed) - {"type", "phases", "battery_voltage", "tech", "coupling"}
+    numeric = set(allowed) - {"type", "phases", "battery_voltage", "tech", "coupling", "breaker_integrated"}
     clean = {}
     for key in allowed:
         value = extracted.get(key) if isinstance(extracted, dict) else None
@@ -396,6 +396,12 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
         elif key == "coupling":
             normalized = str(value).strip().upper()
             clean[key] = normalized if normalized in ("AC", "DC") else None
+        elif key == "breaker_integrated":
+            if isinstance(value, bool):
+                clean[key] = value
+            else:
+                normalized = str(value).strip().casefold()
+                clean[key] = True if normalized in ("true", "yes", "da", "integrat", "integrated", "internal") else False if normalized in ("false", "no", "nu", "extern", "external") else None
         else:
             clean[key] = str(value).strip()[:100]
     clean = {k: v for k, v in clean.items() if v is not None}
@@ -405,6 +411,8 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
     def has_confirmed_value(key, value):
         if value in (None, ""):
             return False
+        if key == "breaker_integrated":
+            return isinstance(value, bool) or str(value).strip().casefold() in ("true", "false", "yes", "no", "da", "nu", "integrated", "external")
         if key not in numeric:
             return bool(str(value).strip())
         try:
