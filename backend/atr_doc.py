@@ -219,20 +219,20 @@ def storage_details(pros: dict, rec: dict) -> list:
                 details.append({**battery, "modules": modules * quantity})
     details.extend(battery for battery in (cef.get("shared_batteries") or [])
                    if CEF.has_storage({"battery": battery}))
-    if not details:
-        legacy = next((value for value in ((rec or {}).get("battery"), (rec or {}).get("storage"))
-                       if CEF.has_storage({"battery": value})), None)
-        if legacy is not None:
-            value = legacy if isinstance(legacy, dict) else {}
-            details.append({
-                "model": legacy if isinstance(legacy, str) else value.get("model"),
-                "modules": value.get("modules") or (rec or {}).get("battery_count"),
-                "kwh": value.get("kwh") or (rec or {}).get("battery_kwh"),
-                "ah": value.get("ah") or (rec or {}).get("battery_ah"),
-                "voltage": value.get("voltage") or (rec or {}).get("battery_v"),
-                "i_max": value.get("i_max") or (rec or {}).get("battery_i_max"),
-                "coupling": value.get("coupling") or (rec or {}).get("battery_coupling"),
-            })
+    legacy_record = rec or {}
+    legacy = next((value for value in (legacy_record.get("battery"), legacy_record.get("storage"))
+                   if CEF.has_storage({"battery": value})), None)
+    if not details and CEF.has_storage(legacy_record):
+        value = legacy if isinstance(legacy, dict) else {}
+        details.append({
+            "model": legacy if isinstance(legacy, str) else (value.get("model") or legacy_record.get("battery_model")),
+            "modules": value.get("modules") or legacy_record.get("battery_count"),
+            "kwh": value.get("kwh") or legacy_record.get("battery_kwh"),
+            "ah": value.get("ah") or legacy_record.get("battery_ah"),
+            "voltage": value.get("voltage") or legacy_record.get("battery_v"),
+            "i_max": value.get("i_max") or legacy_record.get("battery_i_max"),
+            "coupling": value.get("coupling") or legacy_record.get("battery_coupling"),
+        })
     return details
 
 def storage_row(battery: dict) -> list:
