@@ -119,7 +119,8 @@ SEED = [
     *({"category": "Panou", "brand_model": f"Trina Solar TSM-{w}NEG9R.28", "w": w, "voc": voc, "vmp": vmp,
        "isc": isc, "imp": imp, "coef_voc": -0.24, "temp_pmax": -0.29,
        "datasheet_url": "https://static.trinasolar.com/sites/default/files/Datasheet%20Vertex%20S%2B_NEG9R.28_EN_2024_C_web.pdf",
-       "notes": "Parametri STC/coeficienți din fișa oficială Trina Vertex S+ NEG9R.28 v2024-C. Declarația/certificatele exacte se atașează separat din documentația modelului livrat."}
+       **({"conformity_url": "https://static.trinasolar.com/sites/default/files/2023.02_CE_Declaration-English.pdf"} if w <= 445 else {}),
+       "notes": "Parametri STC/coeficienți din fișa oficială Trina Vertex S+ NEG9R.28 v2024-C. Declarația CE Trina 2023.02 enumeră TSM-xxxNEG9R.28 pentru 395–445 W; pentru puteri mai mari, verifică documentul exact al SKU-ului livrat."}
       for w, voc, vmp, isc, imp in [(430, 51.4, 43.2, 10.59, 9.96), (440, 52.2, 44.0, 10.67, 10.01),
                                     (450, 52.9, 44.6, 10.74, 10.09), (460, 53.8, 45.4, 10.81, 10.14)]),
     # Huawei exact MB0 variants; ratings and DC limits transcribed from the official family datasheet.
