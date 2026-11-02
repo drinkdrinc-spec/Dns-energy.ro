@@ -50,7 +50,7 @@ async def _get(client: httpx.AsyncClient, url: str, host: str):
 
 
 def _text(node):
-    return re.sub(r"\\s+", " ", " ".join(node.itertext())).strip()
+    return re.sub(r"\s+", " ", " ".join(node.itertext())).strip()
 
 
 async def _detail(client, source_name, source, url):
@@ -66,7 +66,7 @@ async def _detail(client, source_name, source, url):
         title = str((doc.xpath("//meta[@property='og:title']/@content") or [""])[0]).strip()
     body = _text(doc)
     price = ""
-    match = re.search(r"(?:\\d[\\d., ]{1,14}\\s*(?:lei|ron))", body, re.I)
+    match = re.search(r"(?:\d[\d., ]{1,14}\s*(?:lei|ron))", body, re.I)
     if match:
         price = match.group(0).strip()
     stock_match = re.search(r"în stoc|in stoc|disponibil|stoc epuizat|la comandă|la comanda", body, re.I)
