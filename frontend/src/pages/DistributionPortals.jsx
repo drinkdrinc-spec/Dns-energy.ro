@@ -62,7 +62,7 @@ export default function DistributionPortals() {
   const portalUrl = selected?.url;
   const powerIncrease = /spor de putere/i.test(String(selectedPros?.request_type || ""));
   const atrCreateUrl = selectedPros?.client_id
-    ? `/cerere-atr?new=atr&clientId=${encodeURIComponent(selectedPros.client_id)}${powerIncrease ? "&case=power-increase" : ""}`
+    ? `/cerere-atr?new=atr&clientId=${encodeURIComponent(selectedPros.client_id)}&prosId=${encodeURIComponent(selectedPros.id)}${powerIncrease ? "&case=power-increase" : ""}`
     : "";
 
   const selectPros = (id) => {
