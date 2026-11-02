@@ -593,7 +593,7 @@ def doc_buletin_priza(ctx):
                     ["Valoarea rezistenței de dispersie măsurată (Ω)", f"{meas:.2f}" if meas is not None else M],
                     ["Valoarea rezistenței de dispersie calculată în funcție de starea solului (Ω)", f"<b>{calc:.2f}</b>" if calc is not None else M],
                     [f"Concluzii — corespunde (da/nu){f' · valoare admisă ≤ {fmt(lim)} Ω' if lim is not None else ''}", f"<b>{ok}</b>"]], [140, 34], True),
-        B("p", f"<b>Aparat de măsură folosit:</b> {ctx.e('meter_device')} · seria {ctx.e('meter_serial')} · buletin metrologic valabil până la {ro_date(ctx.s.get('meter_valid')) or M}"),
+
         B("small", f"Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la <b>{valid}</b>."),
         sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
 
