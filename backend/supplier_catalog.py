@@ -10,7 +10,7 @@ import asyncio
 import json
 import re
 import unicodedata
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import httpx
 from lxml import html
@@ -51,6 +51,7 @@ DOCUMENT_HOSTS = {
     "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com",
 }
 CATEGORIES = {"Invertor", "Panou", "Baterie"}
+MAX_LISTING_PAGES = 6
 DOCUMENT_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
     "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "certificat de conformitate", "certificat conformitate"),
@@ -208,6 +209,31 @@ async def _get(client: httpx.AsyncClient, url: str, host: str):
     return None
 
 
+def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
+    """Return the current listing URL and its bounded, same-page `?p=N` links."""
+    base = urlparse(page_url)
+    urls = [page_url]
+    seen = {page_url}
+    pages = []
+    for anchor in doc.xpath("//a[@href]"):
+        url = urljoin(page_url, anchor.get("href", "").strip())
+        parsed = urlparse(url)
+        if (not _safe_page(url, host) or parsed.path.rstrip("/") != base.path.rstrip("/")
+                or parsed.fragment):
+            continue
+        values = parse_qs(parsed.query).get("p", [])
+        if len(values) != 1 or not values[0].isdigit():
+            continue
+        page_number = int(values[0])
+        if not 1 <= page_number < MAX_LISTING_PAGES:
+            continue
+        if url not in seen:
+            pages.append((page_number, url))
+            seen.add(url)
+    urls.extend(url for _, url in sorted(pages)[:MAX_LISTING_PAGES - 1])
+    return urls
+
+
 async def search_supplier_products(query: str, category: str) -> dict:
     query = re.sub(r"\s+", " ", (query or "").strip())[:100]
     if len(query) < 2 or category not in CATEGORIES:
@@ -226,15 +252,27 @@ async def search_supplier_products(query: str, category: str) -> dict:
                 doc = html.fromstring(response.content)
             except (ValueError, TypeError):
                 continue
+            listing_responses = [response]
+            if not source.get("search"):
+                page_urls = _listing_page_urls(doc, str(response.url), source["host"])
+                extra_responses = await asyncio.gather(*[
+                    _get(client, page_url, source["host"]) for page_url in page_urls[1:]
+                ])
+                listing_responses.extend(page for page in extra_responses if page)
             seen = set()
-            for anchor in doc.xpath("//a[@href]"):
-                title = " ".join(" ".join(anchor.itertext()).split())
-                url = urljoin(str(response.url), anchor.get("href", "").strip())
-                if (not title or not _safe_page(url, source["host"]) or not _correct_category(title, category)
-                        or not all(token in _norm(title) for token in qtokens) or url in seen):
+            for listing_response in listing_responses:
+                try:
+                    listing_doc = html.fromstring(listing_response.content)
+                except (ValueError, TypeError):
                     continue
-                seen.add(url)
-                candidates.append((name, source, category, url, title))
+                for anchor in listing_doc.xpath("//a[@href]"):
+                    title = " ".join(" ".join(anchor.itertext()).split())
+                    url = urljoin(str(listing_response.url), anchor.get("href", "").strip())
+                    if (not title or not _safe_page(url, source["host"]) or not _correct_category(title, category)
+                            or not all(token in _norm(title) for token in qtokens) or url in seen):
+                        continue
+                    seen.add(url)
+                    candidates.append((name, source, category, url, title))
         balanced = []
         for name in SOURCES:
             balanced.extend([x for x in candidates if x[0] == name][:8])
@@ -285,4 +323,5 @@ async def get_public_product(supplier: str, category: str, url: str) -> dict | N
         price, stock = _offer(doc)
         return {"supplier": supplier, "category": category, "brand_model": title[:240], "product_url": url,
                 "price_text": price, "availability": stock, **_properties(doc), **_documents(doc, url)}
+
 
