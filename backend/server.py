@@ -833,6 +833,37 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
             "file": {"storage_path": stored["path"], "original_filename": file.filename,
                      "content_type": ct, "size": len(data)}}
 
+
+@api_router.post("/ai/extract-company")
+async def ai_extract_company(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    require(user, "admin")
+    if not has_feature(user, "ai_gpt") or "ai_gpt" in user["plan"].get("disabled", []):
+        raise HTTPException(status_code=403, detail="Extragerea AI nu este activă pentru acest cont.")
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise HTTPException(status_code=503, detail="Serviciul AI nu este configurat în API.")
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
+    if not data:
+        raise HTTPException(status_code=400, detail="Fișierul este gol")
+    filename = str(file.filename or "certificat.pdf")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+    ct = str(file.content_type or "").split(";", 1)[0].strip().lower()
+    if not ct or ct == "application/octet-stream":
+        ct = MIME_TYPES.get(ext, "application/octet-stream")
+    ct = validate_upload_payload(filename, ct, data)
+    from ai_extract import extract_company_document
+    try:
+        fields = await extract_company_document(data, ct)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:
+        logger.exception("Company profile extraction failed")
+        raise HTTPException(status_code=502, detail="Nu am putut citi certificatul. Încearcă un PDF mai clar sau completează câmpurile manual.")
+    engine = fields.pop("_engine", "OpenAI — extragere asistată")
+    await audit(user, "extragere date profil firmă", "settings", user["id"], list(fields.keys()))
+    return {"data": fields, "engine": engine}
+
 def _new(user, extra):
     now = datetime.now(timezone.utc).isoformat()
     return {"id": str(uuid.uuid4()), "owner": user["id"], "created_at": now, "updated_at": now,
