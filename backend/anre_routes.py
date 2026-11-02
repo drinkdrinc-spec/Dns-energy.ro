@@ -24,11 +24,40 @@ def is_pf(user):
     return user["uid"] == S.PLATFORM["id"]
 
 
-async def get_d(user, did):
+async def company_profile(owner):
+    """Use the tenant's ANRE operator record first, then its shared company settings."""
+    profile = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
+    operator = await db.operators.find_one({"tenant": owner}, {"_id": 0}) or {}
+    types = operator.get("attest_types") or profile.get("attest_types") or []
+    return {
+        "name": operator.get("company") or profile.get("company") or "",
+        "cui": operator.get("cui") or profile.get("cui") or "",
+        "regcom": operator.get("regcom") or profile.get("regcom") or "",
+        "address": profile.get("address") or "",
+        "rep_name": operator.get("contact_name") or profile.get("rep") or "",
+        "rep_role": operator.get("holder_role") or profile.get("rep_role") or "",
+        "email": operator.get("contact_email") or profile.get("email") or "",
+        "phone": operator.get("contact_phone") or profile.get("phone") or "",
+        "attest_no": operator.get("attest_no") or profile.get("attest_no") or "",
+        "attest_types": ", ".join(types) if isinstance(types, list) else str(types or ""),
+        "attest_valid": operator.get("attest_valid") or profile.get("attest_valid") or "",
+    }
+
+
+def merged_company(d, profile):
+    """Fill only blank dossier fields, preserving any values explicitly saved on it."""
+    saved = {k: v for k, v in (d.get("company") or {}).items() if v not in (None, "")}
+    return {**d, "company": {**profile, **saved}}
+
+
+async def get_d(user: dict, did: str):
     q = {"id": did} if is_pf(user) else {"id": did, "owner": user["id"]}
     d = await db.anre_dossiers.find_one(q, {"_id": 0})
     if not d:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    company = d.get("company") or {}
+    if any(company.get(k) in (None, "") for k in ("name", "cui", "regcom", "address", "rep_name", "email", "phone")):
+        d = merged_company(d, await company_profile(d["owner"]))
     return d
 
 
@@ -152,13 +181,13 @@ async def anre_create(request: Request, user: dict = Depends(get_current_user)):
     if b.get("kind") not in AD.TYPES:
         raise HTTPException(status_code=400, detail="Alegeți tipul solicitării")
     op = await db.operators.find_one({"tenant": user["id"]}, {"_id": 0}) or {}
+    profile = await company_profile(user["id"])
     internal = b.get("mode") == "intern"
     cfg = await S.billing_cfg() if not internal else {}
     vat = round(PRICE * float(cfg.get("vat_rate", 21)) / 100, 2) if not internal else 0
     d = {"id": str(uuid.uuid4()), "owner": user["id"], "kind": b["kind"], "target_types": b.get("target_types") or [], "status": "Ciornă", "created_at": now(), "updated_at": now(),
          "created_by": user.get("email"), "creation_mode": "intern" if internal else "serviciu", "payment_status": "intern" if internal else "neplătit", "price": {"net": 0 if internal else PRICE, "vat": vat, "total": 0 if internal else round(PRICE + vat, 2), "note": "Dosar intern — fără comandă de servicii" if internal else "Serviciu D-ENERGY; tarifele ANRE se plătesc separat"},
-         "company": {"name": op.get("company"), "cui": op.get("cui"), "regcom": op.get("regcom"), "email": op.get("contact_email"), "phone": op.get("contact_phone"),
-                     "rep_name": op.get("contact_name"), "rep_role": op.get("holder_role"), "attest_no": op.get("attest_no"), "attest_types": ", ".join(op.get("attest_types") or []), "attest_valid": op.get("attest_valid")},
+         "company": {**profile, "email": profile.get("email") or user.get("email", "")},
          "docs": {}, "staff": [], "equipment": [], "org": [], "history": [{"at": now(), "by": user.get("email"), "event": "dosar intern creat" if internal else "comandă creată"}]}
     if not internal:
         import billing_routes as BR
