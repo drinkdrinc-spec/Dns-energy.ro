@@ -47,6 +47,10 @@ def _labeled_numbers(text: str, labels: tuple[str, ...], units: tuple[str, ...],
                 if not re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?\s*[^\w\s]?\s*(?:%\s*/\s*°?\s*C|°\s*C|MWh|kWh|Wh|MW|kW|W|kA|mAh|Ah|mA|A|mV|V|poles?|P)", tail, re.I):
                     continue
                 number = _NUMBER.search(tail)
+                if not number:
+                    candidate = re.search(r"(?<![\\w.])[-+]?\\d+(?:[.,]\\d+)?", tail)
+                    if candidate and _UNIT.match(tail[candidate.end():].lstrip()):
+                        number = candidate
             if not number:
                 continue
             unit = _unit_for(tail, number.start(), number.end())
