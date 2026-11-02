@@ -334,8 +334,10 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
     return buf.getvalue()
 
 
-def _deer_docx_template(rec: dict) -> str:
+def _deer_docx_template(rec: dict) -> str | None:
     case = str((rec or {}).get("deer_case") or "").strip().lower()
+    if not case:
+        return None
     if "program de finanțare" in case or "program de finantare" in case:
         return "anexa4_funding.docx.b64"
     if "≤10,8" in case or "≤ 10,8" in case or "<=10,8" in case:
@@ -350,7 +352,7 @@ def _deer_docx_template(rec: dict) -> str:
         return None
     if "anexa 2" in case or "existent" in case:
         return "anexa2_existing.docx.b64"
-    return "anexa2_existing.docx.b64"
+    return None
 
 
 def _deer_value(value):
@@ -381,9 +383,14 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
 
     if op_key((rec or {}).get("operator"), (pros or {}).get("operator"), (client or {}).get("operator")) != "deer":
         raise ValueError("Precompletarea formularului oficial este disponibilă doar pentru DEER.")
+    case = str((rec or {}).get("deer_case") or "").strip().lower()
     filename = _deer_docx_template(rec)
     if not filename:
-        raise ValueError("Procedura DEER pentru instalații de peste 400 kW este disponibilă pe site-ul operatorului în format DOC; descărcați formularul oficial de acolo.")
+        if not case:
+            raise ValueError("Selectează procedura DEER înainte de generarea anexei oficiale.")
+        if ">400" in case:
+            raise ValueError("Procedura DEER pentru instalații de peste 400 kW este disponibilă pe site-ul operatorului în format DOC; descărcați formularul oficial de acolo.")
+        raise ValueError("Procedura DEER selectată nu are un formular DOCX disponibil în registru. Verifică formularul oficial înainte de depunere.")
     template_path = Path(__file__).parent / "templates" / "deer" / filename
     try:
         raw = b64decode(template_path.read_text(encoding="ascii"), validate=True)

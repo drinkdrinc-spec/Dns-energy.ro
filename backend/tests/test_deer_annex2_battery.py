@@ -108,3 +108,15 @@ def test_storage_details_preserves_legacy_numeric_fields():
     assert details[0]["ah"] == 200
     assert details[0]["i_max"] == 100
     assert details[0]["coupling"] == "DC"
+
+
+def test_deer_official_annex_requires_a_recognized_procedure():
+    assert atr_doc._deer_docx_template({"deer_case": "Loc existent — spor de putere — Anexa 1"}) == "anexa1_spor.docx.b64"
+    assert atr_doc._deer_docx_template({"deer_case": ""}) is None
+    assert atr_doc._deer_docx_template({"deer_case": "procedură necunoscută"}) is None
+    with pytest.raises(ValueError, match="Selectează procedura DEER"):
+        atr_doc.render_deer_official_docx({"operator": "DEER"}, {}, {}, {})
+    with pytest.raises(ValueError, match="nu are un formular DOCX"):
+        atr_doc.render_deer_official_docx(
+            {"operator": "DEER", "deer_case": "procedură necunoscută"}, {}, {}, {}
+        )
