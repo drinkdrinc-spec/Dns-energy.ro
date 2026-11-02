@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 _NUMBER = re.compile(r"(?<![\w.])[-+]?(?:\d+(?:[.,]\d+)?)(?!\w)")
-_UNIT = re.compile(r"%\s*/\s*°?\s*C|°\s*C|MWh|kWh|Wh|MW|kW|W|mAh|Ah|mA|A|mV|V", re.I)
+_UNIT = re.compile(r"%\s*/\s*°?\s*C|°\s*C|MWh|kWh|Wh|MW|kW|W|kA|mAh|Ah|mA|A|mV|V|poles?|P", re.I)
 
 
 def _unit_for(tail: str, number_start: int, number_end: int) -> str:
@@ -63,6 +63,17 @@ def _numeric(text: str, label: tuple[str, ...], units: tuple[str, ...], factor=N
     if value is None:
         return None
     return int(value) if value.is_integer() else round(value, 6)
+
+
+def _battery_breaker_integrated(text: str):
+    """Return a breaker integration flag only when the datasheet states it unambiguously."""
+    integrated = bool(re.search(
+        r"\b(?:integrated|built[- ]in|internal)\s+(?:DC\s+)?(?:circuit\s+)?breaker\b|"
+        r"\b(?:circuit\s+)?breaker\s+(?:is\s+)?integrated\b", text, re.I))
+    external = bool(re.search(
+        r"\bexternal\s+(?:DC\s+)?(?:circuit\s+)?breaker\b|"
+        r"\bno\s+(?:integrated|internal)\s+(?:DC\s+)?(?:circuit\s+)?breaker\b", text, re.I))
+    return True if integrated and not external else False if external and not integrated else None
 
 
 def _enum(text: str, field: str):
@@ -160,12 +171,19 @@ def extract_equipment_specs(category: str, text: str) -> dict:
             "voltage": ((r"\b(?:nominal|rated)\s+(?:battery\s+)?voltage\b", r"\bbattery\s+voltage\b"), volt_units, convert_v),
             "i_max": ((r"\bmaximum\s+(?:continuous\s+)?discharge\s+current\b", r"\bmax\.?\s+discharge\s+current\b"), amp_units, convert_a),
             "max_fuse_a": ((r"\b(?:maximum|max\.?)\s+(?:recommended\s+)?fuse\b", r"\bmaximum\s+overcurrent\s+protection\b"), amp_units, convert_a),
+            "breaker_a": ((r"\b(?:integrated|built[- ]in)\s+(?:DC\s+)?(?:circuit\s+)?breaker\s+(?:rated\s+)?current\b", r"\b(?:DC\s+)?(?:circuit\s+)?breaker\s+(?:rated\s+)?current\b"), amp_units, convert_a),
+            "breaker_voltage_dc": ((r"\b(?:DC\s+)?(?:circuit\s+)?breaker\s+(?:rated|nominal)\s+voltage\b", r"\b(?:rated|nominal)\s+(?:DC\s+)?(?:circuit\s+)?breaker\s+voltage\b"), volt_units, convert_v),
+            "breaker_poles": ((r"\bnumber\s+of\s+(?:DC\s+)?(?:circuit\s+)?breaker\s+poles\b", r"\bbreaker\s+pole\s+count\b"), ("p", "pole", "poles")),
+            "breaker_icu_ka": ((r"\b(?:rated\s+)?breaking\s+capacity\b", r"\bIcu\b"), ("ka",)),
         }
         for key, spec in specs.items():
             labels, units, *factor = spec
             value = _numeric(text, labels, units, factor[0] if factor else None)
             if value is not None:
                 result[key] = value
+        integration = _battery_breaker_integrated(text)
+        if integration is not None:
+            result["breaker_integrated"] = integration
         for key in ("tech", "coupling"):
             value = _enum(text, key)
             if value:
