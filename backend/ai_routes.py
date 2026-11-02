@@ -421,6 +421,7 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
         else:
             clean[key] = str(value).strip()[:100]
     clean = {k: v for k, v in clean.items() if v is not None}
+    logger.info("Equipment datasheet extraction category=%s source_chars=%d extracted_fields=%s", category, len(source_text), sorted(clean))
     # Preserve valid values entered by a person, but treat zero/malformed values as
     # missing for positive physical parameters such as power, voltage, capacity and current.
     zero_allowed = {"coef_voc", "coef_vmp", "temp_pmax"}
