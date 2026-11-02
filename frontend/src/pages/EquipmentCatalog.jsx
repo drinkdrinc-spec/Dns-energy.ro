@@ -143,33 +143,16 @@ export default function EquipmentCatalog() {
     const key = product.product_url;
     setSupplierImporting(key);
     try {
-      const existing = items.find((item) => item.category === cat && item.brand_model?.trim().toLowerCase() === product.brand_model?.trim().toLowerCase());
-      let item = existing;
-      if (!item) {
-        const notes = [`Sursă: ${product.supplier}`, product.price_text && `Preț afișat: ${product.price_text}`, product.availability && `Stoc afișat: ${product.availability}`, `Produs: ${product.product_url}`].filter(Boolean).join(" · ");
-        const { data } = await api.post("/data/catalog", { category: cat, brand_model: product.brand_model, notes });
-        item = data;
-      }
-      let docsImported = 0;
-      for (const kind of ["datasheet", "conformity"]) {
-        const url = product[`${kind}_url`];
-        if (url && !item?.[kind]) {
-          try {
-            await api.post(`/catalog/${item.id}/import-document`, { kind, url });
-            docsImported += 1;
-          } catch (e) {
-            console.warn(`Documentul ${kind} nu a putut fi importat:`, e.response?.data?.detail || e.message);
-          }
-        }
-      }
-      if (product.datasheet_url && docsImported) {
-        try { await api.post(`/ai/catalog/${item.id}/extract`); } catch (e) {
-          console.warn("Extragerea parametrilor din fișa tehnică nu a reușit:", e.response?.data?.detail || e.message);
-        }
-      }
+      const { data } = await api.post("/catalog/supplier-import", {
+        supplier: product.supplier, category: product.category, product_url: product.product_url,
+      });
       await load();
-      toast.success(existing ? "Modelul există deja; am actualizat documentele disponibile." : "Modelul a fost adăugat în catalog.");
-      if (!docsImported && !item?.datasheet && !item?.conformity) toast.warning("Furnizorul nu a expus linkuri PDF directe; modelul a fost adăugat fără documente.");
+      toast.success(data.existing
+        ? "Modelul este deja în catalog."
+        : "Model adăugat cu datele tehnice publicate și documentele PDF disponibile.");
+      if (!product.datasheet_url && !product.conformity_url) {
+        toast.warning("Furnizorul nu a expus linkuri directe către fișă sau certificat; poți adăuga documentele ulterior.");
+      }
     } catch (e) {
       toast.error(e.response?.data?.detail || "Produsul nu a putut fi adăugat în catalog.");
     } finally { setSupplierImporting(""); }
@@ -248,6 +231,7 @@ export default function EquipmentCatalog() {
                 <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--blue)" }}>{product.supplier}</div>
                 <h3 className="font-bold text-sm mt-1">{product.brand_model}</h3>
                 <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{[product.price_text, product.availability].filter(Boolean).join(" · ") || "Preț/stoc vezi la furnizor"}</p>
+                <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>{Object.entries(product).filter(([key, value]) => value !== null && value !== undefined && ["p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "w", "voc", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max"].includes(key)).map(([key, value]) => `${key}: ${value}`).join(" · ") || "Specificațiile tehnice nu sunt publicate structurat."}</p>
               </div>
               <a href={product.product_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold whitespace-nowrap" style={{ color: "var(--blue)" }}>Produs ↗</a>
             </div>
