@@ -146,12 +146,20 @@ async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict
             # retry the rendered pages with vision OCR.
             try:
                 fields = await extract_gpt_text(text, doc_type)
-                key_fields = {
-                    "ci": ("client_name", "cnp", "hq_address", "id_series", "id_number"),
-                    "factura": ("client_name", "pod", "consumption_address", "address", "operator"),
-                    "cf": ("owner_name", "client_name", "cf_nr", "cadastral_nr"),
-                }.get(doc_type, ("client_name", "cnp", "pod", "cf_nr", "cadastral_nr", "address", "owner_name"))
-                if any(fields.get(key) not in (None, "", "null") for key in key_fields):
+                def present(value):
+                    return value is not None and str(value).strip().casefold() not in ("", "null", "none")
+
+                required_groups = {
+                    "ci": (("client_name",), ("cnp",), ("hq_address", "address"), ("id_series",), ("id_number",)),
+                    "factura": (("pod",), ("consumption_address", "address"), ("operator",)),
+                    "cf": (("owner_name", "client_name"), ("cf_nr",), ("cadastral_nr",)),
+                }.get(doc_type)
+                if required_groups:
+                    # A partial selectable-text layer must not suppress visual OCR
+                    # when a core identity, POD, or cadastral field is still absent.
+                    if all(any(present(fields.get(key)) for key in aliases) for aliases in required_groups):
+                        return fields
+                elif any(present(fields.get(key)) for key in ("client_name", "cnp", "pod", "cf_nr", "cadastral_nr", "address", "owner_name")):
                     return fields
             except Exception:
                 # Keep the visual fallback: text extraction errors are common
