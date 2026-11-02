@@ -598,7 +598,7 @@ def doc_buletin_priza(ctx):
         B("p", f"<b>Client:</b> {ctx.name} · <b>Adresa:</b> {ctx.loc}"),
         B("p", f"<b>Obiectivul:</b> {ctx.v('measure_object')} · <b>Data verificărilor/măsurătorilor:</b> {ro_date(md) or M}"),
         B("table", [["Verificarea/măsurarea instalațiilor de legare la pământ", "p.p. nr. 1"], ["Starea solului", ctx.v("soil")],
-                    ["Valoarea coeficientului psi (funcție de starea solului: 1,5 / 1,3 / 1,1)", f"{psi:.2f}" if psi is not None else M],
+                    ["Valoarea coeficientului Ѱ (funcție de starea solului: 1,5 / 1,3 / 1,1)", f"{psi:.2f}" if psi is not None else M],
                     ["Valoarea rezistenței de dispersie măsurată (Ω)", f"{meas:.2f}" if meas is not None else M],
                     ["Valoarea rezistenței de dispersie calculată în funcție de starea solului (Ω)", f"<b>{calc:.2f}</b>" if calc is not None else M],
                     [f"Concluzii — corespunde (da/nu){f' · valoare admisă ≤ {fmt(lim)} Ω' if lim is not None else ''}", f"<b>{ok}</b>"]], [140, 34], True),
@@ -692,17 +692,8 @@ DOCS = {
 # ---------- PDF renderer ----------
 
 def pdf_header(ctx):
-    left_lines = [f"<b><font size=10>{ctx.company}</font></b>"]
-    company_ids = [ctx.e("cui", ""), ctx.e("regcom", "")]
-    company_ids = [value for value in company_ids if value]
-    if company_ids:
-        left_lines.append(" · ".join(company_ids))
-    attest = ctx.e("anre_attest", "")
-    if attest:
-        left_lines.append(f"Atestat ANRE {attest}")
-    right_lines = [ctx.e(key, "") for key in ("phone", "email", "address")]
-    left = Paragraph("<br/>".join(left_lines), S["hdrl"])
-    right = Paragraph("<br/>".join(value for value in right_lines if value), S["hdrr"])
+    left = Paragraph(f"<b><font size=10>{ctx.company}</font></b><br/>{ctx.e('cui', '')} · {ctx.e('regcom', '')}<br/>Atestat ANRE {ctx.e('anre_attest', '')}", S["hdrl"])
+    right = Paragraph(f"{ctx.e('phone', '')}<br/>{ctx.e('email', '')}<br/>{ctx.e('address', '')}", S["hdrr"])
     t = Table([[left, right]], colWidths=[87 * mm, 87 * mm])
     t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, 0), 0.6, GRID), ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
     return [t, Spacer(1, 10)]
@@ -803,27 +794,19 @@ def to_flow(blocks, ctx):
     return out
 
 
-def _watermark(c, text):
-    c.saveState()
-    c.setFont("LSB", 64); c.setFillColor(colors.Color(0.8, 0.1, 0.1, alpha=0.14))
-    w, h = c._pagesize
-    c.translate(w / 2, h / 2); c.rotate(40); c.drawCentredString(0, 0, text)
-    c.restoreState()
-
-
 def _draft(c, doc):
-    _watermark(c, "CIORNĂ")
-
-
-def _test_draft(c, doc):
-    _watermark(c, "TEST - DATE SINTETICE")
+    c.saveState()
+    c.setFont("LSB", 70); c.setFillColor(colors.Color(0.8, 0.1, 0.1, alpha=0.12))
+    w, h = c._pagesize
+    c.translate(w / 2, h / 2); c.rotate(40); c.drawCentredString(0, 0, "CIORNĂ")
+    c.restoreState()
 
 
 def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
     ctx = Ctx(CEF.flatten(rec), settings, client, opis_titles)
     buf = io.BytesIO()
     pw, ph = A4
-    on = _draft if draft else (_test_draft if rec.get("is_test") is True else (lambda c, d: None))
+    on = _draft if draft else (lambda c, d: None)
     port = PageTemplate("port", [Frame(18 * mm, 14 * mm, pw - 36 * mm, ph - 28 * mm, id="fp")], pagesize=A4, onPage=on)
     land = PageTemplate("land", [Frame(12 * mm, 10 * mm, ph - 24 * mm, pw - 20 * mm, id="fl")], pagesize=landscape(A4), onPage=on)
     first_land = bool(doc_keys) and doc_keys[0] in ("schema_cef", "schema")
@@ -971,3 +954,4 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, c
     out = io.BytesIO()
     d.save(out)
     return out.getvalue()
+
