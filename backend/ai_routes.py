@@ -320,7 +320,7 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
         "Invertor": ("type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "battery_voltage", "bat_i_max"),
         "Panou": ("w", "voc", "vmp", "isc", "imp", "coef_voc", "coef_vmp", "temp_noct", "temp_pmax"),
         "Baterie": ("kwh", "ah", "voltage", "i_max", "max_fuse_a", "tech", "coupling", "breaker_a", "breaker_voltage_dc", "breaker_poles", "breaker_icu_ka", "breaker_integrated"),
-        "Smart meter": ("phases",),
+        "Smart meter": ("phases", "current_max_a", "voltage_nominal_v", "frequency_hz", "protocol", "wiring", "accuracy_class"),
     }
     category = item.get("category")
     allowed = fields.get(category)
