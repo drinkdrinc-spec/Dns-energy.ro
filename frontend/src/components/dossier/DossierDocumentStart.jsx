@@ -42,8 +42,10 @@ export function DossierDocumentStart({ onCreated }) {
     const summaries = [];
     const extractionWarnings = [];
     let failed = 0;
+    let attachedWithoutRead = 0;
     let firstFailure = "";
     for (const file of list) {
+      let attached = false;
       try {
         const officeExtractable = /\.(docx|xlsx)$/i.test(file.name);
         const mime = String(file.type || "").toLowerCase().split(";")[0].trim();
@@ -60,6 +62,7 @@ export function DossierDocumentStart({ onCreated }) {
         const fd = new FormData(); fd.append("file", file); fd.append("doc_type", kind === "altele" ? "other" : kind);
         const { data } = await api.post("/ai/extract", fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 240000 });
         mergedFiles.push(data.file);
+        attached = true;
         if (data.warning) extractionWarnings.push(`${file.name}: ${data.warning}`);
         const x = data.data || {};
         if (kind === "ci") mergedValues = putNonempty(mergedValues, { client_name: x.client_name, cnp: x.cnp, hq_address: x.hq_address || x.address,
@@ -72,14 +75,28 @@ export function DossierDocumentStart({ onCreated }) {
         if (kind === "altele" && x.summary) summaries.push(`${file.name}: ${x.doc_type || "document"} — ${x.summary}`);
       } catch (error) {
         failed += 1;
-        firstFailure ||= error.response?.data?.detail || error.message || "Eroare necunoscută la citirea documentului.";
+        const reason = error.response?.data?.detail || error.message || "Eroare necunoscută la citirea documentului.";
+        firstFailure ||= reason;
+        if (!attached) {
+          try {
+            const fd = new FormData(); fd.append("file", file);
+            const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+            mergedFiles.push(data);
+            attachedWithoutRead += 1;
+            extractionWarnings.push(`${file.name}: atașat, dar necitit automat (${reason}); verifică și completează manual.`);
+          } catch (uploadError) {
+            firstFailure = uploadError.response?.data?.detail || uploadError.message || reason;
+          }
+        }
       }
     }
     setFiles((prev) => ({ ...prev, [kind]: mergedFiles }));
     setValues(mergedValues);
     if (summaries.length) setNotes((prev) => ({ ...prev, altele: [...(prev.altele || []), ...summaries] }));
+    if (extractionWarnings.length) setNotes((prev) => ({ ...prev, [kind]: [...(prev[kind] || []), ...extractionWarnings] }));
     const imported = mergedFiles.length - initialCount;
-    if (failed && imported) toast.warning(`${imported} din ${list.length} documente preluate; ${failed} au eșuat. Primul motiv: ${firstFailure}`);
+    if (attachedWithoutRead) toast.warning(`${attachedWithoutRead} documente atașate fără citire automată; verifică-le și completează manual. ${firstFailure}`);
+    else if (failed && imported) toast.warning(`${imported} din ${list.length} documente atașate; ${failed} au necesitat verificare manuală. ${firstFailure}`);
     else if (failed) toast.error(firstFailure || `Nu s-au putut prelua ${failed} documente.`);
     else if (extractionWarnings.length) toast.warning(extractionWarnings[0]);
     else toast.success(`${list.length === 1 ? "Document citit" : `${list.length} documente citite`} — verifică datele extrase`);
@@ -94,7 +111,7 @@ export function DossierDocumentStart({ onCreated }) {
       doc_type: ({ ci: "Carte de identitate", factura: "Factură energie", cf: "Carte funciară", altele: "Document suplimentar" })[kind],
     })));
     const payload = { ...values, client_name: values.client_name.trim(), files: filesForDossier,
-      notes: [values.notes, ...(notes.altele || [])].filter(Boolean).join("\n") };
+      notes: [...Object.values(notes).flat(), values.notes].filter(Boolean).join("\n") };
     try {
       setBusy("create");
       const { data } = await api.post("/import/prosumator", payload);
@@ -123,6 +140,7 @@ export function DossierDocumentStart({ onCreated }) {
               <Upload size={13} /> {busy === kind ? "AI citește…" : "Încarcă și citește"}
             </button>
             {(files[kind] || []).map((f) => <div key={f.storage_path} className="mt-1 text-[11px] flex gap-1 items-center"><FileText size={12} />{f.original_filename}</div>)}
+            {notes[kind]?.length > 0 && <ul className="mt-2 list-disc pl-4 text-[11px] text-amber-700">{notes[kind].map((note, i) => <li key={i}>{note}</li>)}</ul>}
           </div>)}
         </div>
         <div className="space-y-3 pt-2">
