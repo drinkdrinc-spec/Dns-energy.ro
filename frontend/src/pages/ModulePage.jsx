@@ -117,6 +117,10 @@ export default function ModulePage({ moduleKey }) {
   const [checks, setChecks] = useState({});
   const [refOptions, setRefOptions] = useState({});
   const [q, setQ] = useState("");
+  const [filterClient, setFilterClient] = useState("");
+  const [filterOperator, setFilterOperator] = useState("");
+  const [filterCounty, setFilterCounty] = useState("");
+  const [filterLocality, setFilterLocality] = useState("");
   const [recordsView, setRecordsView] = useState("list");
   const [savedAt, setSavedAt] = useState(0);
   const [diuPre, setDiuPre] = useState(false);
@@ -411,11 +415,42 @@ export default function ModulePage({ moduleKey }) {
     setShowTestRecords(true);
     window.setTimeout(() => document.querySelector('[data-testid="saved-records"]')?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   };
+  const prosumerFilterRows = useMemo(() => {
+    const clients = refOptions.clients || [];
+    return visibleItems.map((item) => {
+      const client = clients.find((candidate) => (item.client_id && candidate.id === item.client_id)
+        || (item.client_name && normalizeClientName(candidate.name) === normalizeClientName(item.client_name)));
+      return {
+        item,
+        client,
+        clientName: item.client_name || client?.name || "",
+        operator: item.operator || client?.operator || "",
+        county: item.county || client?.county || "",
+        locality: item.locality || item.city || item.town || item.commune || item.village
+          || client?.locality || client?.city || client?.town || client?.commune || client?.village || "",
+        searchable: JSON.stringify({ ...item, client: client || {} }).toLocaleLowerCase("ro-RO"),
+      };
+    });
+  }, [visibleItems, refOptions.clients]);
+  const filterValues = useMemo(() => {
+    const unique = (key) => [...new Set(prosumerFilterRows.map((row) => String(row[key] || "").trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, "ro"));
+    return { clients: unique("clientName"), operators: unique("operator"), counties: unique("county"), localities: unique("locality") };
+  }, [prosumerFilterRows]);
   const filtered = useMemo(() => {
-    if (!q) return visibleItems;
-    const ql = q.toLowerCase();
-    return visibleItems.filter((i) => JSON.stringify(i).toLowerCase().includes(ql));
-  }, [visibleItems, q]);
+    const ql = q.trim().toLocaleLowerCase("ro-RO");
+    const isProsumator = key === "prosumator";
+    return (isProsumator ? prosumerFilterRows : visibleItems).filter((entry) => {
+      const row = isProsumator ? entry : { item: entry, searchable: JSON.stringify(entry).toLocaleLowerCase("ro-RO") };
+      const item = row.item;
+      if (ql && !row.searchable.includes(ql)) return false;
+      if (isProsumator && filterClient && normalizeClientName(row.clientName) !== normalizeClientName(filterClient)) return false;
+      if (isProsumator && filterOperator && normalizeClientName(row.operator) !== normalizeClientName(filterOperator)) return false;
+      if (isProsumator && filterCounty && normalizeClientName(row.county) !== normalizeClientName(filterCounty)) return false;
+      if (isProsumator && filterLocality && normalizeClientName(row.locality) !== normalizeClientName(filterLocality)) return false;
+      return true;
+    }).map((entry) => key === "prosumator" ? entry.item : entry);
+  }, [key, visibleItems, prosumerFilterRows, q, filterClient, filterOperator, filterCounty, filterLocality]);
 
   const checkedCount = cfg.checklist ? cfg.checklist.filter((c) => checks[c]).length : 0;
 
@@ -585,6 +620,22 @@ export default function ModulePage({ moduleKey }) {
             <input data-testid="search-input" className="den-input w-[240px]" style={{ paddingLeft: 34 }} placeholder="Caută..." value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
+
+        {key === "prosumator" && <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4" data-testid="prosumator-filters" aria-label="Filtrează dosarele">
+          <select className="den-input min-w-0" value={filterClient} onChange={(e) => setFilterClient(e.target.value)} aria-label="Filtrează după client" data-testid="filter-client">
+            <option value="">Toți clienții</option>{filterValues.clients.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+          <select className="den-input min-w-0" value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)} aria-label="Filtrează după operator" data-testid="filter-operator">
+            <option value="">Toți operatorii</option>{filterValues.operators.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+          <select className="den-input min-w-0" value={filterCounty} onChange={(e) => setFilterCounty(e.target.value)} aria-label="Filtrează după județ" data-testid="filter-county">
+            <option value="">Toate județele</option>{filterValues.counties.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+          <select className="den-input min-w-0" value={filterLocality} onChange={(e) => setFilterLocality(e.target.value)} aria-label="Filtrează după localitate" data-testid="filter-locality">
+            <option value="">Toate localitățile</option>{filterValues.localities.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+          {(filterClient || filterOperator || filterCounty || filterLocality) && <button type="button" className="text-xs font-semibold underline justify-self-start sm:col-span-2 xl:col-span-4" onClick={() => { setFilterClient(""); setFilterOperator(""); setFilterCounty(""); setFilterLocality(""); }} data-testid="filter-clear">Șterge filtrele</button>}
+        </div>}
 
         {filtered.length === 0 ? (
           <div className="text-sm py-8 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>Nu există înregistrări încă.</div>
