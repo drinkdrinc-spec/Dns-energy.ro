@@ -478,7 +478,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
             limit = f"{unit_limit:g}" if unit_limit is not None and unit_limit > 0 else ""
             plant_max = rated * count if rated is not None and rated > 0 else ""
             note = f"Limitare evacuare configurată: {unit_limit:g} kW/invertor" if unit_limit is not None and unit_limit > 0 else ""
-            if not is_annex2 and inv.get("battery_mode") == "own" and inv.get("battery", {}).get("model"):
+            if not is_annex2 and inv.get("battery_mode") == "own" and (inv.get("battery") or {}).get("model"):
                 battery = inv["battery"]
                 details = []
                 for key, label in (("kwh", "kWh"), ("voltage", "V"), ("ah", "Ah"), ("i_max", "I max/modul A")):
