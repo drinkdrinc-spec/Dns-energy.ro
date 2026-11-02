@@ -126,8 +126,8 @@ export default function Dashboard() {
     setClientResults([]);
     setClientSearchFailed(false);
     setSearchingClients(true);
-    const timer = setTimeout(() => api.get("/quick-search", { params: { q: query } })
-      .then((r) => { if (!cancelled) { setClientResults((r.data?.results || []).filter((item) => item.module === "clients").slice(0, 8)); setClientSearchFailed((r.data?.unavailable || []).includes("Client")); } })
+    const timer = setTimeout(() => api.get("/clients/search", { params: { q: query } })
+      .then((r) => { if (!cancelled) { setClientResults((r.data?.results || []).slice(0, 8)); setClientSearchFailed((r.data?.unavailable || []).includes("Client")); } })
       .catch(() => { if (!cancelled) { setClientResults([]); setClientSearchFailed(true); } })
       .finally(() => { if (!cancelled) setSearchingClients(false); }), 250);
     return () => { cancelled = true; clearTimeout(timer); };
