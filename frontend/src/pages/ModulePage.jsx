@@ -606,7 +606,7 @@ export default function ModulePage({ moduleKey }) {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base}>Cerere ATR</a>
                   <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base + "&case=" + encodeURIComponent("power-increase")}>Spor de putere</a>
-                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={"/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (pros ? "&prosId=" + encodeURIComponent(pros.id) : "")}>Creează DI-U</a>
+                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={"/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (pros ? "&prosId=" + encodeURIComponent(pros.id) : "") + ((showTestRecords || it.is_test || /\bTEST\b/i.test(String(it.name || ""))) ? "&showTests=1" : "")}>Creează DI-U</a>
                 </div>
                 {(pros || diu) && <details className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
                   <summary className="cursor-pointer text-xs font-semibold" style={{ color: "var(--blue)" }}>Descarcă documentele disponibile</summary>
