@@ -65,6 +65,26 @@ def _numeric(text: str, label: tuple[str, ...], units: tuple[str, ...], factor=N
     return int(value) if value.is_integer() else round(value, 6)
 
 
+def _battery_breaker_poles(text: str):
+    """Read a labelled breaker pole count, including compact forms such as 2P."""
+    labels = (r"\bnumber\s+of\s+(?:DC\s+)?(?:circuit\s+)?breaker\s+poles\b",
+              r"\bbreaker\s+pole\s+count\b",
+              r"\bpoles\s+(?:of\s+)?(?:the\s+)?(?:DC\s+)?(?:circuit\s+)?breaker\b")
+    found = set()
+    for label in labels:
+        rx = re.compile(label, re.I)
+        for line in (text or "").splitlines():
+            match = rx.search(line)
+            if not match:
+                continue
+            number = re.search(r"(?<![\w.])(\d+)\s*(?:P\b|poles?\b)?", line[match.end():match.end() + 90], re.I)
+            if number:
+                value = int(number.group(1))
+                if 1 <= value <= 12:
+                    found.add(value)
+    return next(iter(found)) if len(found) == 1 else None
+
+
 def _battery_breaker_integrated(text: str):
     """Return a breaker integration flag only when the datasheet states it unambiguously."""
     integrated = bool(re.search(
@@ -174,13 +194,16 @@ def extract_equipment_specs(category: str, text: str) -> dict:
             "breaker_a": ((r"\b(?:integrated|built[- ]in)\s+(?:DC\s+)?(?:circuit\s+)?breaker\s+(?:rated\s+)?current\b", r"\b(?:DC\s+)?(?:circuit\s+)?breaker\s+(?:rated\s+)?current\b"), amp_units, convert_a),
             "breaker_voltage_dc": ((r"\b(?:DC\s+)?(?:circuit\s+)?breaker\s+(?:rated|nominal)\s+voltage\b", r"\b(?:rated|nominal)\s+(?:DC\s+)?(?:circuit\s+)?breaker\s+voltage\b"), volt_units, convert_v),
             "breaker_poles": ((r"\bnumber\s+of\s+(?:DC\s+)?(?:circuit\s+)?breaker\s+poles\b", r"\bbreaker\s+pole\s+count\b"), ("p", "pole", "poles")),
-            "breaker_icu_ka": ((r"\b(?:rated\s+)?breaking\s+capacity\b", r"\bIcu\b"), ("ka",)),
+            "breaker_icu_ka": ((r"\b(?:DC\s+)?(?:circuit\s+)?breaker\s+(?:rated\s+)?breaking\s+capacity\b", r"\bIcu\s+(?:of\s+)?(?:the\s+)?(?:DC\s+)?(?:circuit\s+)?breaker\b"), ("ka",)),
         }
         for key, spec in specs.items():
             labels, units, *factor = spec
             value = _numeric(text, labels, units, factor[0] if factor else None)
             if value is not None:
                 result[key] = value
+        breaker_poles = _battery_breaker_poles(text)
+        if breaker_poles is not None:
+            result["breaker_poles"] = breaker_poles
         integration = _battery_breaker_integrated(text)
         if integration is not None:
             result["breaker_integrated"] = integration
