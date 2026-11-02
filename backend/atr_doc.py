@@ -552,7 +552,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
                 desc += f"; tensiune {D.num(battery.get('voltage')):g} V"
             if battery.get("coupling"):
                 desc += " (cuplare " + str(battery["coupling"]) + ")"
-            if D.num(battery.get("i_max")) is not None:
+            if D.num(battery.get("i_max")) is not None and D.num(battery.get("i_max")) > 0:
                 desc += f"; I max/modul {D.num(battery.get('i_max')):g} A"
             supply_details.append(desc)
         if supply_details:
