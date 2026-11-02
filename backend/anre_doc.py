@@ -89,9 +89,14 @@ def render(key, d) -> bytes:
             "va menține pe toată durata de valabilitate a atestatului dotările tehnico-materiale și numărul minim de personal autorizat prevăzute de Regulament pentru tipul de atestat solicitat "
             "și că va comunica ANRE orice modificare a acestora, în condițiile Regulamentului.", S["p"])] + sig(d)
     elif key == "decl_10":
-        s = head(d, "DECLARAȚIE PRIVIND PRELUCRAREA DATELOR CU CARACTER PERSONAL (Anexa nr. 10)") + [Paragraph(
-            f"Subsemnatul {e(c.get('rep_name'))}, reprezentant legal al {e(c.get('name'))}, îmi exprim consimțământul ca ANRE să prelucreze datele cu caracter personal din documentele depuse, "
-            "în scopul soluționării solicitării, conform Regulamentului (UE) 2016/679.", S["p"])] + sig(d)
+        s = head(d, "DECLARAȚIE DE CONSIMȚĂMÂNT (Anexa nr. 10)") + [
+            Paragraph("Se completează de fiecare persoană vizată, după citirea formularului GDPR oficial ANRE.", S["p"]),
+            Paragraph("Numele și prenumele persoanei vizate: [DE COMPLETAT]", S["p"]),
+            Paragraph("[  ] Am înțeles această declarație de consimțământ și sunt de acord cu colectarea și prelucrarea datelor mele personale în scopurile descrise în formularul GDPR.", S["p"]),
+            Paragraph("Formularul este valabil numai dacă persoana vizată bifează această căsuță cu X. DNS Energy nu exprimă și nu bifează consimțământul în numele persoanei.", S["small"]),
+            Paragraph("Data: [DE COMPLETAT]", S["p"]),
+            Paragraph("Semnătura persoanei vizate: [DE COMPLETAT]", S["p"]),
+        ]
     else:
         raise KeyError(key)
     return _doc(s, key)
