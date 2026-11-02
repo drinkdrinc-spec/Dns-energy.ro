@@ -2798,9 +2798,16 @@ import anre_routes  # noqa: E402
 import anre_templates  # noqa: E402
 app.include_router(api_router)
 # Restrict browser access to explicitly configured frontend origins.
-# Comma-separated list, e.g. https://dns-energy-web.onrender.com
+# Preserve deployment-specific origins and always allow the configured staging and DNS Energy web origins.
 _cors_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
 _cors_origins = [origin.strip().rstrip("/") for origin in _cors_raw.split(",") if origin.strip()]
+for _required_origin in (
+    "https://dns-energy-web.onrender.com",
+    "https://dns-energy.ro",
+    "https://www.dns-energy.ro",
+):
+    if _required_origin not in _cors_origins:
+        _cors_origins.append(_required_origin)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=False,
