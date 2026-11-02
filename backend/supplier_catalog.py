@@ -119,7 +119,7 @@ def _pagination_urls(doc, listing_url: str, source):
         path = parsed.path.rstrip("/") or "/"
         same_path = path == current_path
         if current_path == "/":
-            paged_path = re.fullmatch(r"/page/\\d+", path) is not None
+            paged_path = re.fullmatch(r"/page/[0-9]+", path) is not None
         else:
             paged_path = path.startswith(current_path + "/page/")
         if not (same_path or paged_path):
