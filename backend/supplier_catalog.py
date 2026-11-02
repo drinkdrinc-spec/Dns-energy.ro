@@ -34,7 +34,7 @@ PDF_LABELS = {
 
 def _safe_url(url: str, host: str) -> bool:
     parsed = urlparse(url)
-    return parsed.scheme == "https" and parsed.hostname and parsed.hostname.lower().rstrip(".") == host and not parsed.username and not parsed.password
+    return parsed.scheme == "https" and parsed.hostname and parsed.hostname.lower().rstrip(".") in (host, "www." + host) and not parsed.username and not parsed.password
 
 
 async def _get(client: httpx.AsyncClient, url: str, host: str):
@@ -75,7 +75,7 @@ async def _detail(client, source_name, source, url):
     for a in doc.xpath("//a[@href]"):
         href = urljoin(url, a.get("href", "").strip())
         label = (_text(a) + " " + a.get("href", "")).lower()
-        if not href.lower().split("?")[0].endswith(".pdf") or not _safe_url(href, source["host"]):
+        if ".pdf" not in href.lower() or not _safe_url(href, source["host"]):
             continue
         for key, words in PDF_LABELS.items():
             out_key = key + "_url"
