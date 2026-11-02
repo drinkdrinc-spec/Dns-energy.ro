@@ -452,13 +452,25 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
         return matches
 
     module_matches = await asyncio.gather(*(search_module(spec) for spec in QUICK_SEARCH_MODULES), return_exceptions=True)
-    results = []
+    collections = []
     for matches in module_matches:
         if isinstance(matches, Exception):
             logger.warning("Quick search collection failed: %s", type(matches).__name__)
+            collections.append([])
             continue
-        results.extend(matches)
-    return {"results": results[:24]}
+        collections.append(matches)
+
+    # Interleave collections so a busy client/dossier module cannot hide every
+    # equipment or document result behind the global 24-result cap.
+    results = []
+    depth = max((len(items) for items in collections), default=0)
+    for index in range(depth):
+        for items in collections:
+            if index < len(items):
+                results.append(items[index])
+                if len(results) >= 24:
+                    return {"results": results}
+    return {"results": results}
 
 @api_router.get("/data/{module}")
 async def list_items(module: str, q: Optional[str] = None, user: dict = Depends(get_current_user)):
