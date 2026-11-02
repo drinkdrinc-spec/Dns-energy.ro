@@ -523,18 +523,22 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         for inv in inverters:
             if inv.get("brand_model"):
                 supply_details.append("Invertor: " + str(inv["brand_model"]))
-        for battery in ([] if is_annex2 else batteries):
+        for battery in batteries:
             desc = "Baterie: " + str(battery.get("model") or "model necompletat")
             if battery.get("modules"):
                 desc += " × " + str(battery["modules"])
+            if D.num(battery.get("kwh")) is not None:
+                desc += f"; capacitate {D.num(battery.get('kwh')):g} kWh/modul"
+            if D.num(battery.get("voltage")) is not None:
+                desc += f"; tensiune {D.num(battery.get('voltage')):g} V"
             if battery.get("coupling"):
-                desc += " (" + str(battery["coupling"]) + ")"
+                desc += " (cuplare " + str(battery["coupling"]) + ")"
             if D.num(battery.get("i_max")) is not None:
                 desc += f"; I max/modul {D.num(battery.get('i_max')):g} A"
             supply_details.append(desc)
         if supply_details:
             _deer_cell(detail.cell(0, 1), "; ".join(supply_details))
-        amp_hours = [] if is_annex2 else [str(b.get("ah")) for b in batteries if b.get("ah") not in (None, "")]
+        amp_hours = [str(b.get("ah")) for b in batteries if b.get("ah") not in (None, "")]
         if amp_hours:
             _deer_cell(detail.cell(1, 1), ", ".join(amp_hours))
 
