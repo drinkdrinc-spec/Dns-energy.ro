@@ -44,7 +44,7 @@ CATEGORY_TERMS = {
 }
 PDF_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
-    "conformity": ("declaration", "conformity", "certificate", "certificat", "declaratie", "declarație", "iec", "ce"),
+    "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "test certificate", "iec certificate", "certificat de conformitate"),
 }
 
 
@@ -175,9 +175,14 @@ async def search_supplier_products(query: str, category: str):
                 if url not in found:
                     found.add(url)
                     candidates.append((source_name, source, category, url))
+        # Keep suppliers represented in the results instead of letting the first
+        # large store crowd out the other sources.
+        balanced = []
+        for source_name in SOURCES:
+            balanced.extend([row for row in candidates if row[0] == source_name][:6])
         detail_rows = await asyncio.gather(*[
             _detail(client, name, source, cat, url)
-            for name, source, cat, url in candidates[:24]
+            for name, source, cat, url in balanced[:18]
         ])
     products, seen = [], set()
     for row in detail_rows:
