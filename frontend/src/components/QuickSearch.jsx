@@ -8,6 +8,8 @@ export function QuickSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  const [unavailable, setUnavailable] = useState([]);
+  const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
 
@@ -34,6 +36,8 @@ export function QuickSearch() {
     const term = query.trim();
     if (!open || term.length < 2) {
       setResults([]);
+      setUnavailable([]);
+      setFailed(false);
       setLoading(false);
       return undefined;
     }
@@ -43,8 +47,14 @@ export function QuickSearch() {
       try {
         const { data } = await api.get("/quick-search", { params: { q: term } });
         if (current) setResults(Array.isArray(data.results) ? data.results : []);
+        if (current) setUnavailable(Array.isArray(data.unavailable) ? data.unavailable : []);
+        if (current) setFailed(false);
       } catch {
-        if (current) setResults([]);
+        if (current) {
+          setResults([]);
+          setUnavailable([]);
+          setFailed(true);
+        }
       } finally {
         if (current) setLoading(false);
       }
@@ -59,6 +69,8 @@ export function QuickSearch() {
     setOpen(false);
     setQuery("");
     setResults([]);
+    setUnavailable([]);
+    setFailed(false);
   };
 
   return <>
@@ -86,7 +98,8 @@ export function QuickSearch() {
         </div>
         <div className="max-h-[58vh] overflow-y-auto p-2" data-testid="quick-search-results">
           {query.trim().length < 2 ? <p className="px-3 py-6 text-center text-sm" style={{ color: "var(--muted)" }}>Introdu cel puțin 2 caractere pentru a căuta în baza firmei.</p>
-            : !loading && results.length === 0 ? <p className="px-3 py-6 text-center text-sm" style={{ color: "var(--muted)" }}>Nu am găsit clienți sau dosare care să corespundă.</p>
+            : !loading && failed ? <p className="px-3 py-6 text-center text-sm text-rose-700" role="alert">Căutarea nu este disponibilă momentan. Verifică conexiunea și încearcă din nou.</p>
+              : !loading && results.length === 0 ? <p className="px-3 py-6 text-center text-sm" style={{ color: "var(--muted)" }}>Nu am găsit clienți sau dosare care să corespundă.</p>
               : results.map((item) => <button key={`${item.module}:${item.id}`} type="button" onClick={() => { navigate(item.href); close(); }}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
                 data-testid={`quick-search-result-${item.module}`}>
@@ -97,6 +110,7 @@ export function QuickSearch() {
                 </span>
                 <ArrowUpRight size={16} className="shrink-0" style={{ color: "var(--muted)" }} />
               </button>)}
+          {unavailable.length > 0 && <p className="px-3 py-2 text-xs text-amber-800" role="status">Căutare parțială: module indisponibile — {unavailable.join(", ")}.</p>}
         </div>
         <div className="border-t px-4 py-2 text-[11px]" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>Căutarea este limitată la datele la care are acces contul tău.</div>
       </section>
