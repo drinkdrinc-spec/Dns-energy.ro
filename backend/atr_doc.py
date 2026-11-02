@@ -500,22 +500,25 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         if inverters and len(table.rows) > row:
             total = sum(D.num(inv.get("p_nom_kw")) * D.num(inv.get("count") or 1) for inv in inverters)
             _deer_cell(table.cell(len(table.rows) - 1, 4), f"{total:g}" if total else "")
-        # List batteries as equipment rows, matching inverter visibility in Annex 2.
-        # Do not overwrite the template's total row; append battery rows after it.
-        for battery_idx, battery in enumerate(batteries, 1):
-            modules = max(1, int(D.num(battery.get("modules")) or 1))
-            specs = []
-            for key, label, unit in (("voltage", "U", " V"), ("ah", "Capacitate", " Ah"),
-                                     ("i_max", "I max", " A"), ("coupling", "Cuplare", "")):
-                value = battery.get(key)
-                if value not in (None, ""):
-                    specs.append(f"{label}: {value}{unit}")
-            capacity = D.num(battery.get("kwh"))
-            if capacity:
-                capacity *= modules
-            battery_row = len(table.rows)
-            _deer_table_row(table, battery_row, [f"B{battery_idx}", modules, battery.get("model") or "",
-                "Baterie", f"{capacity:g}" if capacity else "", "", "", "; ".join(specs)])
+        # Annex 2's table is specifically for inverter active power (kW). Batteries
+        # belong in its storage details table below; putting kWh into this table
+        # makes capacity look like inverter kW. Other DEER annexes have a mixed
+        # equipment table and can carry explicit battery rows there.
+        if not is_annex2:
+            for battery_idx, battery in enumerate(batteries, 1):
+                modules = max(1, int(D.num(battery.get("modules")) or 1))
+                specs = []
+                for key, label, unit in (("voltage", "U", " V"), ("ah", "Capacitate", " Ah"),
+                                         ("i_max", "I max", " A"), ("coupling", "Cuplare", "")):
+                    value = battery.get(key)
+                    if value not in (None, ""):
+                        specs.append(f"{label}: {value}{unit}")
+                capacity = D.num(battery.get("kwh"))
+                if capacity:
+                    capacity *= modules
+                battery_row = len(table.rows)
+                _deer_table_row(table, battery_row, [f"B{battery_idx}", modules, battery.get("model") or "",
+                    "Baterie", f"{capacity:g}" if capacity else "", "", "", "; ".join(specs)])
 
     if len(tables) > detail_table:
         detail = tables[detail_table]
@@ -527,8 +530,10 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
             desc = "Baterie: " + str(battery.get("model") or "model necompletat")
             if battery.get("modules"):
                 desc += " × " + str(battery["modules"])
-            if D.num(battery.get("kwh")) is not None:
-                desc += f"; capacitate {D.num(battery.get('kwh')):g} kWh/modul"
+            battery_kwh = D.num(battery.get("kwh"))
+            if battery_kwh is not None and battery_kwh > 0:
+                modules = max(1, int(D.num(battery.get("modules")) or 1))
+                desc += f"; capacitate totală {battery_kwh * modules:g} kWh ({modules} × {battery_kwh:g} kWh/modul)"
             if D.num(battery.get("voltage")) is not None:
                 desc += f"; tensiune {D.num(battery.get('voltage')):g} V"
             if battery.get("coupling"):
@@ -785,3 +790,4 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
               P("Comparați această fișă cu formularul oficial atașat. Confirmați datele de identificare, POD, tipul cererii, puterile aprobate/solicitate și cerințele specifice operatorului. Fișa nu înlocuiește semnătura solicitantului, documentele justificative sau verificarea proiectantului.", "small")]
     doc.build(story)
     return buf.getvalue()
+
