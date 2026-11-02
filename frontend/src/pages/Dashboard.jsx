@@ -6,7 +6,7 @@ import { AtrDeadlines } from "@/components/AtrDeadlines";
 import {
   Users, FolderOpen, GitBranch, AlertTriangle, SquareStack, Zap, ExternalLink,
   ShieldAlert, FileText, SunMedium, Cpu, Archive, FileCheck2, Receipt,
-  ArrowRight, Upload, ClipboardCheck, PackageCheck,
+  ArrowRight, Upload, ClipboardCheck, PackageCheck, Search,
 } from "lucide-react";
 
 const FLOW = [
@@ -114,7 +114,22 @@ function Stat({ label, value, foot, color, icon: Icon }) {
 
 export default function Dashboard() {
   const [s, setS] = useState({ clients: 0, diu: 0, mono: 0, pending: 0, recent: [] });
+  const [clientQuery, setClientQuery] = useState("");
+  const [clientResults, setClientResults] = useState([]);
+  const [searchingClients, setSearchingClients] = useState(false);
   useEffect(() => { api.get("/stats/dashboard").then((r) => setS(r.data)).catch(() => {}); }, []);
+  useEffect(() => {
+    const query = clientQuery.trim();
+    if (query.length < 2) { setClientResults([]); setSearchingClients(false); return undefined; }
+    let cancelled = false;
+    setClientResults([]);
+    setSearchingClients(true);
+    const timer = setTimeout(() => api.get("/data/clients", { params: { q: query } })
+      .then((r) => { if (!cancelled) setClientResults((r.data || []).slice(0, 8)); })
+      .catch(() => { if (!cancelled) setClientResults([]); })
+      .finally(() => { if (!cancelled) setSearchingClients(false); }), 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [clientQuery]);
 
   return (
     <div className="dns-dashboard">
@@ -133,6 +148,32 @@ export default function Dashboard() {
       </div>
 
       <AtrDeadlines />
+
+      <section className="den-panel mb-6" aria-labelledby="client-fast-search-title" data-testid="dashboard-client-search">
+        <div className="flex items-center gap-2 mb-3">
+          <Search size={17} style={{ color: "var(--blue)" }} />
+          <h2 id="client-fast-search-title" className="text-base font-bold">Acces rapid la baza de clienți</h2>
+        </div>
+        <input
+          className="den-input w-full"
+          value={clientQuery}
+          onChange={(event) => setClientQuery(event.target.value)}
+          placeholder="Caută nume, POD, telefon, e-mail sau adresă…"
+          aria-label="Caută în baza de clienți"
+          data-testid="dashboard-client-search-input"
+        />
+        {clientQuery.trim().length >= 2 && <div className="mt-2 divide-y" style={{ borderColor: "var(--line)" }} aria-live="polite">
+          {searchingClients ? <div className="py-3 text-xs" style={{ color: "var(--muted)" }}>Caut în baza de date…</div> : clientResults.length ? clientResults.map((client) => (
+            <Link key={client.id} to={"/clienti?edit=" + encodeURIComponent(client.id)} className="flex items-center justify-between gap-3 py-3 hover:bg-slate-50" data-testid={"dashboard-client-result-" + client.id}>
+              <span className="min-w-0">
+                <b className="block text-sm truncate">{client.name || "Client fără nume"}</b>
+                <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{[client.pod, client.phone, client.address].filter(Boolean).join(" · ") || "Deschide fișa clientului"}</span>
+              </span>
+              <ArrowRight size={16} className="shrink-0" style={{ color: "var(--blue)" }} />
+            </Link>
+          )) : <div className="py-3 text-xs" style={{ color: "var(--muted)" }}>Nu am găsit clienți pentru această căutare.</div>}
+        </div>}
+      </section>
 
       <section className="den-panel mb-6" aria-labelledby="main-flow-title">
         <div className="flex items-start justify-between gap-3 mb-4">
