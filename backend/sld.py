@@ -21,6 +21,33 @@ CELL = ParagraphStyle("c", fontName="LS", fontSize=6.6, leading=8)
 CELLB = ParagraphStyle("cb", fontName="LSB", fontSize=6.6, leading=8)
 
 
+def battery_protection(battery, proposal=None):
+    """Describe known DC battery protection without turning a proposal into an installed device."""
+    battery = battery or {}
+    proposal = proposal or {}
+    breaker = n(battery.get("breaker_a"))
+    fuse = n(battery.get("fuse_a"))
+    proposed_fuse = n(proposal.get("fuse_a"))
+    if breaker:
+        return {"kind": "breaker", "rating": breaker, "source": "documentată"}
+    if battery.get("breaker_integrated"):
+        return {"kind": "integrated", "rating": None, "source": "integrată; calibru neconfirmat"}
+    if fuse:
+        return {"kind": "fuse", "rating": fuse, "source": "declarată; de verificat"}
+    if proposed_fuse:
+        return {"kind": "proposal", "rating": proposed_fuse, "source": "PROPUSĂ — de confirmat"}
+    return {"kind": "missing", "rating": None, "source": "LIPSĂ — protecție de confirmat"}
+
+
+def battery_protection_text(state):
+    kind = state["kind"]
+    device = {"breaker": "întreruptor DC", "integrated": "protecție integrată",
+              "fuse": "siguranță fuzibilă DC", "proposal": "siguranță fuzibilă DC propusă",
+              "missing": "protecție DC neidentificată"}[kind]
+    rating = gv(state.get("rating"), " A")
+    return f"{device}{f' {rating}' if rating else ''} — {state['source']}"
+
+
 def gv(x, unit=""):
     if x in (None, "", 0) or (isinstance(x, float) and x == 0):
         return None
@@ -294,18 +321,28 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         # Battery branch: DC breaker, datasheet ratings and cable section from selected data.
         if inv.get("battery_mode") == "own":
             bt = inv.get("battery") or {}
+            protection = battery_protection(bt, r["proposals"]["battery"])
             S.wire(cx, cy - 13, cx, cy - 16, "bat")
-            S.switch_vertical(cx, cy - 19)
+            if protection["kind"] == "breaker":
+                S.switch_vertical(cx, cy - 19)
+            elif protection["kind"] in ("fuse", "proposal"):
+                S.fuse(cx, cy - 19, vertical=True)
+            elif protection["kind"] == "missing":
+                S.node(cx, cy - 16); S.node(cx, cy - 22)
+            else:
+                S.wire(cx, cy - 16, cx, cy - 22, "bat")
             S.wire(cx, cy - 22, cx, cy - 26, "bat")
             S.battery(cx, cy - 26)
-            breaker_a = bt.get("breaker_a") or bt.get("fuse_a") or r["proposals"]["battery"].get("fuse_a")
-            breaker_label = f"-Q{i + 1}.B " + ("INT " if bt.get("breaker_integrated") else "")
-            breaker_detail = " A"
-            if n(bt.get("breaker_poles")):
-                breaker_detail += f" {int(n(bt.get('breaker_poles')))}P"
-            if n(bt.get("breaker_voltage_dc")):
-                breaker_detail += f" {gv(n(bt.get('breaker_voltage_dc')), 'Vdc')}"
-            S.val(cx + 6, cy - 17.2, breaker_label, breaker_a, breaker_detail, size=4.4, w=29)
+            device_code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
+            rating = gv(protection.get("rating"), " A")
+            details = f"{device_code}{i + 1}.B {rating + ' · ' if rating else ''}{protection['source']}"
+            if protection["kind"] == "breaker":
+                if n(bt.get("breaker_poles")):
+                    details += f" · {int(n(bt.get('breaker_poles')))}P"
+                if n(bt.get("breaker_voltage_dc")):
+                    details += f" · {gv(n(bt.get('breaker_voltage_dc')), 'Vdc')}"
+            color = RED if protection["kind"] == "missing" else (PV_ORANGE if protection["kind"] == "proposal" else INK)
+            S.text(cx + 6, cy - 17.2, details, 4.15, True, color, w=29)
             S.text(cx + 6, cy - 22.4, f"-G{i + 1} {bt.get('model') or '[model baterie lipsă]'}", 4.4, True, w=29)
             cable_unit = " mm² DC"
             if n(bt.get("breaker_icu_ka")):
@@ -348,13 +385,23 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.wire(126, cys[u] - 13, 126, y_shared + 10, "dc")
         if users:
             S.wire(126, y_shared + 10, x, y_shared + 10, "dc")
+        protection = battery_protection(b, battery_cable_proposal(b))
         S.wire(x, y_shared + 10, x, y_shared + 5, "dc")
-        S.switch_vertical(x, y_shared + 2)
+        if protection["kind"] == "breaker":
+            S.switch_vertical(x, y_shared + 2)
+        elif protection["kind"] in ("fuse", "proposal"):
+            S.fuse(x, y_shared + 2, vertical=True)
+        elif protection["kind"] == "missing":
+            S.node(x, y_shared + 5); S.node(x, y_shared - 1)
+        else:
+            S.wire(x, y_shared + 5, x, y_shared - 1, "dc")
         S.wire(x, y_shared - 1, x, y_shared - 4, "dc")
         S.battery(x, y_shared - 4)
         S.text(x + 6, y_shared + 11, f"-G{len(invs) + k + 1} baterie comună", 4.5, True, w=38)
-        S.val(x + 6, y_shared + 7, f"-Q{k + 1}.B ", b.get("breaker_a") or b.get("fuse_a") or battery_cable_proposal(b).get("fuse_a"),
-              f" A DC · {gv(n(b.get('voltage')), ' V') or '[lipsă V]'}", size=4.2, w=38)
+        rating = gv(protection.get("rating"), " A")
+        code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
+        status = f"{code}{k + 1}.B {rating + ' · ' if rating else ''}{protection['source']} · {gv(n(b.get('voltage')), ' V') or '[lipsă V]'}"
+        S.text(x + 6, y_shared + 7, status, 4.0, True, RED if protection["kind"] == "missing" else (PV_ORANGE if protection["kind"] == "proposal" else INK), w=38)
         S.text(x + 6, y_shared + 2.5, str(b.get("model") or "[model baterie lipsă]"), 4.2, w=38)
         S.val(x + 6, y_shared - 2, "I max ", b.get("i_max"), " A", size=4.2, w=38)
         S.val(x + 6, y_shared - 6.5, "Cablu ", b.get("cable_section") or b.get("section") or battery_cable_proposal(b).get("section"), " mm²", size=4.2, w=38)
@@ -733,13 +780,15 @@ def protections(rec, res):
         out.append((f"-Q{i + 1}.1", "Întreruptor automat AC invertor", (f"C{gv(n(ac.get('breaker_a')))} A {r['proposals']['ac']['poles']}" + (f", Icu {gv(n(ac.get('icu_ka')))} kA" if n(ac.get("icu_ka")) else "")) if n(ac.get("breaker_a")) else None, "-TFV"))
         out.append((f"-F{i + 1}.1", "Dispozitiv diferențial (DDR)", (f"{inv.get('rcd_type')} {gv(n(inv.get('rcd_ma')), ' mA') or ''}".strip()) if inv.get("rcd_type") else None, "-TFV"))
         if inv.get("battery_mode") == "own":
-            out.append((f"-Q{i + 1}.B", "Întreruptor DC baterie", f"{gv(n(bt.get('breaker_a') or bt.get('fuse_a') or r['proposals']['battery'].get('fuse_a')), ' A DC') or '[lipsă] A DC'} · {gv(n(bt.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(bt.get('cable_section') or bt.get('section') or r['proposals']['battery'].get('section')), ' mm²') or '[lipsă]'}", f"-G{i + 1}"))
+            protection = battery_protection(bt, r["proposals"]["battery"])
+            out.append((f"-Q{i + 1}.B", battery_protection_text(protection), f"{gv(protection.get('rating'), ' A DC') or protection['source']} · {gv(n(bt.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(bt.get('cable_section') or bt.get('section') or r['proposals']['battery'].get('section')), ' mm²') or '[lipsă]'}", f"-G{i + 1}"))
         if (inv.get("backup") or {}).get("enabled"):
             out.append((f"-Q{i + 1}.EPS", "Întreruptor circuit backup / EPS", inv["backup"].get("breaker"), f"-TB{i + 1}"))
     for k, battery in enumerate(cef.get("shared_batteries") or []):
-        rating = battery.get("breaker_a") or battery.get("fuse_a") or battery_cable_proposal(battery).get("fuse_a")
-        value = f"{rating if rating not in (None, '') else '[lipsă]'} A DC · {gv(n(battery.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(battery.get('cable_section') or battery.get('section') or battery_cable_proposal(battery).get('section')), ' mm²') or '[lipsă]'}"
-        out.append((f"-Q{len(cef.get('inverters') or []) + k + 1}.B", "Întreruptor DC baterie comună", value, f"-GC{k + 1}"))
+        proposal = battery_cable_proposal(battery)
+        protection = battery_protection(battery, proposal)
+        value = f"{gv(protection.get('rating'), ' A DC') or protection['source']} · {gv(n(battery.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(battery.get('cable_section') or battery.get('section') or proposal.get('section')), ' mm²') or '[lipsă]'}"
+        out.append((f"-Q{len(cef.get('inverters') or []) + k + 1}.B", battery_protection_text(protection), value, f"-GC{k + 1}"))
     out.append(("-Q0.TG", "Întreruptor general TG", gv(n(grid.get("tg_breaker_a")), " A " + ("4P" if tri else "2P")), "-TG"))
     out.append(("-FA AC", "Descărcător SPD AC", grid.get("spd_ac"), "-TG"))
     if base["grid"]["anti"]:
@@ -781,9 +830,11 @@ def sheet_data(rec, client, settings, res, approval):
                        str(sum(s["panels"] for s in r["strings"]))])
         if inv.get("battery_mode") == "own":
             bt = inv.get("battery") or {}
-            eq.append([f"-G{i + 1}", "Baterie", bt.get("model"), f"{gv(r['battery_kwh'], ' kWh') or '—'} · {gv(n(bt.get('voltage')), ' V') or '—'} · cuplare {bt.get('coupling') or 'DC'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'} · Q DC {gv(n(bt.get('breaker_a') or bt.get('fuse_a') or r['proposals']['battery'].get('fuse_a')), ' A') or '[lipsă]'} · cablu {gv(n(bt.get('cable_section') or bt.get('section') or r['proposals']['battery'].get('section')), ' mm²') or '[lipsă]'}", str(int(n(bt.get("modules"), 1)) or 1)])
+            protection = battery_protection(bt, r["proposals"]["battery"])
+            eq.append([f"-G{i + 1}", "Baterie", bt.get("model"), f"{gv(r['battery_kwh'], ' kWh') or '—'} · {gv(n(bt.get('voltage')), ' V') or '—'} · cuplare {bt.get('coupling') or 'DC'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'} · {battery_protection_text(protection)} · cablu {gv(n(bt.get('cable_section') or bt.get('section') or r['proposals']['battery'].get('section')), ' mm²') or '[lipsă]'}", str(int(n(bt.get("modules"), 1)) or 1)])
     for k, b in enumerate(cef.get("shared_batteries") or []):
-        eq.append([f"-GC{k + 1}", "Baterie comună", b.get("model"), f"{gv(n(b.get('kwh')), ' kWh/modul') or '—'} · {gv(n(b.get('voltage')), ' V') or '—'} · Imax {gv(n(b.get('i_max')), ' A') or '—'} · Q DC {gv(n(b.get('breaker_a') or b.get('fuse_a')), ' A') or '[lipsă]'} · cablu {gv(n(b.get('cable_section') or b.get('section')), ' mm²') or '[lipsă]'}", str(int(n(b.get("modules"), 1)) or 1)])
+        protection = battery_protection(b, battery_cable_proposal(b))
+        eq.append([f"-GC{k + 1}", "Baterie comună", b.get("model"), f"{gv(n(b.get('kwh')), ' kWh/modul') or '—'} · {gv(n(b.get('voltage')), ' V') or '—'} · Imax {gv(n(b.get('i_max')), ' A') or '—'} · {battery_protection_text(protection)} · cablu {gv(n(b.get('cable_section') or b.get('section') or battery_cable_proposal(b).get('section')), ' mm²') or '[lipsă]'}", str(int(n(b.get("modules"), 1)) or 1)])
     if grid.get("meter"):
         eq.append(["-P2", "Smart meter", grid.get("meter"), f"TC {grid.get('sm_ct_ratio')}" if grid.get("sm_ct_ratio") else "conectare directă", "1"])
     eq.append(["-P1", "Contor bidirecțional OD", "proprietate OD", f"măsură prin TC {grid.get('ct_ratio')}" if grid.get("ct_ratio") else "măsură directă", "1"])
