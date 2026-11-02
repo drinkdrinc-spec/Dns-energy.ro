@@ -29,6 +29,26 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
     : false).filter((p) => showTests || !/\bTEST\b/i.test([p.number, p.client_name].filter(Boolean).join(" ")));
   const chosenPros = linked.find((p) => p.id === form.pros_id) || null;
   useEffect(() => {
+    if (!selectedClient || linked.length !== 1 || form.pros_id) return;
+    const p = linked[0];
+    const hasBattery = Boolean(p.battery || /hibrid/i.test(String(p.system_type || "")) || p.cef?.shared_batteries?.length
+      || p.cef?.inverters?.some((x) => x.battery_mode === "own" ? Boolean(x.battery?.model) : x.battery_mode === "shared" && Boolean(x.shared_battery_id)));
+    const values = {
+      address: p.address || selectedClient.address || "",
+      operator: p.operator || selectedClient.operator || "",
+      power: p.inverter_kw || p.power || p.cef?.total_kw || "",
+      atr: p.atr || "",
+      type: hasBattery ? "Sistem fotovoltaic hibrid" : "Sistem fotovoltaic on-grid",
+      supply: p.supply || "",
+      status: form.status || "În lucru",
+    };
+    setVal("pros_id", p.id);
+    setVal("client_id", selectedClient.id);
+    for (const [key, value] of Object.entries(values)) {
+      if (!form[key] && value !== "") setVal(key, value);
+    }
+  }, [selectedClient?.id, linked.length, form.pros_id]);
+  useEffect(() => {
     const operator = chosenPros?.operator || selectedClient?.operator || "";
     if (operator && !form.operator) setVal("operator", operator);
   }, [chosenPros?.id, selectedClient?.id, form.operator]);
