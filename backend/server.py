@@ -930,7 +930,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     if not client:
         client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""), "email": d.get("email", ""),
                              "address": d.get("address", ""), "hq_address": d.get("hq_address", ""), "county": d.get("county", ""),
-                             "pod": d.get("pod", ""), "operator": d.get("operator", ""), "cadastral_nr": d.get("cadastral_nr", ""),
+                             "locality": d.get("locality", ""), "pod": d.get("pod", ""), "operator": d.get("operator", ""), "cadastral_nr": d.get("cadastral_nr", ""),
                              "cf_nr": d.get("cf_nr", ""), "supplier": d.get("supplier", ""), "rep_name": d.get("rep_name", ""),
                              "regcom": d.get("regcom", ""), "kind": d.get("kind", "")})
         client["docs"] = client.get("docs") or {}
@@ -939,7 +939,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     client_values = {"name": name, "idcode": d.get("cnp"), "id_series": d.get("id_series"), "id_number": d.get("id_number"),
                      "phone": d.get("phone"), "email": d.get("email"),
                      "address": d.get("address"), "hq_address": d.get("hq_address"), "county": d.get("county"),
-                     "pod": d.get("pod"), "operator": d.get("operator"), "cadastral_nr": d.get("cadastral_nr"),
+                     "locality": d.get("locality"), "pod": d.get("pod"), "operator": d.get("operator"), "cadastral_nr": d.get("cadastral_nr"),
                      "cf_nr": d.get("cf_nr"), "supplier": d.get("supplier"), "rep_name": d.get("rep_name"),
                      "regcom": d.get("regcom"), "kind": d.get("kind")}
     client_updates = {}
