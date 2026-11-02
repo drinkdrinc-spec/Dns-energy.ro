@@ -3,6 +3,7 @@ import { Outlet, Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
+import { QuickSearch } from "@/components/QuickSearch";
 import { Menu, Home, Users, FolderOpen, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity, Download } from "lucide-react";
 
 export default function Layout() {
@@ -21,6 +22,7 @@ export default function Layout() {
           <PwaInstallButton />
         </header>
         <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto pb-24 md:pb-8">
+          <QuickSearch />
           <PlanBanner />
           {showWorkflow && <DossierWorkflow pathname={location.pathname} />}
           <Outlet />
@@ -172,3 +174,4 @@ export function Btn({ children, variant = "primary", className = "", ...props })
     </button>
   );
 }
+
