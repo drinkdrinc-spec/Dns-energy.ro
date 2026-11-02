@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 _NUMBER = re.compile(r"(?<![\w.])[-+]?(?:\d+(?:[.,]\d+)?)(?!\w)")
-_UNIT = re.compile(r"%\s*/\s*°?\s*C|°\s*C|kWh|MWh|Wh|kW|MW|W|mA|A|Ah|mV|V", re.I)
+_UNIT = re.compile(r"%\s*/\s*°?\s*C|°\s*C|MWh|kWh|Wh|MW|kW|W|mAh|Ah|mA|A|mV|V", re.I)
 
 
 def _unit_for(tail: str, number_start: int, number_end: int) -> str:
@@ -38,7 +38,7 @@ def _labeled_numbers(text: str, labels: tuple[str, ...], units: tuple[str, ...],
                 if index + 1 >= len(lines):
                     continue
                 tail = lines[index + 1].strip()
-                if not re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?\s*[^\w\s]?\s*(?:%\s*/\s*°?\s*C|°\s*C|kWh|MWh|Wh|kW|MW|W|mA|A|Ah|mV|V)", tail, re.I):
+                if not re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?\s*[^\w\s]?\s*(?:%\s*/\s*°?\s*C|°\s*C|MWh|kWh|Wh|MW|kW|W|mAh|Ah|mA|A|mV|V)", tail, re.I):
                     continue
                 number = _NUMBER.search(tail)
             if not number:
