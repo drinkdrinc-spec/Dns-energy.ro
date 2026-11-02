@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink, ShieldCheck, Search, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { PageHeader, Btn } from "@/components/Layout";
-import { api } from "@/lib/api";
+import { api, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 
 const PORTALS = [
   { id: "deer", name: "DEER", detail: "Distribuție Energie Electrică România", url: "https://avize.distributie-energie.ro/", hints: ["5940"] },
@@ -118,6 +118,16 @@ export default function DistributionPortals() {
             <div className="text-sm mt-1" style={{ color: "var(--muted)" }}>{selected.detail}</div>
             {selectedId === "deer" && <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>Pentru cereri și documente noi, DEER indică portalul dedicat unificat. Portalurile regionale vechi sunt doar pentru consultarea istoricului.</div>}
             {atrCreateUrl && <Link to={atrCreateUrl} className="inline-flex items-center gap-2 mt-4 rounded-lg border px-4 py-3 text-sm font-bold" style={{ borderColor: "var(--blue)", color: "var(--blue)", background: "#fff" }} data-testid="portal-create-prefilled-atr"><CheckCircle2 size={16} /> Pregătește cererea ATR din acest dosar</Link>}
+            {selectedPros && <div className="mt-4 rounded-xl border bg-white p-4" style={{ borderColor: "var(--line)" }} data-testid="portal-dossier-shortcuts">
+              <div className="font-bold text-sm">Dosar gata de verificat și depus</div>
+              <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Descarcă documentele DNS Energy, apoi atașează-le în portalul oficial. Datele și fișierele rămân în dosarul clientului.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openAuthenticatedFile(`/dossier/${selectedPros.id}/export`)}>Previzualizează dosarul PDF</button>
+                <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${selectedPros.id}/pdf?download=1`, `schema_monofilara_${selectedPros.id.slice(0, 8)}.pdf`)}>Descarcă schema</button>
+                <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${selectedPros.id}`, `pram_priza_${selectedPros.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
+                <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/pv_pif/${selectedPros.id}`, `pif_${selectedPros.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
+              </div>
+            </div>}
             <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-4 ml-2 rounded-lg px-4 py-3 text-sm font-bold text-white" style={{ background: "var(--blue)" }} data-testid="portal-open-selected">
               <ExternalLink size={16} /> Deschide portalul operatorului
             </a>
