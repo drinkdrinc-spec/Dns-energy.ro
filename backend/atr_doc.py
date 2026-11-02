@@ -213,27 +213,24 @@ def storage_details(pros: dict, rec: dict) -> list:
     for inv in cef.get("inverters") or []:
         if inv.get("battery_mode") == "own":
             battery = inv.get("battery") or {}
-            if CEF.has_storage({"battery": battery}):
+            if battery:
                 quantity = max(1, int(D.num(inv.get("count")) or 1))
                 modules = max(1, int(D.num(battery.get("modules")) or 1))
                 details.append({**battery, "modules": modules * quantity})
-    details.extend(battery for battery in (cef.get("shared_batteries") or [])
-                   if CEF.has_storage({"battery": battery}))
-    legacy_record = rec or {}
-    legacy = next((value for value in (legacy_record.get("battery"), legacy_record.get("storage"))
-                   if CEF.has_storage({"battery": value})), None)
-    if not details and CEF.has_storage(legacy_record):
-        value = legacy if isinstance(legacy, dict) else {}
+    details.extend(cef.get("shared_batteries") or [])
+    if not details and ((rec or {}).get("battery") or (rec or {}).get("storage")):
+        value = (rec or {}).get("battery") or (rec or {}).get("storage")
         details.append({
-            "model": legacy if isinstance(legacy, str) else (value.get("model") or legacy_record.get("battery_model")),
-            "modules": value.get("modules") or legacy_record.get("battery_count"),
-            "kwh": value.get("kwh") or legacy_record.get("battery_kwh"),
-            "ah": value.get("ah") or legacy_record.get("battery_ah"),
-            "voltage": value.get("voltage") or legacy_record.get("battery_v"),
-            "i_max": value.get("i_max") or legacy_record.get("battery_i_max"),
-            "coupling": value.get("coupling") or legacy_record.get("battery_coupling"),
+            "model": value if isinstance(value, str) else value.get("model"),
+            "modules": (rec or {}).get("battery_count"),
+            "kwh": (rec or {}).get("battery_kwh"),
+            "ah": (rec or {}).get("battery_ah"),
+            "voltage": (rec or {}).get("battery_v"),
+            "i_max": (rec or {}).get("battery_i_max"),
+            "coupling": (rec or {}).get("battery_coupling"),
         })
     return details
+
 
 def storage_row(battery: dict) -> list:
     modules = battery.get("modules")
@@ -334,10 +331,8 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
     return buf.getvalue()
 
 
-def _deer_docx_template(rec: dict) -> str | None:
+def _deer_docx_template(rec: dict) -> str:
     case = str((rec or {}).get("deer_case") or "").strip().lower()
-    if not case:
-        return None
     if "program de finanțare" in case or "program de finantare" in case:
         return "anexa4_funding.docx.b64"
     if "≤10,8" in case or "≤ 10,8" in case or "<=10,8" in case:
@@ -352,7 +347,7 @@ def _deer_docx_template(rec: dict) -> str | None:
         return None
     if "anexa 2" in case or "existent" in case:
         return "anexa2_existing.docx.b64"
-    return None
+    return "anexa2_existing.docx.b64"
 
 
 def _deer_value(value):
@@ -383,14 +378,9 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
 
     if op_key((rec or {}).get("operator"), (pros or {}).get("operator"), (client or {}).get("operator")) != "deer":
         raise ValueError("Precompletarea formularului oficial este disponibilă doar pentru DEER.")
-    case = str((rec or {}).get("deer_case") or "").strip().lower()
     filename = _deer_docx_template(rec)
     if not filename:
-        if not case:
-            raise ValueError("Selectează procedura DEER înainte de generarea anexei oficiale.")
-        if ">400" in case:
-            raise ValueError("Procedura DEER pentru instalații de peste 400 kW este disponibilă pe site-ul operatorului în format DOC; descărcați formularul oficial de acolo.")
-        raise ValueError("Procedura DEER selectată nu are un formular DOCX disponibil în registru. Verifică formularul oficial înainte de depunere.")
+        raise ValueError("Procedura DEER pentru instalații de peste 400 kW este disponibilă pe site-ul operatorului în format DOC; descărcați formularul oficial de acolo.")
     template_path = Path(__file__).parent / "templates" / "deer" / filename
     try:
         raw = b64decode(template_path.read_text(encoding="ascii"), validate=True)
@@ -552,7 +542,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
                 desc += f"; tensiune {D.num(battery.get('voltage')):g} V"
             if battery.get("coupling"):
                 desc += " (cuplare " + str(battery["coupling"]) + ")"
-            if D.num(battery.get("i_max")) is not None and D.num(battery.get("i_max")) > 0:
+            if D.num(battery.get("i_max")) is not None:
                 desc += f"; I max/modul {D.num(battery.get('i_max')):g} A"
             supply_details.append(desc)
         if supply_details:
