@@ -14,6 +14,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 import logging
 import uuid
+import re
 import bcrypt
 import jwt
 import requests
@@ -188,7 +189,7 @@ def check_inverters(user: dict, d: dict):
 
 # ---------------- Object storage ----------------
 # New files use MongoDB GridFS; legacy files are read-through migrated only when the old source remains accessible.
-from gridfs_storage import init_storage, put_object, get_object, has_gridfs_object, LegacyObjectUnavailable
+from gridfs_storage import init_storage, put_object, get_object, LegacyObjectUnavailable
 
 @app.exception_handler(LegacyObjectUnavailable)
 async def legacy_file_unavailable(request: Request, exc: LegacyObjectUnavailable):
@@ -302,7 +303,7 @@ async def register(body: RegisterReq, request: Request):
 
 @api_router.post("/auth/login")
 async def login(body: LoginReq, request: Request):
-    email = body.email.strip().lower()
+    email = body.email.lower()
     ident = f"login:{email}"
     att = await db.login_attempts.find_one({"identifier": ident})
     if att and att.get("count", 0) >= 5 and att.get("until", "") > datetime.now(timezone.utc).isoformat():
@@ -392,6 +393,48 @@ def clean(doc: dict) -> dict:
     if isinstance(doc.get("atr_track"), dict):
         doc["atr_track"] = {k: v for k, v in doc["atr_track"].items() if k != "token"}
     return doc
+
+
+QUICK_SEARCH_MODULES = [
+    ("clients", "Client", "client_name", ["name", "phone", "email", "cnp", "pod", "address", "locality", "county"], "/clienti"),
+    ("prosumator", "Dosar prosumator", "client_name", ["client_name", "number", "pod", "address", "locality", "county", "operator"], "/prosumator"),
+    ("atr", "Cerere ATR", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/cerere-atr"),
+    ("power", "Spor de putere", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/spor-putere"),
+    ("diu", "Dosar DIU", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/diu"),
+    ("documents", "Document", "client_name", ["client_name", "title", "name", "filename", "type", "pod"], "/documente"),
+]
+
+
+@api_router.get("/quick-search")
+async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: dict = Depends(get_current_user)):
+    """Search the signed-in tenant's client and dossier records without loading whole collections."""
+    term = q.strip()
+    if len(term) < 2:
+        return {"results": []}
+    pattern = re.compile(re.escape(term), re.IGNORECASE)
+    results = []
+    for module, label, name_key, fields, route in QUICK_SEARCH_MODULES:
+        try:
+            guard(module, user)
+        except HTTPException:
+            continue
+        field_query = {"$or": [{field: pattern} for field in fields]}
+        query = {"$and": [scope_q(user, module), field_query]}
+        rows = await db[module].find(query, {"_id": 0, "id": 1, "name": 1, "client_name": 1, "number": 1,
+                                             "pod": 1, "address": 1, "locality": 1, "county": 1,
+                                             "operator": 1, "title": 1, "filename": 1, "type": 1,
+                                             "is_test": 1}).sort("updated_at", -1).limit(5).to_list(5)
+        for row in rows:
+            if row.get("is_test") or re.search(r"\bTEST\b", " ".join(str(row.get(k) or "") for k in ("name", "client_name", "number")), re.I):
+                continue
+            item_id = str(row.get("id") or "")
+            if not item_id:
+                continue
+            client_name = row.get(name_key) or row.get("name") or "Înregistrare fără nume"
+            detail = " · ".join(str(row.get(k)) for k in ("number", "pod", "locality", "county", "operator") if row.get(k))
+            results.append({"id": item_id, "module": module, "label": label, "title": client_name,
+                            "detail": detail, "href": f"{route}?edit={item_id}"})
+    return {"results": results[:24]}
 
 @api_router.get("/data/{module}")
 async def list_items(module: str, q: Optional[str] = None, user: dict = Depends(get_current_user)):
@@ -661,7 +704,7 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
         "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "deyeess.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de",
         "sma-solar.com", "fox-ess.com", "aikosolar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
         "risenenergy.com", "bydbatterybox.com", "dyness.com", "pylontech.com.cn", "pylontech.us", "solarshop.baywa-re.lv", "solaxpower.com", "jinkosolar.eu",
-        "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro", "depozitsolar.ro", "solarhev.ro", "solartech.ro", "eastrongroup.com", "hqsmartcloud.com",
+        "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro", "depozitsolar.ro", "solarhev.ro", "solartech.ro", "hqsmartcloud.com",
     )
     if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in trusted_document_domains):
         raise HTTPException(status_code=400, detail="Folosește un link HTTPS de la producător sau distribuitorul autorizat.")
@@ -833,37 +876,6 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
             "file": {"storage_path": stored["path"], "original_filename": file.filename,
                      "content_type": ct, "size": len(data)}}
 
-
-@api_router.post("/ai/extract-company")
-async def ai_extract_company(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    require(user, "admin")
-    if not has_feature(user, "ai_gpt") or "ai_gpt" in user["plan"].get("disabled", []):
-        raise HTTPException(status_code=403, detail="Extragerea AI nu este activă pentru acest cont.")
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise HTTPException(status_code=503, detail="Serviciul AI nu este configurat în API.")
-    data = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
-    if not data:
-        raise HTTPException(status_code=400, detail="Fișierul este gol")
-    filename = str(file.filename or "certificat.pdf")
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
-    ct = str(file.content_type or "").split(";", 1)[0].strip().lower()
-    if not ct or ct == "application/octet-stream":
-        ct = MIME_TYPES.get(ext, "application/octet-stream")
-    ct = validate_upload_payload(filename, ct, data)
-    from ai_extract import extract_company_document
-    try:
-        fields = await extract_company_document(data, ct)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception:
-        logger.exception("Company profile extraction failed")
-        raise HTTPException(status_code=502, detail="Nu am putut citi certificatul. Încearcă un PDF mai clar sau completează câmpurile manual.")
-    engine = fields.pop("_engine", "OpenAI — extragere asistată")
-    await audit(user, "extragere date profil firmă", "settings", user["id"], list(fields.keys()))
-    return {"data": fields, "engine": engine}
-
 def _new(user, extra):
     now = datetime.now(timezone.utc).isoformat()
     return {"id": str(uuid.uuid4()), "owner": user["id"], "created_at": now, "updated_at": now,
@@ -886,26 +898,16 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         if not isinstance(f, dict) or not str(f.get("storage_path") or "").startswith(APP_NAME + "/uploads/" + str(user["id"]) + "/"):
             raise HTTPException(status_code=400, detail="Document invalid sau neîncărcat în contul curent")
     identity_code = str(d.get("cnp") or "").strip()
-    selected_client_id = str(d.get("client_id") or "").strip()
     client = None
-    if selected_client_id:
-        # Keep the dossier attached to the exact client selected in the UI.
-        client = await db.clients.find_one({**scope_q(user, "clients"), "id": selected_client_id}, {"_id": 0})
-        if not client:
-            raise HTTPException(status_code=404, detail="Clientul selectat nu există sau nu aparține contului curent")
-        stored_identity = str(client.get("idcode") or client.get("cui") or "").strip()
-        if identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
-            raise HTTPException(status_code=409, detail="CNP-ul/CUI-ul nu corespunde clientului selectat")
-    else:
-        if identity_code:
-            client = await db.clients.find_one({**scope_q(user, "clients"),
-                "$or": [{"idcode": identity_code}, {"cui": identity_code}]}, {"_id": 0})
-        if not client:
-            client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
-        stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
-        # A same-name client with a different CNP/CUI is a separate person/company.
-        if client and identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
-            client = None
+    if identity_code:
+        client = await db.clients.find_one({**scope_q(user, "clients"),
+            "$or": [{"idcode": identity_code}, {"cui": identity_code}]}, {"_id": 0})
+    if not client:
+        client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
+    stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
+    # A same-name client with a different CNP/CUI is a separate person/company.
+    if client and identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+        client = None
 
     if d.get("pod"):
         duplicate_match = []
@@ -1250,22 +1252,6 @@ async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Q
     user = await user_from_token(authorization, auth)
     rec, client, s, res, state, _ = await sld_ctx(user, item_id)
     name = f"schema_monofilara_{rec.get('number') or item_id}.pdf"
-    sld = rec.get("sld") or {}
-    uploaded = sld.get("upload") or {}
-    if download and sld.get("source") == "uploaded":
-        storage_path = str(uploaded.get("storage_path") or "")
-        if not storage_path or f"/{user['id']}/" not in storage_path:
-            raise HTTPException(status_code=422, detail="Schema încărcată lipsă sau inaccesibilă pentru acest cont.")
-        try:
-            pdf, content_type = get_object(storage_path)
-        except Exception as exc:
-            logger.warning("Nu s-a putut citi schema încărcată: %s", exc)
-            raise HTTPException(status_code=404, detail="Fișierul schemei încărcate nu mai este disponibil. Încarcă-l din nou.") from exc
-        if content_type != "application/pdf" or not pdf.startswith(b"%PDF-"):
-            raise HTTPException(status_code=415, detail="Schema încărcată trebuie să fie un PDF valid.")
-        filename = uploaded.get("original_filename") or name
-        return Response(content=pdf, media_type="application/pdf",
-                        headers={"Content-Disposition": disp("attachment", filename)})
     return Response(content=SLD.render(rec, client, s, res, state, fmt), media_type="application/pdf",
                     headers={"Content-Disposition": disp("attachment" if download else "inline", name)})
 
@@ -1496,14 +1482,8 @@ async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
             continue
         for kind in ("datasheet", "conformity"):
             existing = item.get(kind)
-            storage_path = existing.get("storage_path") if isinstance(existing, dict) else ""
-            if storage_path:
-                try:
-                    if has_gridfs_object(storage_path):
-                        continue
-                except Exception as exc:
-                    logger.warning("GridFS catalog document check failed (%s): %s", catalog_id, str(exc)[:160])
-                    continue
+            if isinstance(existing, dict) and existing.get("storage_path"):
+                continue
             source_url = item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
             if source_url:
                 candidates.append((catalog_id, kind, str(source_url)))
@@ -1895,11 +1875,9 @@ async def atr_official_docx(item_id: str, authorization: str = Header(None), aut
     client = await get_client(user["id"], rec)
     settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     pros = None
-    linked_pros = await resolve_atr_prosumer(user, rec, client)
-    if linked_pros:
-        pros, pclient, settings, _ = await dossier_ctx(user, linked_pros["id"])
+    if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
+        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
         client = {**(pclient or {}), **(client or {})}
-        rec = {**rec, "pros_id": linked_pros["id"]}
     try:
         payload = ATR.render_deer_official_docx(rec, client or {}, settings, pros or {})
     except ValueError as exc:
@@ -2002,9 +1980,6 @@ async def atr_pack(user: dict, rec: dict, full: int):
     pros, info = None, None
     linked_pros = await resolve_atr_prosumer(user, rec, client)
     if linked_pros:
-        if full:
-            # Rebuild selected equipment PDFs in GridFS when a legacy storage pointer is stale.
-            await auto_import_selected_catalog_documents(user, linked_pros)
         pros, pclient, base, info = await dossier_ctx(user, linked_pros["id"])
         client = {**(pclient or {}), **(client or {})}
         rec = {**rec, "pros_id": linked_pros["id"]}
@@ -2140,11 +2115,11 @@ async def power_official_docx(item_id: str, authorization: str = Header(None), a
     client = await get_client(user["id"], rec)
     settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     pros = {}
-    linked_pros = await resolve_atr_prosumer(user, rec, client)
-    if linked_pros:
-        pros, pclient, settings, _ = await dossier_ctx(user, linked_pros["id"])
+    if rec.get("pros_id") and await db.prosumator.find_one(
+        {**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}
+    ):
+        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
         client = {**(pclient or {}), **(client or {})}
-        rec = {**rec, "pros_id": linked_pros["id"]}
 
     operator = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
     if operator != "deer":
