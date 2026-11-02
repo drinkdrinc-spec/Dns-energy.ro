@@ -35,7 +35,7 @@ function detectOperator(value) {
 }
 
 function operatorId(value) {
-  const operator = String(value || "").toLowerCase();
+  const operator = String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
   if (/deer|distributie energie electrica/.test(operator)) return "deer";
   if (/delgaz/.test(operator)) return "delgaz";
   if (/oltenia|deo connect/.test(operator)) return "oltenia";
