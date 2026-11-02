@@ -855,16 +855,26 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         if not isinstance(f, dict) or not str(f.get("storage_path") or "").startswith(APP_NAME + "/uploads/" + str(user["id"]) + "/"):
             raise HTTPException(status_code=400, detail="Document invalid sau neîncărcat în contul curent")
     identity_code = str(d.get("cnp") or "").strip()
+    selected_client_id = str(d.get("client_id") or "").strip()
     client = None
-    if identity_code:
-        client = await db.clients.find_one({**scope_q(user, "clients"),
-            "$or": [{"idcode": identity_code}, {"cui": identity_code}]}, {"_id": 0})
-    if not client:
-        client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
-    stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
-    # A same-name client with a different CNP/CUI is a separate person/company.
-    if client and identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
-        client = None
+    if selected_client_id:
+        # Keep the dossier attached to the exact client selected in the UI.
+        client = await db.clients.find_one({**scope_q(user, "clients"), "id": selected_client_id}, {"_id": 0})
+        if not client:
+            raise HTTPException(status_code=404, detail="Clientul selectat nu există sau nu aparține contului curent")
+        stored_identity = str(client.get("idcode") or client.get("cui") or "").strip()
+        if identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+            raise HTTPException(status_code=409, detail="CNP-ul/CUI-ul nu corespunde clientului selectat")
+    else:
+        if identity_code:
+            client = await db.clients.find_one({**scope_q(user, "clients"),
+                "$or": [{"idcode": identity_code}, {"cui": identity_code}]}, {"_id": 0})
+        if not client:
+            client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
+        stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
+        # A same-name client with a different CNP/CUI is a separate person/company.
+        if client and identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+            client = None
 
     if d.get("pod"):
         duplicate_match = []
