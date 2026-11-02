@@ -12,7 +12,7 @@ const TYPES = [
   ["altele", "4. Alte documente", "PDF, imagini, DOCX și XLSX pot fi citite și rezumate; DOC/XLS și alte formate se atașează pentru verificare manuală."],
 ];
 
-const EMPTY = { client_name: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "" };
+const EMPTY = { client_name: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "" };
 
 // Some mobile document pickers report a blank or generic MIME type even when the
 // filename is a supported PDF/image. Use the extension as a safe fallback.
@@ -69,11 +69,11 @@ export function DossierDocumentStart({ onCreated }) {
           const homeAddress = x.hq_address || x.address;
           mergedValues = putNonempty(mergedValues, { client_name: x.client_name, cnp: x.cnp, hq_address: homeAddress,
             ...(mergedValues.address_same_as_ci && homeAddress ? { address: homeAddress } : {}),
-            county: x.county, phone: x.phone, email: x.email, id_series: x.id_series, id_number: x.id_number });
+            county: x.county, locality: x.locality, phone: x.phone, email: x.email, id_series: x.id_series, id_number: x.id_number });
         }
         if (kind === "factura") mergedValues = putNonempty(mergedValues, { client_name: mergedValues.client_name || x.client_name, cnp: mergedValues.cnp || x.cnp,
           address: mergedValues.address_same_as_ci ? mergedValues.hq_address : x.consumption_address || x.address, pod: x.pod, operator: x.operator, supplier: x.supplier,
-          county: mergedValues.county || x.county, phone: mergedValues.phone || x.phone, email: mergedValues.email || x.email });
+          county: mergedValues.county || x.county, locality: mergedValues.locality || x.locality, phone: mergedValues.phone || x.phone, email: mergedValues.email || x.email });
         if (kind === "cf") mergedValues = putNonempty(mergedValues, { cf_nr: x.cf_nr, cadastral_nr: x.cadastral_nr,
           client_name: mergedValues.client_name || x.owner_name });
         if (kind === "altele" && x.summary) summaries.push(`${file.name}: ${x.doc_type || "document"} — ${x.summary}`);
@@ -181,7 +181,7 @@ export function DossierDocumentStart({ onCreated }) {
           <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
             <summary className="cursor-pointer text-xs font-semibold">Date suplimentare (se preiau dacă apar în acte)</summary>
             <div className="grid sm:grid-cols-2 gap-3 mt-3">
-              {field("county", "Județ")}{field("supplier", "Furnizor energie")}
+              {field("county", "Județ")}{field("locality", "Localitate")}{field("supplier", "Furnizor energie")}
               {field("phone", "Telefon")}{field("email", "E-mail")}
             </div>
           </details>
