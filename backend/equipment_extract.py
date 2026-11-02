@@ -215,6 +215,39 @@ def extract_equipment_specs(category: str, text: str) -> dict:
         value = _enum(text, "phases")
         if value:
             result["phases"] = value
+        current = _numeric(text, (r"\bmaximum\s+rated\s+current\s*\(Imax\)", r"\bmaximum\s+current\s*\(Imax\)"), amp_units, convert_a)
+        if current is not None:
+            result["current_max_a"] = current
+
+        def labelled_value(patterns):
+            values = set()
+            for line in text.splitlines():
+                for pattern in patterns:
+                    match = re.search(pattern, line, re.I)
+                    if match:
+                        value = re.sub(r"\s+", " ", line[match.end():]).strip(" :;")
+                        if value:
+                            values.add(value[:120])
+            return next(iter(values)) if len(values) == 1 else None
+
+        voltage = labelled_value((r"\bNominal voltage(?:\s*\(Un\))?",))
+        frequency = labelled_value((r"\bOperational frequency range",))
+        accuracy = labelled_value((r"\bAccuracy class",))
+        if voltage:
+            result["voltage_nominal_v"] = voltage
+        if frequency:
+            result["frequency_hz"] = frequency
+        if accuracy:
+            result["accuracy_class"] = accuracy
+
+        model_line = next((line for line in text.splitlines() if re.match(r"\s*SDM630-Modbus\b", line, re.I)), "")
+        if model_line:
+            protocol = "RS485 Modbus RTU" if re.search(r"\bRS485\s+Modbus\s+RTU\b", model_line, re.I) else None
+            wiring = re.search(r"\b(3PH-4W,\s*3PH-3W,\s*1PH-2W)\b", model_line, re.I)
+            if protocol:
+                result["protocol"] = protocol
+            if wiring:
+                result["wiring"] = wiring.group(1)
     else:
         return {}
     return result
