@@ -95,7 +95,8 @@ def _query_matches(query, title):
 def _is_category_product(title, category):
     normalized = _norm(title)
     if category == "Invertor":
-        return normalized.startswith(("invertor ", "inverter ")) and " kit " not in f" {normalized} " and " + acumulator" not in normalized and " + baterie" not in normalized
+        bundled_with_battery = re.search(r"\s\+\s*(?:acumulator(?:i)?|bater(?:ie|ii)|batter(?:y|ies)|storage)\b", str(title), re.I)
+        return normalized.startswith(("invertor ", "inverter ")) and " kit " not in f" {normalized} " and not bundled_with_battery
     if category == "Panou":
         return normalized.startswith(("panou ", "modul fotovoltaic", "solar panel"))
     return normalized.startswith(("baterie ", "acumulator ", "acumulatori ")) and " kit " not in f" {normalized} "
