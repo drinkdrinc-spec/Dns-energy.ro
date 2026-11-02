@@ -1,0 +1,35 @@
+name: ANRE document generation safety
+
+on:
+  push:
+    branches: [deployment-prep, main]
+    paths:
+      - "backend/anre_doc.py"
+      - "backend/docgen.py"
+      - "backend/tests/test_anre_gdpr_consent_truthfulness.py"
+      - ".github/workflows/anre-document-safety.yml"
+  pull_request:
+    paths:
+      - "backend/anre_doc.py"
+      - "backend/docgen.py"
+      - "backend/tests/test_anre_gdpr_consent_truthfulness.py"
+      - ".github/workflows/anre-document-safety.yml"
+  workflow_dispatch:
+
+jobs:
+  anre-document-safety:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install focused document test dependencies
+        run: python -m pip install --upgrade pytest reportlab pypdf
+      - name: Compile ANRE document generator
+        run: python -m py_compile anre_doc.py
+      - name: Verify ANRE consent document
+        run: python -m pytest -q tests/test_anre_gdpr_consent_truthfulness.py
