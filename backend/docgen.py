@@ -581,11 +581,20 @@ def doc_buletin_priza(ctx):
     meas, psi = num(ctx.raw("grounding_ohm"), None), num(ctx.raw("soil_psi"), None)
     lim = num(ctx.raw("grounding_limit"), None)
     calc = meas * psi if meas is not None and psi is not None else None
-    ok = ("DA" if calc <= lim else "NU") if calc is not None and lim is not None else M
     md = ctx.raw("measure_date")
-    valid = (datetime.fromisoformat(str(md)[:10]) + timedelta(days=365)).strftime("%d.%m.%Y") if md else M
+    measured = all(value is not None for value in (meas, psi, lim)) and bool(md)
+    ok = ("DA" if calc <= lim else "NU") if measured else "NECOMPLETAT"
+    valid = M
+    if measured:
+        try:
+            valid = (datetime.fromisoformat(str(md)[:10]) + timedelta(days=365)).strftime("%d.%m.%Y")
+        except ValueError:
+            measured = False
+            ok = "NECOMPLETAT"
     return hdr() + [
-        B("title", "BULETIN DE VERIFICARE ȘI MĂSURARE INSTALAȚII DE LEGARE LA PĂMÂNT"), B("sub", f"NR. {ctx.v('bulletin_no')} din {ro_date(md) or M}"),
+        B("title", ("BULETIN DE VERIFICARE ȘI MĂSURARE INSTALAȚII DE LEGARE LA PĂMÂNT" if measured else "FIȘĂ DE LUCRU — BULETIN PRAM NEFINALIZAT")),
+        B("small", "Măsurătorile și concluzia se completează numai după verificarea efectivă la fața locului; valorile lipsă nu sunt estimate." if not measured else "Document completat cu valorile măsurate înregistrate în dosar."),
+        B("sub", f"NR. {ctx.v('bulletin_no')} din {ro_date(md) or M}"),
         B("p", f"<b>Client:</b> {ctx.name} · <b>Adresa:</b> {ctx.loc}"),
         B("p", f"<b>Obiectivul:</b> {ctx.v('measure_object')} · <b>Data verificărilor/măsurătorilor:</b> {ro_date(md) or M}"),
         B("table", [["Verificarea/măsurarea instalațiilor de legare la pământ", "p.p. nr. 1"], ["Starea solului", ctx.v("soil")],
@@ -594,7 +603,7 @@ def doc_buletin_priza(ctx):
                     ["Valoarea rezistenței de dispersie calculată în funcție de starea solului (Ω)", f"<b>{calc:.2f}</b>" if calc is not None else M],
                     [f"Concluzii — corespunde (da/nu){f' · valoare admisă ≤ {fmt(lim)} Ω' if lim is not None else ''}", f"<b>{ok}</b>"]], [140, 34], True),
 
-        B("small", f"Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la <b>{valid}</b>."),
+        B("small", f"Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la <b>{valid}</b>." if measured else "Valabilitatea se stabilește după efectuarea și înregistrarea măsurătorilor."),
         sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
 
 
