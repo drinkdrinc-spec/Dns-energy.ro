@@ -166,11 +166,20 @@ def pub(d):
 async def anre_list(user: dict = Depends(get_current_user)):
     q = {} if is_pf(user) else {"owner": user["id"]}
     out = []
+    profiles = {}
     for d in await db.anre_dossiers.find(q, {"_id": 0, "ai": 0}).sort("created_at", -1).to_list(1000):
-        p = pub(d)
+        company = d.get("company") or {}
+        if any(company.get(k) in (None, "") for k in ("name", "cui", "regcom", "address", "rep_name", "email", "phone")):
+            owner = d["owner"]
+            if owner not in profiles:
+                profiles[owner] = await company_profile(owner)
+            view = merged_company(d, profiles[owner])
+        else:
+            view = d
+        p = pub(view)
         op = await db.operators.find_one({"tenant": d["owner"]}, {"status": 1}) or {}
         out.append({k: p.get(k) for k in ("id", "owner", "kind", "status", "creation_mode", "payment_status", "progress", "created_at", "final_check")} | {
-            "company": (d.get("company") or {}).get("name"), "cui": (d.get("company") or {}).get("cui"), "owner_email": d.get("created_by"), "attest_status": op.get("status") or "netrimis",
+            "company": (p.get("company") or {}).get("name"), "cui": (p.get("company") or {}).get("cui"), "owner_email": d.get("created_by"), "attest_status": op.get("status") or "netrimis",
             "missing": sum(1 for i in p["items"] if i["status"] != "verificat")})
     return out
 
