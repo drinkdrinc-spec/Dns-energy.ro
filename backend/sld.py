@@ -299,18 +299,20 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.wire(cx, cy - 22, cx, cy - 26, "bat")
             S.battery(cx, cy - 26)
             breaker_a = bt.get("breaker_a") or bt.get("fuse_a") or r["proposals"]["battery"].get("fuse_a")
-            breaker_label = f"-Q{i + 1}.B " + ("integrat " if bt.get("breaker_integrated") else "")
-            breaker_detail = f" A DC · {gv(n(bt.get('voltage')), ' V') or '[lipsă V]'}"
+            breaker_label = f"-Q{i + 1}.B " + ("INT " if bt.get("breaker_integrated") else "")
+            breaker_detail = " A"
             if n(bt.get("breaker_poles")):
-                breaker_detail += f" · {int(n(bt.get('breaker_poles')))}P"
+                breaker_detail += f" {int(n(bt.get('breaker_poles')))}P"
             if n(bt.get("breaker_voltage_dc")):
-                breaker_detail += f" · {gv(n(bt.get('breaker_voltage_dc')), ' Vdc')}"
-            if n(bt.get("breaker_icu_ka")):
-                breaker_detail += f" · Icu {gv(n(bt.get('breaker_icu_ka')), ' kA')}"
+                breaker_detail += f" {gv(n(bt.get('breaker_voltage_dc')), 'Vdc')}"
             S.val(cx + 6, cy - 17.2, breaker_label, breaker_a, breaker_detail, size=4.4, w=29)
             S.text(cx + 6, cy - 22.4, f"-G{i + 1} {bt.get('model') or '[model baterie lipsă]'}", 4.4, True, w=29)
-            S.val(cx + 6, cy - 26.8, "Cablu ", bt.get("cable_section") or bt.get("section") or r["proposals"]["battery"].get("section"), " mm² DC", size=4.4, w=29)
-            S.val(cx + 6, cy - 31.2, "I max ", bt.get("i_max"), " A", size=4.4, w=29)
+            cable_unit = " mm² DC"
+            if n(bt.get("breaker_icu_ka")):
+                cable_unit += f" · Icu {gv(n(bt.get('breaker_icu_ka')), 'kA')}"
+            S.val(cx + 6, cy - 26.8, "Cablu ", bt.get("cable_section") or bt.get("section") or r["proposals"]["battery"].get("section"), cable_unit, size=4.4, w=29)
+            battery_unit = f" A · Ubat {gv(n(bt.get('voltage')), 'V') or '[lipsă]'}"
+            S.val(cx + 6, cy - 31.2, "I max ", bt.get("i_max"), battery_unit, size=4.4, w=29)
         if (inv.get("backup") or {}).get("enabled"):
             b = inv["backup"]
             S.wire(cx + hh, cy - 10, 152, cy - 10); S.wire(152, cy - 10, 152, cy - 16); S.wire(152, cy - 16, 182, cy - 16)
