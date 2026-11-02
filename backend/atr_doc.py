@@ -207,28 +207,49 @@ def deer_annex_issues(rec: dict, pros: dict = None) -> list:
     return issues
 
 
+def _battery_is_declared(value) -> bool:
+    if not isinstance(value, dict):
+        value = {"model": value} if value not in (None, "") else {}
+    model = str(value.get("model") or "").strip().casefold()
+    if model in {"fără baterie", "fara baterie", "no battery", "none", "n/a", "nu"}:
+        return False
+    if model:
+        return True
+    return any((D.num(value.get(key)) or 0) > 0 for key in ("modules", "kwh", "ah", "voltage", "i_max")) or bool(value.get("coupling"))
+
+
 def storage_details(pros: dict, rec: dict) -> list:
     cef = (pros or {}).get("cef") or {}
     details = []
     for inv in cef.get("inverters") or []:
         if inv.get("battery_mode") == "own":
             battery = inv.get("battery") or {}
-            if battery:
+            if not isinstance(battery, dict):
+                battery = {"model": battery}
+            if _battery_is_declared(battery):
                 quantity = max(1, int(D.num(inv.get("count")) or 1))
                 modules = max(1, int(D.num(battery.get("modules")) or 1))
                 details.append({**battery, "modules": modules * quantity})
-    details.extend(cef.get("shared_batteries") or [])
-    if not details and ((rec or {}).get("battery") or (rec or {}).get("storage")):
-        value = (rec or {}).get("battery") or (rec or {}).get("storage")
-        details.append({
-            "model": value if isinstance(value, str) else value.get("model"),
-            "modules": (rec or {}).get("battery_count"),
-            "kwh": (rec or {}).get("battery_kwh"),
-            "ah": (rec or {}).get("battery_ah"),
-            "voltage": (rec or {}).get("battery_v"),
-            "i_max": (rec or {}).get("battery_i_max"),
-            "coupling": (rec or {}).get("battery_coupling"),
-        })
+    for battery in cef.get("shared_batteries") or []:
+        if not isinstance(battery, dict):
+            battery = {"model": battery}
+        if _battery_is_declared(battery):
+            details.append(battery)
+    if not details:
+        record = rec or {}
+        value = record.get("battery") or record.get("storage")
+        explicit_none = str(value.get("model") if isinstance(value, dict) else value or "").strip().casefold() in {
+            "fără baterie", "fara baterie", "no battery", "none", "n/a", "nu"
+        }
+        if not explicit_none:
+            legacy = dict(value) if isinstance(value, dict) else ({"model": value} if value not in (None, "") else {})
+            for key, record_key in (("modules", "battery_count"), ("kwh", "battery_kwh"),
+                                    ("ah", "battery_ah"), ("voltage", "battery_v"),
+                                    ("i_max", "battery_i_max"), ("coupling", "battery_coupling")):
+                if legacy.get(key) in (None, "") and record.get(record_key) not in (None, ""):
+                    legacy[key] = record[record_key]
+            if _battery_is_declared(legacy):
+                details.append(legacy)
     return details
 
 
@@ -333,6 +354,8 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
 
 def _deer_docx_template(rec: dict) -> str:
     case = str((rec or {}).get("deer_case") or "").strip().lower()
+    if not case:
+        return None
     if "program de finanțare" in case or "program de finantare" in case:
         return "anexa4_funding.docx.b64"
     if "≤10,8" in case or "≤ 10,8" in case or "<=10,8" in case:
@@ -347,7 +370,7 @@ def _deer_docx_template(rec: dict) -> str:
         return None
     if "anexa 2" in case or "existent" in case:
         return "anexa2_existing.docx.b64"
-    return "anexa2_existing.docx.b64"
+    return None
 
 
 def _deer_value(value):
