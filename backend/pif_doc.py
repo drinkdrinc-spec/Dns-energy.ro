@@ -74,7 +74,6 @@ def render(rec: dict, client: dict, s: dict) -> bytes:
     if p.get("notes"):
         story.append(P(f"Observații: {e(p['notes'])}"))
     story += [Spacer(1, 4), P("Rezultatele de mai sus sunt cele măsurate efectiv la data testelor; câmpurile necompletate nu au fost măsurate și nu constituie confirmare de conformitate.", "small"),
-              D.pdf_sign(["Executant (electrician autorizat ANRE),", f"<b>{e(s.get('company'))}</b>", e(p.get("operator") or s.get("rep")) or M, "(numele, prenumele și semnătura)", "(ștampilă)"],
-                         ["Beneficiar,", f"<b>{e(client.get('name') or rec.get('client_name'))}</b>", "(numele, prenumele și semnătura)"], s)]
+              D.pdf_sign(["Reprezentantul firmei executante (electrician autorizat ANRE),", f"<b>{e(s.get('company'))}</b>", e(p.get("operator") or s.get("rep")) or M, "(numele, prenumele și semnătura)", "(ștampilă)"], [], s)]
     doc.build(story)
     return buf.getvalue()
