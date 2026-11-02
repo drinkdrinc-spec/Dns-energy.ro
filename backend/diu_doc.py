@@ -64,7 +64,9 @@ def missing(key, r, s):
             m += need([(p.get("test_v"), "Tensiune de încercare (V)")]) + ([] if cs else ["Circuitele tabloului"]) + [f"Rezistență izolație — {c['name']}" for c in cs if c.get("riso") in (None, "")]
         if key == "pram_ddr":
             dd = [c for c in cs if c.get("rcd_ma")]
-            m += ([] if dd else ["Niciun circuit cu DDR definit"]) + [f"Timp declanșare DDR — {c['name']}" for c in dd if c.get("rcd_t") in (None, "")]
+            m += [] if dd else ["Niciun circuit cu DDR definit"]
+            m += [f"Curent declanșare DDR — {c['name']}: valoare măsurată lipsă" for c in dd if c.get("rcd_i") in (None, "")]
+            m += [f"Timp declanșare DDR — {c['name']}: valoare măsurată lipsă" for c in dd if c.get("rcd_t") in (None, "")]
     elif key == "receptie":
         m = need([(r.get("receptie_date"), "Data recepției"), (r.get("receptie_decision"), "Hotărâre recepție")])
     elif key == "pif":
@@ -247,8 +249,9 @@ def doc_izol(ctx, r, pos):
 def doc_ddr(ctx, r, pos):
     rows = [["Nr.", "Circuit", "DDR (IΔn, tip)", "Curent declanșare măsurat (mA)", "Timp declanșare la IΔn (ms)", "Rezultat"]]
     for i, c in enumerate([c for c in circuits(r) if c.get("rcd_ma")]):
-        tm = num(c.get("rcd_t"))
-        rows.append([str(i + 1), escape(c["name"]), f"{e(c.get('rcd_ma'))} mA tip {e(str(c.get('rcd_type') or '').replace('Tip', '').strip())}", e(c.get("rcd_i")), e(c.get("rcd_t")), verdict(None if tm is None else tm <= DDR_MAX_MS)])
+        measured_current, tm = num(c.get("rcd_i")), num(c.get("rcd_t"))
+        result = verdict(None if measured_current is None or tm is None else tm <= DDR_MAX_MS)
+        rows.append([str(i + 1), escape(c["name"]), f"{e(c.get('rcd_ma'))} mA tip {e(str(c.get('rcd_type') or '').replace('Tip', '').strip())}", e(c.get("rcd_i")), e(c.get("rcd_t")), result])
     if len(rows) == 1:
         rows.append(["—", "niciun circuit cu DDR", M, M, M, "—"])
     return pram_head(ctx, r, "BULETIN DE VERIFICARE A DISPOZITIVELOR DIFERENȚIALE (DDR)", f"SR HD 60364-6, art. 6.4.3.7 (timp maxim la IΔn: {DDR_MAX_MS:g} ms, DDR general)") + [
