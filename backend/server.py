@@ -590,7 +590,57 @@ async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_
 async def catalog_supplier_search(q: str = Query(""), category: str = Query("Invertor"), user: dict = Depends(get_current_user)):
     """Search public product listings from the configured Romanian equipment retailers."""
     guard("catalog", user)
-    return await search_supplier_products(q, category)
+    return await SUPPLIER_CATALOG.search_supplier_products(q, category)
+
+
+@api_router.post("/catalog/supplier-import")
+async def catalog_supplier_import(request: Request, user: dict = Depends(get_current_user)):
+    """Import verified public product data and linked official PDFs into the owner's catalog."""
+    guard("catalog", user, write=True)
+    body = await request.json()
+    supplier = str(body.get("supplier") or "")
+    category = str(body.get("category") or "")
+    product_url = str(body.get("product_url") or "")
+    product = await SUPPLIER_CATALOG.get_public_product(supplier, category, product_url)
+    if not product:
+        raise HTTPException(status_code=400, detail="Produsul nu mai poate fi verificat la sursa publică")
+    existing = await db.catalog.find_one({"owner": user["id"], "category": category, "source_url": product_url}, {"_id": 0})
+    if existing:
+        return {"ok": True, "existing": True, "item": clean(existing)}
+
+    allowed = ("p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt",
+               "w", "voc", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max")
+    item = {"category": category, "brand_model": product["brand_model"], "supplier": supplier,
+            "source_url": product_url, "source_price": product.get("price_text", ""),
+            "source_availability": product.get("availability", ""),
+            "notes": "Importat din pagina publică a furnizorului. Valorile tehnice sunt completate numai când sunt publicate explicit și neambiguu.",
+            **{key: product[key] for key in allowed if key in product}}
+    now = datetime.now(timezone.utc).isoformat()
+    for kind in ("datasheet", "conformity"):
+        doc_url = product.get(kind + "_url") or ""
+        host = (urlparse(doc_url).hostname or "").lower().rstrip(".")
+        source_host = SUPPLIER_CATALOG.SOURCES[supplier]["host"]
+        if not doc_url or not SUPPLIER_CATALOG._safe_document(doc_url, source_host):
+            continue
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=20, follow_redirects=False, headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"}) as client:
+                response = await client.get(doc_url)
+            data = response.content
+            if response.status_code != 200 or len(data) > MAX_UPLOAD_BYTES or not data.startswith(b"%PDF-"):
+                continue
+            path = f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.pdf"
+            stored = put_object(path, data, "application/pdf")
+            item[kind] = {"storage_path": stored["path"], "original_filename": f"{product['brand_model']} — {kind}.pdf",
+                          "content_type": "application/pdf", "size": len(data), "source_url": doc_url,
+                          "source_host": host, "imported_at": now}
+            item[kind + "_source_url"] = doc_url
+        except Exception as exc:
+            logger.info("Supplier catalog document unavailable (%s): %s", kind, str(exc)[:160])
+    record = _new(user, item)
+    await db.catalog.insert_one(dict(record))
+    await audit(user, "import produs catalog furnizor", "catalog", record["id"], ["category", "brand_model", "supplier", "source_url", *[k for k in ("datasheet", "conformity") if k in item]])
+    return {"ok": True, "existing": False, "item": clean(record)}
 
 
 @api_router.post("/catalog/{item_id}/import-document")
@@ -1035,7 +1085,7 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
 
 # ---------------- CEF checks & catalog ----------------
 import cef as CEF
-from supplier_catalog import search_supplier_products
+import supplier_catalog as SUPPLIER_CATALOG
 from catalog_seed import SEED as CATALOG_SEED, NOTE as CATALOG_NOTE, missing_seed_values as missing_catalog_seed_values
 from pypdf import PdfReader, PdfWriter
 import io
