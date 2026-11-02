@@ -5,7 +5,7 @@ import asyncio
 import json
 import re
 import unicodedata
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 from lxml import html
@@ -29,6 +29,7 @@ SOURCES = {
     },
     "SolarTech": {
         "host": "solartech.ro",
+        "search": "https://solartech.ro/?s={query}&post_type=product",
         "categories": {
             "Invertor": "https://solartech.ro/invertoare-fotovoltaice/",
             "Panou": "https://solartech.ro/panouri-fotovoltaice/",
@@ -84,7 +85,11 @@ def _query_matches(query, title):
 
 def _is_category_product(title, category):
     normalized = _norm(title)
-    return any(_norm(term) in normalized for term in CATEGORY_TERMS[category])
+    if category == "Invertor":
+        return normalized.startswith(("invertor ", "inverter ")) and " kit " not in f" {normalized} " and " + acumulator" not in normalized and " + baterie" not in normalized
+    if category == "Panou":
+        return normalized.startswith(("panou ", "modul fotovoltaic", "solar panel"))
+    return normalized.startswith(("baterie ", "acumulator ", "acumulatori ")) and " kit " not in f" {normalized} "
 
 
 def _product_offer(doc):
@@ -152,7 +157,7 @@ async def search_supplier_products(query: str, category: str):
         return {"products": [], "sources": list(SOURCES), "message": "Introdu cel puțin două caractere și alege Invertor, Panou sau Baterie."}
     async with httpx.AsyncClient(timeout=12, headers={"User-Agent": "DNS-Energy-Catalog/1.0", "Accept": "text/html,application/xhtml+xml"}) as client:
         pages = await asyncio.gather(*[
-            _get(client, source["categories"][category], source["host"])
+            _get(client, source.get("search", "").format(query=quote(query)) if source.get("search") else source["categories"][category], source["host"])
             for source in SOURCES.values()
         ])
         candidates = []
