@@ -1,3 +1,7 @@
+import { useRef, useState } from "react";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
+
 const REGLAJ = [["u1", "Tensiune maximală treapta I"], ["u2", "Tensiune minimală treapta II"], ["f1", "Frecvență treapta I"], ["f2", "Frecvență treapta II"],
   ["u10", "Tensiune maximă (medie 10 min)"], ["rec", "Pornire / repornire după întrerupere RED"], ["hvrt", "HVRT"], ["lvrt", "LVRT"], ["droop", "Statism la variația frecvenței"]];
 const TYPICAL = { u1: ["1,15 Un", "0,5"], u2: ["0,85 Un", "3,2"], f1: ["52 Hz", "0,5"], f2: ["47,5 Hz", "0,5"], u10: ["253 V", "603"], rec: ["—", "900"], hvrt: ["264,5 V", "Activată"], lvrt: ["184,5 V", "Activată"], droop: ["5 %", "—"] };
@@ -5,6 +9,8 @@ const TESTS = [...Array(10).keys()].map((i) => `a${i}`).concat([...Array(4).keys
 const TLABEL = { a: "Test categoria A", f: "Domeniu de frecvență", c: "Verificare" };
 
 export function DossierExtras({ form, setVal, compact = false }) {
+  const pramInput = useRef(null);
+  const [pramBusy, setPramBusy] = useState(false);
   const rg = form.reglaj || {}, ts = form.tests || {};
   const setR = (k, f, v) => setVal("reglaj", { ...rg, [k]: { ...(rg[k] || {}), [f]: v }, verified_by_installer: false });
   const reglajValuesComplete = REGLAJ.every(([k]) => String(rg[k]?.val || "").trim() && String(rg[k]?.t || "").trim());
@@ -14,6 +20,38 @@ export function DossierExtras({ form, setVal, compact = false }) {
       {compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <h4 className="font-bold text-sm mb-1">Semnătura reprezentantului firmei</h4>
         <p className="text-xs" style={{ color: "var(--muted)" }}>Documentele au un singur semnatar: reprezentantul firmei executante. Semnătura și ștampila se preiau din setările firmei, dacă sunt configurate; aplicația nu inventează semnături.</p>
+      </div>}
+      {!compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
+        <h4 className="font-bold text-sm mb-2">Buletin PRAM</h4>
+        <label className="den-field block mb-2"><span className="text-xs">Sursa buletinului</span>
+          <select className="den-input" value={form.pram_source || "internal"} onChange={(e) => setVal("pram_source", e.target.value)} data-testid="pram-source">
+            <option value="internal">Îl întocmim noi — numai cu măsurători reale</option>
+            <option value="third_party">Încarc buletin valabil de la firmă terță</option>
+          </select>
+        </label>
+        {form.pram_source === "third_party" && <div className="text-xs">
+          <input ref={pramInput} type="file" accept="application/pdf,.pdf" className="hidden" data-testid="pram-upload-input"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              if (!file.name.toLowerCase().endsWith(".pdf")) { toast.error("Încarcă buletinul PRAM în format PDF."); event.target.value = ""; return; }
+              setPramBusy(true);
+              try {
+                const body = new FormData(); body.append("file", file);
+                const { data } = await api.post("/upload", body, { headers: { "Content-Type": "multipart/form-data" } });
+                setVal("pram_file", data);
+                toast.success("Buletinul PRAM terț a fost atașat.");
+              } catch (error) {
+                toast.error(error.response?.data?.detail || "Nu am putut încărca buletinul PRAM.");
+              } finally { setPramBusy(false); event.target.value = ""; }
+            }} />
+          <button type="button" className="den-input text-left" disabled={pramBusy} onClick={() => pramInput.current?.click()} data-testid="pram-upload">
+            {pramBusy ? "Se încarcă…" : form.pram_file?.original_filename || "Alege PDF-ul buletinului PRAM"}
+          </button>
+          {form.pram_file?.storage_path && <button type="button" className="ml-2 underline" style={{ color: "var(--blue)" }}
+            onClick={() => setVal("pram_file", null)} data-testid="pram-remove">Elimină</button>}
+        </div>}
+        <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Nu se generează și nu se completează automat nicio valoare măsurată. Un buletin terț se folosește ca PDF-ul încărcat.</p>
       </div>}
       {!compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2"><h4 className="font-bold text-sm">Reglaje invertor</h4>
