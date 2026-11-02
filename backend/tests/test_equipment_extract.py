@@ -6,8 +6,8 @@ def test_battery_dc_breaker_values_are_extracted_from_explicit_labels():
     text = """
     Built-in DC circuit breaker rated current: 125 A
     DC circuit breaker rated voltage: 60 V
-    Number of DC circuit breaker poles: 2 P
-    Rated breaking capacity (Icu): 10 kA
+    Number of DC circuit breaker poles: 2P
+    DC circuit breaker rated breaking capacity (Icu): 10 kA
     Integrated DC circuit breaker
     """
     result = extract_equipment_specs("Baterie", text)
