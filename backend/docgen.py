@@ -598,7 +598,7 @@ def doc_buletin_priza(ctx):
         B("p", f"<b>Client:</b> {ctx.name} · <b>Adresa:</b> {ctx.loc}"),
         B("p", f"<b>Obiectivul:</b> {ctx.v('measure_object')} · <b>Data verificărilor/măsurătorilor:</b> {ro_date(md) or M}"),
         B("table", [["Verificarea/măsurarea instalațiilor de legare la pământ", "p.p. nr. 1"], ["Starea solului", ctx.v("soil")],
-                    ["Valoarea coeficientului Ѱ (funcție de starea solului: 1,5 / 1,3 / 1,1)", f"{psi:.2f}" if psi is not None else M],
+                    ["Valoarea coeficientului psi (funcție de starea solului: 1,5 / 1,3 / 1,1)", f"{psi:.2f}" if psi is not None else M],
                     ["Valoarea rezistenței de dispersie măsurată (Ω)", f"{meas:.2f}" if meas is not None else M],
                     ["Valoarea rezistenței de dispersie calculată în funcție de starea solului (Ω)", f"<b>{calc:.2f}</b>" if calc is not None else M],
                     [f"Concluzii — corespunde (da/nu){f' · valoare admisă ≤ {fmt(lim)} Ω' if lim is not None else ''}", f"<b>{ok}</b>"]], [140, 34], True),
@@ -692,8 +692,17 @@ DOCS = {
 # ---------- PDF renderer ----------
 
 def pdf_header(ctx):
-    left = Paragraph(f"<b><font size=10>{ctx.company}</font></b><br/>{ctx.e('cui', '')} · {ctx.e('regcom', '')}<br/>Atestat ANRE {ctx.e('anre_attest', '')}", S["hdrl"])
-    right = Paragraph(f"{ctx.e('phone', '')}<br/>{ctx.e('email', '')}<br/>{ctx.e('address', '')}", S["hdrr"])
+    left_lines = [f"<b><font size=10>{ctx.company}</font></b>"]
+    company_ids = [ctx.e("cui", ""), ctx.e("regcom", "")]
+    company_ids = [value for value in company_ids if value]
+    if company_ids:
+        left_lines.append(" · ".join(company_ids))
+    attest = ctx.e("anre_attest", "")
+    if attest:
+        left_lines.append(f"Atestat ANRE {attest}")
+    right_lines = [ctx.e(key, "") for key in ("phone", "email", "address")]
+    left = Paragraph("<br/>".join(left_lines), S["hdrl"])
+    right = Paragraph("<br/>".join(value for value in right_lines if value), S["hdrr"])
     t = Table([[left, right]], colWidths=[87 * mm, 87 * mm])
     t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, 0), 0.6, GRID), ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
     return [t, Spacer(1, 10)]
