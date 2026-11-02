@@ -977,9 +977,40 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     if any(k not in docgen.DOCS for k in keys):
         raise HTTPException(status_code=404, detail="Tip document inexistent")
 
+    third_party_pram = None
+    if rec.get("pram_source") == "third_party" and doc_type in ("buletin_priza", "all"):
+        uploaded = rec.get("pram_file") or {}
+        storage_path = str(uploaded.get("storage_path") or "")
+        if not storage_path or f"/{user['id']}/" not in storage_path:
+            raise HTTPException(status_code=422, detail="Încarcă buletinul PRAM PDF al firmei terțe înainte de generare.")
+        try:
+            pram_bytes, pram_type = get_object(storage_path)
+        except Exception as exc:
+            logger.warning("Nu s-a putut citi buletinul PRAM încărcat: %s", exc)
+            raise HTTPException(status_code=404, detail="Fișierul PRAM încărcat nu mai este disponibil. Încarcă-l din nou.") from exc
+        if pram_type != "application/pdf" or not pram_bytes.startswith(b"%PDF-"):
+            raise HTTPException(status_code=415, detail="Fișierul PRAM trebuie să fie un PDF valid.")
+        third_party_pram = pram_bytes
+
+    if doc_type == "buletin_priza" and third_party_pram:
+        filename = str((rec.get("pram_file") or {}).get("original_filename") or "buletin_pram_terta.pdf")
+        return Response(content=third_party_pram, media_type="application/pdf",
+                        headers={"Content-Disposition": disp("inline", filename)})
+    if doc_type == "all" and third_party_pram:
+        keys = [key for key in keys if key != "buletin_priza"]
+
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     settings, _ = await effective_settings(user["id"], rec, base)
     pdf = docgen.render(keys, rec, settings, client)
+    if doc_type == "all" and third_party_pram:
+        writer = PdfWriter()
+        for page in PdfReader(io.BytesIO(pdf)).pages:
+            writer.add_page(page)
+        for page in PdfReader(io.BytesIO(third_party_pram)).pages:
+            writer.add_page(page)
+        combined = io.BytesIO()
+        writer.write(combined)
+        pdf = combined.getvalue()
 
     if doc_type == "all" and is_power_increase and annex1:
         try:
