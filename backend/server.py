@@ -596,6 +596,7 @@ async def catalog_supplier_search(q: str = Query(""), category: str = Query("Inv
 @api_router.post("/catalog/supplier-import")
 async def catalog_supplier_import(request: Request, user: dict = Depends(get_current_user)):
     """Import verified public product data and linked official PDFs into the owner's catalog."""
+    from urllib.parse import urlparse
     guard("catalog", user, write=True)
     body = await request.json()
     supplier = str(body.get("supplier") or "")
