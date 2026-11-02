@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { hasConfiguredStorage } from "@/lib/cefStorage";
 
 const field = (cfg, name) => (cfg.fields || []).find((f) => f.name === name);
 const title = (f, fallback) => f?.label?.replace(/\s*\*$/, "") || fallback;
@@ -104,7 +105,13 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         if (proposal) inv.strings = proposal;
         else if (existingStrings.every((x) => x.auto_generated)) inv.strings = [];
       }
-      setVal("cef", { ...cef, grid: { ...(cef.grid || {}), ...(form.supply ? { supply: form.supply } : {}), ...(form.bransament_kw ? { bransament_kw: Number(form.bransament_kw) } : {}) }, inverters: [inv, ...(cef.inverters || []).slice(1)] });
+      const nextCef = { ...cef, grid: { ...(cef.grid || {}), ...(form.supply ? { supply: form.supply } : {}), ...(form.bransament_kw ? { bransament_kw: Number(form.bransament_kw) } : {}) }, inverters: [inv, ...(cef.inverters || []).slice(1)] };
+      setVal("cef", nextCef);
+      if (kind === "inverter" || kind === "battery") {
+        const hasBattery = hasConfiguredStorage({ cef: nextCef });
+        const hasHybridInverter = (nextCef.inverters || []).some((row) => row.type === "Hibrid");
+        setVal("system_type", hasBattery ? "Hibrid cu baterie" : hasHybridInverter ? "Hibrid" : "On-grid");
+      }
     }
     if (id === "") setVal("catalog_selection", { ...selected, [kind]: "" });
   };
@@ -116,7 +123,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     if (kind === "inverter") {
       setVal("inverter", item?.brand_model || ""); setVal("inverter_kw", item?.p_nom_kw || "");
       setVal("inverter_count", item ? (form.inverter_count || 1) : "");
-      if (item) setVal("system_type", item.type === "Hibrid" ? "Hibrid cu baterie" : "On-grid");
+
     } else if (kind === "panel") {
       setVal("panels", item?.brand_model || ""); setVal("panel_w", item?.w || "");
       const suggestedCount = item ? panelCountForPower(form.power, item.w) : "";
@@ -130,7 +137,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       setVal("battery", item?.brand_model || ""); setVal("battery_kwh", item?.kwh || "");
       setVal("battery_v", item?.voltage || ""); setVal("battery_ah", item?.ah || "");
       setVal("battery_coupling", item?.coupling || ""); setVal("battery_count", item ? (form.battery_count || 1) : "");
-      setVal("system_type", item ? "Hibrid cu baterie" : "On-grid");
+
     } else setVal("smart_meter_type", item?.brand_model || "");
     cefUpdate(kind, item, id, panelCountOverride);
     if (item && kind !== "meter") {
