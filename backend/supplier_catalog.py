@@ -194,10 +194,10 @@ async def search_supplier_products(query: str, category: str):
         # large store crowd out the other sources.
         balanced = []
         for source_name in SOURCES:
-            balanced.extend([row for row in candidates if row[0] == source_name][:6])
+            balanced.extend([row for row in candidates if row[0] == source_name][:12])
         detail_rows = await asyncio.gather(*[
             _detail(client, name, source, cat, url)
-            for name, source, cat, url in balanced[:18]
+            for name, source, cat, url in balanced[:36]
         ])
     products, seen = [], set()
     for row in detail_rows:
@@ -207,5 +207,5 @@ async def search_supplier_products(query: str, category: str):
         if key not in seen:
             seen.add(key)
             products.append(row)
-    return {"products": products[:18], "sources": list(SOURCES),
+    return {"products": products[:36], "sources": list(SOURCES),
             "message": "" if products else "Nu am găsit modele care corespund titlului în categoriile publice. Verifică ortografia sau încearcă SKU-ul exact."}
