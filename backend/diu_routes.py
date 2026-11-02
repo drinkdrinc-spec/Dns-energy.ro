@@ -36,24 +36,15 @@ async def diu_ctx(user: dict, item_id: str):
     prec = CEF.flatten(CEF.from_legacy(prec)) if prec else {}
     client = await S.get_client(user["id"], rec) or (await S.get_client(user["id"], prec) if prec else {})
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    # DI-U may override the signers and measuring instrument selected for the
-    # linked prosumer dossier. If the DI-U has no selection, inherit the prosumer
-    # dossier selection so both workflows use the same validated company data.
-    effective_rec = {**prec, **rec, "snapshot": None}
-    effective_rec["signers"] = rec.get("signers") or prec.get("signers") or {}
-    effective_rec["instrument_id"] = rec.get("instrument_id") or prec.get("instrument_id")
-    s, _ = await S.effective_settings(user["id"], effective_rec, base)
+    # The DI-U uses the company representative configured in company settings.
+    # Do not inherit legacy signer, verifier, or metrology-apparatus selections.
+    s, _ = await S.effective_settings(user["id"], rec, base)
     prec = {k: v for k, v in prec.items() if not k.startswith(OWN)}
     merged = {**prec, **{k: v for k, v in rec.items() if v not in (None, "", [], {})}}
-    # Feed the selected, currently valid metrology instrument and authorized
-    # PRAM verifier into the DI-U PRAM templates (which read pram_m fields).
     pm = dict(merged.get("pram_m") or {})
-    if s.get("meter_device"):
-        pm["instrument"] = " ".join(str(v) for v in (s.get("meter_device"), ("seria " + str(s.get("meter_serial"))) if s.get("meter_serial") else None) if v)
-    if s.get("meter_valid"):
-        pm["metrology_valid_until"] = s.get("meter_valid")
-    if s.get("measurer"):
-        pm["verifier"] = s.get("measurer")
+    pm.pop("instrument", None)
+    pm.pop("metrology_valid_until", None)
+    pm.pop("verifier", None)
     merged["pram_m"] = pm
     for k in ("address", "county"):
         if not merged.get(k) and client.get(k):
