@@ -401,7 +401,7 @@ QUICK_SEARCH_MODULES = [
     ("atr", "Cerere ATR", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/cerere-atr"),
     ("power", "Spor de putere", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/spor-putere"),
     ("diu", "Dosar DIU", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/diu"),
-    ("documents", "Document", "client_name", ["client_name", "title", "name", "filename", "type", "pod"], "/documente"),
+    ("documents", "Document", "client_name", ["client_name", "title", "name", "filename", "original_filename", "doc_type", "kind", "type", "pod"], "/documente"),
 ]
 
 
@@ -420,7 +420,8 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
             continue
         field_query = {"$or": [{field: pattern} for field in fields]}
         query = {"$and": [scope_q(user, module), field_query]}
-        rows = await db[module].find(query, {"_id": 0, "id": 1, "name": 1, "client_name": 1, "number": 1,
+        rows = await db[module].find(query, {"_id": 0, "id": 1, "name": 1, "client_name": 1, "client_id": 1,
+                                             "number": 1, "original_filename": 1, "doc_type": 1, "kind": 1,
                                              "pod": 1, "address": 1, "locality": 1, "county": 1,
                                              "operator": 1, "title": 1, "filename": 1, "type": 1,
                                              "is_test": 1}).sort("updated_at", -1).limit(5).to_list(5)
@@ -432,8 +433,14 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
                 continue
             client_name = row.get(name_key) or row.get("name") or "Înregistrare fără nume"
             detail = " · ".join(str(row.get(k)) for k in ("number", "pod", "locality", "county", "operator") if row.get(k))
-            results.append({"id": item_id, "module": module, "label": label, "title": client_name,
-                            "detail": detail, "href": f"{route}?edit={item_id}"})
+            title = client_name
+            href = f"{route}?edit={item_id}"
+            if module == "documents":
+                title = row.get("original_filename") or row.get("title") or row.get("filename") or row.get("doc_type") or row.get("kind") or client_name
+                detail = " · ".join(str(value) for value in (client_name, row.get("doc_type") or row.get("kind"), detail) if value)
+                href = f"{route}?docId={item_id}"
+            results.append({"id": item_id, "module": module, "label": label, "title": title,
+                            "detail": detail, "href": href})
     return {"results": results[:24]}
 
 @api_router.get("/data/{module}")
