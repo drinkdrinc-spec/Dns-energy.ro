@@ -518,10 +518,10 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
                 capacity = D.num(battery.get("kwh"))
                 if capacity is not None and capacity > 0:
                     details.append(f"{capacity * module_count:g} kWh total ({module_count} × {capacity:g} kWh/modul)")
-                for key, label in (("voltage", "V DC"), ("ah", "Ah/modul"), ("i_max", "I max/modul A")):
+                for key, label in (("voltage", "V DC"), ("ah", "Ah/modul"), ("i_max", "I max/modul")):
                     value = D.num(battery.get(key))
                     if value is not None and value > 0:
-                        details.append(f"{value:g} {label}")
+                        details.append(f"{label} {value:g} A" if key == "i_max" else f"{value:g} {label}")
                 if battery.get("coupling"):
                     details.append("cuplare " + str(battery["coupling"]))
                 description = f"Baterie/BESS: {battery['model']} × {module_count} modul(e)"
