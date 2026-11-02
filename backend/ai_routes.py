@@ -375,12 +375,11 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
     # Always merge conservative local extraction for labelled PDF values; AI can return an empty but valid JSON object.
     local_values = extract_equipment_specs(category, source_text)
     if local_values:
-        if not isinstance(extracted, dict):
-            extracted = {}
-        extracted = {**local_values, **extracted}
-        if engine == "openai" and not any(value not in (None, "") for value in extracted.values()):
+        ai_values = {key: value for key, value in extracted.items() if value not in (None, "")} if isinstance(extracted, dict) else {}
+        extracted = {**local_values, **ai_values}
+        if engine == "openai" and not ai_values:
             engine = "local_text"
-        elif engine == "openai" and any(extracted.get(key) == value for key, value in local_values.items()):
+        elif engine == "openai" and any(key not in ai_values for key in local_values):
             engine = "openai+local_text"
     numeric = set(allowed) - {"type", "phases", "battery_voltage", "tech", "coupling", "breaker_integrated", "voltage_nominal_v", "frequency_hz", "protocol", "wiring", "accuracy_class"}
     clean = {}
