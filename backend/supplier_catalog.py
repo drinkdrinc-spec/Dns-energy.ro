@@ -50,7 +50,7 @@ DOCUMENT_HOSTS = {
     "qcells.com", "jasolar.com", "pylontech.com", "bydbatterybox.com", "fox-ess.com", "foxess.com",
     "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com",
 }
-CATEGORIES = {"Invertor", "Panou", "Baterie"}
+CATEGORIES = {"Invertor", "Panou", "Baterie", "Smart meter"}
 MAX_LISTING_PAGES = 6
 DOCUMENT_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
@@ -112,6 +112,9 @@ def _correct_category(title: str, category: str) -> bool:
         return value.startswith(("invertor ", "inverter ")) and " kit " not in f" {value} "
     if category == "Panou":
         return value.startswith(("panou ", "modul fotovoltaic", "solar panel"))
+    if category == "Smart meter":
+        padded = f" {value} "
+        return any(term in padded for term in (" smart meter ", " smartmeter ", " energy meter ", " power meter ", " contor inteligent ", " contor smart "))
     return value.startswith(("baterie ", "acumulator ", "acumulatori ", "battery ")) and " kit " not in f" {value} "
 
 
@@ -237,15 +240,17 @@ def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
 async def search_supplier_products(query: str, category: str) -> dict:
     query = re.sub(r"\s+", " ", (query or "").strip())[:100]
     if len(query) < 2 or category not in CATEGORIES:
-        return {"products": [], "sources": list(SOURCES), "message": "Introdu cel puțin două caractere și selectează invertor, panou sau baterie."}
+        return {"products": [], "sources": list(SOURCES), "message": "Introdu cel puțin două caractere și selectează invertor, panou, baterie sau smart meter."}
+    active_sources = [(name, source) for name, source in SOURCES.items()
+                      if category in source.get("categories", {}) or source.get("search")]
     qtokens = [part for part in _norm(query).split() if len(part) > 1]
     async with httpx.AsyncClient(timeout=12, headers={"User-Agent": "DNS-Energy-Catalog/1.0 (+https://dns-energy.ro)", "Accept": "text/html,application/xhtml+xml"}) as client:
         responses = await asyncio.gather(*[
             _get(client, source.get("search", "").format(query=quote(query)) if source.get("search") else source["categories"][category], source["host"])
-            for source in SOURCES.values()
+            for _, source in active_sources
         ])
         candidates = []
-        for (name, source), response in zip(SOURCES.items(), responses):
+        for (name, source), response in zip(active_sources, responses):
             if not response:
                 continue
             try:
@@ -274,7 +279,7 @@ async def search_supplier_products(query: str, category: str) -> dict:
                     seen.add(url)
                     candidates.append((name, source, category, url, title))
         balanced = []
-        for name in SOURCES:
+        for name, _ in active_sources:
             balanced.extend([x for x in candidates if x[0] == name][:8])
         sem = asyncio.Semaphore(8)
 
