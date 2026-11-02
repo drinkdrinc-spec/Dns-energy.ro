@@ -221,17 +221,20 @@ def extract_equipment_specs(category: str, text: str) -> dict:
         value = _enum(text, "phases")
         if value:
             result["phases"] = value
-        current = _numeric(text, (r"\bmaximum\s+rated\s+current\s*\(Imax\)", r"\bmaximum\s+current\s*\(Imax\)"), amp_units, convert_a)
+        current = _numeric(text, (r"\bmaximum\s+rated\s+current\s*\(Imax\)", r"\bmaximum\s+current\s*\(Imax\)", r"\bImax\b"), amp_units, convert_a)
         if current is not None:
             result["current_max_a"] = current
 
         def labelled_value(patterns):
             values = set()
-            for line in text.splitlines():
+            lines = text.splitlines()
+            for index, line in enumerate(lines):
                 for pattern in patterns:
                     match = re.search(pattern, line, re.I)
                     if match:
                         value = re.sub(r"\s+", " ", line[match.end():]).strip(" :;")
+                        if not value and index + 1 < len(lines):
+                            value = re.sub(r"\s+", " ", lines[index + 1]).strip(" :;")
                         if value:
                             values.add(value[:120])
             return next(iter(values)) if len(values) == 1 else None
@@ -246,10 +249,12 @@ def extract_equipment_specs(category: str, text: str) -> dict:
         if accuracy:
             result["accuracy_class"] = accuracy
 
-        model_line = next((line for line in text.splitlines() if re.match(r"\s*SDM630-Modbus\b", line, re.I)), "")
-        if model_line:
-            protocol = "RS485 Modbus RTU" if re.search(r"\bRS485\s+Modbus\s+RTU\b", model_line, re.I) else None
-            wiring = re.search(r"\b(3PH-4W,\s*3PH-3W,\s*1PH-2W)\b", model_line, re.I)
+        normalized_text = re.sub(r"\s+", " ", text)
+        model_match = re.search(r"\bSDM630-Modbus\b(.*?)(?=\bSDM630-(?:Mbus|MT|Std|Standard|Pulse|2T|M-DI)\b|$)", normalized_text, re.I)
+        if model_match:
+            model_segment = model_match.group(1)
+            protocol = "RS485 Modbus RTU" if re.search(r"\bRS485\s+Modbus\s+RTU\b", model_segment, re.I) else None
+            wiring = re.search(r"\b(3PH-4W,\s*3PH-3W,\s*1PH-2W)\b", model_segment, re.I)
             if protocol:
                 result["protocol"] = protocol
             if wiring:
