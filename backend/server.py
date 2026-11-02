@@ -2914,6 +2914,9 @@ async def startup():
     await db.users.create_index("email", unique=True)
     for m in MODULES:
         await db[m].create_index("owner")
+        # Keep tenant-scoped list and quick-search sorts efficient as collections grow.
+        await db[m].create_index([("owner", 1), ("created_at", -1)], name="owner_created_at")
+        await db[m].create_index([("owner", 1), ("updated_at", -1)], name="owner_updated_at")
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     jwt_secret = os.environ.get("JWT_SECRET", "")
