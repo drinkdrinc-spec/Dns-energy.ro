@@ -554,7 +554,7 @@ export default function ModulePage({ moduleKey }) {
           )}
           {key === "atr" && form.pod_check_note && <div className="mt-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>{form.pod_check_note}</div>}
 
-          {cfg.checklist && key !== "prosumator" && (
+          {cfg.checklist && key !== "prosumator" && key !== "diu" && (
             <div className="mt-6">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-sm">Checklist documente — {cfg.title}</h3>
