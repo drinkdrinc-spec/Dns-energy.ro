@@ -1,11 +1,19 @@
 import io
 
 from docx import Document
+import pytest
 
 import atr_doc
 
 
-def test_deer_annex2_lists_battery_details_without_mixing_kwh_into_inverter_kw_table():
+@pytest.mark.parametrize(
+    ("deer_case", "inverter_table_index", "detail_table_index"),
+    [
+        ("Loc existent — spor de putere — Anexa 1", 6, 8),
+        ("Loc existent — notificare — Anexa 2", 3, 5),
+    ],
+)
+def test_deer_annexes_keep_battery_details_out_of_inverter_kw_table(deer_case, inverter_table_index, detail_table_index):
     pros = {
         "operator": "DEER",
         "cef": {
@@ -30,25 +38,28 @@ def test_deer_annex2_lists_battery_details_without_mixing_kwh_into_inverter_kw_t
     }
     rec = {
         "operator": "DEER",
-        "deer_case": "Loc existent — notificare — Anexa 2",
-        "request_type": "modificare",
+        "deer_case": deer_case,
+        "request_type": "spor de putere" if "spor" in deer_case else "modificare",
     }
 
     content = atr_doc.render_deer_official_docx(rec, {}, {}, pros)
     doc = Document(io.BytesIO(content))
     inverter_table_text = " ".join(
-        cell.text for row in doc.tables[3].rows for cell in row.cells
+        cell.text for row in doc.tables[inverter_table_index].rows for cell in row.cells
     )
+    inverter_active_power_cells = [row.cells[4].text.strip() for row in doc.tables[inverter_table_index].rows]
     details_table_text = " ".join(
-        cell.text for row in doc.tables[5].rows for cell in row.cells
+        cell.text for row in doc.tables[detail_table_index].rows for cell in row.cells
     )
 
     assert "Invertor test 10 kW" in inverter_table_text
-    assert "Baterie test 10 kWh" not in inverter_table_text
     assert "Baterie test 10 kWh" in details_table_text
     assert "20 kWh" in details_table_text
     assert "51.2 V" in details_table_text
     assert "200 Ah" in details_table_text
     assert "100 A" in details_table_text
     assert "cuplare DC" in details_table_text
+    assert "20" not in inverter_active_power_cells
+    if inverter_table_index == 6:
+        assert "10 kWh/modul" in inverter_table_text
 

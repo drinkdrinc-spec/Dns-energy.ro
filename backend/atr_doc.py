@@ -481,7 +481,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
             if not is_annex2 and inv.get("battery_mode") == "own" and (inv.get("battery") or {}).get("model"):
                 battery = inv["battery"]
                 details = []
-                for key, label in (("kwh", "kWh"), ("voltage", "V"), ("ah", "Ah"), ("i_max", "I max/modul A")):
+                for key, label in (("kwh", "kWh/modul"), ("voltage", "V DC"), ("ah", "Ah"), ("i_max", "I max/modul A")):
                     value = D.num(battery.get(key))
                     if value is not None and value > 0:
                         details.append(f"{value:g} {label}")
@@ -500,25 +500,9 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         if inverters and len(table.rows) > row:
             total = sum(D.num(inv.get("p_nom_kw")) * D.num(inv.get("count") or 1) for inv in inverters)
             _deer_cell(table.cell(len(table.rows) - 1, 4), f"{total:g}" if total else "")
-        # Annex 2's table is specifically for inverter active power (kW). Batteries
-        # belong in its storage details table below; putting kWh into this table
-        # makes capacity look like inverter kW. Other DEER annexes have a mixed
-        # equipment table and can carry explicit battery rows there.
-        if not is_annex2:
-            for battery_idx, battery in enumerate(batteries, 1):
-                modules = max(1, int(D.num(battery.get("modules")) or 1))
-                specs = []
-                for key, label, unit in (("voltage", "U", " V"), ("ah", "Capacitate", " Ah"),
-                                         ("i_max", "I max", " A"), ("coupling", "Cuplare", "")):
-                    value = battery.get(key)
-                    if value not in (None, ""):
-                        specs.append(f"{label}: {value}{unit}")
-                capacity = D.num(battery.get("kwh"))
-                if capacity:
-                    capacity *= modules
-                battery_row = len(table.rows)
-                _deer_table_row(table, battery_row, [f"B{battery_idx}", modules, battery.get("model") or "",
-                    "Baterie", f"{capacity:g}" if capacity else "", "", "", "; ".join(specs)])
+        # Every DEER template's equipment table here is explicitly for inverter
+        # active power in kW. Battery capacity belongs in the storage details
+        # fields below; placing kWh in this table falsely labels it as inverter kW.
 
     if len(tables) > detail_table:
         detail = tables[detail_table]
