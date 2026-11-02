@@ -372,6 +372,16 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
         if not extracted:
             raise HTTPException(status_code=502, detail="AI-ul nu a putut extrage datele, iar PDF-ul nu conține suficiente valori etichetate pentru completare locală.")
         engine = "local_text"
+    # Always merge conservative local extraction for labelled PDF values; AI can return an empty but valid JSON object.
+    local_values = extract_equipment_specs(category, source_text)
+    if local_values:
+        if not isinstance(extracted, dict):
+            extracted = {}
+        extracted = {**local_values, **extracted}
+        if engine == "openai" and not any(value not in (None, "") for value in extracted.values()):
+            engine = "local_text"
+        elif engine == "openai" and any(extracted.get(key) == value for key, value in local_values.items()):
+            engine = "openai+local_text"
     numeric = set(allowed) - {"type", "phases", "battery_voltage", "tech", "coupling", "breaker_integrated", "voltage_nominal_v", "frequency_hz", "protocol", "wiring", "accuracy_class"}
     clean = {}
     for key in allowed:
