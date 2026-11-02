@@ -19,6 +19,12 @@ grounding_ohm (rezistența prizei de pământ măsurată, număr sau null), date
 executant_rep (reprezentant executant), notes (scurt rezumat în română al documentului și lista documentelor conținute).
 Folosește null pentru valorile lipsă."""
 
+COMPANY_PROMPT = """Citește documentul oficial al unei firme din România și răspunde numai JSON cu cheile:
+company (denumirea exactă), cui (CUI/CIF exact), regcom (număr Registrul Comerțului), address (sediul social), rep (reprezentant legal), phone (telefon dacă apare), email (e-mail dacă apare), anre_attest (numărul atestatului ANRE dacă apare).
+Folosește null pentru orice valoare care nu este vizibilă explicit. Nu deduce, nu corecta și nu completa date din memorie.
+Dacă documentul conține mai multe firme sau mai mulți reprezentanți și solicitantul nu poate fi identificat fără ambiguitate, întoarce null pentru câmpul ambiguu.
+"""
+
 
 def _parse(text: str) -> dict:
     # Model output may wrap valid JSON in Markdown or a short explanation.
@@ -97,8 +103,10 @@ async def extract_gpt_text(text: str, doc_type: str = "other") -> dict:
         "factura": "Extrage titularul, POD-ul, operatorul, furnizorul, adresa locului de consum și puterea aprobată.",
         "cf": "Extrage proprietarul, numărul CF și numărul cadastral.",
         "other": "Identifică documentul și rezumă-l; extrage doar datele relevante care apar explicit.",
+        "company": "Extrage datele firmei exact din document, fără deducții.",
     }.get(doc_type, "Identifică documentul și extrage datele vizibile.")
-    prompt = PROMPT + "\n\n" + hint + "\n\nTEXT EXTRAS DIN DOCUMENT (poate conține erori de OCR; nu deduce valori lipsă):\n" + text
+    base = COMPANY_PROMPT if doc_type == "company" else PROMPT
+    prompt = base + "\n\n" + hint + "\n\nTEXT EXTRAS DIN DOCUMENT (poate conține erori de OCR; nu deduce valori lipsă):\n" + text
     async for ev in chat.stream_message(UserMessage(text=prompt)):
         if isinstance(ev, TextDelta):
             out += ev.content
@@ -159,6 +167,9 @@ async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict
                     # when a core identity, POD, or cadastral field is still absent.
                     if all(any(present(fields.get(key)) for key in aliases) for aliases in required_groups):
                         return fields
+                elif doc_type == "company":
+                    if present(fields.get("company")) and present(fields.get("cui")):
+                        return fields
                 elif any(present(fields.get(key)) for key in ("client_name", "cnp", "pod", "cf_nr", "cadastral_nr", "address", "owner_name")):
                     return fields
             except Exception:
@@ -173,8 +184,9 @@ async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict
         "factura": "Factură de energie: extrage POD, operator, furnizor, adresa locului de consum, titularul și puterea aprobată dacă apare.",
         "cf": "Extras de carte funciară: extrage proprietarul, numărul CF și numărul cadastral. Nu inventa date lipsă.",
         "other": "Identifică tipul documentului și rezumă-l; extrage datele relevante numai dacă sunt vizibile.",
+        "company": "Certificat de înregistrare / certificat constatator / atestat ANRE al firmei. Extrage datele firmei exact așa cum apar.",
     }
-    prompt = PROMPT + "\n\nTip document selectat: " + hints.get(doc_type, "Identifică tipul documentului.") + " Nu deduce și nu completa valori absente."
+    prompt = (COMPANY_PROMPT if doc_type == "company" else PROMPT) + "\n\nTip document selectat: " + hints.get(doc_type, "Identifică tipul documentului.") + " Nu deduce și nu completa valori absente."
     async for ev in chat.stream_message(UserMessage(text=prompt, file_contents=_images(content, mime))):
         if isinstance(ev, TextDelta):
             out += ev.content
@@ -184,6 +196,38 @@ async def extract_gpt(content: bytes, mime: str, doc_type: str = "auto") -> dict
     if not data:
         raise ValueError("AI nu a putut identifica date lizibile în document. Verifică fișierul sau completează datele manual.")
     return data
+
+
+async def extract_company_document(content: bytes, mime: str) -> dict:
+    """Extract only company identity fields from an explicitly supplied PDF/image."""
+    allowed = {"application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+    if mime not in allowed:
+        raise ValueError("Încarcă un certificat al firmei în PDF, JPG, PNG sau WebP.")
+    if mime == "application/pdf":
+        try:
+            text = _pdf_selectable_text(content)
+            if len(text) >= 80:
+                fields = await extract_gpt_text(text, "company")
+                if fields.get("company") and fields.get("cui"):
+                    return fields
+        except Exception:
+            pass
+    chat = LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=f"company-extract-{uuid.uuid4()}",
+                   system_message="Extragi date oficiale din documente românești. Răspunzi doar JSON.").with_model("openai", "gpt-4.1-mini")
+    prompt = COMPANY_PROMPT + "\\n\\nNu include CNP-ul persoanelor fizice; sunt necesare numai datele firmei. Nu inventa valori."
+    out = ""
+    async for ev in chat.stream_message(UserMessage(text=prompt, file_contents=_images(content, mime))):
+        if isinstance(ev, TextDelta):
+            out += ev.content
+        elif isinstance(ev, StreamDone):
+            break
+    fields = _parse(out)
+    allowed_keys = {"company", "cui", "regcom", "address", "rep", "phone", "email", "anre_attest"}
+    result = {key: str(fields[key]).strip()[:250] for key in allowed_keys if fields.get(key) not in (None, "", "null")}
+    if not result.get("company") and not result.get("cui"):
+        raise ValueError("Nu am găsit clar denumirea firmei sau CUI-ul. Verifică documentul și completează manual.")
+    result["_engine"] = "OpenAI — extragere asistată; verifică înainte de salvare"
+    return result
 
 
 def _labeled_value(text: str, labels: str) -> str | None:
