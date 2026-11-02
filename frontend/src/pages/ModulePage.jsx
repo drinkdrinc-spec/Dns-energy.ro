@@ -606,7 +606,7 @@ export default function ModulePage({ moduleKey }) {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base}>Cerere ATR</a>
                   <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base + "&case=" + encodeURIComponent("power-increase")}>Spor de putere</a>
-                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={"/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (pros ? "&prosId=" + encodeURIComponent(pros.id) : "") + ((showTestRecords || isTestRecord(it)) ? "&showTests=1" : "")}>Creează DI-U</a>
+                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={"/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (pros ? "&prosId=" + encodeURIComponent(pros.id) : "") + ((showTestRecords || isTestRecord(it) || (pros && isTestRecord(pros))) ? "&showTests=1" : "")}>Creează DI-U</a>
                 </div>
                 {(pros || diu) && <details className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
                   <summary className="cursor-pointer text-xs font-semibold" style={{ color: "var(--blue)" }}>Descarcă documentele disponibile</summary>
@@ -648,7 +648,7 @@ export default function ModulePage({ moduleKey }) {
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/pv_pif/${it.id}`, `pif_${it.id.slice(0, 8)}.pdf`)}>Proces verbal PIF</button>
                   {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}`}>Cerere ATR</a>}
                   {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}&case=${encodeURIComponent("power-increase")}`}>Spor de putere</a>}
-                  {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu?new=diu&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}`}>Creează DI-U</a>}
+                  {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu?new=diu&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}${(showTestRecords || isTestRecord(it)) ? "&showTests=1" : ""}`}>Creează DI-U</a>}
                   {diu && <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`, `pram_priza_diu_${diu.id.slice(0, 8)}.pdf`)}>PRAM DI-U</button>}
                 </div>
               </article>;
@@ -764,7 +764,7 @@ export default function ModulePage({ moduleKey }) {
                         const clientDiuDossiers = linkedDiu.filter((d) => (d.client_id ? d.client_id === it.id : normalize(d.client_name) === normalize(it.name)) || (d.pros_id && d.pros_id === dossier?.id));
                         const diu = clientDiuDossiers.length === 1 ? clientDiuDossiers[0] : null;
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
-                        const diuUrl = "/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "");
+                        const diuUrl = "/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "") + ((showTestRecords || isTestRecord(it) || (dossier && isTestRecord(dossier))) ? "&showTests=1" : "");
                         return <span className="inline-flex max-w-[204px] items-center flex-wrap gap-1">
                           <button type="button" className={linkClass} onClick={() => { window.location.href = diuUrl; }}>Creează DI-U</button>
                           <a className={linkClass} href={"/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "")}>Cerere ATR</a>
@@ -793,7 +793,7 @@ export default function ModulePage({ moduleKey }) {
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
                         const atrUrl = "/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.client_id || "")
                           + "&prosId=" + encodeURIComponent(it.id);
-                        const diuUrl = it.client_id ? "/diu?new=diu&clientId=" + encodeURIComponent(it.client_id) + "&prosId=" + encodeURIComponent(it.id) : "";
+                        const diuUrl = it.client_id ? "/diu?new=diu&clientId=" + encodeURIComponent(it.client_id) + "&prosId=" + encodeURIComponent(it.id) + ((showTestRecords || isTestRecord(it)) ? "&showTests=1" : "") : "";
                         return <span className="inline-flex items-center flex-wrap gap-y-1">
                           {diuUrl && <a className={linkClass} href={diuUrl}>Creează DI-U</a>}
                           {it.client_id && <a className={linkClass} href={atrUrl}>Cerere ATR</a>}
