@@ -802,11 +802,23 @@ def _draft(c, doc):
     c.restoreState()
 
 
+def _test_watermark(c, doc):
+    c.saveState()
+    c.setFont("LSB", 25)
+    c.setFillColor(colors.Color(0.72, 0.08, 0.08, alpha=0.24))
+    w, h = c._pagesize
+    c.translate(w / 2, h / 2)
+    c.rotate(35)
+    c.drawCentredString(0, 0, "TEST - DATE SINTETICE")
+    c.restoreState()
+
+
 def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
+    test_mode = bool((rec or {}).get("is_test"))
     ctx = Ctx(CEF.flatten(rec), settings, client, opis_titles)
     buf = io.BytesIO()
     pw, ph = A4
-    on = _draft if draft else (lambda c, d: None)
+    on = _test_watermark if test_mode else (_draft if draft else (lambda c, d: None))
     port = PageTemplate("port", [Frame(18 * mm, 14 * mm, pw - 36 * mm, ph - 28 * mm, id="fp")], pagesize=A4, onPage=on)
     land = PageTemplate("land", [Frame(12 * mm, 10 * mm, ph - 24 * mm, pw - 20 * mm, id="fl")], pagesize=landscape(A4), onPage=on)
     first_land = bool(doc_keys) and doc_keys[0] in ("schema_cef", "schema")
