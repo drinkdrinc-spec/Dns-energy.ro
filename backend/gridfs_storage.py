@@ -41,6 +41,14 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
     return {"path": key, "size": len(data)}
 
 
+def has_gridfs_object(path: str) -> bool:
+    """Return whether the exact object is present locally in GridFS, without legacy-storage I/O."""
+    key = str(path).lstrip("/")
+    if not key or ".." in key.split("/"):
+        raise ValueError("Invalid object key")
+    return next(iter(_bucket.find({"filename": key}).limit(1)), None) is not None
+
+
 def _legacy_storage_token(force: bool = False) -> str:
     global _legacy_key
     if not LEGACY_STORAGE_KEY:

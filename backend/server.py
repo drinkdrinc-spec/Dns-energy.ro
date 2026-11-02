@@ -188,7 +188,7 @@ def check_inverters(user: dict, d: dict):
 
 # ---------------- Object storage ----------------
 # New files use MongoDB GridFS; legacy files are read-through migrated only when the old source remains accessible.
-from gridfs_storage import init_storage, put_object, get_object, LegacyObjectUnavailable
+from gridfs_storage import init_storage, put_object, get_object, has_gridfs_object, LegacyObjectUnavailable
 
 @app.exception_handler(LegacyObjectUnavailable)
 async def legacy_file_unavailable(request: Request, exc: LegacyObjectUnavailable):
@@ -1455,8 +1455,14 @@ async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
             continue
         for kind in ("datasheet", "conformity"):
             existing = item.get(kind)
-            if isinstance(existing, dict) and existing.get("storage_path"):
-                continue
+            storage_path = existing.get("storage_path") if isinstance(existing, dict) else ""
+            if storage_path:
+                try:
+                    if has_gridfs_object(storage_path):
+                        continue
+                except Exception as exc:
+                    logger.warning("GridFS catalog document check failed (%s): %s", catalog_id, str(exc)[:160])
+                    continue
             source_url = item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
             if source_url:
                 candidates.append((catalog_id, kind, str(source_url)))
@@ -1955,6 +1961,9 @@ async def atr_pack(user: dict, rec: dict, full: int):
     pros, info = None, None
     linked_pros = await resolve_atr_prosumer(user, rec, client)
     if linked_pros:
+        if full:
+            # Rebuild selected equipment PDFs in GridFS when a legacy storage pointer is stale.
+            await auto_import_selected_catalog_documents(user, linked_pros)
         pros, pclient, base, info = await dossier_ctx(user, linked_pros["id"])
         client = {**(pclient or {}), **(client or {})}
         rec = {**rec, "pros_id": linked_pros["id"]}
