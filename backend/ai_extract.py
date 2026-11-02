@@ -214,7 +214,7 @@ async def extract_company_document(content: bytes, mime: str) -> dict:
             pass
     chat = LlmChat(api_key=os.environ["OPENAI_API_KEY"], session_id=f"company-extract-{uuid.uuid4()}",
                    system_message="Extragi date oficiale din documente românești. Răspunzi doar JSON.").with_model("openai", "gpt-4.1-mini")
-    prompt = COMPANY_PROMPT + "\\n\\nNu include CNP-ul persoanelor fizice; sunt necesare numai datele firmei. Nu inventa valori."
+    prompt = COMPANY_PROMPT + "\n\nNu include CNP-ul persoanelor fizice; sunt necesare numai datele firmei. Nu inventa valori."
     out = ""
     async for ev in chat.stream_message(UserMessage(text=prompt, file_contents=_images(content, mime))):
         if isinstance(ev, TextDelta):
