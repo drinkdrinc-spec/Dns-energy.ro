@@ -38,7 +38,7 @@ def _labeled_numbers(text: str, labels: tuple[str, ...], units: tuple[str, ...],
                 if index + 1 >= len(lines):
                     continue
                 tail = lines[index + 1].strip()
-                if not re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?\s*[^\w\s]?\s*(?:%\s*/\s*°?\s*C|°\s*C|MWh|kWh|Wh|MW|kW|W|mAh|Ah|mA|A|mV|V)", tail, re.I):
+                if not re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?\s*[^\w\s]?\s*(?:%\s*/\s*°?\s*C|°\s*C|MWh|kWh|Wh|MW|kW|W|kA|mAh|Ah|mA|A|mV|V|poles?|P)", tail, re.I):
                     continue
                 number = _NUMBER.search(tail)
             if not number:
