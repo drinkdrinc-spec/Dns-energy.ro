@@ -141,7 +141,8 @@ export default function ModulePage({ moduleKey }) {
       setForm({ ...it });
       setEditId(it.id);
       setChecks(it.checklist || {});
-      window.history.replaceState(null, "", window.location.pathname);
+      const keepTestContext = new URLSearchParams(window.location.search).get("showTests") === "1";
+      window.history.replaceState(null, "", keepTestContext ? `${window.location.pathname}?showTests=1` : window.location.pathname);
     } else {
       toast.error("Înregistrarea din link nu conține un identificator valid.");
     }
