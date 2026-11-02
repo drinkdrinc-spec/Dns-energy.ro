@@ -60,6 +60,12 @@ def test_deer_annexes_keep_battery_details_out_of_inverter_kw_table(deer_case, i
 
     if inverter_table_index is not None:
         assert "Invertor test 10 kW" in inverter_table_text
+        assert "Baterie test 10 kWh" in inverter_table_text
+        assert "20 kWh total" in inverter_table_text
+        assert "51.2 V DC" in inverter_table_text
+        assert "200 Ah/modul" in inverter_table_text
+        assert "100 I max/modul A" in inverter_table_text
+        assert "cuplare DC" in inverter_table_text
     assert "Baterie test 10 kWh" in details_table_text
     assert "20 kWh" in details_table_text
     assert "51.2 V" in details_table_text
