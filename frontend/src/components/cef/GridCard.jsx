@@ -16,6 +16,8 @@ export function GridCard({ grid, set, catalog, res }) {
         {(grid.meter_enabled ?? Boolean(grid.meter)) && <div className="grid sm:grid-cols-2 gap-3 mt-3">
           <CatalogPick items={catalog} category="Smart meter" label="Alege modelul din catalog" onPick={(it) => set({ ...grid, meter_enabled: true, meter: it.brand_model, meter_catalog_id: it.id })} testid="grid-meter-pick" />
           <F label="Model smart meter" value={grid.meter} onChange={(value) => set({ ...grid, meter_enabled: true, meter: value })} testid="grid-meter" />
+          <F label="Serie contor" value={grid.meter_serial} onChange={(value) => set({ ...grid, meter_enabled: true, meter_serial: value })} testid="grid-meter-serial" />
+          <F label="Date tehnice contor (tip, tensiune, curent)" value={grid.meter_specs} onChange={(value) => set({ ...grid, meter_enabled: true, meter_specs: value })} testid="grid-meter-specs" />
         </div>}
       </div>
       <details className="mt-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
