@@ -42,6 +42,9 @@ export function QuickSearch() {
       return undefined;
     }
     let current = true;
+    setResults([]);
+    setUnavailable([]);
+    setFailed(false);
     setLoading(true);
     const timer = window.setTimeout(async () => {
       try {
