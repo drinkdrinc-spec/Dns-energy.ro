@@ -17,6 +17,35 @@ function datasheetNumber(value) {
   const parsed = Number(String(value).trim().replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
 }
+function batteryCatalogData(item, phases) {
+  const breakerCurrent = item.breaker_a ?? item.dc_switch_current_a;
+  const breakerVoltage = item.breaker_voltage_dc ?? item.dc_switch_voltage_v;
+  const threePhase = String(phases || "").toLowerCase().includes("tri");
+  return {
+    catalog_id: item.id,
+    model: item.brand_model,
+    kwh: item.kwh,
+    ah: item.ah,
+    voltage: threePhase ? (item.voltage_3ph ?? item.voltage) : (item.voltage_1ph ?? item.voltage),
+    voltage_1ph: item.voltage_1ph,
+    voltage_3ph: item.voltage_3ph,
+    i_max: item.i_max,
+    i_max_source_url: item.i_max_source_url,
+    max_fuse_a: item.max_fuse_a,
+    coupling: item.coupling || "",
+    breaker_a: breakerCurrent,
+    breaker_voltage_dc: breakerVoltage,
+    breaker_integrated: item.breaker_integrated,
+    breaker_poles: item.breaker_poles,
+    breaker_icu_ka: item.breaker_icu_ka,
+    dc_switch_voltage_v: item.dc_switch_voltage_v ?? breakerVoltage,
+    dc_switch_current_a: item.dc_switch_current_a ?? breakerCurrent,
+    breaker_source_url: item.breaker_source_url,
+    datasheet_url: item.datasheet_url,
+    conformity_url: item.conformity_url,
+  };
+}
+
 
 function proposeStrings(inv, totalPanels) {
   const count = Math.floor(datasheetNumber(totalPanels) || 0);
@@ -104,7 +133,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       panel_isc: item.isc, panel_coef_voc: item.coef_voc, panel_coef_vmp: item.coef_vmp,
     } : { panel_catalog_id: "", panel_model: "", panel_w: "", panel_voc: "", panel_vmp: "", panel_isc: "", panel_coef_voc: "", panel_coef_vmp: "" });
     if (kind === "battery") Object.assign(inv, item ? {
-      battery_mode: "own", battery: { ...(inv.battery || {}), catalog_id: item.id, model: item.brand_model, kwh: item.kwh, ah: item.ah, voltage: item.voltage, i_max: item.i_max, coupling: item.coupling || "", modules: Number(form.battery_count || 1) },
+      battery_mode: "own", battery: { ...(inv.battery || {}), ...batteryCatalogData(item, inv.phases), modules: Number(form.battery_count || 1) },
     } : { battery_mode: "none", battery: {} });
     if (kind === "meter") setVal("cef", { ...cef, grid: { ...(cef.grid || {}), meter: item?.brand_model || "", meter_catalog_id: item?.id || "" } });
     else {
