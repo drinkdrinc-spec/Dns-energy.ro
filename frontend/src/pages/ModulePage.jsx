@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
+import { hasConfiguredStorage } from "@/lib/cefStorage";
 import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
 import { Plus, Pencil, Trash2, Search, X } from "lucide-react";
@@ -235,9 +236,7 @@ export default function ModulePage({ moduleKey }) {
           }
           if (!client) return;
           const grid = pros?.cef?.grid || {};
-          const hasStorage = Boolean(pros && (pros.battery || /hibrid/i.test(String(pros.system_type || ""))
-            || (pros.cef?.shared_batteries || []).length
-            || (pros.cef?.inverters || []).some((inv) => inv.battery_mode === "own" ? Boolean(inv.battery?.model) : inv.battery_mode === "shared" && Boolean(inv.shared_battery_id))));
+          const hasStorage = Boolean(pros && hasConfiguredStorage(pros));
           const circuits = (pros?.cef?.inverters || []).map((inv, index) => {
             const ac = inv.ac || {};
             const count = Math.max(1, Number(inv.count) || 1);

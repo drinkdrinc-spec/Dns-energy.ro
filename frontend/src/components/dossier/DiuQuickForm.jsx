@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { hasConfiguredStorage } from "@/lib/cefStorage";
 
 const CORE = new Set(["client_name", "type", "power", "address", "operator", "atr", "status"]);
 const norm = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
@@ -31,8 +32,7 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
   useEffect(() => {
     if (!selectedClient || linked.length !== 1 || form.pros_id) return;
     const p = linked[0];
-    const hasBattery = Boolean(p.battery || /hibrid/i.test(String(p.system_type || "")) || p.cef?.shared_batteries?.length
-      || p.cef?.inverters?.some((x) => x.battery_mode === "own" ? Boolean(x.battery?.model) : x.battery_mode === "shared" && Boolean(x.shared_battery_id)));
+    const hasBattery = hasConfiguredStorage(p);
     const values = {
       address: p.address || selectedClient.address || "",
       operator: p.operator || selectedClient.operator || "",
@@ -56,8 +56,7 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
     setVal("pros_id", id);
     const p = linked.find((item) => item.id === id);
     if (!p) return;
-    const hasBattery = Boolean(p.battery || /hibrid/i.test(String(p.system_type || "")) || p.cef?.shared_batteries?.length
-      || p.cef?.inverters?.some((x) => x.battery_mode === "own" ? Boolean(x.battery?.model) : x.battery_mode === "shared" && Boolean(x.shared_battery_id)));
+    const hasBattery = hasConfiguredStorage(p);
     const values = {
       client_name: selectedClient?.label || p.client_name || "",
       client_id: selectedClient?.id || p.client_id || "",
@@ -115,7 +114,7 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
         }))}
         {chosenPros && <div className="sm:col-span-2 rounded-lg border bg-white px-3 py-2 text-xs" style={{ borderColor: "var(--line)" }} data-testid="diu-linked-summary">
           <b>Date preluate din dosarul prosumator:</b> POD {chosenPros.pod || "—"} · {chosenPros.operator || "operator necompletat"} · invertor {chosenPros.inverter_kw || chosenPros.power || "—"} kW
-          {chosenPros.cef?.inverters?.some((x) => x.battery_mode === "own" && x.battery?.model) && " · baterie inclusă"}
+          {hasConfiguredStorage(chosenPros) && " · baterie inclusă"}
         </div>}
       </div>
     </section>

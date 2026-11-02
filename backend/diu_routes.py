@@ -233,10 +233,7 @@ async def diu_import(item_id: str, request: Request, user: dict = Depends(get_cu
     cef = p.get("cef") or {}
     g = cef.get("grid") or {}
     inverters = cef.get("inverters") or []
-    has_storage = bool(p.get("battery") or "hibrid" in str(p.get("system_type") or "").lower()
-                       or cef.get("shared_batteries")
-                       or any((inv.get("battery_mode") == "own" and (inv.get("battery") or {}).get("model"))
-                              or (inv.get("battery_mode") == "shared" and inv.get("shared_battery_id")) for inv in inverters))
+    has_storage = CEF.has_storage(p)
     switching = rec.get("pros_id") != pid
     fill = {"client_name": p.get("client_name"), "client_id": p.get("client_id"), "address": p.get("address"),
             "operator": p.get("operator"), "power": p.get("power"), "atr": p.get("atr"),

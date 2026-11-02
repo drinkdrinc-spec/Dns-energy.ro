@@ -33,6 +33,49 @@ def n(v, d=0.0):
         return d
 
 
+_NO_BATTERY = {"", "0", "0.0", "-", "—", "none", "no", "nu", "n/a", "nespecificat", "fără baterie", "fara baterie"}
+
+
+def _battery_value(value):
+    if value is None or value is False:
+        return False
+    if isinstance(value, (int, float)):
+        return value > 0
+    text = str(value).strip().casefold()
+    return text not in _NO_BATTERY
+
+
+def _battery_configured(value):
+    if isinstance(value, dict):
+        if _battery_value(value.get("model")):
+            return True
+        return any(n(value.get(key), 0) > 0 for key in ("kwh", "ah", "voltage", "i_max"))
+    return _battery_value(value)
+
+
+def has_storage(record):
+    """True only when a battery is actually declared; a hybrid inverter alone is not storage."""
+    record = record if isinstance(record, dict) else {}
+    if _battery_configured(record.get("battery")) or any(
+        n(record.get(key), 0) > 0 for key in ("battery_kwh", "battery_ah", "battery_v")
+    ):
+        return True
+    cef = record.get("cef") if isinstance(record.get("cef"), dict) else record
+    shared = cef.get("shared_batteries") or []
+    if any(_battery_configured(battery) for battery in shared):
+        return True
+    shared_ids = {str(battery.get("id")) for battery in shared
+                  if isinstance(battery, dict) and _battery_configured(battery)}
+    for inverter in cef.get("inverters") or []:
+        mode = inverter.get("battery_mode")
+        if mode == "own" and _battery_configured(inverter.get("battery")):
+            return True
+        if mode == "shared" and inverter.get("shared_battery_id") is not None:
+            if str(inverter.get("shared_battery_id")) in shared_ids:
+                return True
+    return False
+
+
 def up(lst, v):
     return next((x for x in lst if x >= v - 1e-9), None)
 
@@ -446,8 +489,16 @@ def from_legacy(rec: dict) -> dict:
     legacy_supply = rec.get("supply") or (cef.get("grid") or {}).get("supply")
     legacy_phase = ("Trifazat" if "mono" not in str(legacy_supply).lower() else "Monofazat") if legacy_supply else None
     bat = None
-    if rec.get("battery") or rec.get("battery_kwh"):
-        bat = {"model": rec.get("battery"), "kwh": n(rec.get("battery_kwh"), None), "voltage": n(rec.get("battery_v"), None), "ah": n(rec.get("battery_ah"), None), "modules": 1}
+    legacy_battery = rec.get("battery")
+    if _battery_configured(legacy_battery) or any(
+        n(rec.get(key), 0) > 0 for key in ("battery_kwh", "battery_ah", "battery_v")
+    ):
+        if isinstance(legacy_battery, dict):
+            bat = {**legacy_battery, "modules": legacy_battery.get("modules") or 1}
+        else:
+            bat = {"model": legacy_battery if _battery_value(legacy_battery) else None,
+                   "kwh": n(rec.get("battery_kwh"), None), "voltage": n(rec.get("battery_v"), None),
+                   "ah": n(rec.get("battery_ah"), None), "modules": 1}
     invs = []
     for k in range(cnt):
         share = pc // cnt + (1 if k < pc % cnt else 0)
