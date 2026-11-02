@@ -401,9 +401,14 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
 
     if op_key((rec or {}).get("operator"), (pros or {}).get("operator"), (client or {}).get("operator")) != "deer":
         raise ValueError("Precompletarea formularului oficial este disponibilă doar pentru DEER.")
+    case = str((rec or {}).get("deer_case") or "").strip()
+    if not case:
+        raise ValueError("Selectează procedura DEER înainte de generarea formularului.")
     filename = _deer_docx_template(rec)
     if not filename:
-        raise ValueError("Procedura DEER pentru instalații de peste 400 kW este disponibilă pe site-ul operatorului în format DOC; descărcați formularul oficial de acolo.")
+        if ">400" in case:
+            raise ValueError("Procedura DEER pentru instalații de peste 400 kW este disponibilă pe site-ul operatorului în format DOC; descărcați formularul oficial de acolo.")
+        raise ValueError("Procedura DEER selectată nu are un formular DOCX oficial. Verificați procedura și formularul curent al operatorului.")
     template_path = Path(__file__).parent / "templates" / "deer" / filename
     try:
         raw = b64decode(template_path.read_text(encoding="ascii"), validate=True)
