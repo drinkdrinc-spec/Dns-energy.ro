@@ -241,7 +241,9 @@ async def diu_import(item_id: str, request: Request, user: dict = Depends(get_cu
     fill = {"client_name": p.get("client_name"), "client_id": p.get("client_id"), "address": p.get("address"),
             "operator": p.get("operator"), "power": p.get("power"), "atr": p.get("atr"),
             "supply": p.get("supply"), "earthing": g.get("earthing"), "tg_breaker_a": g.get("tg_breaker_a"),
-            "bmp_a": g.get("bmp_a"), "type": "Sistem fotovoltaic hibrid" if has_storage else "Sistem fotovoltaic on-grid",
+            "bmp_a": g.get("bmp_a"), "meter_enabled": bool(g.get("meter_enabled") if g.get("meter_enabled") is not None else g.get("meter")),
+            "meter": g.get("meter"), "meter_serial": g.get("meter_serial"), "meter_specs": g.get("meter_specs"),
+            "type": "Sistem fotovoltaic hibrid" if has_storage else "Sistem fotovoltaic on-grid",
             **{k: p.get(k) for k in ("receptie_date", "receptie_decision", "receptie_findings", "pif_date", "warranty_months")}}
     upd = {"pros_id": pid}
     # Switching the linked installation is a source change: overwrite or clear
