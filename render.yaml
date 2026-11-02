@@ -24,7 +24,7 @@ services:
       - key: DNS_ENERGY_PRIVATE_MODE
         value: "true"
       - key: CORS_ORIGINS
-        value: https://dns-energy-web.onrender.com
+        value: https://dns-energy-web.onrender.com,https://dns-energy.ro,https://www.dns-energy.ro
       - key: ADMIN_PASSWORD
         sync: false
       - key: OPENAI_API_KEY
