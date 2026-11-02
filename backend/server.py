@@ -1209,6 +1209,22 @@ async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Q
     user = await user_from_token(authorization, auth)
     rec, client, s, res, state, _ = await sld_ctx(user, item_id)
     name = f"schema_monofilara_{rec.get('number') or item_id}.pdf"
+    sld = rec.get("sld") or {}
+    uploaded = sld.get("upload") or {}
+    if download and sld.get("source") == "uploaded":
+        storage_path = str(uploaded.get("storage_path") or "")
+        if not storage_path or f"/{user['id']}/" not in storage_path:
+            raise HTTPException(status_code=422, detail="Schema încărcată lipsă sau inaccesibilă pentru acest cont.")
+        try:
+            pdf, content_type = get_object(storage_path)
+        except Exception as exc:
+            logger.warning("Nu s-a putut citi schema încărcată: %s", exc)
+            raise HTTPException(status_code=404, detail="Fișierul schemei încărcate nu mai este disponibil. Încarcă-l din nou.") from exc
+        if content_type != "application/pdf" or not pdf.startswith(b"%PDF-"):
+            raise HTTPException(status_code=415, detail="Schema încărcată trebuie să fie un PDF valid.")
+        filename = uploaded.get("original_filename") or name
+        return Response(content=pdf, media_type="application/pdf",
+                        headers={"Content-Disposition": disp("attachment", filename)})
     return Response(content=SLD.render(rec, client, s, res, state, fmt), media_type="application/pdf",
                     headers={"Content-Disposition": disp("attachment" if download else "inline", name)})
 
