@@ -1,3 +1,7 @@
+import io
+
+from pypdf import PdfReader
+
 import docgen
 
 
@@ -42,3 +46,20 @@ def test_pram_invalid_measurement_date_remains_a_work_sheet():
 
     assert "FIȘĂ DE LUCRU" in output
     assert "valabil 1 an" not in output
+
+def test_synthetic_pram_pdf_has_test_watermark():
+    pdf = docgen.render(
+        ["buletin_priza"],
+        {
+            "is_test": True,
+            "grounding_ohm": 3.2,
+            "soil_psi": 1.2,
+            "grounding_limit": 4,
+            "measure_date": "2026-10-30",
+        },
+        {},
+        {},
+    )
+    text = "\\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf)).pages)
+
+    assert "TEST - DATE SINTETICE" in text
