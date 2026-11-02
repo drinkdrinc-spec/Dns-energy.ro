@@ -195,8 +195,14 @@ async def search_supplier_products(query: str, category: str):
         balanced = []
         for source_name in SOURCES:
             balanced.extend([row for row in candidates if row[0] == source_name][:12])
+        semaphore = asyncio.Semaphore(8)
+
+        async def load_detail(name, source, cat, url):
+            async with semaphore:
+                return await _detail(client, name, source, cat, url)
+
         detail_rows = await asyncio.gather(*[
-            _detail(client, name, source, cat, url)
+            load_detail(name, source, cat, url)
             for name, source, cat, url in balanced[:36]
         ])
     products, seen = [], set()
