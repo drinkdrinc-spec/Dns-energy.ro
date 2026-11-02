@@ -6,6 +6,34 @@ import { InverterCard } from "./InverterCard";
 import { Totals, Issues } from "./CefResults";
 import { F, Check, CatalogPick, uid } from "./F";
 
+function sharedBatteryCatalogData(item) {
+  const breakerCurrent = item.breaker_a ?? item.dc_switch_current_a;
+  const breakerVoltage = item.breaker_voltage_dc ?? item.dc_switch_voltage_v;
+  return {
+    catalog_id: item.id,
+    model: item.brand_model,
+    kwh: item.kwh,
+    ah: item.ah,
+    voltage: item.voltage ?? item.voltage_3ph ?? item.voltage_1ph,
+    voltage_1ph: item.voltage_1ph,
+    voltage_3ph: item.voltage_3ph,
+    i_max: item.i_max,
+    i_max_source_url: item.i_max_source_url,
+    max_fuse_a: item.max_fuse_a,
+    coupling: item.coupling || "",
+    breaker_a: breakerCurrent,
+    breaker_voltage_dc: breakerVoltage,
+    breaker_integrated: item.breaker_integrated,
+    breaker_poles: item.breaker_poles,
+    breaker_icu_ka: item.breaker_icu_ka,
+    dc_switch_voltage_v: item.dc_switch_voltage_v ?? breakerVoltage,
+    dc_switch_current_a: item.dc_switch_current_a ?? breakerCurrent,
+    breaker_source_url: item.breaker_source_url,
+    datasheet_url: item.datasheet_url,
+    conformity_url: item.conformity_url,
+  };
+}
+
 function SharedBatteries({ list, set, catalog }) {
   const upd = (i, patch) => set(list.map((b, j) => (j === i ? { ...b, ...patch } : b)));
   return (
@@ -14,8 +42,8 @@ function SharedBatteries({ list, set, catalog }) {
       <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Folosește doar dacă arhitectura producătorului permite funcționarea în paralel pe aceeași baterie.</p>
       {list.map((b, i) => (
         <div key={b.id} className="grid sm:grid-cols-4 gap-3 mb-3 pb-3 border-b" style={{ borderColor: "var(--line)" }} data-testid={`shared-${i}`}>
-          <CatalogPick items={catalog} category="Baterie" testid={`shared-${i}-pick`} onQueryChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, i_max: undefined, max_fuse_a: undefined, coupling: undefined })} onPick={(it) => upd(i, { catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, i_max: it.i_max, max_fuse_a: it.max_fuse_a, coupling: it.coupling || "" })} />
-          <F label="Model" value={b.model} onChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, i_max: undefined, coupling: undefined })} testid={`shared-${i}-model`} />
+          <CatalogPick items={catalog} category="Baterie" testid={`shared-${i}-pick`} onQueryChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, voltage_1ph: undefined, voltage_3ph: undefined, i_max: undefined, i_max_source_url: undefined, max_fuse_a: undefined, coupling: undefined, breaker_a: undefined, breaker_voltage_dc: undefined, breaker_integrated: undefined, breaker_poles: undefined, breaker_icu_ka: undefined, dc_switch_voltage_v: undefined, dc_switch_current_a: undefined, breaker_source_url: undefined, datasheet_url: undefined, conformity_url: undefined })} onPick={(it) => upd(i, sharedBatteryCatalogData(it))} />
+          <F label="Model" value={b.model} onChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, voltage_1ph: undefined, voltage_3ph: undefined, i_max: undefined, i_max_source_url: undefined, max_fuse_a: undefined, coupling: undefined, breaker_a: undefined, breaker_voltage_dc: undefined, breaker_integrated: undefined, breaker_poles: undefined, breaker_icu_ka: undefined, dc_switch_voltage_v: undefined, dc_switch_current_a: undefined, breaker_source_url: undefined, datasheet_url: undefined, conformity_url: undefined })} testid={`shared-${i}-model`} />
           <F label="kWh / modul" type="number" value={b.kwh} onChange={(v) => upd(i, { kwh: v })} testid={`shared-${i}-kwh`} />
           <F label="Nr. module" type="number" value={b.modules} onChange={(v) => upd(i, { modules: v })} testid={`shared-${i}-modules`} />
           <F label="Ah" type="number" value={b.ah} onChange={(v) => upd(i, { ah: v })} testid={`shared-${i}-ah`} />
