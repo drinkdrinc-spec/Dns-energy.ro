@@ -127,6 +127,25 @@ class TestDossierSld:
             r = s.get(f"{API}/dossier/{rid}/file/{k}", params={"auth": s.token, "fmt": "docx"}, timeout=30)
             assert r.status_code == code, (k, r.status_code)
 
+    def test_02a_standalone_download_uses_selected_uploaded_schema(self, s, rid):
+        up = s.post(f"{API}/upload", files={"file": ("selected-schema.pdf", mkpdf("TEST_SELECTED_SCHEMA_MARKER"), "application/pdf")}, timeout=60)
+        assert up.status_code == 200, up.text
+        selected = s.put(f"{API}/sld/{rid}/source", json={"source": "uploaded", "upload": up.json()}, timeout=30)
+        assert selected.status_code == 200, selected.text
+        try:
+            r = s.get(f"{API}/sld/{rid}/pdf", params={"auth": s.token, "download": 1}, timeout=60)
+            assert r.status_code == 200 and r.content.startswith(b"%PDF-")
+            assert "attachment" in r.headers.get("content-disposition", "").lower()
+            assert "TEST_SELECTED_SCHEMA_MARKER" in text(r.content)
+
+            # The SLD editor's explicit generated preview remains generated.
+            r = s.get(f"{API}/sld/{rid}/pdf", params={"auth": s.token}, timeout=60)
+            assert r.status_code == 200 and r.content.startswith(b"%PDF-")
+            assert "TEST_SELECTED_SCHEMA_MARKER" not in text(r.content)
+        finally:
+            reset = s.put(f"{API}/sld/{rid}/source", json={"source": "generated", "clear_upload": True}, timeout=30)
+            assert reset.status_code == 200, reset.text
+
     def test_03_finalize_blocked_and_export_ciorna(self, s, rid):
         r = s.post(f"{API}/dossier/{rid}/finalize", timeout=30)
         assert r.status_code == 400 and "CIORNĂ" in r.json()["detail"]
