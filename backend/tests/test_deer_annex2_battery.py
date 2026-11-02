@@ -11,6 +11,9 @@ import atr_doc
     [
         ("Loc existent — spor de putere — Anexa 1", 6, 8),
         ("Loc existent — notificare — Anexa 2", 3, 5),
+        ("Loc existent prosumator — actualizare CRR — Anexa 3", None, 0),
+        ("Prosumator prin program de finanțare — Anexa 4", 6, 8),
+        ("Loc existent ≤10,8 kW — notificare simplificată — Anexa 5", 6, 8),
     ],
 )
 def test_deer_annexes_keep_battery_details_out_of_inverter_kw_table(deer_case, inverter_table_index, detail_table_index):
@@ -44,15 +47,19 @@ def test_deer_annexes_keep_battery_details_out_of_inverter_kw_table(deer_case, i
 
     content = atr_doc.render_deer_official_docx(rec, {}, {}, pros)
     doc = Document(io.BytesIO(content))
-    inverter_table_text = " ".join(
-        cell.text for row in doc.tables[inverter_table_index].rows for cell in row.cells
-    )
-    inverter_active_power_cells = [row.cells[4].text.strip() for row in doc.tables[inverter_table_index].rows]
+    inverter_table_text = ""
+    inverter_active_power_cells = []
+    if inverter_table_index is not None:
+        inverter_table_text = " ".join(
+            cell.text for row in doc.tables[inverter_table_index].rows for cell in row.cells
+        )
+        inverter_active_power_cells = [row.cells[4].text.strip() for row in doc.tables[inverter_table_index].rows]
     details_table_text = " ".join(
         cell.text for row in doc.tables[detail_table_index].rows for cell in row.cells
     )
 
-    assert "Invertor test 10 kW" in inverter_table_text
+    if inverter_table_index is not None:
+        assert "Invertor test 10 kW" in inverter_table_text
     assert "Baterie test 10 kWh" in details_table_text
     assert "20 kWh" in details_table_text
     assert "51.2 V" in details_table_text

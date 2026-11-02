@@ -439,6 +439,8 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
 
     if is_annex2:
         export_table, panel_table, inverter_table, detail_table = 0, 2, 3, 5
+    elif filename == "anexa3_update.docx.b64":
+        export_table, panel_table, inverter_table, detail_table = 2, 5, 6, 0
     else:
         export_table, panel_table, inverter_table, detail_table = 2, 5, 6, 8
     if len(tables) > export_table and not is_annex2 and filename != "anexa3_update.docx.b64":
