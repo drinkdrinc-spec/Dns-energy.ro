@@ -497,7 +497,7 @@ async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), 
     results = []
     for row in rows:
         name = str(row.get("name") or "")
-        if row.get("is_test") or re.search(r"\\bTEST\\b", name, re.I):
+        if row.get("is_test") or re.search(r"\bTEST\b", name, re.I):
             continue
         item_id = str(row.get("id") or "")
         if not item_id:
