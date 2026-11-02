@@ -402,6 +402,7 @@ QUICK_SEARCH_MODULES = [
     ("power", "Spor de putere", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/spor-putere"),
     ("diu", "Dosar DIU", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/diu"),
     ("documents", "Document", "client_name", ["client_name", "title", "name", "filename", "original_filename", "doc_type", "kind", "type", "pod"], "/documente"),
+    ("catalog", "Echipament catalog", "brand_model", ["brand_model", "category", "supplier"], "/catalog-echipamente"),
 ]
 
 
@@ -422,6 +423,7 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
         query = {"$and": [scope_q(user, module), field_query]}
         rows = await db[module].find(query, {"_id": 0, "id": 1, "name": 1, "client_name": 1, "client_id": 1,
                                              "number": 1, "original_filename": 1, "doc_type": 1, "kind": 1,
+                                             "brand_model": 1, "category": 1, "supplier": 1,
                                              "pod": 1, "address": 1, "locality": 1, "county": 1,
                                              "operator": 1, "title": 1, "filename": 1, "type": 1,
                                              "is_test": 1}).sort("updated_at", -1).limit(5).to_list(5)
@@ -435,6 +437,10 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
             detail = " · ".join(str(row.get(k)) for k in ("number", "pod", "locality", "county", "operator") if row.get(k))
             title = client_name
             href = f"{route}?edit={item_id}"
+            if module == "catalog":
+                title = row.get("brand_model") or client_name
+                detail = " · ".join(str(value) for value in (row.get("category"), row.get("supplier")) if value)
+                href = f"/catalog-echipamente?q={_q(str(row.get('brand_model') or ''))}&category={_q(str(row.get('category') or 'Invertor'))}"
             if module == "documents":
                 title = row.get("original_filename") or row.get("title") or row.get("filename") or row.get("doc_type") or row.get("kind") or client_name
                 detail = " · ".join(str(value) for value in (client_name, row.get("doc_type") or row.get("kind"), detail) if value)
