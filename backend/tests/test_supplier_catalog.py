@@ -57,3 +57,29 @@ def test_supplier_search_finds_model_on_later_depozit_solar_page(monkeypatch):
     assert (page_two_url, "depozitsolar.ro") in requests
 
 
+
+
+def test_smart_meter_category_searches_only_compatible_sources(monkeypatch):
+    search_url = "https://solartech.ro/?s=Deye&post_type=product"
+    product_url = "https://solartech.ro/smartmeter-deye-sdm120ct"
+    product_html = b"""
+        <a href="/smartmeter-deye-sdm120ct">Smartmeter DEYE Monofazat SDM120CT Modbus</a>
+    """
+    detail_html = b"<html><h1>Smartmeter DEYE Monofazat SDM120CT Modbus</h1></html>"
+    requests = []
+
+    async def fake_get(_client, url, host):
+        requests.append((url, host))
+        if url == search_url:
+            content = product_html
+        elif url == product_url:
+            content = detail_html
+        else:
+            content = b"<html></html>"
+        return httpx.Response(200, content=content, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(supplier_catalog, "_get", fake_get)
+    result = asyncio.run(supplier_catalog.search_supplier_products("Deye", "Smart meter"))
+
+    assert [item["product_url"] for item in result["products"]] == [product_url]
+    assert not any(host == "depozitsolar.ro" for _, host in requests)
