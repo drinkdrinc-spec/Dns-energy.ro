@@ -1,4 +1,4 @@
-name: Dossier document generation safety
+name: DNS Energy dossier and catalog safety
 
 on:
   push:
@@ -9,9 +9,19 @@ on:
       - "backend/cef.py"
       - "backend/diu_routes.py"
       - "backend/docgen.py"
+      - "backend/equipment_extract.py"
+      - "backend/gridfs_storage.py"
+      - "backend/server.py"
+      - "backend/sizing.py"
+      - "backend/supplier_catalog.py"
       - "backend/tests/test_anre_gdpr_consent_truthfulness.py"
       - "backend/tests/test_cef_storage_truth.py"
+      - "backend/tests/test_cef_unknown_phases.py"
       - "backend/tests/test_deer_annex2_battery.py"
+      - "backend/tests/test_equipment_extract.py"
+      - "backend/tests/test_pram_document_truthfulness.py"
+      - "backend/tests/test_supplier_catalog.py"
+      - "backend/tests/test_technical_parameter_safety.py"
       - ".github/workflows/anre-document-safety.yml"
   pull_request:
     paths:
@@ -20,14 +30,24 @@ on:
       - "backend/cef.py"
       - "backend/diu_routes.py"
       - "backend/docgen.py"
+      - "backend/equipment_extract.py"
+      - "backend/gridfs_storage.py"
+      - "backend/server.py"
+      - "backend/sizing.py"
+      - "backend/supplier_catalog.py"
       - "backend/tests/test_anre_gdpr_consent_truthfulness.py"
       - "backend/tests/test_cef_storage_truth.py"
+      - "backend/tests/test_cef_unknown_phases.py"
       - "backend/tests/test_deer_annex2_battery.py"
+      - "backend/tests/test_equipment_extract.py"
+      - "backend/tests/test_pram_document_truthfulness.py"
+      - "backend/tests/test_supplier_catalog.py"
+      - "backend/tests/test_technical_parameter_safety.py"
       - ".github/workflows/anre-document-safety.yml"
   workflow_dispatch:
 
 jobs:
-  anre-document-safety:
+  dossier-catalog-safety:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,9 +57,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install focused document test dependencies
-        run: python -m pip install --upgrade pytest pytest-xdist reportlab pypdf python-docx
-      - name: Compile document generators
-        run: python -m py_compile anre_doc.py atr_doc.py cef.py
-      - name: Verify ANRE consent, CEF storage, and DEER annexes
-        run: python -m pytest -q tests/test_anre_gdpr_consent_truthfulness.py tests/test_cef_storage_truth.py tests/test_deer_annex2_battery.py
+      - name: Install focused test dependencies
+        run: python -m pip install --upgrade pytest reportlab pypdf python-docx httpx lxml
+      - name: Compile calculation and document modules
+        run: python -m py_compile anre_doc.py atr_doc.py cef.py docgen.py equipment_extract.py sizing.py supplier_catalog.py
+      - name: Verify consent, storage, calculations, documents, and catalog safety
+        run: >
+          python -m pytest -q
+          tests/test_anre_gdpr_consent_truthfulness.py
+          tests/test_cef_storage_truth.py
+          tests/test_cef_unknown_phases.py
+          tests/test_deer_annex2_battery.py
+          tests/test_equipment_extract.py
+          tests/test_pram_document_truthfulness.py
+          tests/test_supplier_catalog.py
+          tests/test_technical_parameter_safety.py
