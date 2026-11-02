@@ -76,3 +76,15 @@ def test_deer_annexes_keep_battery_details_out_of_inverter_kw_table(deer_case, i
     if inverter_table_index == 6:
         assert "10 kWh/modul" in inverter_table_text
 
+def test_storage_details_ignores_undeclared_batteries():
+    pros = {
+        "cef": {
+            "inverters": [
+                {"battery_mode": "own", "battery": {}},
+                {"battery_mode": "own", "battery": {"model": "Fără baterie"}},
+            ],
+            "shared_batteries": [{}, {"model": "Fără baterie"}],
+        }
+    }
+    rec = {"battery": "Fără baterie", "storage": ""}
+    assert atr_doc.storage_details(pros, rec) == []
