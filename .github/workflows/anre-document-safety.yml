@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install focused document test dependencies
-        run: python -m pip install --upgrade pytest reportlab pypdf
+        run: python -m pip install --upgrade pytest pytest-xdist reportlab pypdf
       - name: Compile ANRE document generator
         run: python -m py_compile anre_doc.py
       - name: Verify ANRE consent document
