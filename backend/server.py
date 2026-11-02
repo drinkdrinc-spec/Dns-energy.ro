@@ -224,14 +224,14 @@ def validate_upload_payload(filename: str, declared_type: str | None, data: byte
         raise HTTPException(status_code=400, detail="Fișierul este gol")
 
     signatures = {
-        "jpg": data.startswith(b"\\xff\\xd8\\xff"),
-        "jpeg": data.startswith(b"\\xff\\xd8\\xff"),
-        "png": data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"),
+        "jpg": data.startswith(b"\xff\xd8\xff"),
+        "jpeg": data.startswith(b"\xff\xd8\xff"),
+        "png": data.startswith(b"\x89PNG\r\n\x1a\n"),
         "gif": data.startswith((b"GIF87a", b"GIF89a")),
         "webp": len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP",
         "pdf": data.startswith(b"%PDF-"),
-        "doc": data.startswith(b"\\xd0\\xcf\\x11\\xe0\\xa1\\xb1\\x1a\\xe1"),
-        "xls": data.startswith(b"\\xd0\\xcf\\x11\\xe0\\xa1\\xb1\\x1a\\xe1"),
+        "doc": data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
+        "xls": data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
         "heic": len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in {b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1", b"heics", b"heifs"},
         "heif": len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in {b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1", b"heics", b"heifs"},
     }
