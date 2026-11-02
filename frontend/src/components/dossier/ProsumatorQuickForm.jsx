@@ -83,6 +83,9 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setProblem("Catalogul nu s-a putut încărca. Poți salva datele de bază și selecta echipamentele ulterior.")).finally(() => setCatalogLoading(false));
   }, []);
   const clients = (refOptions.clients || []).filter((client) => !/\bTEST\b/i.test(String(client.label || client.name || "")));
+  const selectedClientMatches = clients.filter((client) => client.label === form.client_name);
+  const selectedClient = clients.find((client) => client.id === form.client_id)
+    || (selectedClientMatches.length === 1 ? selectedClientMatches[0] : null);
   const selected = form.catalog_selection || {};
   useEffect(() => {
     const inferred = { ...selected };
@@ -315,9 +318,11 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="den-field sm:col-span-2"><span>{title(field(cfg, "client_name"), "Beneficiar / client")} *</span>
-          <select className="den-input" value={form.client_name || ""} onChange={(e) => {
-            const v = e.target.value; const c = clients.find((x) => x.label === v);
-            setVal("client_name", v); setVal("client_id", c?.id || "");
+          <select className="den-input" value={selectedClient?.id || (form.client_name && !clients.some((x) => x.label === form.client_name) ? "__document_import__" : "")} onChange={(e) => {
+            const v = e.target.value;
+            const c = v === "__document_import__" ? null : clients.find((x) => x.id === v);
+            const name = v === "__document_import__" ? form.client_name : (c?.label || "");
+            setVal("client_name", name); setVal("client_id", c?.id || "");
             for (const [k, value] of [
               ["cnp", c?.cnp || c?.idcode || ""], ["phone", c?.phone || ""], ["email", c?.email || ""],
               ["hq_address", c?.hq_address || ""], ["address", c?.address || ""], ["county", c?.county || ""],
@@ -325,7 +330,11 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
               ["cadastral_nr", c?.cadastral_nr || ""], ["supplier", c?.supplier || ""],
             ]) setVal(k, value);
             setVal("address_same_as_ci", false);
-          }}><option value="">Alege client...</option>{form.client_name && !clients.some((x) => x.label === form.client_name) && <option value={form.client_name}>{form.client_name} · extras din document</option>}{clients.map((c) => <option key={c.id} value={c.label}>{c.label}</option>)}</select>
+          }}><option value="">Alege client...</option>{form.client_name && !clients.some((x) => x.label === form.client_name) && <option value="__document_import__">{form.client_name} · extras din document</option>}{clients.map((c) => {
+            const duplicateName = clients.filter((item) => item.label === c.label).length > 1;
+            const detail = c.pod || c.address || ("#" + String(c.id || "").slice(0, 8));
+            return <option key={c.id} value={c.id}>{c.label}{duplicateName ? " · " + detail : ""}</option>;
+          })}</select>
         </label>
         {input("address", "Adresa locului de consum")}
         {input("pod", "POD")}
