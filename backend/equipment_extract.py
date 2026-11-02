@@ -35,7 +35,7 @@ def _labeled_numbers(text: str, labels: tuple[str, ...], units: tuple[str, ...],
             if not number:
                 # Manufacturer PDFs often attach units directly to values (for example, 100A).
                 # Accept that form only when the suffix is a recognized physical unit.
-                candidate = re.search(r"(?<![\\w.])[-+]?\\d+(?:[.,]\\d+)?", tail)
+                candidate = re.search(r"(?<![\w.])[-+]?\d+(?:[.,]\d+)?", tail)
                 if candidate and _UNIT.match(tail[candidate.end():].lstrip()):
                     number = candidate
             if not number:
