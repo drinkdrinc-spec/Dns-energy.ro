@@ -42,6 +42,13 @@ def missing(key, r, s):
     m = []
     if key == "memoriu":
         m = need([(r.get("type"), "Tip instalație"), (r.get("power"), "Putere instalată"), (r.get("supply"), "Tip alimentare (mono/trifazat)")])
+        if "delgaz" in str(r.get("operator") or "").casefold():
+            if r.get("meter_enabled") is None:
+                m.append("Confirmați dacă este montat un contor separat de cel al operatorului")
+            elif r.get("meter_enabled"):
+                m += need([(r.get("meter"), "Model/tip contor instalat de utilizator"),
+                           (r.get("meter_serial"), "Serie contor instalat de utilizator"),
+                           (r.get("meter_specs"), "Date tehnice contor instalat de utilizator")])
     elif key == "schema_tg":
         m = need([(r.get("tg_breaker_a"), "Întreruptor general TG (A)")]) + ([] if cs else ["Circuitele tabloului"])
         m += [f"Circuit „{c['name']}”: întreruptor / secțiune cablu" for c in cs if not c.get("breaker_a") or not c.get("section")]
@@ -135,6 +142,14 @@ def doc_memoriu(ctx, r, pos):
                    B("bullets", [escape(x.strip()) for x in str(r.get("memoriu_desc") or "").split("\n") if x.strip()] or [M], False)]
     if (r.get("cef") or {}).get("inverters") or r.get("inverter"):
         out += [B("b", "4. Echipamente principale"), B("table", D.equipment_lines(ctx), [60, 24, 90], True)]
+    if "delgaz" in str(r.get("operator") or "").casefold():
+        if r.get("meter_enabled"):
+            meter_text = f"Model/tip: {e(r.get('meter'))}; serie: {e(r.get('meter_serial'))}; date tehnice: {e(r.get('meter_specs'))}."
+        elif r.get("meter_enabled") is False:
+            meter_text = "Nu este montat un contor suplimentar al utilizatorului; rămâne contorul operatorului."
+        else:
+            meter_text = "Situația contorului utilizatorului nu a fost confirmată."
+        out += [B("b", "Contor instalat de utilizator — cerință Delgaz Grid"), B("p", meter_text)]
     out += [B("b", "5. Circuitele tabloului general"),
             B("table", [["Nr.", "Circuit", "Protecție", "Cablu"]] + [[str(i + 1), escape(c["name"]), f"{e(c.get('curve'))}{e(c.get('breaker_a'))} A" + (f" + DDR {e(c.get('rcd_ma'))} mA tip {e(str(c.get('rcd_type') or '').replace('Tip', '').strip())}" if c.get("rcd_ma") else ""),
                                                                     f"{e(c.get('cable'))} {e(c.get('section'))} mm², L={e(c.get('length'))} m"] for i, c in enumerate(cs)] or [["—", M, M, M]], [6, 40, 30, 30], True),
