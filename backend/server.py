@@ -413,12 +413,13 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
     if len(term) < 2:
         return {"results": []}
     pattern = re.compile(re.escape(term), re.IGNORECASE)
-    results = []
-    for module, label, name_key, fields, route in QUICK_SEARCH_MODULES:
+
+    async def search_module(spec):
+        module, label, name_key, fields, route = spec
         try:
             guard(module, user)
         except HTTPException:
-            continue
+            return []
         field_query = {"$or": [{field: pattern} for field in fields]}
         query = {"$and": [scope_q(user, module), field_query]}
         rows = await db[module].find(query, {"_id": 0, "id": 1, "name": 1, "client_name": 1, "client_id": 1,
@@ -427,8 +428,9 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
                                              "pod": 1, "address": 1, "locality": 1, "county": 1,
                                              "operator": 1, "title": 1, "filename": 1, "type": 1,
                                              "is_test": 1}).sort("updated_at", -1).limit(5).to_list(5)
+        matches = []
         for row in rows:
-            if row.get("is_test") or re.search(r"\bTEST\b", " ".join(str(row.get(k) or "") for k in ("name", "client_name", "number")), re.I):
+            if row.get("is_test") or re.search(r"\\bTEST\\b", " ".join(str(row.get(k) or "") for k in ("name", "client_name", "number")), re.I):
                 continue
             item_id = str(row.get("id") or "")
             if not item_id:
@@ -445,8 +447,17 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
                 title = row.get("original_filename") or row.get("title") or row.get("filename") or row.get("doc_type") or row.get("kind") or client_name
                 detail = " · ".join(str(value) for value in (client_name, row.get("doc_type") or row.get("kind"), detail) if value)
                 href = f"{route}?docId={item_id}"
-            results.append({"id": item_id, "module": module, "label": label, "title": title,
+            matches.append({"id": item_id, "module": module, "label": label, "title": title,
                             "detail": detail, "href": href})
+        return matches
+
+    module_matches = await asyncio.gather(*(search_module(spec) for spec in QUICK_SEARCH_MODULES), return_exceptions=True)
+    results = []
+    for matches in module_matches:
+        if isinstance(matches, Exception):
+            logger.warning("Quick search collection failed: %s", type(matches).__name__)
+            continue
+        results.extend(matches)
     return {"results": results[:24]}
 
 @api_router.get("/data/{module}")
