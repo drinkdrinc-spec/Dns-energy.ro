@@ -1,0 +1,180 @@
+"""Conservative, local extraction of explicitly labelled equipment specifications.
+
+This parser is a fallback for selectable-text PDFs when the hosted AI provider is
+not configured. It does not infer missing values and deliberately drops values
+when a label maps to conflicting numbers in the same document.
+"""
+
+from __future__ import annotations
+
+import re
+
+_NUMBER = re.compile(r"(?<![\w.])[-+]?(?:\d+(?:[.,]\d+)?)(?!\w)")
+_UNIT = re.compile(r"%\s*/\s*°?\s*C|°\s*C|kWh|MWh|Wh|kW|MW|W|mA|A|Ah|mV|V", re.I)
+
+
+def _unit_for(tail: str, number_start: int, number_end: int) -> str:
+    after = _UNIT.match(tail[number_end:].lstrip())
+    if after:
+        return after.group(0).replace(" ", "").casefold()
+    before = list(_UNIT.finditer(tail[:number_start]))
+    return before[-1].group(0).replace(" ", "").casefold() if before else ""
+
+
+def _labeled_numbers(text: str, labels: tuple[str, ...], units: tuple[str, ...], factor=None):
+    lines = (text or "").splitlines()
+    found = []
+    for label in labels:
+        rx = re.compile(label, re.I)
+        for index, line in enumerate(lines):
+            match = rx.search(line)
+            if not match:
+                continue
+            tail = line[match.end():match.end() + 90]
+            number = _NUMBER.search(tail)
+            if not number:
+                # Some manufacturer PDFs place the value in the cell immediately
+                # below its label. Accept only a line containing a value and unit.
+                if index + 1 >= len(lines):
+                    continue
+                tail = lines[index + 1].strip()
+                if not re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?\s*[^\w\s]?\s*(?:%\s*/\s*°?\s*C|°\s*C|kWh|MWh|Wh|kW|MW|W|mA|A|Ah|mV|V)", tail, re.I):
+                    continue
+                number = _NUMBER.search(tail)
+            if not number:
+                continue
+            unit = _unit_for(tail, number.start(), number.end())
+            if unit not in units:
+                continue
+            try:
+                value = float(number.group(0).replace(",", "."))
+            except ValueError:
+                continue
+            if factor:
+                value *= factor(unit)
+            if value > 0 or unit.startswith("%"):
+                found.append(value)
+    unique = {round(value, 6) for value in found}
+    return next(iter(unique)) if len(unique) == 1 else None
+
+
+def _numeric(text: str, label: tuple[str, ...], units: tuple[str, ...], factor=None):
+    value = _labeled_numbers(text, label, units, factor)
+    if value is None:
+        return None
+    return int(value) if value.is_integer() else round(value, 6)
+
+
+def _enum(text: str, field: str):
+    if field == "phases":
+        single = re.search(r"\b(?:single[- ]phase|1[- ]phase|monophase)\b", text, re.I)
+        three = re.search(r"\b(?:three[- ]phase|3[- ]phase|triphase)\b", text, re.I)
+        return "Monofazat" if single and not three else "Trifazat" if three and not single else None
+    if field == "type":
+        hybrid = re.search(r"\bhybrid\b", text, re.I)
+        battery = re.search(r"\b(?:battery|storage) inverter\b", text, re.I)
+        on_grid = re.search(r"\b(?:on[- ]grid|grid[- ]tied)\b", text, re.I)
+        matches = [name for name, match in (("Hibrid", hybrid), ("Invertor de baterie (AC)", battery), ("On-grid", on_grid)) if match]
+        return matches[0] if len(matches) == 1 else None
+    if field == "tech":
+        matches = [name for name, pattern in (("LV", r"\b(?:low[- ]voltage|LV battery)\b"), ("HV", r"\b(?:high[- ]voltage|HV battery)\b")) if re.search(pattern, text, re.I)]
+        return matches[0] if len(matches) == 1 else None
+    if field == "coupling":
+        matches = [name for name, pattern in (("AC", r"\bAC[- ]coupl(?:ed|ing)\b"), ("DC", r"\bDC[- ]coupl(?:ed|ing)\b")) if re.search(pattern, text, re.I)]
+        return matches[0] if len(matches) == 1 else None
+    return None
+
+
+def extract_equipment_specs(category: str, text: str) -> dict:
+    """Return unambiguous, explicitly labelled catalog values from selectable text."""
+    if not isinstance(text, str) or not text.strip():
+        return {}
+    result = {}
+    kw_units = ("kw", "w", "mw")
+    volt_units = ("v", "mv")
+    amp_units = ("a", "ma")
+    convert_kw = lambda unit: 0.001 if unit == "w" else 1000 if unit == "mw" else 1
+    convert_v = lambda unit: 0.001 if unit == "mv" else 1
+    convert_a = lambda unit: 0.001 if unit == "ma" else 1
+    convert_kwh = lambda unit: 0.001 if unit == "wh" else 1000 if unit == "mwh" else 1
+
+    if category == "Invertor":
+        specs = {
+            "p_nom_kw": ((r"\b(?:rated|nominal)\s+(?:ac\s+)?(?:output\s+)?power\b", r"\bP\s*nom\b", r"\bPn\b"), kw_units, convert_kw),
+            "p_max_kw": ((r"\bmaximum\s+(?:ac\s+)?(?:output\s+)?power\b", r"\bmax\.?\s+(?:ac\s+)?output\s+power\b"), kw_units, convert_kw),
+            "vdc_max": ((r"\bmaximum\s+(?:pv\s+)?dc\s+input\s+voltage\b", r"\bmax\.?\s+dc\s+voltage\b", r"\bUdc\s*max\b"), volt_units, convert_v),
+            "mppt_count": ((r"\b(?:number|no\.?)\s+of\s+MPPT(?:\s+trackers?)?\b", r"\bMPPT\s+trackers?\b"), ("",), None),
+            "imax_mppt": ((r"\bmaximum\s+input\s+current(?:\s+per\s+MPPT)?\b", r"\bmax\.?\s+input\s+current\s*/\s*MPPT\b"), amp_units, convert_a),
+            "isc_max_mppt": ((r"\bmaximum\s+(?:PV\s+)?short[- ]circuit\s+current(?:\s+per\s+MPPT)?\b", r"\bIsc\s+max(?:imum)?\s*/\s*MPPT\b"), amp_units, convert_a),
+            "bat_i_max": ((r"\bmaximum\s+(?:charge\s*/\s*discharge|battery)\s+current\b", r"\bmax\.?\s+battery\s+current\b"), amp_units, convert_a),
+        }
+        for key, (labels, units, factor) in specs.items():
+            value = _numeric(text, labels, units, factor)
+            if value is not None:
+                result[key] = value
+        mppt_rx = re.compile(r"\b(?:MPPT|MPP)\s+(?:voltage\s+)?range\b", re.I)
+        range_values = re.compile(r"(?P<low>\d+(?:[.,]\d+)?)\s*(?:-|–|—|to)\s*(?P<high>\d+(?:[.,]\d+)?)\s*(?:m?V)\b", re.I)
+        ranges = set()
+        for line in text.splitlines():
+            match = mppt_rx.search(line)
+            if not match:
+                continue
+            tail = line[match.end():match.end() + 80]
+            values = range_values.search(tail)
+            if values:
+                pair = (float(values.group("low").replace(",", ".")),
+                        float(values.group("high").replace(",", ".")))
+                if values.group(0).lower().endswith("mv"):
+                    pair = (pair[0] / 1000, pair[1] / 1000)
+                if 0 < pair[0] < pair[1]:
+                    ranges.add(pair)
+        if len(ranges) == 1:
+            low, high = next(iter(ranges))
+            result["mppt_min"] = int(low) if low.is_integer() else low
+            result["mppt_max"] = int(high) if high.is_integer() else high
+        for key in ("type", "phases"):
+            value = _enum(text, key)
+            if value:
+                result[key] = value
+    elif category == "Panou":
+        specs = {
+            "w": ((r"\b(?:rated|nominal|maximum|max\.?)\s+(?:module\s+)?power\b", r"\bP\s*max\b"), kw_units, lambda unit: 1000 if unit == "kw" else 1000000 if unit == "mw" else 1),
+            "voc": ((r"\bopen[- ]circuit\s+voltage\b", r"\bVoc\b"), volt_units, convert_v),
+            "vmp": ((r"\b(?:voltage| Vmpp?)\s+at\s+(?:maximum|max\.?)\s+power\b", r"\bVmpp\b", r"\bVmp\b"), volt_units, convert_v),
+            "isc": ((r"\bshort[- ]circuit\s+current\b", r"\bIsc\b"), amp_units, convert_a),
+            "imp": ((r"\bcurrent\s+at\s+(?:maximum|max\.?)\s+power\b", r"\bImpp\b", r"\bImp\b"), amp_units, convert_a),
+            "coef_voc": ((r"\b(?:temperature|temp\.?)\s+coefficient\s+(?:of\s+)?Voc\b", r"\bVoc\s+temp(?:erature)?\s+coefficient\b"), ("%/°c", "%/c")),
+            "coef_vmp": ((r"\b(?:temperature|temp\.?)\s+coefficient\s+(?:of\s+)?Vmp\b", r"\bVmp\s+temp(?:erature)?\s+coefficient\b"), ("%/°c", "%/c")),
+            "temp_noct": ((r"\bNOCT\b",), ("°c", "c")),
+            "temp_pmax": ((r"\b(?:temperature|temp\.?)\s+coefficient\s+(?:of\s+)?Pmax\b", r"\bPmax\s+temp(?:erature)?\s+coefficient\b"), ("%/°c", "%/c")),
+        }
+        for key, spec in specs.items():
+            labels, units, *factor = spec
+            value = _numeric(text, labels, units, factor[0] if factor else None)
+            if value is not None:
+                result[key] = value
+    elif category == "Baterie":
+        specs = {
+            "kwh": ((r"\b(?:nominal|usable|rated)\s+(?:energy|capacity)\b", r"\benergy\s+capacity\b"), ("kwh", "wh", "mwh"), convert_kwh),
+            "ah": ((r"\b(?:nominal\s+)?capacity\b",), ("ah",)),
+            "voltage": ((r"\b(?:nominal|rated)\s+(?:battery\s+)?voltage\b", r"\bbattery\s+voltage\b"), volt_units, convert_v),
+            "i_max": ((r"\bmaximum\s+(?:continuous\s+)?discharge\s+current\b", r"\bmax\.?\s+discharge\s+current\b"), amp_units, convert_a),
+            "max_fuse_a": ((r"\b(?:maximum|max\.?)\s+(?:recommended\s+)?fuse\b", r"\bmaximum\s+overcurrent\s+protection\b"), amp_units, convert_a),
+        }
+        for key, spec in specs.items():
+            labels, units, *factor = spec
+            value = _numeric(text, labels, units, factor[0] if factor else None)
+            if value is not None:
+                result[key] = value
+        for key in ("tech", "coupling"):
+            value = _enum(text, key)
+            if value:
+                result[key] = value
+    elif category == "Smart meter":
+        value = _enum(text, "phases")
+        if value:
+            result["phases"] = value
+    else:
+        return {}
+    return result
+
