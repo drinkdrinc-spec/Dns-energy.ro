@@ -474,6 +474,41 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
                     return {"results": results, "unavailable": unavailable}
     return {"results": results, "unavailable": unavailable}
 
+@api_router.get("/clients/search")
+async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), user: dict = Depends(get_current_user)):
+    """Search only the signed-in tenant's clients for the dashboard typeahead."""
+    term = q.strip()
+    if len(term) < 2:
+        return {"results": [], "unavailable": []}
+    guard("clients", user)
+    if term.isdigit():
+        # Prefix regexes on numeric identifiers are case-sensitive and can use
+        # owner+field indexes, avoiding a scan of every tenant record for CNP/POD/phone.
+        pattern = re.compile("^" + re.escape(term))
+        fields = ("idcode", "cnp", "id_number", "phone", "pod")
+    else:
+        pattern = re.compile(re.escape(term), re.IGNORECASE)
+        fields = ("name", "email", "phone", "pod", "address", "locality", "county")
+    field_query = {"$or": [{field: pattern} for field in fields]}
+    query = {"$and": [scope_q(user, "clients"), field_query]}
+    projection = {"_id": 0, "id": 1, "name": 1, "pod": 1, "phone": 1, "email": 1,
+                  "address": 1, "locality": 1, "county": 1, "is_test": 1}
+    rows = await db.clients.find(query, projection).sort("updated_at", -1).limit(8).to_list(8)
+    results = []
+    for row in rows:
+        name = str(row.get("name") or "")
+        if row.get("is_test") or re.search(r"\\bTEST\\b", name, re.I):
+            continue
+        item_id = str(row.get("id") or "")
+        if not item_id:
+            continue
+        detail = " · ".join(str(row.get(k)) for k in ("pod", "phone", "email", "address", "locality", "county") if row.get(k))
+        results.append({"id": item_id, "module": "clients", "label": "Client",
+                        "title": name or "Client fără nume", "detail": detail,
+                        "href": f"/clienti?edit={item_id}"})
+    return {"results": results, "unavailable": []}
+
+
 @api_router.get("/data/{module}")
 async def list_items(module: str, q: Optional[str] = None, user: dict = Depends(get_current_user)):
     if module not in MODULES:
@@ -2919,6 +2954,8 @@ async def startup():
         # Keep tenant-scoped list and quick-search sorts efficient as collections grow.
         await db[m].create_index([("owner", 1), ("created_at", -1)], name="owner_created_at")
         await db[m].create_index([("owner", 1), ("updated_at", -1)], name="owner_updated_at")
+    for field in ("idcode", "cnp", "id_number", "phone", "pod"):
+        await db.clients.create_index([("owner", 1), (field, 1)], name=f"owner_{field}")
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     jwt_secret = os.environ.get("JWT_SECRET", "")
