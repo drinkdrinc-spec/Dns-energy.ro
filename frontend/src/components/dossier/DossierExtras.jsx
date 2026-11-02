@@ -1,49 +1,19 @@
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-
 const REGLAJ = [["u1", "Tensiune maximală treapta I"], ["u2", "Tensiune minimală treapta II"], ["f1", "Frecvență treapta I"], ["f2", "Frecvență treapta II"],
   ["u10", "Tensiune maximă (medie 10 min)"], ["rec", "Pornire / repornire după întrerupere RED"], ["hvrt", "HVRT"], ["lvrt", "LVRT"], ["droop", "Statism la variația frecvenței"]];
 const TYPICAL = { u1: ["1,15 Un", "0,5"], u2: ["0,85 Un", "3,2"], f1: ["52 Hz", "0,5"], f2: ["47,5 Hz", "0,5"], u10: ["253 V", "603"], rec: ["—", "900"], hvrt: ["264,5 V", "Activată"], lvrt: ["184,5 V", "Activată"], droop: ["5 %", "—"] };
 const TESTS = [...Array(10).keys()].map((i) => `a${i}`).concat([...Array(4).keys()].map((i) => `f${i}`), [...Array(7).keys()].map((i) => `c${i}`));
 const TLABEL = { a: "Test categoria A", f: "Domeniu de frecvență", c: "Verificare" };
-const ROLES = [["executant", "Reprezentant executant"], ["resp_tehnic", "Responsabil tehnic cu execuția"], ["electrician", "Electrician autorizat / inginer"],
-  ["designer", "Proiectant schemă"], ["verifier", "Verificator schemă"], ["measurer", "Verificator măsurători"]];
-
-const status = (exp, file) => (!file ? "lipsă" : !exp ? "valabil" : exp < new Date().toISOString().slice(0, 10) ? "expirat" : "valabil");
-const eligible = (p) => (p.auths || []).some((a) => a.verified && status(a.expires, a.file) === "valabil");
 
 export function DossierExtras({ form, setVal, compact = false }) {
-  const [staff, setStaff] = useState([]);
-  const [inst, setInst] = useState([]);
-  useEffect(() => { api.get("/data/staff").then((r) => setStaff(r.data)).catch(() => {}); api.get("/data/instruments").then((r) => setInst(r.data)).catch(() => {}); }, []);
-  const rg = form.reglaj || {}, ts = form.tests || {}, sg = form.signers || {};
+  const rg = form.reglaj || {}, ts = form.tests || {};
   const setR = (k, f, v) => setVal("reglaj", { ...rg, [k]: { ...(rg[k] || {}), [f]: v }, verified_by_installer: false });
   const reglajValuesComplete = REGLAJ.every(([k]) => String(rg[k]?.val || "").trim() && String(rg[k]?.t || "").trim());
   const setT = (k, f, v) => setVal("tests", { ...ts, [k]: { ...(ts[k] || {}), [f]: v } });
   return (
     <div className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
-      <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
-        <h4 className="font-bold text-sm mb-1">{compact ? "Semnătura reprezentantului executantului" : "Semnatari și aparat de măsură"}</h4>
-        <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>
-          {compact
-            ? "În documentele DI-U semnează reprezentantul firmei executante. Semnătura grafică și ștampila se preiau din setările firmei."
-            : "Pot fi alese doar persoanele cu cel puțin o autorizație valabilă, încărcată și marcată „verificată” în Setări de bază."}
-        </p>
-        {ROLES.filter(([k]) => !compact || k === "executant").map(([k, l]) => (
-          <div key={k} className="den-field mb-2"><label>{l}</label>
-            <select className="den-input" value={sg[k] || ""} onChange={(e) => setVal("signers", { ...sg, [k]: e.target.value })} data-testid={`signer-${k}`}>
-              <option value="">— neselectat —</option>
-              {staff.map((p) => <option key={p.id} value={p.id} disabled={!eligible(p)}>{p.name} · {p.qualification || ""}{eligible(p) ? "" : " (autorizație lipsă/expirată/neverificată)"}</option>)}
-            </select></div>
-        ))}
-        <div className="den-field"><label>{compact ? "Aparat PRAM folosit pe buletinul prizei de pământ" : "Aparat de măsură (buletin priză)"}</label>
-          <select className="den-input" value={form.instrument_id || ""} onChange={(e) => setVal("instrument_id", e.target.value)} data-testid="instrument-select">
-            <option value="">— neselectat —</option>
-            {inst.map((i) => <option key={i.id} value={i.id} disabled={status(i.expires, i.file) !== "valabil"}>{i.maker_model} · seria {i.serial} · {i.cert_name} până la {i.expires || "—"}{status(i.expires, i.file) !== "valabil" ? " (expirat / lipsă)" : ""}</option>)}
-          </select></div>
-      </div>
-      {compact && <div className="rounded-lg px-3 py-2 text-[11px] sm:col-span-2" style={{ background: "#fff8e7", color: "#79521a" }}>
-        Pentru aplicarea automată a semnăturii instalatorului, în Setări → Personal trebuie să existe o semnătură grafică autorizată; pentru ștampilă, în Setări trebuie încărcată imaginea ștampilei firmei. Dacă lipsesc sau nu sunt autorizate, documentul trebuie semnat olograf — aplicația nu inventează semnături.
+      {compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
+        <h4 className="font-bold text-sm mb-1">Semnătura reprezentantului firmei</h4>
+        <p className="text-xs" style={{ color: "var(--muted)" }}>Documentele au un singur semnatar: reprezentantul firmei executante. Semnătura și ștampila se preiau din setările firmei, dacă sunt configurate; aplicația nu inventează semnături.</p>
       </div>}
       {!compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2"><h4 className="font-bold text-sm">Reglaje invertor</h4>
