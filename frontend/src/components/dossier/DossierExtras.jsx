@@ -23,13 +23,13 @@ export function DossierExtras({ form, setVal, compact = false }) {
   return (
     <div className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
       <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
-        <h4 className="font-bold text-sm mb-1">{compact ? "DI-U — personal, semnături și aparat PRAM" : "Semnatari și aparat de măsură"}</h4>
+        <h4 className="font-bold text-sm mb-1">{compact ? "Semnătura reprezentantului executantului" : "Semnatari și aparat de măsură"}</h4>
         <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>
           {compact
-            ? "Selectează aici persoanele care vor apărea în documentele DI-U și aparatul folosit pe buletinul de priză de pământ. Salvează dosarul după modificări."
+            ? "În documentele DI-U semnează reprezentantul firmei executante. Semnătura grafică și ștampila se preiau din setările firmei."
             : "Pot fi alese doar persoanele cu cel puțin o autorizație valabilă, încărcată și marcată „verificată” în Setări de bază."}
         </p>
-        {ROLES.map(([k, l]) => (
+        {ROLES.filter(([k]) => !compact || k === "executant").map(([k, l]) => (
           <div key={k} className="den-field mb-2"><label>{l}</label>
             <select className="den-input" value={sg[k] || ""} onChange={(e) => setVal("signers", { ...sg, [k]: e.target.value })} data-testid={`signer-${k}`}>
               <option value="">— neselectat —</option>
