@@ -1848,9 +1848,11 @@ async def atr_official_docx(item_id: str, authorization: str = Header(None), aut
     client = await get_client(user["id"], rec)
     settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     pros = None
-    if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
-        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
+    linked_pros = await resolve_atr_prosumer(user, rec, client)
+    if linked_pros:
+        pros, pclient, settings, _ = await dossier_ctx(user, linked_pros["id"])
         client = {**(pclient or {}), **(client or {})}
+        rec = {**rec, "pros_id": linked_pros["id"]}
     try:
         payload = ATR.render_deer_official_docx(rec, client or {}, settings, pros or {})
     except ValueError as exc:
@@ -2088,11 +2090,11 @@ async def power_official_docx(item_id: str, authorization: str = Header(None), a
     client = await get_client(user["id"], rec)
     settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     pros = {}
-    if rec.get("pros_id") and await db.prosumator.find_one(
-        {**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}
-    ):
-        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
+    linked_pros = await resolve_atr_prosumer(user, rec, client)
+    if linked_pros:
+        pros, pclient, settings, _ = await dossier_ctx(user, linked_pros["id"])
         client = {**(pclient or {}), **(client or {})}
+        rec = {**rec, "pros_id": linked_pros["id"]}
 
     operator = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
     if operator != "deer":
