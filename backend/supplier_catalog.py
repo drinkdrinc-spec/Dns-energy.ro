@@ -5,7 +5,7 @@ import asyncio
 import json
 import re
 import unicodedata
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import httpx
 from lxml import html
@@ -102,6 +102,53 @@ def _is_category_product(title, category):
     return normalized.startswith(("baterie ", "acumulator ", "acumulatori ")) and " kit " not in f" {normalized} "
 
 
+def _pagination_urls(doc, listing_url: str, source):
+    """Find same-listing pagination links only; never follow product or filter links."""
+    current = urlparse(listing_url)
+    current_path = current.path.rstrip("/") or "/"
+    expected_search = parse_qs(current.query).get("s", [None])[0]
+    urls = []
+    for anchor in doc.xpath("//a[@href]"):
+        label = _text(anchor)
+        if not label.isdigit():
+            continue
+        url = urljoin(listing_url, anchor.get("href", "").strip())
+        parsed = urlparse(url)
+        if not _safe_url(url, source["host"]):
+            continue
+        path = parsed.path.rstrip("/") or "/"
+        same_path = path == current_path
+        if current_path == "/":
+            paged_path = re.fullmatch(r"/page/\\d+", path) is not None
+        else:
+            paged_path = path.startswith(current_path + "/page/")
+        if not (same_path or paged_path):
+            continue
+        if expected_search and parse_qs(parsed.query).get("s", [None])[0] != expected_search:
+            continue
+        if url not in urls:
+            urls.append(url)
+    return urls[:5]
+
+
+async def _listing_pages(client, response, source):
+    try:
+        first = html.fromstring(response.content)
+    except (ValueError, TypeError):
+        return []
+    urls = _pagination_urls(first, str(response.url), source)
+    extra = await asyncio.gather(*[_get(client, url, source["host"]) for url in urls])
+    pages = [(response, first)]
+    for page in extra:
+        if not page:
+            continue
+        try:
+            pages.append((page, html.fromstring(page.content)))
+        except (ValueError, TypeError):
+            continue
+    return pages
+
+
 def _product_offer(doc):
     """Use only Product structured data, never a page-wide or unrelated price."""
     for raw in doc.xpath("//script[@type='application/ld+json']/text()"):
@@ -171,25 +218,24 @@ async def search_supplier_products(query: str, category: str):
             for source in SOURCES.values()
         ])
         candidates = []
-        for (source_name, source), response in zip(SOURCES.items(), pages):
-            if not response:
-                continue
-            try:
-                listing = html.fromstring(response.content)
-            except (ValueError, TypeError):
-                continue
+        page_groups = await asyncio.gather(*[
+            _listing_pages(client, response, source) if response else asyncio.sleep(0, result=[])
+            for (source_name, source), response in zip(SOURCES.items(), pages)
+        ])
+        for (source_name, source), listing_pages in zip(SOURCES.items(), page_groups):
             found = set()
-            for a in listing.xpath("//a[@href]"):
-                title = _text(a)
-                if not title or not _query_matches(query, title) or not _is_category_product(title, category):
-                    continue
-                url = urljoin(str(response.url), a.get("href", "").strip())
-                path = urlparse(url).path.rstrip("/")
-                if not _safe_url(url, source["host"]) or not path or any(x in path.lower() for x in ("/tag/", "/category/", "/product-category/", "/wp-content/", "/legal/", "/cont", "/favorite", "/cart")):
-                    continue
-                if url not in found:
-                    found.add(url)
-                    candidates.append((source_name, source, category, url))
+            for response, listing in listing_pages:
+                for a in listing.xpath("//a[@href]"):
+                    title = _text(a)
+                    if not title or not _query_matches(query, title) or not _is_category_product(title, category):
+                        continue
+                    url = urljoin(str(response.url), a.get("href", "").strip())
+                    path = urlparse(url).path.rstrip("/")
+                    if not _safe_url(url, source["host"]) or not path or any(x in path.lower() for x in ("/tag/", "/category/", "/product-category/", "/wp-content/", "/legal/", "/cont", "/favorite", "/cart")):
+                        continue
+                    if url not in found:
+                        found.add(url)
+                        candidates.append((source_name, source, category, url))
         # Keep suppliers represented in the results instead of letting the first
         # large store crowd out the other sources.
         balanced = []
