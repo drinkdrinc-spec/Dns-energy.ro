@@ -781,14 +781,16 @@ def protections(rec, res):
         out.append((f"-F{i + 1}.1", "Dispozitiv diferențial (DDR)", (f"{inv.get('rcd_type')} {gv(n(inv.get('rcd_ma')), ' mA') or ''}".strip()) if inv.get("rcd_type") else None, "-TFV"))
         if inv.get("battery_mode") == "own":
             protection = battery_protection(bt, r["proposals"]["battery"])
-            out.append((f"-Q{i + 1}.B", battery_protection_text(protection), f"{gv(protection.get('rating'), ' A DC') or protection['source']} · {gv(n(bt.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(bt.get('cable_section') or bt.get('section') or r['proposals']['battery'].get('section')), ' mm²') or '[lipsă]'}", f"-G{i + 1}"))
+            code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
+            out.append((f"{code}{i + 1}.B", battery_protection_text(protection), f"{gv(protection.get('rating'), ' A DC') or protection['source']} · {gv(n(bt.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(bt.get('cable_section') or bt.get('section') or r['proposals']['battery'].get('section')), ' mm²') or '[lipsă]'}", f"-G{i + 1}"))
         if (inv.get("backup") or {}).get("enabled"):
             out.append((f"-Q{i + 1}.EPS", "Întreruptor circuit backup / EPS", inv["backup"].get("breaker"), f"-TB{i + 1}"))
     for k, battery in enumerate(cef.get("shared_batteries") or []):
         proposal = battery_cable_proposal(battery)
         protection = battery_protection(battery, proposal)
         value = f"{gv(protection.get('rating'), ' A DC') or protection['source']} · {gv(n(battery.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(battery.get('cable_section') or battery.get('section') or proposal.get('section')), ' mm²') or '[lipsă]'}"
-        out.append((f"-Q{len(cef.get('inverters') or []) + k + 1}.B", battery_protection_text(protection), value, f"-GC{k + 1}"))
+        code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
+        out.append((f"{code}{len(cef.get('inverters') or []) + k + 1}.B", battery_protection_text(protection), value, f"-GC{k + 1}"))
     out.append(("-Q0.TG", "Întreruptor general TG", gv(n(grid.get("tg_breaker_a")), " A " + ("4P" if tri else "2P")), "-TG"))
     out.append(("-FA AC", "Descărcător SPD AC", grid.get("spd_ac"), "-TG"))
     if base["grid"]["anti"]:
