@@ -46,3 +46,26 @@ def test_smart_meter_datasheet_extracts_only_explicit_model_specs():
     assert result["accuracy_class"] == "Class1/Class B"
     assert result["protocol"] == "RS485 Modbus RTU"
     assert result["wiring"] == "3PH-4W, 3PH-3W, 1PH-2W"
+
+def test_smart_meter_datasheet_handles_split_labels_and_values():
+    text = """
+    Three phase 100A direct fed
+    Nominal voltage(Un)
+    3x230/400 V ac
+    Maximum rated current (Imax)
+    100A
+    Operational frequency range
+    50 or 60Hz
+    Accuracy class
+    Class1/Class B
+    SDM630-Modbus
+    3PH-4W, 3PH-3W, 1PH-2W, 3x230(400)V, 0.5~10(100)A, 50/60Hz, 2 pulse outputs, RS485 Modbus RTU.
+    SDM630-Mbus
+    """
+    result = extract_equipment_specs("Smart meter", text)
+    assert result["current_max_a"] == 100
+    assert result["voltage_nominal_v"] == "3x230/400 V ac"
+    assert result["frequency_hz"] == "50 or 60Hz"
+    assert result["accuracy_class"] == "Class1/Class B"
+    assert result["protocol"] == "RS485 Modbus RTU"
+    assert result["wiring"] == "3PH-4W, 3PH-3W, 1PH-2W"
