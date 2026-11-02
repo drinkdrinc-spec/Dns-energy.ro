@@ -48,7 +48,7 @@ def _labeled_numbers(text: str, labels: tuple[str, ...], units: tuple[str, ...],
                     continue
                 number = _NUMBER.search(tail)
                 if not number:
-                    candidate = re.search(r"(?<![\\w.])[-+]?\\d+(?:[.,]\\d+)?", tail)
+                    candidate = re.search(r"(?<![\w.])[-+]?\d+(?:[.,]\d+)?", tail)
                     if candidate and _UNIT.match(tail[candidate.end():].lstrip()):
                         number = candidate
             if not number:
