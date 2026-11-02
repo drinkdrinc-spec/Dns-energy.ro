@@ -173,15 +173,29 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
   const equipmentSummary = (() => {
     const cef = selectedPros?.cef || {};
     const items = [];
-    for (const [index, inv] of (cef.inverters || []).entries()) {
+    const inverters = cef.inverters || [];
+    const addBattery = (key, battery, multiplier = 1) => {
+      const modules = Math.max(1, Number(battery?.modules) || 1) * Math.max(1, Number(multiplier) || 1);
+      const capacity = Number(battery?.kwh) || 0;
+      const details = [battery?.model || "model necompletat", `${modules} module`];
+      if (capacity > 0) details.push(`${capacity * modules} kWh total`, `${capacity} kWh/modul`);
+      if (Number(battery?.voltage) > 0) details.push(`${battery.voltage} V DC`);
+      if (Number(battery?.ah) > 0) details.push(`${battery.ah} Ah`);
+      if (Number(battery?.i_max) > 0) details.push(`I max ${battery.i_max} A`);
+      if (battery?.coupling) details.push(`cuplare ${battery.coupling}`);
+      items.push({ key, label: `Baterie: ${details.join(" · ")}` });
+    };
+    for (const [index, inv] of inverters.entries()) {
       const quantity = inv.count || inv.quantity || 1;
       const panelCount = (inv.strings || []).reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
       items.push({ key: `inv-${index}`, label: `Invertor: ${inv.brand_model || "model necompletat"} · ${quantity} buc. · ${inv.p_nom_kw || "—"} kW` });
-      if (inv.panel_model || panelCount) items.push({ key: `panel-${index}`, label: `Panouri: ${inv.panel_model || "model necompletat"} · ${panelCount || "—"} buc. · ${inv.panel_w || "—"} Wp` });
-      if (inv.battery_mode === "own" && inv.battery?.model) items.push({ key: `battery-own-${index}`, label: `Baterie: ${inv.battery.model} · ${inv.battery.modules || 1} buc. · ${inv.battery.coupling || "cuplare nespecificată"}` });
+      const declaredPanelCount = inverters.length === 1 ? Math.max(0, Number(selectedPros?.panel_count) || 0) : 0;
+      const shownPanelCount = panelCount || declaredPanelCount;
+      if (inv.panel_model || shownPanelCount) items.push({ key: `panel-${index}`, label: `Panouri: ${inv.panel_model || "model necompletat"} · ${shownPanelCount || "—"} buc. · ${inv.panel_w || "—"} Wp` });
+      if (inv.battery_mode === "own" && inv.battery?.model) addBattery(`battery-own-${index}`, inv.battery, quantity);
     }
     for (const [index, battery] of (cef.shared_batteries || []).entries()) {
-      items.push({ key: `battery-${index}`, label: `Baterie: ${battery.model || "model necompletat"} · ${battery.modules || 1} buc. · ${battery.coupling || "cuplare nespecificată"}` });
+      addBattery(`battery-${index}`, battery);
     }
     return items;
   })();
