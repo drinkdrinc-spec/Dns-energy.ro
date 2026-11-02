@@ -996,21 +996,19 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
         filename = str((rec.get("pram_file") or {}).get("original_filename") or "buletin_pram_terta.pdf")
         return Response(content=third_party_pram, media_type="application/pdf",
                         headers={"Content-Disposition": disp("inline", filename)})
-    if doc_type == "all" and third_party_pram:
-        keys = [key for key in keys if key != "buletin_priza"]
-
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     settings, _ = await effective_settings(user["id"], rec, base)
-    pdf = docgen.render(keys, rec, settings, client)
     if doc_type == "all" and third_party_pram:
         writer = PdfWriter()
-        for page in PdfReader(io.BytesIO(pdf)).pages:
-            writer.add_page(page)
-        for page in PdfReader(io.BytesIO(third_party_pram)).pages:
-            writer.add_page(page)
+        for key in keys:
+            part = third_party_pram if key == "buletin_priza" else docgen.render([key], rec, settings, client)
+            for page in PdfReader(io.BytesIO(part)).pages:
+                writer.add_page(page)
         combined = io.BytesIO()
         writer.write(combined)
         pdf = combined.getvalue()
+    else:
+        pdf = docgen.render(keys, rec, settings, client)
 
     if doc_type == "all" and is_power_increase and annex1:
         try:
