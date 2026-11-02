@@ -430,7 +430,7 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
                                              "is_test": 1}).sort("updated_at", -1).limit(5).to_list(5)
         matches = []
         for row in rows:
-            if row.get("is_test") or re.search(r"\\bTEST\\b", " ".join(str(row.get(k) or "") for k in ("name", "client_name", "number")), re.I):
+            if row.get("is_test") or re.search(r"\bTEST\b", " ".join(str(row.get(k) or "") for k in ("name", "client_name", "number")), re.I):
                 continue
             item_id = str(row.get("id") or "")
             if not item_id:
