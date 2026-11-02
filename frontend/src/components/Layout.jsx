@@ -88,15 +88,15 @@ function PwaInstallButton() {
 }
 
 const DOSSIER_STEPS = [
-  { to: "/clienti", label: "Client", icon: UserRound, matches: ["/clienti"] },
-  { to: "/prosumator", label: "Prosumator", icon: FolderOpen, matches: ["/prosumator"] },
+  { to: "/clienti", label: "Client și acte", icon: UserRound, matches: ["/clienti"] },
   { to: "/cerere-atr", label: "Cerere ATR", icon: FileCheck2, matches: ["/cerere-atr"] },
   { to: "/spor-putere", label: "Spor putere", icon: Zap, matches: ["/spor-putere"] },
+  { to: "/prosumator", label: "Prosumator", icon: FolderOpen, matches: ["/prosumator"] },
   { to: "/diu", label: "DI-U", icon: Wrench, matches: ["/diu"] },
-  { to: "/catalog-echipamente", label: "Echipamente", icon: Cpu, matches: ["/catalog-echipamente"] },
-  { to: "/dosare-anre", label: "Dosar ANRE", icon: FileCheck2, matches: ["/dosare-anre"] },
-  { to: "/mono", label: "Schemă", icon: CircuitBoard, matches: ["/mono"] },
   { to: "/pram", label: "PRAM", icon: Activity, matches: ["/pram"] },
+  { to: "/mono", label: "Schemă", icon: CircuitBoard, matches: ["/mono"] },
+  { to: "/dosare-anre", label: "Dosar ANRE", icon: FileCheck2, matches: ["/dosare-anre"] },
+  { to: "/catalog-echipamente", label: "Echipamente", icon: Cpu, matches: ["/catalog-echipamente"] },
   { to: "/portaluri-distribuitori", label: "Portal OD", icon: Globe, matches: ["/portaluri-distribuitori"] },
 ];
 
