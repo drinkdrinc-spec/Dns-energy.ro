@@ -1,11 +1,16 @@
-"""Read-only product discovery for the DNS Energy equipment catalog.
-Only model-title matches from each supplier's equipment category are returned.
+"""Bounded public product discovery for the DNS Energy equipment catalog.
+
+Only public category/search pages from configured suppliers are read. Product
+specifications are copied only from explicit structured properties or labelled
+specification rows; missing or ambiguous values are left blank.
 """
+from __future__ import annotations
+
 import asyncio
 import json
 import re
 import unicodedata
-from urllib.parse import parse_qs, quote, urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 from lxml import html
@@ -21,6 +26,7 @@ SOURCES = {
     },
     "SolarHev": {
         "host": "solarhev.ro",
+        "search": "https://solarhev.ro/?s={query}&post_type=product",
         "categories": {
             "Invertor": "https://solarhev.ro/invertoare-fotovoltaice",
             "Panou": "https://solarhev.ro/panouri-fotovoltaice",
@@ -37,127 +43,84 @@ SOURCES = {
         },
     },
 }
+DOCUMENT_HOSTS = {
+    "depozitsolar.ro", "solarhev.ro", "solartech.ro", "deyeinverter.com", "huawei.com", "goodwe.com",
+    "sungrowpower.com", "solis.com", "ginlong.com", "fronius.com", "sma.de", "sma-solar.com",
+    "jinkosolar.com", "longi.com", "aikosolar.com", "aiko.com", "trinasolar.com", "canadiansolar.com",
+    "qcells.com", "jasolar.com", "pylontech.com", "bydbatterybox.com", "fox-ess.com", "foxess.com",
+    "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com",
+}
 CATEGORIES = {"Invertor", "Panou", "Baterie"}
-CATEGORY_TERMS = {
-    "Invertor": ("invertor", "inverter"),
-    "Panou": ("panou", "photovoltaic", "solar module", "solar panel"),
-    "Baterie": ("baterie", "acumulator", "battery", "storage"),
-}
-DOCUMENT_DOMAINS = ("depozitsolar.ro", "solarhev.ro", "solartech.ro", "deyeinverter.com", "hqsmartcloud.com", "huawei.com", "goodwe.com", "sungrowpower.com", "solis.com", "jinkosolar.com", "canadiansolar.com", "trinasolar.com", "aikosolar.com", "dyness.com", "bydbatterybox.com")
-PDF_LABELS = {
+DOCUMENT_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
-    "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "test certificate", "iec certificate", "certificat de conformitate", "certificat conformitate"),
+    "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "certificat de conformitate", "certificat conformitate"),
+}
+FIELD_LABELS = {
+    "p_nom_kw": ("putere nominala", "rated power", "nominal power"),
+    "p_max_kw": ("putere maxima ac", "maximum ac power", "max ac output power"),
+    "vdc_max": ("tensiune dc maxima", "max dc voltage", "maximum dc input voltage"),
+    "mppt_min": ("tensiune mppt minima", "mppt voltage min"),
+    "mppt_max": ("tensiune mppt maxima", "mppt voltage max"),
+    "mppt_count": ("numar mppt", "mppt trackers", "trackere mppt"),
+    "imax_mppt": ("curent maxim mppt", "max input current per mppt"),
+    "w": ("putere nominala modul", "putere maxima modul", "rated power", "maximum power"),
+    "voc": ("tensiune circuit deschis", "open circuit voltage", "voc"),
+    "vmp": ("tensiune la putere maxima", "voltage at maximum power", "vmp", "vmpp"),
+    "isc": ("curent de scurtcircuit", "short circuit current", "isc"),
+    "imp": ("curent la putere maxima", "current at maximum power", "imp", "impp"),
+    "kwh": ("capacitate nominala", "energie nominala", "nominal energy", "rated capacity", "usable energy"),
+    "ah": ("capacitate ah", "capacity ah"),
+    "voltage": ("tensiune nominala", "tensiune baterie", "nominal voltage", "battery voltage"),
+    "i_max": ("curent maxim descarcare", "maximum discharge current"),
+}
+FIELD_UNITS = {
+    "p_nom_kw": "kw", "p_max_kw": "kw", "vdc_max": "v", "mppt_min": "v", "mppt_max": "v",
+    "mppt_count": "count", "imax_mppt": "a", "w": "w", "voc": "v", "vmp": "v", "isc": "a", "imp": "a",
+    "kwh": "kwh", "ah": "ah", "voltage": "v", "i_max": "a",
 }
 
 
-def _safe_url(url: str, host: str) -> bool:
+def _norm(value: str) -> str:
+    value = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+
+def _safe_page(url: str, host: str) -> bool:
     parsed = urlparse(url)
-    return (parsed.scheme == "https" and parsed.hostname
-            and parsed.hostname.lower().rstrip(".") in (host, "www." + host)
-            and not parsed.username and not parsed.password)
+    return parsed.scheme == "https" and (parsed.hostname or "").lower().rstrip(".") in (host, "www." + host) and not parsed.username and not parsed.password
 
 
-async def _get(client: httpx.AsyncClient, url: str, host: str):
-    if not _safe_url(url, host):
-        return None
-    try:
-        response = await client.get(url, follow_redirects=False)
-        if response.status_code == 200 and len(response.content) <= 3_000_000:
-            return response
-    except httpx.HTTPError:
-        pass
-    return None
-
-
-def _safe_document_url(url: str) -> bool:
+def _safe_document(url: str, supplier_host: str) -> bool:
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower().rstrip(".")
-    return parsed.scheme == "https" and not parsed.username and not parsed.password and any(
-        host == domain or host.endswith("." + domain) for domain in DOCUMENT_DOMAINS
+    return parsed.scheme == "https" and not parsed.username and not parsed.password and parsed.path.lower().endswith(".pdf") and any(
+        host == domain or host.endswith("." + domain) for domain in (supplier_host, *DOCUMENT_HOSTS)
     )
 
 
-def _text(node):
-    return re.sub(r"\s+", " ", " ".join(node.itertext())).strip()
+def _product_title(doc) -> str:
+    h1 = doc.xpath("//h1[1]")
+    if h1:
+        return " ".join(" ".join(h1[0].itertext()).split())
+    return str((doc.xpath("//meta[@property='og:title']/@content") or [""])[0]).strip()
 
 
-def _norm(value):
-    raw = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii").lower()
-    return re.sub(r"[^a-z0-9]+", " ", raw).strip()
-
-
-def _query_matches(query, title):
-    wanted = [x for x in _norm(query).split() if len(x) > 1]
-    actual = _norm(title)
-    return bool(wanted) and all(token in actual for token in wanted)
-
-
-def _is_category_product(title, category):
-    normalized = _norm(title)
+def _correct_category(title: str, category: str) -> bool:
+    value = _norm(title)
     if category == "Invertor":
-        bundled_with_battery = re.search(r"\s\+\s*(?:acumulator(?:i)?|bater(?:ie|ii)|batter(?:y|ies)|storage)\b", str(title), re.I)
-        return normalized.startswith(("invertor ", "inverter ")) and " kit " not in f" {normalized} " and not bundled_with_battery
+        return value.startswith(("invertor ", "inverter ")) and " kit " not in f" {value} "
     if category == "Panou":
-        return normalized.startswith(("panou ", "modul fotovoltaic", "solar panel"))
-    return normalized.startswith(("baterie ", "acumulator ", "acumulatori ")) and " kit " not in f" {normalized} "
+        return value.startswith(("panou ", "modul fotovoltaic", "solar panel"))
+    return value.startswith(("baterie ", "acumulator ", "acumulatori ", "battery ")) and " kit " not in f" {value} "
 
 
-def _pagination_urls(doc, listing_url: str, source):
-    """Find same-listing pagination links only; never follow product or filter links."""
-    current = urlparse(listing_url)
-    current_path = current.path.rstrip("/") or "/"
-    expected_search = parse_qs(current.query).get("s", [None])[0]
-    urls = []
-    for anchor in doc.xpath("//a[@href]"):
-        label = _text(anchor)
-        if not label.isdigit():
-            continue
-        url = urljoin(listing_url, anchor.get("href", "").strip())
-        parsed = urlparse(url)
-        if not _safe_url(url, source["host"]):
-            continue
-        path = parsed.path.rstrip("/") or "/"
-        same_path = path == current_path
-        if current_path == "/":
-            paged_path = re.fullmatch(r"/page/[0-9]+", path) is not None
-        else:
-            paged_path = path.startswith(current_path + "/page/")
-        if not (same_path or paged_path):
-            continue
-        if expected_search and parse_qs(parsed.query).get("s", [None])[0] != expected_search:
-            continue
-        if url not in urls:
-            urls.append(url)
-    return urls[:5]
-
-
-async def _listing_pages(client, response, source):
-    try:
-        first = html.fromstring(response.content)
-    except (ValueError, TypeError):
-        return []
-    urls = _pagination_urls(first, str(response.url), source)
-    extra = await asyncio.gather(*[_get(client, url, source["host"]) for url in urls])
-    pages = [(response, first)]
-    for page in extra:
-        if not page:
-            continue
-        try:
-            pages.append((page, html.fromstring(page.content)))
-        except (ValueError, TypeError):
-            continue
-    return pages
-
-
-def _product_offer(doc):
-    """Use only Product structured data, never a page-wide or unrelated price."""
+def _json_products(doc):
     for raw in doc.xpath("//script[@type='application/ld+json']/text()"):
         try:
-            parsed = json.loads(raw)
+            data = json.loads(raw)
         except (ValueError, TypeError):
             continue
-        nodes = parsed if isinstance(parsed, list) else [parsed]
-        stack = list(nodes)
+        stack = data if isinstance(data, list) else [data]
         while stack:
             node = stack.pop()
             if isinstance(node, list):
@@ -165,99 +128,161 @@ def _product_offer(doc):
             elif isinstance(node, dict):
                 typ = node.get("@type", "")
                 if typ == "Product" or (isinstance(typ, list) and "Product" in typ):
-                    offers = node.get("offers") or {}
-                    if isinstance(offers, list):
-                        offers = offers[0] if offers else {}
-                    if isinstance(offers, dict):
-                        price = offers.get("price") or offers.get("lowPrice")
-                        currency = offers.get("priceCurrency") or "RON"
-                        availability = str(offers.get("availability") or "").rsplit("/", 1)[-1]
-                        return (f"{price} {currency}" if price else "", availability)
+                    yield node
                 stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
+
+
+def _offer(doc):
+    for product in _json_products(doc):
+        offers = product.get("offers") or {}
+        if isinstance(offers, list):
+            offers = offers[0] if offers else {}
+        if isinstance(offers, dict):
+            price = offers.get("price") or offers.get("lowPrice")
+            currency = offers.get("priceCurrency") or "RON"
+            availability = str(offers.get("availability") or "").rsplit("/", 1)[-1]
+            return (f"{price} {currency}" if price else "", availability[:80])
     return "", ""
 
 
-async def _detail(client, source_name, source, category, url):
-    response = await _get(client, url, source["host"])
-    if not response:
+def _properties(doc):
+    pairs = []
+    for row in doc.xpath("//tr"):
+        cells = row.xpath("./th|./td")
+        if len(cells) >= 2:
+            pairs.append((" ".join(" ".join(cells[0].itertext()).split()), " ".join(" ".join(cells[1].itertext()).split())))
+    for prop in doc.xpath("//*[contains(concat(' ',normalize-space(@class),' '),' woocommerce-product-attributes-item ')]"):
+        key = prop.xpath(".//*[contains(@class,'woocommerce-product-attributes-item__label')]")
+        val = prop.xpath(".//*[contains(@class,'woocommerce-product-attributes-item__value')]")
+        if key and val:
+            pairs.append((" ".join(" ".join(key[0].itertext()).split()), " ".join(" ".join(val[0].itertext()).split())))
+    for product in _json_products(doc):
+        for prop in product.get("additionalProperty") or []:
+            if isinstance(prop, dict):
+                pairs.append((str(prop.get("name") or ""), str(prop.get("value") or "")))
+    out = {}
+    for key, value in pairs:
+        nk, nv = _norm(key), str(value).strip()
+        for field, labels in FIELD_LABELS.items():
+            if any(label in nk for label in labels):
+                match = re.search(r"[-+]?\d+(?:[.,]\d+)?", nv)
+                if not match:
+                    continue
+                unit = _norm(nv[match.end():]).replace(" ", "")
+                expected = FIELD_UNITS[field]
+                if expected != "count" and expected not in unit:
+                    continue
+                number = float(match.group().replace(",", "."))
+                if expected == "w" and "kw" in unit:
+                    number *= 1000
+                elif expected == "kw" and "w" in unit and "kw" not in unit:
+                    number /= 1000
+                out.setdefault(field, set()).add(number)
+    return {k: (int(next(iter(v))) if next(iter(v)).is_integer() else round(next(iter(v)), 4))
+            for k, v in out.items() if len(v) == 1}
+
+
+def _documents(doc, page_url: str):
+    result = {"datasheet_url": "", "conformity_url": ""}
+    for anchor in doc.xpath("//a[@href]"):
+        href = urljoin(page_url, anchor.get("href", "").strip())
+        if not _safe_document(href, (urlparse(page_url).hostname or "").lower().removeprefix("www.")):
+            continue
+        label = _norm(" ".join(" ".join(anchor.itertext()).split()) + " " + href)
+        for kind, terms in DOCUMENT_LABELS.items():
+            key = kind + "_url"
+            if not result[key] and any(_norm(term) in label for term in terms):
+                result[key] = href
+    return result
+
+
+async def _get(client: httpx.AsyncClient, url: str, host: str):
+    if not _safe_page(url, host):
         return None
     try:
-        doc = html.fromstring(response.content)
-    except (ValueError, TypeError):
+        response = await client.get(url, follow_redirects=False)
+        if response.status_code == 200 and len(response.content) <= 4_000_000:
+            return response
+    except httpx.HTTPError:
         return None
-    h1 = doc.xpath("//h1[1]")
-    title = _text(h1[0]) if h1 else str((doc.xpath("//meta[@property='og:title']/@content") or [""])[0]).strip()
-    if not title or not _is_category_product(title, category):
-        return None
-    price, stock = _product_offer(doc)
-    docs = {"datasheet_url": "", "conformity_url": ""}
-    for a in doc.xpath("//a[@href]"):
-        href = urljoin(url, a.get("href", "").strip())
-        label = (_text(a) + " " + a.get("href", "")).lower()
-        if ".pdf" not in href.lower() or not _safe_document_url(href):
-            continue
-        for key, words in PDF_LABELS.items():
-            out_key = key + "_url"
-            if not docs[out_key] and any(word in label for word in words):
-                docs[out_key] = href
-    return {
-        "supplier": source_name, "category": category, "brand_model": title[:240],
-        "product_url": url, "price_text": price, "availability": stock[:80],
-        "datasheet_url": docs["datasheet_url"], "conformity_url": docs["conformity_url"],
-    }
+    return None
 
 
-async def search_supplier_products(query: str, category: str):
-    """Search public model listings; prices/stock are returned only from Product offers."""
+async def search_supplier_products(query: str, category: str) -> dict:
     query = re.sub(r"\s+", " ", (query or "").strip())[:100]
     if len(query) < 2 or category not in CATEGORIES:
-        return {"products": [], "sources": list(SOURCES), "message": "Introdu cel puțin două caractere și alege Invertor, Panou sau Baterie."}
-    async with httpx.AsyncClient(timeout=12, headers={"User-Agent": "DNS-Energy-Catalog/1.0", "Accept": "text/html,application/xhtml+xml"}) as client:
-        pages = await asyncio.gather(*[
+        return {"products": [], "sources": list(SOURCES), "message": "Introdu cel puțin două caractere și selectează invertor, panou sau baterie."}
+    qtokens = [part for part in _norm(query).split() if len(part) > 1]
+    async with httpx.AsyncClient(timeout=12, headers={"User-Agent": "DNS-Energy-Catalog/1.0 (+https://dns-energy.ro)", "Accept": "text/html,application/xhtml+xml"}) as client:
+        responses = await asyncio.gather(*[
             _get(client, source.get("search", "").format(query=quote(query)) if source.get("search") else source["categories"][category], source["host"])
             for source in SOURCES.values()
         ])
         candidates = []
-        page_groups = await asyncio.gather(*[
-            _listing_pages(client, response, source) if response else asyncio.sleep(0, result=[])
-            for (source_name, source), response in zip(SOURCES.items(), pages)
-        ])
-        for (source_name, source), listing_pages in zip(SOURCES.items(), page_groups):
-            found = set()
-            for response, listing in listing_pages:
-                for a in listing.xpath("//a[@href]"):
-                    title = _text(a)
-                    if not title or not _query_matches(query, title) or not _is_category_product(title, category):
-                        continue
-                    url = urljoin(str(response.url), a.get("href", "").strip())
-                    path = urlparse(url).path.rstrip("/")
-                    if not _safe_url(url, source["host"]) or not path or any(x in path.lower() for x in ("/tag/", "/category/", "/product-category/", "/wp-content/", "/legal/", "/cont", "/favorite", "/cart")):
-                        continue
-                    if url not in found:
-                        found.add(url)
-                        candidates.append((source_name, source, category, url))
-        # Keep suppliers represented in the results instead of letting the first
-        # large store crowd out the other sources.
+        for (name, source), response in zip(SOURCES.items(), responses):
+            if not response:
+                continue
+            try:
+                doc = html.fromstring(response.content)
+            except (ValueError, TypeError):
+                continue
+            seen = set()
+            for anchor in doc.xpath("//a[@href]"):
+                title = " ".join(" ".join(anchor.itertext()).split())
+                url = urljoin(str(response.url), anchor.get("href", "").strip())
+                if (not title or not _safe_page(url, source["host"]) or not _correct_category(title, category)
+                        or not all(token in _norm(title) for token in qtokens) or url in seen):
+                    continue
+                seen.add(url)
+                candidates.append((name, source, category, url, title))
         balanced = []
-        for source_name in SOURCES:
-            balanced.extend([row for row in candidates if row[0] == source_name][:12])
-        semaphore = asyncio.Semaphore(8)
+        for name in SOURCES:
+            balanced.extend([x for x in candidates if x[0] == name][:8])
+        sem = asyncio.Semaphore(8)
 
-        async def load_detail(name, source, cat, url):
-            async with semaphore:
-                return await _detail(client, name, source, cat, url)
+        async def detail(row):
+            name, source, cat, url, _ = row
+            async with sem:
+                response = await _get(client, url, source["host"])
+                if not response:
+                    return None
+                try:
+                    doc = html.fromstring(response.content)
+                except (ValueError, TypeError):
+                    return None
+                title = _product_title(doc)
+                if not title or not _correct_category(title, cat):
+                    return None
+                price, stock = _offer(doc)
+                return {"supplier": name, "category": cat, "brand_model": title[:240], "product_url": url,
+                        "price_text": price, "availability": stock, **_properties(doc), **_documents(doc, url)}
 
-        detail_rows = await asyncio.gather(*[
-            load_detail(name, source, cat, url)
-            for name, source, cat, url in balanced[:36]
-        ])
-    products, seen = [], set()
-    for row in detail_rows:
-        if not row:
-            continue
-        key = (row["supplier"], row["product_url"])
-        if key not in seen:
-            seen.add(key)
-            products.append(row)
-    return {"products": products[:36], "sources": list(SOURCES),
-            "message": "" if products else "Nu am găsit modele care corespund titlului în categoriile publice. Verifică ortografia sau încearcă SKU-ul exact."}
+        products = await asyncio.gather(*[detail(row) for row in balanced[:24]])
+    found, seen = [], set()
+    for product in products:
+        if product and product["product_url"] not in seen:
+            found.append(product)
+            seen.add(product["product_url"])
+    return {"products": found, "sources": list(SOURCES),
+            "message": "" if found else "Nu am găsit modele cu toate cuvintele din căutare. Încearcă modelul exact sau o căutare mai scurtă."}
+
+
+async def get_public_product(supplier: str, category: str, url: str) -> dict | None:
+    source = SOURCES.get(supplier)
+    if not source or category not in CATEGORIES or not _safe_page(url, source["host"]):
+        return None
+    async with httpx.AsyncClient(timeout=15, headers={"User-Agent": "DNS-Energy-Catalog/1.0", "Accept": "text/html,application/xhtml+xml"}) as client:
+        response = await _get(client, url, source["host"])
+        if not response:
+            return None
+        try:
+            doc = html.fromstring(response.content)
+        except (ValueError, TypeError):
+            return None
+        title = _product_title(doc)
+        if not title or not _correct_category(title, category):
+            return None
+        price, stock = _offer(doc)
+        return {"supplier": supplier, "category": category, "brand_model": title[:240], "product_url": url,
+                "price_text": price, "availability": stock, **_properties(doc), **_documents(doc, url)}
+
