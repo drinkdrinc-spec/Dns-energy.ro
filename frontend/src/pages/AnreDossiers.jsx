@@ -11,16 +11,23 @@ const TYPES = { nou: "Atestat nou", b_c1a: "Extindere B → C1A", b_c2a: "Extind
 export default function AnreDossiers() {
   const { user } = useAuth();
   const [list, setList] = useState([]);
+  const [companyProfile, setCompanyProfile] = useState(null);
   const [open, setOpen] = useState(null);
   const fromMail = new URLSearchParams(window.location.search).get("tip") === "vizare";
   const [kind, setKind] = useState(fromMail ? "vizare" : "nou");
   const load = () => api.get("/anre/dossiers").then((r) => setList(r.data));
   useEffect(() => { if (!open) load(); }, [open]);
+  useEffect(() => { api.get("/settings").then((r) => setCompanyProfile(r.data || {})).catch(() => setCompanyProfile(null)); }, []);
+  const profileMissing = companyProfile && [["company", "denumirea firmei"], ["cui", "CUI"], ["regcom", "numărul de la Registrul Comerțului"], ["address", "sediul social"], ["rep", "reprezentantul"], ["phone", "telefonul firmei"]].filter(([key]) => !String(companyProfile[key] || "").trim()).map(([, label]) => label);
   const create = async (mode) => { try { const { data } = await api.post("/anre/dossiers", { kind, mode }); toast.success(mode === "intern" ? "Dosar ANRE intern creat — fără comandă sau proformă." : `Comandă creată — proforma ${data.invoice_number} a fost emisă.`); setOpen(data.id); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   if (open) return <AnreEditor id={open} platform={!!user?.platform} onBack={() => setOpen(null)} />;
   return (
     <div data-testid="anre-page">
       <PageHeader eyebrow="Documentație ANRE" title="Dosare ANRE" sub="Pregătește intern dosarul, verifică opisul și documentele. Dacă dorești serviciul de pregătire D-ENERGY, îl poți comanda separat; tarifele ANRE se plătesc separat." />
+      {!!profileMissing?.length && <div className="den-panel mb-4 text-sm" role="status" data-testid="anre-profile-warning" style={{ background: "#fff8e6" }}>
+        <b>Completează o singură dată profilul firmei</b> pentru preluarea automată în dosarele ANRE. Lipsesc: {profileMissing.join(", ")}. E-mailul de cont se completează automat.
+        <a className="ml-2 font-bold underline" style={{ color: "var(--blue)" }} href="/setari">Deschide Setări ↗</a>
+      </div>}
       {user?.platform && <AnreTemplates />}
       {fromMail && kind === "vizare" && <div className="den-panel mb-2 text-sm" style={{ background: "#eef4ff" }} data-testid="anre-visa-banner">Tipul „Vizare periodică” a fost preselectat din memento. Alege pregătirea internă sau comandă serviciul extern.</div>}
       <div className="den-panel mb-4 flex flex-wrap items-end gap-2">
