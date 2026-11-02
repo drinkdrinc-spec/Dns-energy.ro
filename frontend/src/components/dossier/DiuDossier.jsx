@@ -22,6 +22,7 @@ const OPERATOR_DOCS = {
     { label: "Buletine de verificare PRAM", keys: ["pram_priza", "pram_cont", "pram_izol", "pram_ddr"] },
     { label: "Schema monofilară cu TG, protecții și reglaje", keys: ["schema_tg"] },
     { label: "Angajamentul consumatorului privind accesul personalului autorizat ANRE", keys: ["angajament_delgaz"] },
+    { id: "delgaz-meter", label: "Contor montat de utilizator: tip, serie și date tehnice (dacă există)", external: true },
     { label: "Proiect tehnic verificat ANRE, dacă este aplicabil", external: true },
   ],
   retele: [
@@ -58,7 +59,15 @@ const operatorDocsFor = (operator) => {
     { label: "Declarații și fișe tehnice ale echipamentelor", keys: ["conformitate"], external: true },
   ];
 };
-const requirementState = (item, docs) => {
+const requirementState = (item, docs, form) => {
+  if (item.id === "delgaz-meter") {
+    if (form.meter_enabled === false) return { label: "Nu se aplică", tone: "#166534", bg: "#f0fdf4" };
+    if (form.meter_enabled !== true) return { label: "Confirmați dacă există", tone: "#92400e", bg: "#fffbeb" };
+    const missing = !form.meter || !form.meter_serial || !form.meter_specs;
+    return missing
+      ? { label: "Date de completat", tone: "#991b1b", bg: "#fef2f2" }
+      : { label: "Date completate · verificați la operator", tone: "#92400e", bg: "#fffbeb" };
+  }
   if (!docs && item.keys?.length) return { label: "Se verifică…", tone: "#475569", bg: "#f1f5f9" };
   const positions = (item.keys || []).map((key) => docs?.positions?.find((position) => position.key === key)).filter(Boolean);
   if (!positions.length) return item.external
@@ -126,11 +135,23 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
         <div className="font-bold text-sm">Dosar adaptat operatorului de distribuție</div>
         <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Operator selectat: <b>{form.operator || "neselectat"}</b>. Lista de mai jos ajută la pregătirea dosarului; cerințele finale și formularele condiționale se confirmă din sursa oficială.</p>
         {operatorInfoFor(form.operator).url && <a className="mt-2 inline-flex text-xs font-semibold underline" href={operatorInfoFor(form.operator).url} target="_blank" rel="noopener noreferrer" data-testid="diu-official-requirements">Deschide {operatorInfoFor(form.operator).label} ↗</a>}
-        <ul className="mt-2 grid sm:grid-cols-2 gap-2 text-xs">{operatorDocsFor(form.operator).map((item) => { const state = requirementState(item, docs); return <li key={item.label} className="rounded border px-3 py-2 flex items-start justify-between gap-2" style={{ borderColor: "var(--line)" }}><span>{item.label}</span><span className="shrink-0 rounded-full px-2 py-0.5 font-semibold text-[10px]" style={{ color: state.tone, background: state.bg }}>{state.label}</span></li>; })}</ul>
+        <ul className="mt-2 grid sm:grid-cols-2 gap-2 text-xs">{operatorDocsFor(form.operator).map((item) => { const state = requirementState(item, docs, form); return <li key={item.label} className="rounded border px-3 py-2 flex items-start justify-between gap-2" style={{ borderColor: "var(--line)" }}><span>{item.label}</span><span className="shrink-0 rounded-full px-2 py-0.5 font-semibold text-[10px]" style={{ color: state.tone, background: state.bg }}>{state.label}</span></li>; })}</ul>
       </div>
       <details className="mt-4 rounded-xl border bg-white px-4" style={{ borderColor: "var(--line)" }} data-testid="diu-technical-details">
         <summary className="cursor-pointer py-3 text-sm font-semibold">Detalii tehnice, circuite și rezultate PRAM</summary>
-        <div className="pb-4"><DiuCircuits form={form} setVal={setVal} /></div>
+        <div className="pb-4">
+          {/delgaz/i.test(String(form.operator || "")) && <section className="mb-4 rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="diu-delgaz-meter">
+            <label className="flex items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" checked={form.meter_enabled === true} onChange={(e) => setVal("meter_enabled", e.target.checked)} data-testid="diu-meter-enabled" />
+              Există contor instalat de utilizator, separat de contorul operatorului
+            </label>
+            {form.meter_enabled === true && <div className="grid sm:grid-cols-3 gap-2 mt-3">
+              {[["meter", "Model / tip contor", "diu-meter-model"], ["meter_serial", "Serie contor", "diu-meter-serial"], ["meter_specs", "Date tehnice (tensiune, curent, conexiune)", "diu-meter-specs"]].map(([key, label, testid]) =>
+                <div className="den-field" key={key}><label>{label}</label><input className="den-input" value={form[key] || ""} onChange={(e) => setVal(key, e.target.value)} data-testid={testid} /></div>)}
+            </div>}
+          </section>}
+          <DiuCircuits form={form} setVal={setVal} />
+        </div>
       </details>
       <div className="flex items-center justify-between flex-wrap gap-2 mt-5">
         <div className="text-xs font-bold" style={{ color: docs?.complete ? "#166534" : "#9b2c2c" }} data-testid="diu-docs-state">
