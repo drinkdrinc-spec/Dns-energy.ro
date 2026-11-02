@@ -1,4 +1,5 @@
 import io
+import re
 
 from pypdf import PdfReader
 
@@ -7,9 +8,10 @@ import anre_doc
 
 def test_anre_annex_10_does_not_claim_or_preselect_consent():
     pdf = anre_doc.render("decl_10", {"company": {"name": "DNS Energy"}, "staff": []})
-    text = " ".join(
-        (page.extract_text() or "")
-        for page in PdfReader(io.BytesIO(pdf)).pages
+    text = re.sub(
+        r"\s+",
+        " ",
+        " ".join((page.extract_text() or "") for page in PdfReader(io.BytesIO(pdf)).pages),
     ).casefold()
 
     assert "declarație de consimțământ" in text
