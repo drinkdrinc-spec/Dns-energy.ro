@@ -12,15 +12,23 @@ function panelCountForPower(powerKw, panelW) {
   return kw > 0 && watts > 0 ? Math.ceil((kw * 1000) / watts) : "";
 }
 
+function datasheetNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const parsed = Number(String(value).trim().replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function proposeStrings(inv, totalPanels) {
-  const count = Math.floor(Number(totalPanels) || 0);
-  const mppts = Math.floor(Number(inv.mppt_count) || 0);
-  const voc = Number(inv.panel_voc), vmp = Number(inv.panel_vmp), isc = Number(inv.panel_isc);
-  const vocCoef = Number(inv.panel_coef_voc), vmpCoef = Number(inv.panel_coef_vmp);
-  const maxDc = Number(inv.vdc_max), mpptMin = Number(inv.mppt_min), mpptMax = Number(inv.mppt_max);
-  const maxCurrent = Number(inv.imax_mppt);
-  if (!count || !mppts || !voc || !vmp || !isc || !Number.isFinite(vocCoef) || !Number.isFinite(vmpCoef)
-      || !maxDc || !mpptMin || !mpptMax || !maxCurrent || isc > maxCurrent) return null;
+  const count = Math.floor(datasheetNumber(totalPanels) || 0);
+  const mppts = Math.floor(datasheetNumber(inv.mppt_count) || 0);
+  const voc = datasheetNumber(inv.panel_voc), vmp = datasheetNumber(inv.panel_vmp), isc = datasheetNumber(inv.panel_isc);
+  const vocCoef = datasheetNumber(inv.panel_coef_voc), vmpCoef = datasheetNumber(inv.panel_coef_vmp);
+  const maxDc = datasheetNumber(inv.vdc_max), mpptMin = datasheetNumber(inv.mppt_min), mpptMax = datasheetNumber(inv.mppt_max);
+  const maxCurrent = datasheetNumber(inv.imax_mppt);
+  const required = [voc, vmp, isc, vocCoef, vmpCoef, maxDc, mpptMin, mpptMax, maxCurrent];
+  if (!count || !mppts || required.some((value) => value === null)
+      || [voc, vmp, isc, maxDc, mpptMin, mpptMax, maxCurrent].some((value) => value <= 0)
+      || mpptMin > mpptMax || isc > maxCurrent) return null;
   const stringCount = Math.min(count, mppts);
   const base = Math.floor(count / stringCount), remainder = count % stringCount;
   const panelCounts = Array.from({ length: stringCount }, (_, i) => base + (i < remainder ? 1 : 0));
@@ -28,7 +36,7 @@ function proposeStrings(inv, totalPanels) {
     const vocCold = n * voc * (1 + (vocCoef / 100) * (-10 - 25));
     const vmpHot = n * vmp * (1 + (vmpCoef / 100) * (70 - 25));
     const vmpStc = n * vmp;
-    return vocCold <= maxDc && vmpHot >= mpptMin && vmpStc <= mpptMax;
+    return vocCold > 0 && vocCold <= maxDc && vmpHot >= mpptMin && vmpStc <= mpptMax;
   });
   if (!valid) return null;
   return panelCounts.map((panels, i) => ({ panels, mppt: i + 1, auto_generated: true }));
