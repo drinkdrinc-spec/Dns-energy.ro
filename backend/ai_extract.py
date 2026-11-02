@@ -10,7 +10,7 @@ OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER �
              "Distribuție Energie Oltenia", "Rețele Electrice România", "Alt operator"]
 
 PROMPT = f"""Ești expert în dosare de racordare prosumatori din România. Extrage datele din documentul atașat și răspunde DOAR cu un obiect JSON valid, fără text suplimentar, cu cheile:
-client_name (nume beneficiar/titular), owner_name (proprietar CF), cnp (CNP sau CUI), address (adresa loc de consum), hq_address (domiciliu din CI), consumption_address (adresa de pe factură), id_series (serie CI), id_number (număr CI), cf_nr (număr carte funciară), cadastral_nr (număr cadastral), county (județ), pod (cod loc de consum / POD), supplier (furnizor energie), phone, email, doc_type (tip document), summary (rezumat scurt),
+client_name (nume beneficiar/titular), owner_name (proprietar CF), cnp (CNP sau CUI), address (adresa loc de consum), hq_address (domiciliu din CI), consumption_address (adresa de pe factură), id_series (serie CI), id_number (număr CI), cf_nr (număr carte funciară), cadastral_nr (număr cadastral), county (județ), locality (localitate/municipiu dacă apare explicit), pod (cod loc de consum / POD), supplier (furnizor energie), phone, email, doc_type (tip document), summary (rezumat scurt),
 operator (alege EXACT una dintre: {OPERATORS}; Bihor/Cluj/Satu Mare/Sălaj/Maramureș/Bistrița => "DEER — Transilvania Nord"; Alba/Brașov/Covasna/Harghita/Mureș/Sibiu => "DEER — Transilvania Sud"; Prahova/Buzău/Brăila/Galați/Vrancea/Focșani => "DEER — Muntenia Nord"),
 power (puterea instalată a panourilor fotovoltaice în kWp, numai dacă apare explicit; nu o confunda cu puterea invertorului, puterea aprobată sau puterea evacuată), apparent_kva (putere aparentă în kVA, numai dacă apare explicit), supply ("Monofazat" sau "Trifazat", numai dacă apare explicit), bransament_kw (puterea aprobată a locului de consum în kW, numai dacă apare explicit),
 system_type ("On-grid", "Hibrid cu baterie" sau "Off-grid"), inverter (marcă și model), inverter_kw (număr), inverter_count (număr),
@@ -273,6 +273,7 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
         "cf_nr": r"(?:carte\s+funciară(?:\s+nr\.?)?|număr(?:ul)?\s+CF)",
         "cadastral_nr": r"(?:număr(?:ul)?\s+cadastral|nr\.\s+cadastral)",
         "county": r"(?:județ|judet)",
+        "locality": r"(?:localitate|localitatea|municipiu|oraș|oras|comună|comuna)",
         "phone": r"(?:telefon|tel\.?)",
         "email": r"(?:e-mail|email)",
     }
