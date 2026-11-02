@@ -302,7 +302,7 @@ async def register(body: RegisterReq, request: Request):
 
 @api_router.post("/auth/login")
 async def login(body: LoginReq, request: Request):
-    email = body.email.lower()
+    email = body.email.strip().lower()
     ident = f"login:{email}"
     att = await db.login_attempts.find_one({"identifier": ident})
     if att and att.get("count", 0) >= 5 and att.get("until", "") > datetime.now(timezone.utc).isoformat():
