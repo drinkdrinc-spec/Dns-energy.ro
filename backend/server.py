@@ -490,7 +490,7 @@ async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), 
         pattern = re.compile(re.escape(term), re.IGNORECASE)
         fields = ("name", "email", "phone", "pod", "address", "locality", "county")
     field_query = {"$or": [{field: pattern} for field in fields]}
-    query = {"$and": [scope_q(user, "clients"), field_query]}
+    query = {"$and": [scope_q(user, "clients"), field_query, {"is_test": {"$ne": True}}, {"name": {"$not": re.compile(r"\bTEST\b", re.I)}}]}
     projection = {"_id": 0, "id": 1, "name": 1, "pod": 1, "phone": 1, "email": 1,
                   "address": 1, "locality": 1, "county": 1, "is_test": 1}
     rows = await db.clients.find(query, projection).sort("updated_at", -1).limit(8).to_list(8)
