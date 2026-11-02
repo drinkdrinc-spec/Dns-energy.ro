@@ -803,19 +803,27 @@ def to_flow(blocks, ctx):
     return out
 
 
-def _draft(c, doc):
+def _watermark(c, text):
     c.saveState()
-    c.setFont("LSB", 70); c.setFillColor(colors.Color(0.8, 0.1, 0.1, alpha=0.12))
+    c.setFont("LSB", 64); c.setFillColor(colors.Color(0.8, 0.1, 0.1, alpha=0.14))
     w, h = c._pagesize
-    c.translate(w / 2, h / 2); c.rotate(40); c.drawCentredString(0, 0, "CIORNĂ")
+    c.translate(w / 2, h / 2); c.rotate(40); c.drawCentredString(0, 0, text)
     c.restoreState()
+
+
+def _draft(c, doc):
+    _watermark(c, "CIORNĂ")
+
+
+def _test_draft(c, doc):
+    _watermark(c, "TEST - DATE SINTETICE")
 
 
 def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
     ctx = Ctx(CEF.flatten(rec), settings, client, opis_titles)
     buf = io.BytesIO()
     pw, ph = A4
-    on = _draft if draft else (lambda c, d: None)
+    on = _draft if draft else (_test_draft if rec.get("is_test") is True else (lambda c, d: None))
     port = PageTemplate("port", [Frame(18 * mm, 14 * mm, pw - 36 * mm, ph - 28 * mm, id="fp")], pagesize=A4, onPage=on)
     land = PageTemplate("land", [Frame(12 * mm, 10 * mm, ph - 24 * mm, pw - 20 * mm, id="fl")], pagesize=landscape(A4), onPage=on)
     first_land = bool(doc_keys) and doc_keys[0] in ("schema_cef", "schema")
