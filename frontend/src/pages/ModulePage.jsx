@@ -775,8 +775,8 @@ export default function ModulePage({ moduleKey }) {
                           {dossier && <>
                             <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${dossier.id}/export`)}>Dosar PDF</button>
                             <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/sld/${dossier.id}/pdf?download=1`, `schema_monofilara_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă schemă</button>
-                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${dossier.id}/pif/pdf`, `pif_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
-                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${dossier.id}/file/priza?download=1`, `pram_priza_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
+                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/docs/pv_pif/${dossier.id}`, `pif_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
+                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${dossier.id}`, `pram_priza_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
                           </>}
                           {diu && <>
                             <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`, `pram_priza_diu_${diu.id.slice(0, 8)}.pdf`)}>Descarcă PRAM priză</button>
