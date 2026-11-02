@@ -3,6 +3,7 @@ import io
 from pypdf import PdfReader
 
 import docgen
+import diu_doc
 
 
 def _blocks(record):
@@ -63,3 +64,24 @@ def test_synthetic_pram_pdf_has_test_watermark():
     text = "\\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf)).pages)
 
     assert "TEST - DATE SINTETICE" in text
+
+
+
+def test_diu_ddr_requires_measured_trip_current_before_completion():
+    record = {
+        "client_name": "Client test",
+        "address": "Adresă test",
+        "operator": "DEER",
+        "pram_m": {"date": "2026-10-30"},
+        "circuits": [{"name": "Circuit test", "rcd_ma": 30, "rcd_i": "", "rcd_t": 100}],
+    }
+    settings = {"company": "Firmă test", "anre_attest": "Atestat test", "rep": "Reprezentant test"}
+
+    missing = diu_doc.missing("pram_ddr", record, settings)
+
+    assert any("Curent declanșare DDR" in item for item in missing)
+    assert not any("Timp declanșare DDR" in item for item in missing)
+
+    record["circuits"][0]["rcd_i"] = 22
+    missing = diu_doc.missing("pram_ddr", record, settings)
+    assert not any("Curent declanșare DDR" in item for item in missing)
