@@ -70,13 +70,12 @@ function CatalogFiles({ id }) {
   );
 }
 
-export function GeneratedDocs({ id, files, form }) {
+export function GeneratedDocs({ id, files }) {
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="generated-docs">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <h3 className="font-bold text-sm">Documente generate automat</h3>
-        {form?.request_type === "Spor de putere + prosumator" && <p className="text-xs sm:col-span-2" style={{ color: "var(--muted)" }}>Pentru spor de putere, dosarul PDF înlocuiește Anexa 2 cu Anexa 1 oficială a distribuitorului, dacă formularul PDF este înregistrat. Verificați linkul și versiunea înainte de depunere.</p>}
-        {id && <Btn onClick={() => openAuthenticatedFile(docUrl("all", id))} data-testid="doc-all"><FileDown size={15} /> Dosar complet (PDF)</Btn>}
+        {id && <Btn onClick={() => openAuthenticatedFile(`/dossier/${id}/export`)} data-testid="doc-all"><FileDown size={15} /> Dosar complet (PDF)</Btn>}
         {id && <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(schemaUrl(id), `schema_monofilara_${id}.pdf`)} data-testid="doc-schema"><FileDown size={15} /> Descarcă schema monofilară (PDF)</Btn>}
       </div>
       {id && <div className="mb-3 flex flex-wrap gap-2" aria-label="Descarcă separat documentele de predare">
@@ -88,7 +87,7 @@ export function GeneratedDocs({ id, files, form }) {
           {DOCS.map(([k, label]) => (
             <button type="button" key={k} onClick={() => openAuthenticatedFile(docUrl(k, id))} data-testid={`doc-${k}`}
               className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2.5 text-sm hover:border-[var(--blue)] transition-colors" style={{ borderColor: "var(--line)" }}>
-              <FileText size={15} style={{ color: "var(--blue)" }} /> {k === "notificare" && form?.request_type === "Spor de putere + prosumator" ? "Anexa 1 oficială — spor de putere (OD)" : label}
+              <FileText size={15} style={{ color: "var(--blue)" }} /> {label}
             </button>
           ))}
         </div>
