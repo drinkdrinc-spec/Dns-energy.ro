@@ -117,6 +117,7 @@ export default function ModulePage({ moduleKey }) {
   const [checks, setChecks] = useState({});
   const [refOptions, setRefOptions] = useState({});
   const [q, setQ] = useState("");
+  const [recordsView, setRecordsView] = useState("list");
   const [savedAt, setSavedAt] = useState(0);
   const [diuPre, setDiuPre] = useState(false);
   const [catalogImportsBusy, setCatalogImportsBusy] = useState(false);
@@ -573,8 +574,12 @@ export default function ModulePage({ moduleKey }) {
       <div className="den-panel" data-testid="saved-records">
         {onlyTestRecords && showTestRecords === true && <div className="mb-4 rounded-lg border px-3 py-2 text-xs font-medium" style={{ borderColor: "#f2d28c", background: "#fff9e9", color: "#73520b" }} role="status">Sunt afișate dosare demonstrative marcate TEST. Folosește-le numai pentru verificarea fluxului; nu conțin date reale și nu se depun.</div>}
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({visibleItems.length})</span></h2>
+          <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({filtered.length})</span></h2>
           {hiddenTestCount > 0 && <button type="button" className="text-xs underline" onClick={() => setShowTestRecords((value) => !value)}>{showTestRecords === true ? "Ascunde" : "Arată"} înregistrările TEST ({hiddenTestCount})</button>}
+          {key === "prosumator" && <div className="inline-flex rounded-lg border p-1" style={{ borderColor: "var(--line)" }} role="group" aria-label="Mod vizualizare dosare">
+            <button type="button" onClick={() => setRecordsView("board")} aria-pressed={recordsView === "board"} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ background: recordsView === "board" ? "#eaf1ff" : "transparent", color: recordsView === "board" ? "var(--blue)" : "var(--muted)" }}>Kanban</button>
+            <button type="button" onClick={() => setRecordsView("list")} aria-pressed={recordsView === "list"} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ background: recordsView === "list" ? "#eaf1ff" : "transparent", color: recordsView === "list" ? "var(--blue)" : "var(--muted)" }}>Listă</button>
+          </div>}
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
             <input data-testid="search-input" className="den-input w-[240px]" style={{ paddingLeft: 34 }} placeholder="Caută..." value={q} onChange={(e) => setQ(e.target.value)} />
@@ -585,6 +590,22 @@ export default function ModulePage({ moduleKey }) {
           <div className="text-sm py-8 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>Nu există înregistrări încă.</div>
         ) : (
           <>
+          {key === "prosumator" && recordsView === "board" && <div className="mb-4 overflow-x-auto" data-testid="prosumator-kanban">
+            <div className="grid min-w-[280px] gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[...new Set(filtered.map((item) => String(item.status || "În lucru").trim()))].map((status) => {
+                const group = filtered.filter((item) => String(item.status || "În lucru").trim() === status);
+                return <section key={status} className="rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }} aria-label={`Stadiu ${status}`}>
+                  <div className="mb-3 flex items-center justify-between gap-2 text-sm font-bold"><span>{status}</span><span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{group.length}</span></div>
+                  <div className="grid gap-2">{group.map((item) => <article key={item.id} className="rounded-lg border bg-white p-3 shadow-sm" style={{ borderColor: "var(--line)" }}>
+                    <div className="font-semibold leading-5">{item.client_name || item.number || "Dosar prosumator"}</div>
+                    <div className="mt-1 text-xs leading-5" style={{ color: "var(--muted)" }}>{item.number || "Fără număr"} · {item.power || item._kwp || "Putere necompletată"} kW</div>
+                    <div className="text-xs leading-5" style={{ color: "var(--muted)" }}>{item.operator || "Operator neales"}</div>
+                    <button type="button" className="mt-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => openEdit(item)}>Deschide</button>
+                  </article>)}</div>
+                </section>;
+              })}
+            </div>
+          </div>}
           {key === "clients" && <div className="grid gap-3 sm:hidden" data-testid="mobile-client-actions">
             {filtered.map((it) => {
               const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
@@ -627,7 +648,7 @@ export default function ModulePage({ moduleKey }) {
               </article>;
             })}
           </div>}
-          {key === "prosumator" && <div className="grid gap-3 sm:hidden" data-testid="mobile-prosumer-actions">
+          {key === "prosumator" && recordsView === "list" && <div className="grid gap-3 sm:hidden" data-testid="mobile-prosumer-actions">
             {filtered.map((it) => {
               const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
               const diu = linkedDiu.find((d) => d.pros_id === it.id || (d.client_id ? d.client_id === it.client_id : normalize(d.client_name) === normalize(it.client_name)));
@@ -711,7 +732,7 @@ export default function ModulePage({ moduleKey }) {
               </article>;
             })}
           </div>}
-          <div className={["clients", "prosumator", "atr"].includes(key) ? "hidden overflow-x-auto sm:block" : "overflow-x-auto"}>
+          <div className={key === "prosumator" && recordsView === "board" ? "hidden" : (["clients", "prosumator", "atr"].includes(key) ? "hidden overflow-x-auto sm:block" : "overflow-x-auto")}>
             <table className="w-full text-sm" data-testid="items-table">
               <thead>
                 <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
