@@ -654,11 +654,11 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
         pv_kw = installed_pv_kwp_for_record(rec, pros)
         story += [P("4. Date tehnice și energetice ale locului de producere (centrală fotovoltaică)", "b"),
                   T([["Nr.", "Date energetice ale producătorului", "Simbol", "U.M.", "Situația existentă", "Situația finală"],
-                     ["1", "Puterea totală instalată (panouri c.c.)", "Pi", "kWp", escape(str(rec.get("pv_existing_kw") or "0")), escape(str(pv_kw or M))],
+                     ["1", "Puterea totală instalată (panouri c.c.)", "Pi", "kWp", escape(str(rec.get("pv_existing_kw") if rec.get("pv_existing_kw") not in (None, "") else M)), escape(str(pv_kw or M))],
                      ["2", "Puterea maximă simultan evacuată în rețea", "Pa", "kW", "", escape(str(first_present(rec.get("p_evac_kw"), p.get("power"), M)))],
                      ["", "", "Sa", "kVA", "", escape(str(first_present(rec.get("p_evac_kva"), p.get("apparent_kva"), M)))],
                      ["3", "Consumul propriu al centralei (servicii interne)", "Pi / Pa", "kW", "", f"{escape(str(p.get('internal_pi') or rec.get('internal_kw') or M))}"],
-                     ["4", "Factorul de putere", "cos φ", "", "", escape(str(rec.get("cos_phi_prod") or "1"))]], [6, 42, 10, 8, 16, 18]),
+                     ["4", "Factorul de putere", "cos φ", "", "", escape(str(rec.get("cos_phi_prod") if rec.get("cos_phi_prod") not in (None, "") else M))]], [6, 42, 10, 8, 16, 18]),
                   Spacer(1, 3), P("Invertoare / unități generatoare:")]
         rows = [["Nr.", "Tip invertor", "Nr. buc.", "Pn (kW c.a.)", "Panouri (nr. × Wp)", "Pi c.c. (kWp)"]]
         for i, inv in enumerate(invs):
