@@ -28,35 +28,56 @@ function DocSlot({ item, k, label, onUploaded }) {
       await api.post(`/catalog/${item.id}/import-document`, { kind: k, url: sourceUrl });
       toast.success(`${label} preluată de la sursa oficială`);
       setSourceUrl("");
-      onUploaded();
+      if (k === "datasheet") await runExtract({ silent: true });
+      else onUploaded();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Importul documentului a eșuat");
     } finally {
       setImporting(false);
     }
   };
-  const extract = async () => {
+  const runExtract = async ({ silent = false } = {}) => {
     setExtracting(true);
     try {
       const { data } = await api.post(`/ai/catalog/${item.id}/extract`);
       const count = Object.keys(data.filled || {}).length;
       const skipped = (data.skipped_existing || []).length;
       const source = data.engine === "local_text" ? "local din textul PDF" : "cu AI";
-      toast.success(count ? `${count} valori extrase ${source}; verifică-le înainte de folosire` : skipped ? `${skipped} valori existente au fost păstrate` : (data.message || "Nu au fost găsite valori noi de completat"));
+      const message = count
+        ? `${count} valori extrase ${source}; verifică-le înainte de folosire`
+        : skipped
+          ? `${skipped} valori existente au fost păstrate`
+          : (data.message || "Nu au fost găsite valori noi de completat");
+      if (silent) {
+        if (count) toast.success(message);
+        else toast.info(message);
+      } else {
+        toast.success(message);
+      }
       onUploaded();
+      return true;
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Extragerea AI a eșuat");
+      const detail = e.response?.data?.detail || "Extragerea automată nu a reușit";
+      if (silent) toast.warning(`Fișa a fost salvată, dar nu s-au putut extrage date: ${detail}`);
+      else toast.error(detail);
+      return false;
     } finally {
       setExtracting(false);
     }
   };
+  const extract = async () => runExtract();
   const up = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     const fd = new FormData(); fd.append("file", file);
     try {
       const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
       await api.put(`/data/catalog/${item.id}`, { [k]: data });
-      toast.success(`${label} încărcată`); onUploaded();
+      toast.success(`${label} încărcată`);
+      if (k === "datasheet" && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))) {
+        await runExtract({ silent: true });
+      } else {
+        onUploaded();
+      }
     } catch { toast.error("Eroare la încărcare"); } finally { ref.current.value = ""; }
   };
   return (
