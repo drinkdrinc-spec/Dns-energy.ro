@@ -478,7 +478,6 @@ export default function ModulePage({ moduleKey }) {
         searchable: JSON.stringify(entry).toLocaleLowerCase("ro-RO"),
       };
     }).filter((row) => {
-      const item = row.item;
       if (ql && remoteSearchItems === null && !row.searchable.includes(ql)) return false;
       if (isProsumator && filterClient && normalizeClientName(row.clientName) !== normalizeClientName(filterClient)) return false;
       if (isProsumator && filterOperator && normalizeClientName(row.operator) !== normalizeClientName(filterOperator)) return false;
