@@ -499,6 +499,13 @@ export default function ModulePage({ moduleKey }) {
     }).map((row) => row.item);
   }, [key, visibleItems, prosumerFilterRows, q, remoteSearchItems, showTestRecords, filterClient, filterOperator, filterCounty, filterLocality]);
 
+  const inboxItems = useMemo(() => {
+    if (key !== "prosumator") return [];
+    return visibleItems
+      .filter((item) => String(item.next_action || "").trim())
+      .sort((a, b) => String(a.next_action_due || "9999-12-31").localeCompare(String(b.next_action_due || "9999-12-31")));
+  }, [key, visibleItems]);
+
   const checkedCount = cfg.checklist ? cfg.checklist.filter((c) => checks[c]).length : 0;
   const currentOdStage = Math.max(0, PROSUMER_OD_STAGES.indexOf(form.operator_stage));
 
@@ -687,6 +694,28 @@ export default function ModulePage({ moduleKey }) {
       )}
 
       <div className="den-panel" data-testid="saved-records">
+        {key === "prosumator" && <section className="mb-5 rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: "var(--line)" }} aria-label="Inbox de azi" data-testid="prosumer-action-inbox">
+          <div className="flex items-center justify-between gap-2">
+            <div><h2 className="text-sm font-bold">Inbox de azi</h2><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Acțiunile și termenele introduse în fiecare dosar apar aici.</p></div>
+            <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: "#eaf1ff", color: "var(--blue)" }} data-testid="prosumer-action-count">{inboxItems.length}</span>
+          </div>
+          {inboxItems.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {inboxItems.map((item) => {
+              const dueDate = item.next_action_due ? new Date(`${item.next_action_due}T00:00:00`) : null;
+              const today = new Date(); today.setHours(0, 0, 0, 0);
+              const dueLabel = !dueDate || Number.isNaN(dueDate.getTime()) ? "Fără termen"
+                : dueDate < today ? "Întârziată"
+                  : dueDate.getTime() === today.getTime() ? "Astăzi"
+                    : new Intl.DateTimeFormat("ro-RO", { day: "2-digit", month: "short" }).format(dueDate);
+              const overdue = dueLabel === "Întârziată";
+              return <article key={item.id} className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "var(--line)", background: "#fbfcfe" }}>
+                <div className="min-w-0"><div className="truncate text-xs font-bold">{item.client_name || item.number || "Dosar prosumator"}</div><div className="mt-1 text-xs">{item.next_action}</div></div>
+                <button type="button" className="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold" style={{ background: overdue ? "#fff0ed" : "#eaf1ff", color: overdue ? "#b43b2f" : "var(--blue)" }} onClick={() => openEdit(item)} aria-label={`Deschide acțiunea ${item.next_action} pentru ${item.client_name || item.number || "dosar"}`}>{dueLabel}</button>
+              </article>;
+            })}
+          </div> : <p className="mt-3 rounded-lg px-3 py-3 text-xs" style={{ color: "var(--muted)", background: "#f8fafd" }}>Nu ai acțiuni planificate. Deschide un dosar și completează „Următoarea acțiune” și, opțional, termenul.</p>}
+        </section>}
+
         {onlyTestRecords && showTestRecords === true && <div className="mb-4 rounded-lg border px-3 py-2 text-xs font-medium" style={{ borderColor: "#f2d28c", background: "#fff9e9", color: "#73520b" }} role="status">Sunt afișate dosare demonstrative marcate TEST. Folosește-le numai pentru verificarea fluxului; nu conțin date reale și nu se depun.</div>}
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({filtered.length})</span></h2>
