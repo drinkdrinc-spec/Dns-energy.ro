@@ -64,7 +64,14 @@ const PROSUMER_OD_STAGES = [
 ];
 
 const PROSUMER_QUICK_STATUSES = [
-  "În lucru", "Așteaptă depunere", "Dosar depus", "PV Teste / PIF", "Activat",
+  "Dosar în pregătire",
+  "Gata de depunere",
+  "Depus la operatorul de distribuție",
+  "Aviz tehnic emis",
+  "Programat pentru montaj",
+  "Montaj efectuat",
+  "Probe și punere în funcțiune",
+  "Prosumator activ",
 ];
 
 function normalizeClientName(value) {
@@ -771,8 +778,8 @@ export default function ModulePage({ moduleKey }) {
           <>
           {key === "prosumator" && recordsView === "board" && <div className="mb-4 overflow-x-auto" data-testid="prosumator-kanban">
             <div className="grid min-w-[280px] gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[...new Set(filtered.map((item) => String(item.operator_stage || item.status || "În lucru").trim()))].map((status) => {
-                const group = filtered.filter((item) => String(item.operator_stage || item.status || "În lucru").trim() === status);
+              {[...new Set(filtered.map((item) => String(item.workflow_status || item.status || item.operator_stage || "Dosar în pregătire").trim()))].map((status) => {
+                const group = filtered.filter((item) => String(item.workflow_status || item.status || item.operator_stage || "Dosar în pregătire").trim() === status);
                 return <section key={status} className="rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }} aria-label={`Stadiu ${status}`}>
                   <div className="mb-3 flex items-center justify-between gap-2 text-sm font-bold"><span>{status}</span><span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{group.length}</span></div>
                   <div className="grid gap-2">{group.map((item) => {
