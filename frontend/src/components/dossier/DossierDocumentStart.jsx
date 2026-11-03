@@ -42,7 +42,7 @@ export function DossierDocumentStart({ onCreated }) {
       const { data: client } = await api.get(`/data/clients/${encodeURIComponent(result.id)}`);
       const selected = { ...client, title: client.name || result.title, detail: result.detail };
       setSelectedClient(selected); setClientSearch(""); setClientMatches([]);
-      setValues((prev) => ({ ...EMPTY, ...prev, client_name: selected.title || "", cnp: selected.idcode || selected.cui || "", id_series: selected.id_series || "", id_number: selected.id_number || "", phone: selected.phone || "", email: selected.email || "", hq_address: selected.hq_address || "", address: selected.address || "", county: selected.county || "", locality: selected.locality || "", pod: selected.pod || "", cf_nr: selected.cf_nr || "", cadastral_nr: selected.cadastral_nr || "" }));
+      setValues((prev) => ({ ...EMPTY, ...prev, client_id: selected.id, client_name: selected.title || "", cnp: selected.idcode || selected.cui || "", id_series: selected.id_series || "", id_number: selected.id_number || "", phone: selected.phone || "", email: selected.email || "", hq_address: selected.hq_address || "", address: selected.address || "", county: selected.county || "", locality: selected.locality || "", pod: selected.pod || "", cf_nr: selected.cf_nr || "", cadastral_nr: selected.cadastral_nr || "" }));
     } catch (error) {
       toast.error(error.response?.data?.detail || "Nu am putut încărca datele clientului selectat.");
     } finally { setBusy(""); }
