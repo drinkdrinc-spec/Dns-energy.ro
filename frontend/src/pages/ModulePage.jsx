@@ -470,7 +470,10 @@ export default function ModulePage({ moduleKey }) {
       } else if (pod) {
         note = "Nu am putut identifica în siguranță operatorul din prefixul POD. Verifică operatorul pe factura de energie sau în instrumentul ANRE.";
       }
-      setForm((p) => ({ ...p, pod, ...(detected ? { operator: detected } : {}), pod_check_note: note }));
+      const linkedPros = (refOptions.prosumator || []).find((item) => item.id === form.pros_id);
+      const clearMismatch = Boolean(linkedPros?.pod && pod && String(linkedPros.pod).replace(/\\s+/g, "").toUpperCase() !== pod);
+      setForm((p) => ({ ...p, ...(clearMismatch ? { pros_id: "", current_supply_desc: "" } : {}),
+        pod, ...(detected ? { operator: detected } : {}), pod_check_note: note }));
       return;
     }
     setForm((p) => ({ ...p, [name]: value }));
