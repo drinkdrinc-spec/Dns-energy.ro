@@ -533,10 +533,36 @@ async def list_items(module: str, q: Optional[str] = None, user: dict = Depends(
     query = scope_q(user, module)
     if module == "catalog":
         await seed_catalog(user["id"])
-    items = await db[module].find(query).sort("created_at", -1).to_list(2000)
+    search_fields = {
+        "clients": ("name", "phone", "email", "cnp", "idcode", "id_number", "pod", "address", "locality", "county", "cui", "regcom"),
+        "prosumator": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
+        "diu": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "pros_id"),
+        "atr": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
+        "power": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
+        "documents": ("client_name", "title", "name", "filename", "original_filename", "doc_type", "kind", "type", "pod"),
+        "catalog": ("brand_model", "category", "supplier", "manufacturer", "model"),
+        "projects": ("name", "number", "client_name", "address", "locality", "county", "status"),
+        "works": ("name", "number", "client_name", "address", "locality", "county", "status"),
+        "mono": ("client_name", "number", "title", "address", "pod", "status"),
+        "panels": ("client_name", "number", "title", "address", "pod", "status"),
+        "anti": ("client_name", "number", "title", "address", "pod", "status"),
+        "pram": ("client_name", "number", "title", "pod", "instrument", "status"),
+        "equipment": ("name", "brand_model", "category", "serial", "manufacturer"),
+        "archived_dossiers": ("client_name", "number", "title", "address", "pod", "operator"),
+        "staff": ("name", "email", "phone", "function", "staff_id"),
+        "instruments": ("name", "model", "serial", "type", "manufacturer"),
+    }
+    term = str(q or "").strip()
+    if term and module in search_fields:
+        # Apply the filter in MongoDB. Avoid transferring large dossier rows and
+        # embedded file metadata to the browser just to search their JSON text.
+        pattern = re.compile(re.escape(term), re.IGNORECASE)
+        query = {"$and": [query, {"$or": [{field: pattern} for field in search_fields[module]]}]}
+        return [clean(i) for i in await db[module].find(query).sort("created_at", -1).limit(2000).to_list(2000)]
+    items = await db[module].find(query).sort("created_at", -1).limit(2000).to_list(2000)
     items = [clean(i) for i in items]
-    if q:
-        ql = q.lower()
+    if term:
+        ql = term.lower()
         items = [i for i in items if ql in str(i).lower()]
     return items
 
