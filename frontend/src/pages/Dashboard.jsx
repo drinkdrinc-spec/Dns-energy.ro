@@ -323,12 +323,12 @@ export default function Dashboard() {
 
       <section className="den-panel mobile-dashboard-recent">
         <div className="flex items-center justify-between gap-3 mb-4">
-          <h2 className="text-lg font-bold flex items-center gap-2"><Zap size={18} style={{ color: "var(--blue)" }} /> Dosare recente</h2>
+          <h2 className="text-lg font-bold flex items-center gap-2"><Zap size={18} style={{ color: "var(--blue)" }} /> Dosare DI-U recente</h2>
           <Link to="/dosare-arhivate"><Btn variant="secondary">Arhivă</Btn></Link>
         </div>
         {s.recent.length === 0 ? (
           <div className="text-sm py-6 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>
-            Nu ai dosare recente afișate. Începe cu încărcarea documentelor clientului din pasul 01.
+            Nu ai dosare DI-U recente afișate. Începe cu încărcarea documentelor clientului din pasul 01.
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: "var(--line)" }}>
