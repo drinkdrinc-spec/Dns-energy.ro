@@ -75,6 +75,22 @@ const PROSUMER_OD_STAGE_GUIDANCE = [
   ["Punerea sub tensiune", "Notificarea operatorului și confirmarea stării finale", "Păstrează dovada comunicării și actualizează dosarul ca activ"],
 ];
 
+const ATR_BOARD_STATUSES = ["În lucru", "Generată", "Depusă", "Completări cerute", "ATR emis"];
+
+function atrBoardStatus(item) {
+  const tracked = String(item?.atr_track?.status || "").trim().toLocaleLowerCase("ro-RO");
+  const trackedStages = {
+    "trimis": "Depusă",
+    "înregistrat": "Depusă",
+    "completări solicitate": "Completări cerute",
+    "dosar complet": "Depusă",
+    "aviz emis": "ATR emis",
+  };
+  if (trackedStages[tracked]) return trackedStages[tracked];
+  const saved = String(item?.workflow_status || item?.status || "").trim();
+  return ATR_BOARD_STATUSES.includes(saved) ? saved : "În lucru";
+}
+
 const PROSUMER_QUICK_STATUSES = [
   "Dosar în pregătire",
   "Gata de depunere",
@@ -920,8 +936,8 @@ export default function ModulePage({ moduleKey }) {
           <>
           {key === "atr" && recordsView === "board" && <div className="mb-4 overflow-x-auto" data-testid="atr-kanban">
             <div className="grid min-w-[780px] gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              {["În lucru", "Generată", "Depusă", "Completări cerute", "ATR emis", ...new Set(filtered.map((item) => String(item.workflow_status || item.status || "").trim()).filter((status) => status && !["În lucru", "Generată", "Depusă", "Completări cerute", "ATR emis"].includes(status)))].map((status) => {
-                const group = filtered.filter((item) => String(item.workflow_status || item.status || "În lucru").trim() === status);
+              {[...ATR_BOARD_STATUSES, ...new Set(filtered.map(atrBoardStatus).filter((status) => !ATR_BOARD_STATUSES.includes(status)))].map((status) => {
+                const group = filtered.filter((item) => atrBoardStatus(item) === status);
                 return <section key={status} className="rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }} aria-label={`Stadiu ${status}`} data-testid={`atr-stage-${status.toLocaleLowerCase("ro-RO").replace(/[^a-z0-9]+/g, "-")}`}>
                   <div className="mb-3 flex items-center justify-between gap-2 text-sm font-bold"><span>{status}</span><span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{group.length}</span></div>
                   <div className="grid gap-2">{group.map((item) => <button key={item.id} type="button" className="rounded-lg border bg-white p-3 text-left shadow-sm hover:border-blue-300" style={{ borderColor: "var(--line)" }} onClick={() => openEdit(item)} data-testid={`atr-card-${item.id}`}>
