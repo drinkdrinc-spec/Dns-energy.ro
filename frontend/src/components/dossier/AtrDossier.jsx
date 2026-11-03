@@ -114,7 +114,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     if (selectedDeerForm.value.includes("≤10,8")) {
       const invs = selectedPros?.cef?.inverters || [];
       const stringsPower = invs.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, st) => n + (Number(st.panels) || 0), 0) * (Number(inv.panel_w) || 0) / 1000 * (Number(inv.count) || 1), 0);
-      const power = installedPanelKwp(selectedPros) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower;
+      const power = installedPanelKwp(selectedPros || { cef: form.atr_cef }) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower;
       if (!power) issues.push("Completează puterea instalată de producere pentru verificarea Anexei 5.");
       else if (power > 10.8) issues.push("Anexa 5 este pentru putere instalată de maximum 10,8 kW.");
       const supply = String(form.supply || selectedPros?.supply || selectedPros?.cef?.grid?.supply || "").toLowerCase();
@@ -122,7 +122,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
       else if (supply.includes("trifaz") || supply.includes("400")) issues.push("Anexa 5 selectată cere conexiune diferită de trifazic.");
     }
     if (selectedDeerForm.key === "large") {
-      const power = installedPanelKwp(selectedPros) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp);
+      const power = installedPanelKwp(selectedPros || { cef: form.atr_cef }) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp);
       if (!power) issues.push("Completează puterea instalată de producere pentru procedura dedicată.");
       else if (power <= 400) issues.push("Procedura dedicată DEER selectată este pentru putere instalată mai mare de 400 kW.");
     }
@@ -141,7 +141,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     return () => { active = false; };
   }, [form.pros_id]);
   const catalogRequirements = (() => {
-    const cef = selectedPros?.cef || {};
+    const cef = selectedPros?.cef || form.atr_cef || {};
     const requirements = [];
     const add = (kind, model, catalogId) => {
       const name = String(model || "").trim();
@@ -170,9 +170,9 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
       ))
     ).map((documentKind) => `${documentKind} — ${item.model || item.kind}`)
   );
-  const catalogEquipmentComplete = catalogRequirements.length > 0 && catalogEvidenceMissing.length === 0;
+  const catalogEquipmentComplete = Boolean(selectedPros && catalogRequirements.length > 0 && catalogEvidenceMissing.length === 0);
   const equipmentSummary = (() => {
-    const cef = selectedPros?.cef || {};
+    const cef = selectedPros?.cef || form.atr_cef || {};
     const items = [];
     const inverters = cef.inverters || [];
     const addBattery = (key, battery, multiplier = 1) => {
@@ -281,7 +281,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
         </div>}
         {selectedPros && <div className="mt-3 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-equipment-summary">
           <div className="text-xs font-bold">Echipamente preluate în cerere și anexe</div>
-          {equipmentSummary.length ? <ul className="mt-1 grid gap-1 text-xs sm:grid-cols-2">{equipmentSummary.map((item) => <li key={item.key}>{item.label}</li>)}</ul> : <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Nu există echipamente salvate în dosarul de prosumator selectat.</p>}
+          {equipmentSummary.length ? <ul className="mt-1 grid gap-1 text-xs sm:grid-cols-2">{equipmentSummary.map((item) => <li key={item.key}>{item.label}</li>)}</ul> : <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Echipamentele ATR configurate direct vor fi verificate la generare.</p>}
           {selectedPros.cef?.inverters?.some((inv) => inv.battery_mode === "own" && inv.battery && !inv.battery.model) && <p className="mt-1 text-xs text-amber-700">Completați modelul bateriei în dosarul de prosumator pentru a-l include în anexă.</p>}
         </div>}
         {!selectedDeerForm && <a href={operatorSource.docs} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-sm font-semibold underline">Alege formularul pe pagina oficială DEER ↗</a>}
@@ -365,6 +365,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
         {operatorSource?.id === "deer" && <p className="text-xs mb-2"><a href={AUTH_DECLARATION_URL} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Descarcă declarația oficială de autenticitate DEER ↗</a></p>}
         {Object.values(clientAuto).some(Boolean) && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }} data-testid="atr-client-docs-autofill">Actele încărcate în fișa clientului (CI, CF și constatator) se includ automat în PDF și ZIP. Factura și celelalte documente ale clientului se păstrează în ZIP.</p>}
         {need.includes("fise") && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Fișele tehnice sunt marcate automat complete numai când fiecare echipament selectat are în catalog atât fișa tehnică, cât și declarația de conformitate. Fișierele adăugate manual rămân incluse în PDF, dar trebuie verificate pentru fiecare model.</p>}
+        {need.includes("fise") && !selectedPros && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Pentru echipamentele selectate direct în ATR, aplicația preia documentele din catalog la generare și marchează dosarul incomplet dacă lipsește fișa sau declarația de conformitate.</p>}
         {need.includes("fise") && catalogEvidenceMissing.length > 0 && <ul className="mb-2 list-disc pl-5 text-xs text-amber-800" data-testid="atr-catalog-evidence-missing">{catalogEvidenceMissing.map((item) => <li key={item}>{item}</li>)}</ul>}
         <div className="mt-3">{DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={autoAvailable(k)} autoLabel={autoLabel(k)} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}</div>
       </details>
