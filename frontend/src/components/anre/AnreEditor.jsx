@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Upload, FileDown, Send } from "lucide-react";
+import { Upload, FileDown, Send, Save } from "lucide-react";
 import { api, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { streamAI, clean } from "@/lib/ai";
@@ -48,11 +48,11 @@ export function AnreEditor({ id, platform, onBack }) {
   const [d, setD] = useState(null);
   const [rep, setRep] = useState(null);
   const [filing, setFiling] = useState({});
-  const load = () => api.get(`/anre/dossiers/${id}`).then((r) => setD(r.data));
+  const load = () => api.get(`/anre/dossiers/${id}`).then((r) => { setD(r.data); setFiling({ filing_no: r.data.filing_no || "", filing_date: r.data.filing_date || "", result: r.data.result || "" }); });
   useEffect(() => { load(); }, [id]); // eslint-disable-line
   if (!d) return null;
   const paid = d.payment_status === "plătit" || d.creation_mode === "intern" || platform;
-  const save = async (extra = {}) => { try { const { data } = await api.put(`/anre/dossiers/${id}`, { company: d.company, staff: d.staff, equipment: d.equipment, org: d.org, target_types: d.target_types, ...extra }); setD(data); toast.success("Salvat"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
+  const save = async (extra = {}) => { try { const { data } = await api.put(`/anre/dossiers/${id}`, { company: d.company, staff: d.staff, equipment: d.equipment, org: d.org, target_types: d.target_types, ...extra }); setD(data); setFiling({ filing_no: data.filing_no || "", filing_date: data.filing_date || "", result: data.result || "" }); toast.success("Salvat"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   const up = async (key, file) => { const fd = new FormData(); fd.append("file", file); fd.append("issued", key === "cert_constatator" ? (window.prompt("Data emiterii certificatului (AAAA-LL-ZZ):") || "") : "");
     try { const { data } = await api.post(`/anre/dossiers/${id}/docs/${key}`, fd, { headers: { "Content-Type": "multipart/form-data" } }); setD(data); toast.success("Document încărcat"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   const review = async (key, body) => { try { const { data } = await api.post(`/anre/dossiers/${id}/docs/${key}/review`, body); setD(data); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
@@ -100,9 +100,10 @@ export function AnreEditor({ id, platform, onBack }) {
           <Btn onClick={runCheck} data-testid="anre-check">Verificare finală</Btn>
           <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(url("raport"))} data-testid="anre-report-pdf">Raport PDF</Btn>
           <Btn type="button" variant="secondary" onClick={() => downloadAuthenticatedFile(`/anre/dossiers/${id}/package`, `Dosar_ANRE_${d.company?.cui || id.slice(0, 6)}.zip`)} data-testid="anre-package">Pachet final (ZIP)</Btn>
-          <input className="den-input !w-40" placeholder="Nr. înregistrare ANRE" onChange={(e) => setFiling({ ...filing, filing_no: e.target.value })} data-testid="anre-filing-no" />
-          <input className="den-input !w-40" type="date" onChange={(e) => setFiling({ ...filing, filing_date: e.target.value })} data-testid="anre-filing-date" />
-          <input className="den-input !w-52" placeholder="Rezultat ANRE (pentru „Soluționat”)" onChange={(e) => setFiling({ ...filing, result: e.target.value })} data-testid="anre-result" />
+          <input className="den-input !w-40" placeholder="Nr. înregistrare ANRE" value={filing.filing_no || ""} onChange={(e) => setFiling({ ...filing, filing_no: e.target.value })} data-testid="anre-filing-no" />
+          <input className="den-input !w-40" type="date" value={filing.filing_date || ""} onChange={(e) => setFiling({ ...filing, filing_date: e.target.value })} data-testid="anre-filing-date" />
+          <input className="den-input !w-52" placeholder="Rezultat ANRE (pentru „Soluționat”)" value={filing.result || ""} onChange={(e) => setFiling({ ...filing, result: e.target.value })} data-testid="anre-result" />
+          <Btn type="button" variant="secondary" onClick={() => save(filing)} data-testid="anre-save-filing"><Save size={13} /> Salvează datele depunerii</Btn>
           <label className="text-xs font-bold cursor-pointer" style={{ color: "var(--blue)" }}><Upload size={12} className="inline" /> {d.docs?.decizie ? `Decizie: ${d.docs.decizie.name}` : "Încarcă decizia / atestatul ANRE"}
             <input type="file" className="hidden" accept="application/pdf,image/jpeg,image/png" onChange={(e) => e.target.files[0] && up("decizie", e.target.files[0])} data-testid="anre-upload-decizie" /></label></div>
           {rep && <div className="mt-3 text-xs space-y-1" data-testid="anre-report">{[["Lipsă", "missing"], ["De verificat / expirate", "review"], ["Formulare incomplete", "incomplete"], ["Neconcordanțe", "issues"]].map(([l, k]) => rep[k].length > 0 && <div key={k}><b>{l}:</b> {rep[k].join("; ")}</div>)}
