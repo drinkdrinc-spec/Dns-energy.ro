@@ -50,6 +50,7 @@ def test_schema_pdf_shows_battery_dc_switch_cable_and_documented_protection():
     assert "Cablu DC: 35 mm²" in text
     assert "siguranță: 100 A" in text
     assert "Imax 100 A" in text
+    assert "Voc rece la Tmin: NECONFIRMAT" in text
 
 
 def test_schema_pdf_marks_missing_battery_switch_rating_for_confirmation():
