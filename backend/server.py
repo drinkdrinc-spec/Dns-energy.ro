@@ -684,8 +684,35 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     mono = await db.mono.count_documents(scope_q(user, "mono"))
     pending = await db.diu.count_documents({**owner, "status": {"$in": ["În lucru", "Documente de completat", "În verificare"]}})
     recent = await db.diu.find(owner).sort("created_at", -1).to_list(5)
+
+    # A compact, actionable work inbox inspired by the reference app's dossier list.
+    # Every query stays inside the signed-in user's existing module scope.
+    inbox_modules = [
+        ("prosumator", "Dosar prosumator"),
+        ("atr", "Cerere ATR"),
+        ("power", "Spor de putere"),
+        ("diu", "Dosar DI-U"),
+        ("mono", "Schemă monofilară"),
+    ]
+    inbox = []
+    projection = {"_id": 0, "id": 1, "client_name": 1, "number": 1,
+                  "status": 1, "operator_stage": 1, "updated_at": 1, "created_at": 1}
+    for module, label in inbox_modules:
+        rows = await db[module].find(scope_q(user, module), projection).sort("updated_at", -1).limit(5).to_list(5)
+        for row in rows:
+            inbox.append({
+                "id": row.get("id"),
+                "module": module,
+                "label": label,
+                "client_name": row.get("client_name") or "",
+                "number": row.get("number") or "",
+                "status": row.get("status") or row.get("operator_stage") or "În lucru",
+                "updated_at": row.get("updated_at") or row.get("created_at") or "",
+            })
+    inbox.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+
     return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
-            "recent": [clean(r) for r in recent]}
+            "recent": [clean(r) for r in recent], "inbox": inbox[:12]}
 
 # ---------------- Settings (singleton per owner) ----------------
 PRIVATE = ("staff", "instruments")
