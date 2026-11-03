@@ -368,7 +368,7 @@ def _deer_docx_template(rec: dict) -> str:
         return "anexa1_new.docx.b64"
     if ">400" in case:
         return None
-    if "anexa 2" in case or "existent" in case:
+    if "anexa 2" in case:
         return "anexa2_existing.docx.b64"
     return None
 
