@@ -241,7 +241,7 @@ export default function EquipmentCatalog() {
                 <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--blue)" }}>{product.supplier}</div>
                 <h3 className="font-bold text-sm mt-1">{product.brand_model}</h3>
                 <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{[product.price_text, product.availability].filter(Boolean).join(" · ") || "Preț/stoc vezi la furnizor"}</p>
-                <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>{Object.entries(product).filter(([key, value]) => value !== null && value !== undefined && ["p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "w", "voc", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max"].includes(key)).map(([key, value]) => `${key}: ${value}`).join(" · ") || "Specificațiile tehnice nu sunt publicate structurat."}</p>
+                <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>{Object.entries(product).filter(([key, value]) => value !== null && value !== undefined && ["p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "w", "voc", "coef_voc", "coef_vmp", "temp_pmax", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max"].includes(key)).map(([key, value]) => `${key}: ${value}`).join(" · ") || "Specificațiile tehnice nu sunt publicate structurat."}</p>
               </div>
               <a href={product.product_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold whitespace-nowrap" style={{ color: "var(--blue)" }}>Produs ↗</a>
             </div>
