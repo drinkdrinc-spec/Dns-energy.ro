@@ -241,7 +241,7 @@ export default function EquipmentCatalog() {
           <Btn onClick={() => setForm(form ? null : { category: cat })} data-testid="catalog-add-btn">{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> Model nou</>}</Btn>
         </div>} />
       <div className="flex flex-wrap gap-2 mb-4">
-        {CATS.map((c) => <button key={c} onClick={() => { setCat(c); setForm(null); }} data-testid={`catalog-tab-${c}`}
+        {CATS.map((c) => <button key={c} onClick={() => { setCat(c); setForm(null); setPhaseFilter(""); setTypeFilter(""); setMinValue(""); setMaxValue(""); setCompleteDocsOnly(false); }} data-testid={`catalog-tab-${c}`}
           className="rounded-full px-4 py-2 text-[12px] font-bold border transition-colors" style={c === cat ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>{c}</button>)}
       </div>
       {form && (
