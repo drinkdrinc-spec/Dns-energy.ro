@@ -66,10 +66,58 @@ export function CefEditor({ value, onChange }) {
   const cef = value || { grid: {}, inverters: [], shared_batteries: [] };
   const [catalog, setCatalog] = useState([]);
   const [res, setRes] = useState(null);
+  const [supplierCategory, setSupplierCategory] = useState("Invertor");
+  const [supplierQuery, setSupplierQuery] = useState("");
+  const [supplierResults, setSupplierResults] = useState([]);
+  const [supplierMessage, setSupplierMessage] = useState("");
+  const [supplierBusy, setSupplierBusy] = useState(false);
   const set = (patch) => onChange({ ...cef, ...patch });
   const invs = cef.inverters || [];
 
   useEffect(() => { api.get("/data/catalog").then((r) => setCatalog(r.data)).catch(() => {}); }, []);
+
+  const searchSuppliers = async () => {
+    const query = supplierQuery.trim();
+    if (query.length < 2) {
+      setSupplierResults([]);
+      setSupplierMessage("Introdu cel puțin două caractere din marcă sau model.");
+      return;
+    }
+    setSupplierBusy(true);
+    setSupplierMessage("");
+    try {
+      const { data } = await api.get("/catalog/supplier-search", { params: { q: query, category: supplierCategory }, timeout: 45000 });
+      setSupplierResults(data.products || []);
+      setSupplierMessage(data.message || "");
+    } catch (error) {
+      setSupplierResults([]);
+      setSupplierMessage(error.response?.data?.detail || "Căutarea la furnizori nu este disponibilă momentan.");
+    } finally {
+      setSupplierBusy(false);
+    }
+  };
+
+  const importSupplierProduct = async (product) => {
+    setSupplierBusy(true);
+    setSupplierMessage("");
+    try {
+      const { data } = await api.post("/catalog/supplier-import", {
+        supplier: product.supplier, category: product.category, product_url: product.product_url,
+      }, { timeout: 60000 });
+      const item = data.item;
+      if (!item?.id) throw new Error("Produsul nu a putut fi adăugat în catalog.");
+      setCatalog((previous) => [item, ...previous.filter((row) => row.id !== item.id)]);
+      setSupplierResults((previous) => previous.filter((row) => row.product_url !== product.product_url));
+      setSupplierMessage(item.datasheet?.storage_path && item.conformity?.storage_path
+        ? `${item.brand_model} a fost importat cu fișa și declarația disponibile. Caută-l în selectorul de model.`
+        : `${item.brand_model} a fost importat în catalog. Unele documente sau valori tehnice nu sunt publicate ori nu au putut fi preluate; verifică fișa și completează datele lipsă înainte de proiectare.`);
+    } catch (error) {
+      setSupplierMessage(error.response?.data?.detail || error.message || "Modelul nu a putut fi importat.");
+    } finally {
+      setSupplierBusy(false);
+    }
+  };
+
   useEffect(() => {
     const t = setTimeout(() => {
       api.post("/cef/check", { ...cef, tmin: cef.grid?.tmin }).then((r) => setRes(r.data)).catch(() => {});
@@ -80,6 +128,34 @@ export function CefEditor({ value, onChange }) {
   const invErrs = new Set((res?.inverters || []).flatMap((i) => [...i.errors, ...i.warnings]));
   return (
     <div className="mt-6 space-y-4" data-testid="cef-editor">
+      <section className="rounded-xl border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="cef-supplier-lookup">
+        <div className="grid gap-2 sm:grid-cols-[180px_1fr_auto] sm:items-end">
+          <div className="den-field"><label htmlFor="cef-supplier-category">Categorie echipament</label>
+            <select id="cef-supplier-category" className="den-input" value={supplierCategory} onChange={(e) => { setSupplierCategory(e.target.value); setSupplierResults([]); setSupplierMessage(""); }}>
+              {["Invertor", "Panou", "Baterie", "Smart meter"].map((category) => <option key={category} value={category}>{category}</option>)}
+            </select>
+          </div>
+          <div className="den-field"><label htmlFor="cef-supplier-query">Caută modelul la furnizori</label>
+            <input id="cef-supplier-query" className="den-input" value={supplierQuery} onChange={(e) => setSupplierQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); searchSuppliers(); } }} placeholder="Marcă sau model..." data-testid="cef-supplier-query" />
+          </div>
+          <button type="button" className="rounded-lg px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50" style={{ background: "var(--blue)" }}
+            onClick={searchSuppliers} disabled={supplierBusy} data-testid="cef-supplier-search">
+            {supplierBusy ? "Se caută / importă…" : "Caută la furnizori"}
+          </button>
+        </div>
+        <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Depozit Solar · SolarHev · SolarTech. Importul salvează produsul și PDF-urile disponibile în catalogul firmei.</p>
+        {supplierMessage && <p className="mt-2 text-xs" role="status" aria-live="polite">{supplierMessage}</p>}
+        {supplierResults.length > 0 && <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {supplierResults.map((product) => <article key={product.product_url} className="rounded-lg border p-2" style={{ borderColor: "var(--line)" }}>
+            <p className="text-xs font-semibold">{product.brand_model}</p>
+            <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted)" }}>{product.supplier}{product.price_text ? ` · ${product.price_text}` : ""}{product.availability ? ` · ${product.availability}` : ""}</p>
+            <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted)" }}>{product.datasheet_url ? "Fișă PDF disponibilă" : "Fișă PDF negăsită"} · {product.conformity_url ? "conformitate PDF disponibilă" : "conformitate PDF negăsită"}</p>
+            <button type="button" className="mt-2 rounded-md border px-2 py-1.5 text-[11px] font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }}
+              onClick={() => importSupplierProduct(product)} disabled={supplierBusy}>Importă în catalog</button>
+          </article>)}
+        </div>}
+      </section>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="font-bold">Configurare CEF — invertoare, stringuri, baterii</h3>
         <button onClick={() => set({ inverters: [...invs, { id: uid(), phases: cef.grid?.supply || "Trifazat", type: "Hibrid", strings: [{ panels: "", mppt: 1 }], battery_mode: "none", ac: { material: "Cu", install: "C" }, dc: { material: "Cu", cable_type: "H1Z2Z2-K" } }] })}
