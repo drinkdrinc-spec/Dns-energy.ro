@@ -694,20 +694,25 @@ async def update_dossier_workflow_status(module: str, item_id: str, request: Req
     if module not in ("prosumator", "atr", "power", "diu", "mono"):
         raise HTTPException(status_code=404, detail="Modulul nu acceptă stadii de lucru rapide")
     guard(module, user, write=True)
-    await check_access(user, module, item_id)
+    rec = await check_access(user, module, item_id)
     body = await request.json()
     status = str(body.get("status") or "").strip()
     if not status or len(status) > 80:
         raise HTTPException(status_code=400, detail="Stadiul trebuie să conțină între 1 și 80 de caractere.")
+    previous = str(rec.get("workflow_status") or rec.get("status") or rec.get("operator_stage") or "În lucru").strip()
+    if status == previous:
+        return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": rec.get("updated_at"), "history_entry": None}
     updated_at = datetime.now(timezone.utc).isoformat()
+    history_entry = {"from": previous, "to": status, "at": updated_at, "by": user.get("email") or user.get("id")}
     result = await db[module].update_one(
-        {"id": item_id, "owner": user["id"]},
-        {"$set": {"workflow_status": status, "updated_at": updated_at, "updated_by": user.get("email")}},
+        {**scope_q(user, module), "id": item_id},
+        {"$set": {"workflow_status": status, "updated_at": updated_at, "updated_by": user.get("email")},
+         "$push": {"workflow_history": {"$each": [history_entry], "$slice": -500}}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     await audit(user, "actualizare stadiu flux", module, item_id, ["workflow_status"])
-    return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at}
+    return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at, "history_entry": history_entry}
 
 
 @api_router.delete("/data/{module}/{item_id}")
