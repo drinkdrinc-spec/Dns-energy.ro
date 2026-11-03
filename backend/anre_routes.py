@@ -228,6 +228,15 @@ async def anre_update(did: str, request: Request, user: dict = Depends(get_curre
     paid_or_403(d, user)
     b = await request.json()
     upd = {k: b[k] for k in ("company", "staff", "equipment", "org", "target_types") if k in b}
+    for key in ("filing_no", "filing_date", "result"):
+        if key in b:
+            value = str(b.get(key) or "").strip()
+            upd[key] = value or None
+    if upd.get("filing_date"):
+        try:
+            date.fromisoformat(upd["filing_date"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data depunerii trebuie să fie în formatul AAAA-LL-ZZ")
     if any(d.get(k) != v for k, v in upd.items()):
         for g in GEN:
             if (d.get("docs") or {}).get(g, {}).get("approved"):
@@ -239,11 +248,14 @@ async def anre_update(did: str, request: Request, user: dict = Depends(get_curre
             raise HTTPException(status_code=400, detail="Status invalid")
         if st in ("Pregătit pentru semnare", "Pregătit pentru depunere") and not check({**d, **upd})["ok"]:
             raise HTTPException(status_code=400, detail="Dosarul are documente lipsă sau neclarități nerezolvate — rulați verificarea finală")
-        if st == "Depus" and not (b.get("filing_no") and b.get("filing_date")):
+        filing_no = upd.get("filing_no", d.get("filing_no"))
+        filing_date = upd.get("filing_date", d.get("filing_date"))
+        result = upd.get("result", d.get("result"))
+        if st == "Depus" and not (filing_no and filing_date):
             raise HTTPException(status_code=400, detail="„Depus” se marchează doar cu numărul și data înregistrării la ANRE")
-        if st == "Soluționat" and not (b.get("result") and d.get("docs", {}).get("decizie")):
+        if st == "Soluționat" and not (result and d.get("docs", {}).get("decizie")):
             raise HTTPException(status_code=400, detail="„Soluționat” necesită rezultatul și documentul ANRE încărcat (decizie/atestat)")
-        upd.update({"status": st, **{k: b[k] for k in ("filing_no", "filing_date", "result") if b.get(k)}})
+        upd["status"] = st
     elif d["status"] == "Ciornă":
         upd["status"] = "În completare"
     await db.anre_dossiers.update_one({"id": did}, {"$set": {**upd, "updated_at": now()}, "$push": {"history": {"at": now(), "by": user.get("email"), "event": "actualizare: " + ", ".join(upd.keys())}}})
