@@ -1046,7 +1046,6 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
     return {"ok": True, "existing": False, "item": clean(record)}
 
 
-@api_router.post("/catalog/{item_id}/import-document")
 class _TrustedCatalogImportRequest:
     """Internal request adapter for reusing the validated catalog importer."""
     def __init__(self, payload: dict):
