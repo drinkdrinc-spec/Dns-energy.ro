@@ -397,7 +397,7 @@ def clean(doc: dict) -> dict:
 
 
 QUICK_SEARCH_MODULES = [
-    ("clients", "Client", "client_name", ["name", "phone", "email", "cnp", "idcode", "id_number", "pod", "address", "locality", "county"], "/clienti"),
+    ("clients", "Client", "client_name", ["name", "phone", "email", "cnp", "idcode", "cui", "regcom", "id_series", "id_number", "pod", "address", "locality", "county"], "/clienti"),
     ("prosumator", "Dosar prosumator", "client_name", ["client_name", "number", "pod", "address", "locality", "county", "operator"], "/prosumator"),
     ("atr", "Cerere ATR", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/cerere-atr"),
     ("power", "Spor de putere", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/spor-putere"),
@@ -426,7 +426,7 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
         rows = await db[module].find(query, {"_id": 0, "id": 1, "name": 1, "client_name": 1, "client_id": 1,
                                              "number": 1, "original_filename": 1, "doc_type": 1, "kind": 1,
                                              "brand_model": 1, "category": 1, "supplier": 1,
-                                             "pod": 1, "address": 1, "locality": 1, "county": 1, "phone": 1, "email": 1,
+                                             "pod": 1, "address": 1, "locality": 1, "county": 1, "phone": 1, "email": 1, "cui": 1, "regcom": 1,
                                              "operator": 1, "title": 1, "filename": 1, "type": 1,
                                              "is_test": 1}).sort("updated_at", -1).limit(5).to_list(5)
         matches = []
@@ -437,7 +437,7 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
             if not item_id:
                 continue
             client_name = row.get(name_key) or row.get("name") or "Înregistrare fără nume"
-            detail = " · ".join(str(row.get(k)) for k in ("number", "pod", "phone", "email", "locality", "county", "operator") if row.get(k))
+            detail = " · ".join(str(row.get(k)) for k in ("number", "pod", "phone", "email", "cui", "regcom", "locality", "county", "operator") if row.get(k))
             title = client_name
             href = f"{route}?edit={item_id}"
             if module == "catalog":
@@ -484,7 +484,7 @@ async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), 
     guard("clients", user)
     queries = build_client_search_queries(scope_q(user, "clients"), term)
     projection = {"_id": 0, "id": 1, "name": 1, "pod": 1, "phone": 1, "email": 1,
-                  "address": 1, "locality": 1, "county": 1, "is_test": 1, "updated_at": 1}
+                  "address": 1, "locality": 1, "county": 1, "cui": 1, "regcom": 1, "is_test": 1, "updated_at": 1}
 
     async def fetch_matches(query: dict, indexed_field: str | None = None):
         cursor = db.clients.find(query, projection)
@@ -518,7 +518,7 @@ async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), 
         if row.get("is_test") or re.search(r"\bTEST\b", name, re.I):
             continue
         item_id = str(row.get("id") or "")
-        detail = " · ".join(str(row.get(k)) for k in ("pod", "phone", "email", "address", "locality", "county") if row.get(k))
+        detail = " · ".join(str(row.get(k)) for k in ("pod", "phone", "email", "cui", "regcom", "address", "locality", "county") if row.get(k))
         results.append({"id": item_id, "module": "clients", "label": "Client",
                         "title": name or "Client fără nume", "detail": detail,
                         "href": f"/clienti?edit={item_id}"})
