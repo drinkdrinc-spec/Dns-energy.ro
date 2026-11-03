@@ -50,7 +50,7 @@ DOCUMENT_HOSTS = {
     "qcells.com", "jasolar.com", "pylontech.com", "bydbatterybox.com", "fox-ess.com", "foxess.com",
     "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com",
 }
-CATEGORIES = {"Invertor", "Panou", "Baterie", "Smart meter"}
+CATEGORIES = {"Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"}
 MAX_LISTING_PAGES = 6
 DOCUMENT_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
@@ -76,12 +76,14 @@ FIELD_LABELS = {
     "ah": ("capacitate ah", "capacity ah"),
     "voltage": ("tensiune nominala", "tensiune baterie", "nominal voltage", "battery voltage"),
     "i_max": ("curent maxim descarcare", "maximum discharge current"),
+    "p_max_w": ("putere maxima modul", "putere maxima intrare", "maximum input power", "max input power", "maximum module power"),
+    "max_devices": ("numar maxim dispozitive", "numar maxim de dispozitive", "maximum devices", "max devices"),
 }
 FIELD_UNITS = {
     "p_nom_kw": "kw", "p_max_kw": "kw", "vdc_max": "v", "mppt_min": "v", "mppt_max": "v",
     "mppt_count": "count", "imax_mppt": "a", "w": "w", "voc": "v", "coef_voc": "percent_per_c",
     "coef_vmp": "percent_per_c", "temp_pmax": "percent_per_c", "vmp": "v", "isc": "a", "imp": "a",
-    "kwh": "kwh", "ah": "ah", "voltage": "v", "i_max": "a",
+    "kwh": "kwh", "ah": "ah", "voltage": "v", "i_max": "a", "p_max_w": "w", "max_devices": "count",
 }
 
 
@@ -119,6 +121,10 @@ def _correct_category(title: str, category: str) -> bool:
     if category == "Smart meter":
         padded = f" {value} "
         return any(term in padded for term in (" smart meter ", " smartmeter ", " energy meter ", " power meter ", " contor inteligent ", " contor smart "))
+    if category == "Gateway":
+        return any(term in value for term in ("gateway", "logger", "datalogger", "data logger", "concentrator"))
+    if category == "Optimizator":
+        return any(term in value for term in ("optimizator", "optimizer", "power optimizer"))
     return value.startswith(("baterie ", "acumulator ", "acumulatori ", "battery ")) and " kit " not in f" {value} "
 
 
