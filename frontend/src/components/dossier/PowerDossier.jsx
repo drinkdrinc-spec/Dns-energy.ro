@@ -5,6 +5,7 @@ import { Btn } from "@/components/Layout";
 import { FileText, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { FormAlert } from "@/components/dossier/FormAlert";
+import { CefEditor } from "@/components/cef/CefEditor";
 
 const DOCS = [["a", "Act de identitate / CUI / autorizații de funcționare"], ["b", "Certificat constatator (prosumator PJ)"], ["c", "Certificat de urbanism (loc nou)"],
   ["d", "Plan de situație (loc nou)"], ["e", "PUZ / PUD (loc nou, dacă e cerut)"], ["f", "Act de proprietate / drept de folosință (loc nou)"], ["g", "Autorizație de construire (loc nou)"],
@@ -32,9 +33,10 @@ export function PowerDossier({ id, form, setVal }) {
   const att = form.attachments || {};
   const recs = form.receptors || [];
   const selectedPros = pros.find((item) => item.id === form.pros_id);
+  const powerCef = selectedPros?.cef || form.power_cef || { grid: { supply: form.current_supply || "" }, inverters: [], shared_batteries: [] };
   const operatorLabel = form.operator || selectedPros?.operator || "";
   const isDeer = /\bdeer\b|distributie energie|transilvania|muntenia nord/i.test(operatorLabel);
-  const equipment = selectedPros?.cef?.inverters || [];
+  const equipment = powerCef.inverters || [];
   const totalPanels = equipment.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1), 0);
   const panelKwp = equipment.reduce((sum, inv) => sum + (Number(inv.panel_w) || 0) * (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1) / 1000, 0)
     || Number(selectedPros?._kwp || selectedPros?.panel_kwp) || 0;
@@ -42,7 +44,7 @@ export function PowerDossier({ id, form, setVal }) {
   const batteryItems = [
     ...equipment.filter((inv) => inv.battery_mode === "own" && inv.battery?.model)
       .map((inv) => ({ ...inv.battery, modules: (Number(inv.battery.modules) || 1) * Math.max(1, Number(inv.count || inv.quantity) || 1) })),
-    ...(selectedPros?.cef?.shared_batteries || []),
+    ...(powerCef.shared_batteries || []),
   ];
   const exportLimitKw = equipment.reduce((sum, inv) => {
     const count = Math.max(1, Number(inv.count || inv.quantity) || 1);
@@ -83,7 +85,7 @@ export function PowerDossier({ id, form, setVal }) {
         {form.request_kind === "nou" && <div className="den-field"><label>Data estimată punere sub tensiune finală</label><input type="date" className="den-input" value={form.energize_date || ""} onChange={(e) => setVal("energize_date", e.target.value)} /></div>}
         <div className="den-field sm:col-span-2"><label>Descrierea modificărilor tehnice față de situația anterioară</label><textarea rows={2} className="den-input" value={form.changes || ""} onChange={(e) => setVal("changes", e.target.value)} data-testid="power-changes" /></div>
       </div>
-      {selectedPros && <section className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="power-linked-equipment">
+      {!selectedPros && <details className="mt-3 rounded-xl border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="power-equipment-config">\n        <summary className="cursor-pointer text-sm font-semibold">Echipamente pentru cererea de spor</summary>\n        <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Alege invertorul, panourile și bateria din catalog. Datele se preiau în Anexa 1 și în dosarul generat.</p>\n        <CefEditor value={form.power_cef || { grid: { supply: form.current_supply || "" }, inverters: [], shared_batteries: [] }} onChange={(value) => setVal("power_cef", value)} />\n      </details>}\n      {(selectedPros || equipment.length > 0 || batteryItems.length > 0) && <section className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="power-linked-equipment">
         <b className="text-xs">Echipamente incluse în Anexa 1</b>
         <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
           <span><b>Invertor:</b> {inverterText.length ? inverterText.join("; ") : "nespecificat"}</span>
