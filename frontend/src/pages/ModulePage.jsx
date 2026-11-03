@@ -110,6 +110,15 @@ function clientSiteFor(client, preferredPod) {
 function clientSiteLabel(site, index) {
   return [site.address, site.locality, site.county, site.pod && ("POD " + site.pod)].filter(Boolean).join(" · ") || ("Loc de consum " + (index + 1));
 }
+function clientSiteMatchesPros(site, pros) {
+  if (!site || !pros) return true;
+  const sitePod = String(site.pod || "").replace(/\s+/g, "").toUpperCase();
+  const prosPod = String(pros.pod || "").replace(/\s+/g, "").toUpperCase();
+  if (sitePod && prosPod) return sitePod === prosPod;
+  const addressKey = (value) => normalizeClientName(value).replace(/[^a-z0-9]/g, "");
+  const siteAddress = addressKey(site.address), prosAddress = addressKey(pros.address);
+  return !siteAddress || !prosAddress || siteAddress === prosAddress;
+}
 
 function resolveLinkedProsumer(atr, prosumers) {
   const explicit = atr.pros_id ? prosumers.find((prosumer) => prosumer.id === atr.pros_id) : null;
@@ -741,7 +750,12 @@ export default function ModulePage({ moduleKey }) {
               <select className="den-input" value={form.client_site_id || formClientSite?.id || ""} onChange={(event) => {
                 const site = formClientSites.find((item) => String(item.id) === String(event.target.value));
                 if (!site) return;
-                setForm((prev) => ({ ...prev, client_site_id: site.id, ...Object.fromEntries(CLIENT_SITE_FIELDS.map((field) => [field, site[field] || ""])) }));
+                setForm((prev) => {
+                  const linkedPros = (refOptions.prosumator || []).find((item) => item.id === prev.pros_id);
+                  const clearMismatch = linkedPros && !clientSiteMatchesPros(site, linkedPros);
+                  return { ...prev, ...(clearMismatch ? { pros_id: "", current_supply_desc: "" } : {}),
+                    client_site_id: site.id, ...Object.fromEntries(CLIENT_SITE_FIELDS.map((field) => [field, site[field] || ""])) };
+                });
               }} data-testid="client-consumption-site-select">
                 {formClientSites.map((site, index) => <option key={site.id} value={site.id}>{clientSiteLabel(site, index)}</option>)}
               </select>
