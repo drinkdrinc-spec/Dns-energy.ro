@@ -9,7 +9,7 @@ import { CefEditor } from "@/components/cef/CefEditor";
 
 const DOCS = [["a", "Act de identitate / CUI / autorizații de funcționare"], ["b", "Certificat constatator (prosumator PJ)"], ["c", "Certificat de urbanism (loc nou)"],
   ["d", "Plan de situație (loc nou)"], ["e", "PUZ / PUD (loc nou, dacă e cerut)"], ["f", "Act de proprietate / drept de folosință (loc nou)"], ["g", "Autorizație de construire (loc nou)"],
-  ["h", "PV recepție instalație de producere"], ["i", "Buletin priză de pământ"], ["j", "Certificate conformitate + fișe tehnice invertoare"], ["k", "Schema monofilară + racordare, protecții, reglaje"]];
+  ["h", "PV recepție instalație de producere"], ["i", "Buletin priză de pământ"], ["j", "Fișe tehnice și declarații de conformitate pentru invertoare, panouri și baterii"], ["k", "Schema monofilară + racordare, protecții, reglaje"]];
 const AUTO = { h: "PV recepție", i: "buletin priză", j: "fișe catalog", k: "schemă aprobată" };
 const pdf = (id, full) => `/power/${id}/pdf?full=${full}`;
 
