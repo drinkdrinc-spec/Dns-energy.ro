@@ -768,7 +768,7 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
         return {"ok": True, "existing": True, "item": clean(existing)}
 
     allowed = ("p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt",
-               "w", "voc", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max")
+               "w", "voc", "coef_voc", "coef_vmp", "temp_pmax", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max")
     item = {"category": category, "brand_model": product["brand_model"], "supplier": supplier,
             "source_url": product_url, "source_price": product.get("price_text", ""),
             "source_availability": product.get("availability", ""),
