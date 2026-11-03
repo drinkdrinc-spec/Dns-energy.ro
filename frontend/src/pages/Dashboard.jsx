@@ -151,6 +151,44 @@ export default function Dashboard() {
 
       <AtrDeadlines />
 
+      <section className="den-panel mb-6" aria-labelledby="dashboard-inbox-title" data-testid="dashboard-inbox">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--blue)" }}>ACTIVITATE RECENTĂ</div>
+            <h2 id="dashboard-inbox-title" className="text-lg sm:text-xl font-bold">Dosare de urmărit</h2>
+            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>Deschide direct cererile și dosarele lucrate recent, în ordinea ultimei actualizări.</p>
+          </div>
+          <FolderOpen className="hidden sm:block shrink-0" size={22} style={{ color: "var(--blue)" }} />
+        </div>
+        {(s.inbox || []).length === 0 ? (
+          <div className="text-sm py-5 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>
+            Nu există încă dosare în lucru. Începe prin încărcarea documentelor clientului.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+            {s.inbox.map((item) => {
+              const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono" };
+              const path = paths[item.module] || "/prosumator";
+              return (
+                <Link key={item.module + "-" + item.id} to={path + "?edit=" + encodeURIComponent(item.id)}
+                  data-testid={"inbox-item-" + item.module + "-" + item.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:shadow-sm"
+                  style={{ borderColor: "var(--line)", background: "var(--surface, white)" }}>
+                  <span className="min-w-0">
+                    <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
+                    <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}</span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#edf4ff", color: "var(--blue)" }}>{item.status}</span>
+                    <span className="block text-[10px] mt-1" style={{ color: "var(--muted)" }}>{item.updated_at ? new Date(item.updated_at).toLocaleDateString("ro-RO") : "—"}</span>
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       <section className="den-panel mb-6" aria-labelledby="client-fast-search-title" data-testid="dashboard-client-search">
         <div className="flex items-center gap-2 mb-3">
           <Search size={17} style={{ color: "var(--blue)" }} />
