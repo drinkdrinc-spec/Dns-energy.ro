@@ -12,77 +12,32 @@ import {
 const FLOW = [
   {
     number: "01",
-    title: "Client și acte",
-    desc: "Încarcă CI, factura de energie și cartea funciară. Verifică datele extrase înainte de salvare.",
-    to: "/clienti",
-    action: "Încarcă documente",
+    title: "Client și loc de consum",
+    desc: "Încarcă CI, factura și cartea funciară. Verifică datele citite și POD-ul înainte de salvare.",
+    to: "/prosumator",
+    action: "Începe din documente",
     icon: Upload,
     tone: "amber",
   },
   {
     number: "02",
-    title: "Cerere ATR",
-    desc: "Alege clientul și pregătește cererea cu datele POD, operatorului și locului de consum.",
-    to: "/cerere-atr",
-    action: "Pregătește cererea",
-    icon: FileText,
-    tone: "blue",
-  },
-  {
-    number: "03",
-    title: "Spor de putere",
-    desc: "Pregătește separat solicitarea și anexele aplicabile pentru majorarea puterii aprobate.",
-    to: "/spor-putere",
-    action: "Pregătește sporul",
-    icon: Zap,
-    tone: "blue",
-  },
-  {
-    number: "04",
-    title: "Dosar prosumator",
-    desc: "Alege invertorul, panourile și bateria. Datele tehnice disponibile se preiau din catalog.",
+    title: "Echipamente și schemă",
+    desc: "Selectează modelele din catalog. Confirmă configurarea, cablurile și protecțiile propuse.",
     to: "/prosumator",
     action: "Configurează instalația",
     icon: Cpu,
     tone: "blue",
   },
   {
-    number: "05",
-    title: "Dosar DI-U",
-    desc: "Pregătește documentele instalației folosind datele deja salvate la client și în dosar.",
-    to: "/diu",
-    action: "Pregătește DI-U",
-    icon: ClipboardCheck,
-    tone: "blue",
-  },
-  {
-    number: "06",
-    title: "Buletin PRAM",
-    desc: "Completează și descarcă separat buletinul folosind numai rezultatele măsurate efectiv.",
-    to: "/pram",
-    action: "Deschide PRAM",
+    number: "03",
+    title: "Documente și depunere",
+    desc: "Verifică dosarul, generează PDF-urile, trimite documentele la semnat și urmărește etapele.",
+    to: "/prosumator",
+    action: "Deschide dosarul",
     icon: FileCheck2,
     tone: "blue",
   },
-  {
-    number: "07",
-    title: "Schema monofilară",
-    desc: "Verifică protecțiile și dimensionarea, apoi descarcă schema separat.",
-    to: "/mono",
-    action: "Deschide schema",
-    icon: GitBranch,
-    tone: "blue",
-  },
-  {
-    number: "08",
-    title: "Verificare ANRE și portal OD",
-    desc: "Verifică documentele necesare și deschide canalul oficial al operatorului.",
-    to: "/dosare-anre",
-    action: "Verifică dosarul",
-    icon: PackageCheck,
-    tone: "blue",
-  },
-];
+];;
 
 const TILES = [
   { to: "/clienti", icon: Users, title: "Clienți și documente", desc: "Încarcă actele clientului și verifică datele extrase." },
@@ -326,13 +281,13 @@ export default function Dashboard() {
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--blue)" }}>FLUX DE LUCRU</div>
-            <h2 id="main-flow-title" className="text-lg sm:text-xl font-bold">Dosar client, în ordinea completării</h2>
-            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>Datele și echipamentele selectate se folosesc în documentele următoare.</p>
+            <h2 id="main-flow-title" className="text-lg sm:text-xl font-bold">Dosarul de prosumator în trei pași</h2>
+            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>Datele clientului se reutilizează în echipamente, schemă și documentele de depunere.</p>
           </div>
           <PackageCheck className="hidden sm:block shrink-0" size={22} style={{ color: "var(--blue)" }} />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {FLOW.map((step, index) => (
             <Link
               key={step.number}
@@ -358,7 +313,7 @@ export default function Dashboard() {
 
       <section className="den-panel mb-6 mobile-dashboard-modules">
         <div className="flex items-center justify-between gap-3 mb-4">
-          <h2 className="text-lg font-bold flex items-center gap-2"><SquareStack size={18} style={{ color: "var(--blue)" }} /> Acces direct la module</h2>
+          <h2 className="text-lg font-bold flex items-center gap-2"><SquareStack size={18} style={{ color: "var(--blue)" }} /> Alte module DNS Energy</h2>
           <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{ background: "#fff1d6", color: "#a65b00" }}>DNS Energy</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-3">
