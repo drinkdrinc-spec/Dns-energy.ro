@@ -24,7 +24,6 @@ function DocSlot({ item, k, label, onUploaded }) {
   const officialUrl = item[`${k}_url`] || item[`${k}_source_url`] || "";
   const [importing, setImporting] = useState(false);
   const [extracting, setExtracting] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackUrl, setFeedbackUrl] = useState("");
   const [feedbackNote, setFeedbackNote] = useState("");
   const [feedbackBusy, setFeedbackBusy] = useState(false);
@@ -37,7 +36,7 @@ function DocSlot({ item, k, label, onUploaded }) {
         kind: k, suggested_url: feedbackUrl.trim(), note: feedbackNote.trim(),
       });
       toast.success("Propunerea a fost trimisă în lista de verificare a catalogului.");
-      setFeedbackUrl(""); setFeedbackNote(""); setFeedbackOpen(false);
+      setFeedbackUrl(""); setFeedbackNote("");
       onUploaded();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Propunerea nu a putut fi trimisă.");
@@ -114,17 +113,16 @@ function DocSlot({ item, k, label, onUploaded }) {
       <input className="den-input text-[11px] py-1 w-full sm:w-[220px] min-w-0" type="url" placeholder="Link PDF oficial HTTPS" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} aria-label={`Link oficial ${label}`} />
       <button onClick={importUrl} disabled={importing || !sourceUrl} className="text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Preia PDF de pe site-ul oficial" data-testid={`import-url-${k}-${item.id}`}>{importing ? "Se preia…" : "Importă PDF"}</button>
       {k === "datasheet" && f && <button onClick={extract} disabled={extracting} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Extrage numai specificațiile care apar în fișa PDF" data-testid={`ai-extract-${item.id}`}><Sparkles size={12} /> {extracting ? "Se citește…" : "Extrage specificații"}</button>}
-      <button type="button" onClick={() => setFeedbackOpen((value) => !value)} className="text-[11px] font-semibold underline" data-testid={`report-document-${k}-${item.id}`}>Semnalează document lipsă sau incorect</button>
       </span>
-      {feedbackOpen && <div className="mt-2 rounded-lg border p-3 space-y-2" style={{ borderColor: "var(--line)", background: "#f8fafc" }}>
-        <p className="text-xs font-semibold">Propune un link oficial și/sau descrie problema. Propunerea intră la verificare înainte de import.</p>
-        <input className="den-input w-full text-xs" type="url" placeholder="Link HTTPS către documentul corect (opțional)" value={feedbackUrl} onChange={(e) => setFeedbackUrl(e.target.value)} aria-label={`Link propus pentru ${label}`} data-testid={`feedback-url-${k}-${item.id}`} />
-        <textarea className="den-input w-full text-xs" rows={2} maxLength={1000} placeholder="Ce lipsește sau ce trebuie corectat?" value={feedbackNote} onChange={(e) => setFeedbackNote(e.target.value)} aria-label={`Observație despre ${label}`} data-testid={`feedback-note-${k}-${item.id}`} />
-        <div className="flex gap-2">
+      <details className="mt-2 rounded-lg border p-3" style={{ borderColor: "var(--line)", background: "#f8fafc" }} data-testid={`document-feedback-${k}-${item.id}`}>
+        <summary className="cursor-pointer text-[11px] font-semibold underline" data-testid={`report-document-${k}-${item.id}`}>Semnalează document lipsă sau incorect</summary>
+        <div className="mt-2 space-y-2">
+          <p className="text-xs font-semibold">Propune un link oficial și/sau descrie problema. Propunerea intră la verificare înainte de import.</p>
+          <input className="den-input w-full text-xs" type="url" placeholder="Link HTTPS către documentul corect (opțional)" value={feedbackUrl} onChange={(e) => setFeedbackUrl(e.target.value)} aria-label={`Link propus pentru ${label}`} data-testid={`feedback-url-${k}-${item.id}`} />
+          <textarea className="den-input w-full text-xs" rows={2} maxLength={1000} placeholder="Ce lipsește sau ce trebuie corectat?" value={feedbackNote} onChange={(e) => setFeedbackNote(e.target.value)} aria-label={`Observație despre ${label}`} data-testid={`feedback-note-${k}-${item.id}`} />
           <button type="button" onClick={submitFeedback} disabled={feedbackBusy || (!feedbackUrl.trim() && !feedbackNote.trim())} className="rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-50" style={{ borderColor: "var(--line)" }} data-testid={`submit-feedback-${k}-${item.id}`}>{feedbackBusy ? "Se trimite…" : "Trimite spre verificare"}</button>
-          <button type="button" onClick={() => setFeedbackOpen(false)} className="px-2 py-1.5 text-xs underline">Anulează</button>
         </div>
-      </div>}
+      </details>
     </div>
   );
 }
