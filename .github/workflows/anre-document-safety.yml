@@ -12,6 +12,8 @@ on:
       - "backend/equipment_extract.py"
       - "backend/gridfs_storage.py"
       - "backend/server.py"
+      - "backend/client_search.py"
+      - "backend/tests/test_client_search.py"
       - "backend/sizing.py"
       - "backend/supplier_catalog.py"
       - "backend/tests/test_anre_gdpr_consent_truthfulness.py"
@@ -33,6 +35,8 @@ on:
       - "backend/equipment_extract.py"
       - "backend/gridfs_storage.py"
       - "backend/server.py"
+      - "backend/client_search.py"
+      - "backend/tests/test_client_search.py"
       - "backend/sizing.py"
       - "backend/supplier_catalog.py"
       - "backend/tests/test_anre_gdpr_consent_truthfulness.py"
@@ -60,13 +64,14 @@ jobs:
       - name: Install focused test dependencies
         run: python -m pip install --upgrade pytest pytest-xdist reportlab pypdf python-docx httpx lxml
       - name: Compile calculation and document modules
-        run: python -m py_compile anre_doc.py atr_doc.py cef.py docgen.py equipment_extract.py sizing.py supplier_catalog.py
+        run: python -m py_compile anre_doc.py atr_doc.py cef.py client_search.py docgen.py equipment_extract.py sizing.py supplier_catalog.py
       - name: Verify consent, storage, calculations, documents, and catalog safety
         run: >
           python -m pytest -q
           tests/test_anre_gdpr_consent_truthfulness.py
           tests/test_cef_storage_truth.py
           tests/test_cef_unknown_phases.py
+          tests/test_client_search.py
           tests/test_deer_annex2_battery.py
           tests/test_equipment_extract.py
           tests/test_pram_document_truthfulness.py
