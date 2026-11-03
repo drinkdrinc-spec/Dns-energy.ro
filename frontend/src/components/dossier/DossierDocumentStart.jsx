@@ -36,6 +36,8 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [selectedClient, setSelectedClient] = useState(null);
   const inputs = useRef({});
 
+  useEffect(() => { if (autoOpen) setOpen(true); }, [autoOpen]);
+
   const selectExistingClient = async (result) => {
     try {
       setBusy("client");
