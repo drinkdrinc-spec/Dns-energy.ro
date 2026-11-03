@@ -9,6 +9,7 @@ const CO = [["name", "Denumire"], ["cui", "CUI"], ["regcom", "Nr. Reg. Comerțul
   ["email", "E-mail"], ["phone", "Telefon"], ["attest_no", "Nr. atestat existent"], ["attest_types", "Tipuri atestat existent"], ["attest_valid", "Valabil până la"]];
 const STAFF = [["name", "Nume"], ["role", "Funcție"], ["grade", "Grad/tip autorizare"], ["license", "Nr. legitimație"], ["license_valid", "Valabilă până la"], ["contract", "Contract"]];
 const EQ = [["name", "Dotare"], ["serial", "Serie/buc."], ["ownership", "Proprietate/folosință"], ["calibration", "Verificare metrologică"]];
+const ORG = [["dept", "Compartiment"], ["name", "Responsabil"], ["activity", "Activități"]];
 
 function Rows({ cols, rows, onChange, tid }) {
   return (
@@ -49,7 +50,7 @@ export function AnreEditor({ id, platform, onBack }) {
   useEffect(() => { load(); }, [id]); // eslint-disable-line
   if (!d) return null;
   const paid = d.payment_status === "plătit" || d.creation_mode === "intern" || platform;
-  const save = async (extra = {}) => { try { const { data } = await api.put(`/anre/dossiers/${id}`, { company: d.company, staff: d.staff, equipment: d.equipment, target_types: d.target_types, ...extra }); setD(data); toast.success("Salvat"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
+  const save = async (extra = {}) => { try { const { data } = await api.put(`/anre/dossiers/${id}`, { company: d.company, staff: d.staff, equipment: d.equipment, org: d.org, target_types: d.target_types, ...extra }); setD(data); toast.success("Salvat"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   const up = async (key, file) => { const fd = new FormData(); fd.append("file", file); fd.append("issued", key === "cert_constatator" ? (window.prompt("Data emiterii certificatului (AAAA-LL-ZZ):") || "") : "");
     try { const { data } = await api.post(`/anre/dossiers/${id}/docs/${key}`, fd, { headers: { "Content-Type": "multipart/form-data" } }); setD(data); toast.success("Document încărcat"); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
   const review = async (key, body) => { try { const { data } = await api.post(`/anre/dossiers/${id}/docs/${key}/review`, body); setD(data); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } };
@@ -74,6 +75,7 @@ export function AnreEditor({ id, platform, onBack }) {
               {["A", "A1", "A2", "A3", "B", "Be", "Bi", "Bp", "C1A", "C1B", "C2A", "C2B", "D1", "D2", "E1", "E2", "E2PA"].map((t) => { const tt = d.target_types || []; return (
                 <label key={t} className="text-xs flex items-center gap-1 rounded border px-2 py-1" style={{ borderColor: "var(--line)" }}>
                   <input type="checkbox" checked={tt.includes(t)} onChange={(e) => setD({ ...d, target_types: e.target.checked ? [...tt, t] : tt.filter((x) => x !== t) })} data-testid={`anre-target-${t}`} />{t}</label>); })}</div></div></div>
+          <h3 className="font-bold mt-3 mb-1 text-sm">Organigramă</h3><Rows cols={ORG} rows={d.org || []} onChange={(v) => setD({ ...d, org: v })} tid="anre-org" />
           <h3 className="font-bold mt-3 mb-1 text-sm">Personal (Anexa 7)</h3><Rows cols={STAFF} rows={d.staff || []} onChange={(v) => setD({ ...d, staff: v })} tid="anre-staff" />
           <h3 className="font-bold mt-3 mb-1 text-sm">Dotări (Anexa 5)</h3><Rows cols={EQ} rows={d.equipment || []} onChange={(v) => setD({ ...d, equipment: v })} tid="anre-eq" />
           <Btn className="mt-3" onClick={() => save()} data-testid="anre-save">Salvează datele</Btn></div>
