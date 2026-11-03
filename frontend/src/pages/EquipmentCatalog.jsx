@@ -24,7 +24,27 @@ function DocSlot({ item, k, label, onUploaded }) {
   const officialUrl = item[`${k}_url`] || item[`${k}_source_url`] || "";
   const [importing, setImporting] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackUrl, setFeedbackUrl] = useState("");
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
   const f = item[k];
+  const submitFeedback = async () => {
+    if (!feedbackUrl.trim() && !feedbackNote.trim()) return toast.info("Adaugă un link oficial sau o observație.");
+    setFeedbackBusy(true);
+    try {
+      await api.post(`/catalog/${item.id}/document-feedback`, {
+        kind: k, suggested_url: feedbackUrl.trim(), note: feedbackNote.trim(),
+      });
+      toast.success("Propunerea a fost trimisă în lista de verificare a catalogului.");
+      setFeedbackUrl(""); setFeedbackNote(""); setFeedbackOpen(false);
+      onUploaded();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Propunerea nu a putut fi trimisă.");
+    } finally {
+      setFeedbackBusy(false);
+    }
+  };
   const importUrl = async () => {
     setImporting(true);
     try {
@@ -84,7 +104,8 @@ function DocSlot({ item, k, label, onUploaded }) {
     } catch { toast.error("Eroare la încărcare"); } finally { ref.current.value = ""; }
   };
   return (
-    <span className="flex w-full min-w-0 flex-wrap items-center gap-2">
+    <div className="w-full min-w-0">
+      <span className="flex w-full min-w-0 flex-wrap items-center gap-2">
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={up} data-testid={`upload-${k}-${item.id}`} />
       {f ? <button type="button" onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)} className="inline-flex items-center gap-1 text-[12px] font-bold text-left" style={{ color: "var(--blue)" }} data-testid={`open-${k}-${item.id}`} title={f.source_url || "Document încărcat"}><FileText size={13} /> {label}</button>
         : <span className="text-[12px]" style={{ color: "#b9770e" }}>{label} lipsă</span>}
@@ -93,7 +114,18 @@ function DocSlot({ item, k, label, onUploaded }) {
       <input className="den-input text-[11px] py-1 w-full sm:w-[220px] min-w-0" type="url" placeholder="Link PDF oficial HTTPS" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} aria-label={`Link oficial ${label}`} />
       <button onClick={importUrl} disabled={importing || !sourceUrl} className="text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Preia PDF de pe site-ul oficial" data-testid={`import-url-${k}-${item.id}`}>{importing ? "Se preia…" : "Importă PDF"}</button>
       {k === "datasheet" && f && <button onClick={extract} disabled={extracting} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Extrage numai specificațiile care apar în fișa PDF" data-testid={`ai-extract-${item.id}`}><Sparkles size={12} /> {extracting ? "Se citește…" : "Extrage specificații"}</button>}
-    </span>
+      <button type="button" onClick={() => setFeedbackOpen((value) => !value)} className="text-[11px] font-semibold underline" data-testid={`report-document-${k}-${item.id}`}>Semnalează document lipsă sau incorect</button>
+      </span>
+      {feedbackOpen && <div className="mt-2 rounded-lg border p-3 space-y-2" style={{ borderColor: "var(--line)", background: "#f8fafc" }}>
+        <p className="text-xs font-semibold">Propune un link oficial și/sau descrie problema. Propunerea intră la verificare înainte de import.</p>
+        <input className="den-input w-full text-xs" type="url" placeholder="Link HTTPS către documentul corect (opțional)" value={feedbackUrl} onChange={(e) => setFeedbackUrl(e.target.value)} aria-label={`Link propus pentru ${label}`} data-testid={`feedback-url-${k}-${item.id}`} />
+        <textarea className="den-input w-full text-xs" rows={2} maxLength={1000} placeholder="Ce lipsește sau ce trebuie corectat?" value={feedbackNote} onChange={(e) => setFeedbackNote(e.target.value)} aria-label={`Observație despre ${label}`} data-testid={`feedback-note-${k}-${item.id}`} />
+        <div className="flex gap-2">
+          <button type="button" onClick={submitFeedback} disabled={feedbackBusy || (!feedbackUrl.trim() && !feedbackNote.trim())} className="rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-50" style={{ borderColor: "var(--line)" }} data-testid={`submit-feedback-${k}-${item.id}`}>{feedbackBusy ? "Se trimite…" : "Trimite spre verificare"}</button>
+          <button type="button" onClick={() => setFeedbackOpen(false)} className="px-2 py-1.5 text-xs underline">Anulează</button>
+        </div>
+      </div>}
+    </div>
   );
 }
 
@@ -115,12 +147,20 @@ export default function EquipmentCatalog() {
   const [supplierResults, setSupplierResults] = useState([]);
   const [supplierLoading, setSupplierLoading] = useState(false);
   const [supplierImporting, setSupplierImporting] = useState("");
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [feedbackUpdating, setFeedbackUpdating] = useState("");
   const load = async () => {
     setLoading(true);
     setLoadError("");
     try {
       const { data } = await api.get("/data/catalog");
       setItems(Array.isArray(data) ? data : []);
+      try {
+        const feedbackResponse = await api.get("/catalog/document-feedback");
+        setFeedbacks(Array.isArray(feedbackResponse.data) ? feedbackResponse.data : []);
+      } catch {
+        setFeedbacks([]);
+      }
     } catch (e) {
       setLoadError(e.response?.data?.detail || "Catalogul nu s-a putut încărca. Verifică conexiunea și încearcă din nou.");
     } finally {
@@ -203,6 +243,34 @@ export default function EquipmentCatalog() {
     } finally { setSupplierImporting(""); }
   };
 
+  const reviewFeedback = async (feedback, status = "reviewed") => {
+    setFeedbackUpdating(feedback.id);
+    try {
+      await api.patch(`/catalog/document-feedback/${feedback.id}`, { status });
+      toast.success(status === "dismissed" ? "Propunerea a fost închisă." : "Propunerea a fost marcată ca verificată.");
+      await load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Propunerea nu a putut fi actualizată.");
+    } finally {
+      setFeedbackUpdating("");
+    }
+  };
+
+  const importFeedback = async (feedback) => {
+    if (!feedback.suggested_url) return reviewFeedback(feedback, "reviewed");
+    setFeedbackUpdating(feedback.id);
+    try {
+      await api.post(`/catalog/${feedback.item_id}/import-document`, { kind: feedback.kind, url: feedback.suggested_url });
+      await api.patch(`/catalog/document-feedback/${feedback.id}`, { status: "accepted" });
+      toast.success("Documentul propus a fost importat și asociat modelului.");
+      await load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Documentul nu a putut fi importat. Verifică să fie HTTPS și de la o sursă permisă.");
+    } finally {
+      setFeedbackUpdating("");
+    }
+  };
+
   const [importingOfficial, setImportingOfficial] = useState(false);
   const importOfficialDocuments = async () => {
     const jobs = items.flatMap((item) => ["datasheet", "conformity"]
@@ -259,6 +327,31 @@ export default function EquipmentCatalog() {
           {!form.id && <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>După salvare poți încărca fișa tehnică și declarația de conformitate din listă.</p>}
         </div>
       )}
+      {feedbacks.length > 0 && <section className="den-panel mb-4" aria-label="Propuneri de documente pentru catalog" data-testid="catalog-feedback-queue">
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div>
+            <h2 className="font-bold">Verifică documentele propuse ({feedbacks.length})</h2>
+            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Importul verifică din nou sursa și acceptă numai domeniile oficiale permise.</p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {feedbacks.map((feedback) => <article key={feedback.id} className="rounded-xl border p-3" style={{ borderColor: "var(--line)" }} data-testid={`catalog-feedback-${feedback.id}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold">{feedback.brand_model || "Model catalog"} <span className="font-normal">· {feedback.kind === "datasheet" ? "Fișă tehnică" : "Conformitate"}</span></p>
+                {feedback.note && <p className="text-xs mt-1">{feedback.note}</p>}
+                {feedback.suggested_url && <a href={feedback.suggested_url} target="_blank" rel="noopener noreferrer" className="text-xs underline break-all">Deschide documentul propus ↗</a>}
+                <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Propus de {feedback.submitted_by || "utilizator"} · {feedback.category || ""}</p>
+              </div>
+              <div className="flex gap-2">
+                {feedback.suggested_url && <button type="button" onClick={() => importFeedback(feedback)} disabled={feedbackUpdating === feedback.id} className="rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-50" style={{ borderColor: "var(--line)" }} data-testid={`feedback-import-${feedback.id}`}>{feedbackUpdating === feedback.id ? "Se verifică…" : "Verifică și importă"}</button>}
+                <button type="button" onClick={() => reviewFeedback(feedback)} disabled={feedbackUpdating === feedback.id} className="rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }} data-testid={`feedback-reviewed-${feedback.id}`}>Marchează verificat</button>
+                <button type="button" onClick={() => reviewFeedback(feedback, "dismissed")} disabled={feedbackUpdating === feedback.id} className="px-2 py-1.5 text-xs underline disabled:opacity-50">Închide</button>
+              </div>
+            </div>
+          </article>)}
+        </div>
+      </section>}
       <section className="den-panel mb-4" aria-label="Căutare la furnizori" data-testid="supplier-search-panel">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

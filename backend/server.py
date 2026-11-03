@@ -760,6 +760,79 @@ async def catalog_supplier_search(q: str = Query(""), category: str = Query("Inv
     return await SUPPLIER_CATALOG.search_supplier_products(q, category)
 
 
+@api_router.get("/catalog/document-feedback")
+async def list_catalog_document_feedback(user: dict = Depends(get_current_user)):
+    """List pending technical-document corrections for the signed-in DNS tenant."""
+    guard("catalog", user)
+    rows = await db.catalog_document_feedback.find(
+        {"owner": user["id"], "status": "pending"}, {"_id": 0}
+    ).sort("created_at", -1).limit(100).to_list(100)
+    return rows
+
+
+@api_router.post("/catalog/{item_id}/document-feedback")
+async def create_catalog_document_feedback(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Record a team suggestion for a missing or incorrect equipment document."""
+    from urllib.parse import urlparse
+    guard("catalog", user, write=True)
+    item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Modelul nu există în catalogul acestui cont")
+    body = await request.json()
+    kind = str(body.get("kind") or "").strip()
+    suggested_url = str(body.get("suggested_url") or "").strip()
+    note = str(body.get("note") or "").strip()
+    if kind not in ("datasheet", "conformity"):
+        raise HTTPException(status_code=400, detail="Alege fișa tehnică sau documentul de conformitate")
+    if len(suggested_url) > 2048 or len(note) > 1000:
+        raise HTTPException(status_code=400, detail="Linkul sau observația depășește limita permisă")
+    if not suggested_url and not note:
+        raise HTTPException(status_code=400, detail="Adaugă un link oficial sau o observație")
+    if suggested_url:
+        parsed = urlparse(suggested_url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise HTTPException(status_code=400, detail="Linkul propus trebuie să fie HTTPS și fără date de autentificare")
+    now = datetime.now(timezone.utc).isoformat()
+    document = item.get(kind)
+    document_url = document.get("source_url") if isinstance(document, dict) else ""
+    record = {
+        "id": str(uuid.uuid4()), "owner": user["id"], "item_id": item_id,
+        "brand_model": str(item.get("brand_model") or "")[:255],
+        "category": str(item.get("category") or "")[:80], "kind": kind,
+        "current_url": str(document_url or item.get(kind + "_url") or item.get(kind + "_source_url") or "")[:2048],
+        "suggested_url": suggested_url, "note": note, "status": "pending",
+        "submitted_by": str(user.get("email") or user.get("name") or "")[:255],
+        "created_at": now, "updated_at": now,
+    }
+    await db.catalog_document_feedback.insert_one(dict(record))
+    await audit(user, "propunere document catalog", "catalog", item_id, [kind, "suggested_url", "note"])
+    return {"ok": True, "id": record["id"], "status": "pending"}
+
+
+@api_router.patch("/catalog/document-feedback/{feedback_id}")
+async def update_catalog_document_feedback(feedback_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Mark a tenant's catalog-document suggestion as accepted, reviewed, or dismissed."""
+    guard("catalog", user, write=True)
+    body = await request.json()
+    status = str(body.get("status") or "").strip()
+    if status not in ("accepted", "reviewed", "dismissed"):
+        raise HTTPException(status_code=400, detail="Starea propunerii nu este validă")
+    record = await db.catalog_document_feedback.find_one(
+        {"id": feedback_id, "owner": user["id"]}, {"_id": 0}
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Propunerea nu există în acest cont")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.catalog_document_feedback.update_one(
+        {"id": feedback_id, "owner": user["id"]},
+        {"$set": {"status": status, "review_note": str(body.get("review_note") or "")[:1000],
+                  "reviewed_by": str(user.get("email") or user.get("name") or "")[:255],
+                  "updated_at": now}}
+    )
+    await audit(user, "revizuire propunere document catalog", "catalog", record["item_id"], [status])
+    return {"ok": True, "id": feedback_id, "status": status}
+
+
 @api_router.post("/catalog/supplier-import")
 async def catalog_supplier_import(request: Request, user: dict = Depends(get_current_user)):
     """Import verified public product data and linked official PDFs into the owner's catalog."""
