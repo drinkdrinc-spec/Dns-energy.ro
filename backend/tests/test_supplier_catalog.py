@@ -83,3 +83,24 @@ def test_smart_meter_category_searches_only_compatible_sources(monkeypatch):
 
     assert [item["product_url"] for item in result["products"]] == [product_url]
     assert not any(host == "depozitsolar.ro" for _, host in requests)
+
+
+
+def test_panel_temperature_coefficients_require_explicit_percent_per_degree_units():
+    valid = html.fromstring("""
+        <table>
+          <tr><th>Temperature coefficient of Voc</th><td>-0.25 %/°C</td></tr>
+          <tr><th>Temperature coefficient of Vmp</th><td>-0.29 %/°C</td></tr>
+          <tr><th>Temperature coefficient of Pmax</th><td>-0.35 %/°C</td></tr>
+        </table>
+    """)
+    missing_unit = html.fromstring("""
+        <table><tr><th>Temperature coefficient of Voc</th><td>-0.25</td></tr></table>
+    """)
+
+    assert supplier_catalog._properties(valid) == {
+        "coef_voc": -0.25,
+        "coef_vmp": -0.29,
+        "temp_pmax": -0.35,
+    }
+    assert "coef_voc" not in supplier_catalog._properties(missing_unit)
