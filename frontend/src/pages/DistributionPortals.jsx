@@ -8,7 +8,7 @@ const PORTALS = [
   { id: "deer", name: "DEER", detail: "Distribuție Energie Electrică România", url: "https://avize.distributie-energie.ro/", hints: ["5940"] },
   { id: "delgaz", name: "Delgaz Grid", detail: "Portal clienți și racordare", url: "https://delgaz.ro/login", hints: ["EMO3"] },
   { id: "oltenia", name: "Distribuție Oltenia", detail: "Portal DEO Connect", url: "https://portal.distributieoltenia.ro/", hints: [] },
-  { id: "retele", name: "Rețele Electrice România", detail: "Muntenia, Banat și Dobrogea", url: "https://www.reteleelectrice.ro/", hints: ["RO001E", "RO002E", "RO005E"] },
+  { id: "retele", name: "Rețele Electrice România", detail: "Muntenia, Banat și Dobrogea", url: "https://contulmeu.reteleelectrice.ro/", hints: ["RO001E", "RO002E", "RO005E"] },
 ];
 
 // Regional links and county groups are taken from DEER's June 2025 user guide.
