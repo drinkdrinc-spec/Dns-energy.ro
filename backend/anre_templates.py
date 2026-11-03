@@ -3,9 +3,9 @@ import io
 import re
 import unicodedata
 import uuid
+import logging
 from copy import deepcopy
 from pathlib import Path
-from copy import deepcopy
 from datetime import datetime, timezone, date
 
 from fastapi import HTTPException, Depends, UploadFile, File, Header, Query, Response
@@ -171,7 +171,7 @@ def _trim_to_annex(document, annex):
     for index, child in enumerate(children):
         if child.tag != qn("w:p"):
             continue
-        match = re.fullmatch(r"Anexa\\s+nr\\.\\s*(\\d+)", _paragraph_text(child, document), re.IGNORECASE)
+        match = re.fullmatch(r"Anexa\s+nr\.\s*(\d+)", _paragraph_text(child, document), re.IGNORECASE)
         if match:
             markers.append((index, int(match.group(1))))
     selected = next((index for index, number in markers if number == annex), None)
@@ -208,7 +208,7 @@ def _replace_annex4(document, data):
     firm = _company_value(company, "name")
     address = _company_value(company, "address")
     types = ", ".join(data.get("target_types") or []) or "[DE COMPLETAT]"
-    request = TYPES.get(data.get("kind"), "[DE COMPLETAT]")
+    request = AD.TYPES.get(data.get("kind"), "[DE COMPLETAT]")
     paragraphs = list(document.paragraphs)
     for paragraph in paragraphs:
         text = paragraph.text.strip()
@@ -343,7 +343,7 @@ async def filled(key, d):
         try:
             return fill_official_annex(key, d), DOCX, f"ANRE_Anexa_{OFFICIAL_ANNEXES[key]}.docx"
         except Exception as exc:
-            S.log.warning("Nu s-a putut precompleta Anexa ANRE %s: %s", key, type(exc).__name__)
+            logging.getLogger(__name__).warning("Nu s-a putut precompleta Anexa ANRE %s: %s", key, type(exc).__name__)
     return None
 
 
@@ -351,7 +351,7 @@ async def filled(key, d):
 async def tpl_list(user: dict = Depends(get_current_user)):
     platform_only(user)
     have = {t["key"]: t for t in await db.anre_templates.find({}, {"_id": 0, "path": 0}).to_list(50)}
-    return {"items": [{"key": k, "label": l, "template": have.get(k)} for k, l in KEYS.items()], "placeholders": PH}
+    return {"items": [{"key": k, "label": l, "template": have.get(k), "official_default": official_template_info(k)} for k, l in KEYS.items()], "placeholders": PH}
 
 
 @api.post("/admin/anre/templates/{key}")
