@@ -6,7 +6,7 @@ import { AtrDeadlines } from "@/components/AtrDeadlines";
 import {
   Users, FolderOpen, GitBranch, AlertTriangle, SquareStack, Zap, ExternalLink,
   ShieldAlert, FileText, SunMedium, Cpu, Archive, FileCheck2, Receipt,
-  ArrowRight, Upload, ClipboardCheck, PackageCheck, Search,
+  ArrowRight, Upload, ClipboardCheck, PackageCheck, Search, List as ListIcon, LayoutGrid,
 } from "lucide-react";
 
 const FLOW = [
@@ -118,6 +118,7 @@ export default function Dashboard() {
   const [clientResults, setClientResults] = useState([]);
   const [searchingClients, setSearchingClients] = useState(false);
   const [clientSearchFailed, setClientSearchFailed] = useState(false);
+  const [inboxView, setInboxView] = useState("list");
   useEffect(() => { api.get("/stats/dashboard").then((r) => setS(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     const query = clientQuery.trim();
@@ -132,6 +133,28 @@ export default function Dashboard() {
       .finally(() => { if (!cancelled) setSearchingClients(false); }), 250);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [clientQuery]);
+
+  const inboxItems = s.inbox || [];
+  const inboxStatuses = [...new Set(inboxItems.map((item) => item.status || "În lucru"))];
+  const renderInboxItem = (item) => {
+    const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono" };
+    const path = paths[item.module] || "/prosumator";
+    return (
+      <Link key={item.module + "-" + item.id} to={path + "?edit=" + encodeURIComponent(item.id)}
+        data-testid={"inbox-item-" + item.module + "-" + item.id}
+        className={`flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:shadow-sm ${inboxView === "kanban" ? "mb-2" : ""}`}
+        style={{ borderColor: "var(--line)", background: "var(--surface, white)" }}>
+        <span className="min-w-0">
+          <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
+          <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}</span>
+        </span>
+        <span className="shrink-0 text-right">
+          <span className="block text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#edf4ff", color: "var(--blue)" }}>{item.status || "În lucru"}</span>
+          <span className="block text-[10px] mt-1" style={{ color: "var(--muted)" }}>{item.updated_at ? new Date(item.updated_at).toLocaleDateString("ro-RO") : "—"}</span>
+        </span>
+      </Link>
+    );
+  };
 
   return (
     <div className="dns-dashboard">
@@ -158,34 +181,28 @@ export default function Dashboard() {
             <h2 id="dashboard-inbox-title" className="text-lg sm:text-xl font-bold">Dosare de urmărit</h2>
             <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>Deschide direct cererile și dosarele lucrate recent, în ordinea ultimei actualizări.</p>
           </div>
-          <FolderOpen className="hidden sm:block shrink-0" size={22} style={{ color: "var(--blue)" }} />
+          <div className="flex items-center gap-1 shrink-0 rounded-lg border p-1" style={{ borderColor: "var(--line)" }} aria-label="Mod vizualizare dosare">
+            <button type="button" onClick={() => setInboxView("list")} aria-pressed={inboxView === "list"} aria-label="Vizualizare listă" title="Listă" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "list" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><ListIcon size={17} /></button>
+            <button type="button" onClick={() => setInboxView("kanban")} aria-pressed={inboxView === "kanban"} aria-label="Vizualizare Kanban" title="Kanban" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "kanban" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><LayoutGrid size={17} /></button>
+          </div>
         </div>
-        {(s.inbox || []).length === 0 ? (
+        {inboxItems.length === 0 ? (
           <div className="text-sm py-5 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>
             Nu există încă dosare în lucru. Începe prin încărcarea documentelor clientului.
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-            {s.inbox.map((item) => {
-              const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono" };
-              const path = paths[item.module] || "/prosumator";
-              return (
-                <Link key={item.module + "-" + item.id} to={path + "?edit=" + encodeURIComponent(item.id)}
-                  data-testid={"inbox-item-" + item.module + "-" + item.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:shadow-sm"
-                  style={{ borderColor: "var(--line)", background: "var(--surface, white)" }}>
-                  <span className="min-w-0">
-                    <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
-                    <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}</span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <span className="block text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#edf4ff", color: "var(--blue)" }}>{item.status}</span>
-                    <span className="block text-[10px] mt-1" style={{ color: "var(--muted)" }}>{item.updated_at ? new Date(item.updated_at).toLocaleDateString("ro-RO") : "—"}</span>
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
+          inboxView === "list" ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">{inboxItems.map(renderInboxItem)}</div>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-2" data-testid="dashboard-inbox-kanban">
+              {inboxStatuses.map((status) => (
+                <div key={status} className="min-w-[260px] flex-1 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }}>
+                  <h3 className="text-xs font-extrabold uppercase tracking-wide mb-3">{status}<span className="ml-2 font-normal" style={{ color: "var(--muted)" }}>{inboxItems.filter((item) => (item.status || "În lucru") === status).length}</span></h3>
+                  {inboxItems.filter((item) => (item.status || "În lucru") === status).map(renderInboxItem)}
+                </div>
+              ))}
+            </div>
+          )
         )}
       </section>
 
