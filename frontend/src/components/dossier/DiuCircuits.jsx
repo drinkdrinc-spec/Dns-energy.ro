@@ -12,7 +12,7 @@ export function DiuCircuits({ form, setVal }) {
   const upd = (i, k, v) => setVal("circuits", cs.map((c, j) => (j === i ? { ...c, [k]: v } : c)));
   return (
     <div className="mt-4 space-y-4">
-      <div>
+      <div id="diu-plan-schema">
         <div className="text-xs font-bold mb-2">Circuitele TG și măsurătorile PRAM — introdu doar rezultate reale și limita de continuitate din proiect</div>
         <div className="overflow-x-auto">
           <table className="text-xs" data-testid="diu-circuits">
@@ -27,7 +27,7 @@ export function DiuCircuits({ form, setVal }) {
         </div>
         <button className="text-xs font-bold inline-flex items-center gap-1 mt-2" style={{ color: "var(--blue)" }} onClick={() => setVal("circuits", [...cs, { name: "", curve: "C" }])} data-testid="diu-c-add"><Plus size={13} /> Circuit</button>
       </div>
-      <div className="grid sm:grid-cols-3 gap-2">
+      <div id="diu-pram-section" className="grid sm:grid-cols-3 gap-2">
         {PRAM.map(([k, l, t]) => (
           <div key={k} className="den-field"><label>{l}</label>
             <input className="den-input" type={t || "text"} value={pm[k] ?? ""} onChange={(e) => setVal("pram_m", { ...pm, [k]: e.target.value })} data-testid={`diu-pram-${k}`} /></div>))}
@@ -35,3 +35,4 @@ export function DiuCircuits({ form, setVal }) {
     </div>
   );
 }
+
