@@ -63,6 +63,10 @@ const PROSUMER_OD_STAGES = [
   "Punerea sub tensiune a instalației de utilizare"
 ];
 
+const PROSUMER_QUICK_STATUSES = [
+  "În lucru", "Așteaptă depunere", "Dosar depus", "PV Teste / PIF", "Activat",
+];
+
 function normalizeClientName(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
 }
@@ -139,6 +143,7 @@ export default function ModulePage({ moduleKey }) {
   const [savedAt, setSavedAt] = useState(0);
   const [diuPre, setDiuPre] = useState(false);
   const [catalogImportsBusy, setCatalogImportsBusy] = useState(false);
+  const [statusSavingId, setStatusSavingId] = useState("");
 
   const load = () => api.get(`/data/${key}`).then(async (r) => {
     const rows = Array.isArray(r.data) ? r.data : [];
@@ -310,6 +315,19 @@ export default function ModulePage({ moduleKey }) {
 
   const openNew = () => { setForm(key === "atr" ? { date: new Date().toISOString().slice(0, 10), submission_mode: "Solicitantul depune direct" } : {}); setEditId(null); setChecks({}); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); };
+  const updateQuickStatus = async (item, status) => {
+    if (!status || status === item.status) return;
+    setStatusSavingId(item.id);
+    try {
+      const { data } = await api.patch("/data/prosumator/" + encodeURIComponent(item.id) + "/status", { status });
+      setItems((current) => current.map((row) => row.id === item.id ? { ...row, status: data.status, updated_at: data.updated_at } : row));
+      toast.success("Stadiul dosarului a fost actualizat.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Stadiul nu a putut fi actualizat.");
+    } finally {
+      setStatusSavingId("");
+    }
+  };
   const setVal = (name, value) => {
     if (key === "atr" && name === "client_name") {
       const client = (refOptions.clients || []).find((c) => c.label === value);
@@ -850,7 +868,13 @@ export default function ModulePage({ moduleKey }) {
                   <div className="min-w-0">
                     <h3 className="truncate font-bold">{it.client_name || it.number || "Dosar prosumator"}</h3>
                     <p className="mt-1 text-xs leading-5" style={{ color: "var(--muted)" }}>{it.number || "Fără număr"} · {it.power || it._kwp || "Putere necompletată"} kW</p>
-                    <p className="text-xs" style={{ color: "var(--muted)" }}>{it.operator || "Operator neales"} · {it.status || "În lucru"}</p>
+                    <p className="text-xs" style={{ color: "var(--muted)" }}>{it.operator || "Operator neales"}</p>
+                    <label className="mt-2 flex items-center gap-2 text-xs font-semibold" style={{ color: "var(--muted)" }}>
+                      Stadiu
+                      <select className="den-input min-h-9 min-w-0 py-1 text-xs" value={it.status || "În lucru"} disabled={Boolean(statusSavingId)} onChange={(event) => updateQuickStatus(it, event.target.value)} aria-label={"Stadiu dosar " + (it.number || it.id)} data-testid={"quick-status-mobile-" + it.id}>
+                        {[...new Set([it.status, ...PROSUMER_QUICK_STATUSES].filter(Boolean))].map((status) => <option key={status} value={status}>{status}</option>)}
+                      </select>
+                    </label>
                   </div>
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => openEdit(it)}>Deschide</button>
                 </div>
@@ -936,7 +960,13 @@ export default function ModulePage({ moduleKey }) {
               <tbody>
                 {filtered.map((it) => (
                   <tr key={it.id} className="border-t hover:bg-[#fafcff]" style={{ borderColor: "var(--line)" }}>
-                    {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{it[c.key] || "—"}</td>)}
+                    {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">
+                      {key === "prosumator" && c.key === "status" ? (
+                        <select className="den-input min-h-9 min-w-[150px] py-1 text-xs" value={it.status || "În lucru"} disabled={Boolean(statusSavingId)} onChange={(event) => updateQuickStatus(it, event.target.value)} aria-label={"Stadiu dosar " + (it.number || it.id)} data-testid={"quick-status-" + it.id}>
+                          {[...new Set([it.status, ...PROSUMER_QUICK_STATUSES].filter(Boolean))].map((status) => <option key={status} value={status}>{status}</option>)}
+                        </select>
+                      ) : (it[c.key] || "—")}
+                    </td>)}
                     {key === "atr" && (() => {
                       const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
                       const belongsToAtrClient = (prosumer) => {

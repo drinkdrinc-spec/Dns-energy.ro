@@ -660,6 +660,26 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
         doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
     return clean(doc)
 
+@api_router.patch("/data/prosumator/{item_id}/status")
+async def update_prosumer_status(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Update only the dossier's short workflow status, without changing technical data."""
+    guard("prosumator", user, write=True)
+    await check_access(user, "prosumator", item_id)
+    body = await request.json()
+    status = str(body.get("status") or "").strip()
+    if not status or len(status) > 80:
+        raise HTTPException(status_code=400, detail="Stadiul trebuie să conțină între 1 și 80 de caractere.")
+    updated_at = datetime.now(timezone.utc).isoformat()
+    result = await db.prosumator.update_one(
+        {"id": item_id, "owner": user["id"]},
+        {"$set": {"status": status, "updated_at": updated_at, "updated_by": user.get("email")}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    await audit(user, "actualizare stadiu", "prosumator", item_id, ["status"])
+    return {"ok": True, "id": item_id, "status": status, "updated_at": updated_at}
+
+
 @api_router.delete("/data/{module}/{item_id}")
 async def delete_item(module: str, item_id: str, user: dict = Depends(get_current_user)):
     if module not in MODULES:
