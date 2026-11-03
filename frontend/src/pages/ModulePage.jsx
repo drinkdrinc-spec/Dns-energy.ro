@@ -582,6 +582,21 @@ export default function ModulePage({ moduleKey }) {
       {form && (
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
+          {key === "prosumator" && editId && <section className="mb-5 rounded-xl border p-3 sm:p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="prosumer-quick-actions">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div><div className="text-sm font-bold">{form.client_name || "Dosar prosumator"}</div><div className="text-xs" style={{ color: "var(--muted)" }}>{[form.operator, form.pod && `POD ${form.pod}`, form.status].filter(Boolean).join(" · ")}</div></div>
+              <span className="text-xs font-semibold" style={{ color: "var(--blue)" }}>Acțiuni rapide dosar</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "var(--blue)" }} onClick={() => openAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`)} data-testid="quick-prosumer-pdf">Dosar complet PDF</button>
+              <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf?download=1`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema">Schema monofilară</button>
+              <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${encodeURIComponent(editId)}`, `buletin_pram_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-pram">Buletin PRAM</button>
+              <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openAuthenticatedFile(`/docs/pv_pif/${encodeURIComponent(editId)}`)} data-testid="quick-prosumer-pif">Proces-verbal PIF</button>
+              {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-atr">Cerere ATR</a>}
+              {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}&case=power-increase`} data-testid="quick-prosumer-power">Spor de putere</a>}
+              {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">Creează DI-U</a>}
+            </div>
+          </section>}
           {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} /> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
