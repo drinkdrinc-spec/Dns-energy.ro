@@ -1738,22 +1738,42 @@ async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None
             if same_client:
                 return selected
 
+    # Resolve modern records using indexed client_id lookups. Legacy dossiers
+    # without client_id are fetched with a narrow projection, so their large CEF
+    # payloads do not have to be loaded just to match a name/POD.
+    projection = {"_id": 0, "id": 1, "client_id": 1, "client_name": 1, "pod": 1, "address": 1}
+    candidate_rows = []
     if expected_client_id:
-        rows = await db.prosumator.find(query, {"_id": 0}).to_list(500)
+        candidate_rows = await db.prosumator.find(
+            {**query, "client_id": expected_client_id}, projection
+        ).sort("updated_at", -1).limit(500).to_list(500)
+        legacy_filter = {
+            **query,
+            "$or": [
+                {"client_id": {"$exists": False}},
+                {"client_id": None},
+                {"client_id": ""},
+            ],
+        }
+        legacy_rows = await db.prosumator.find(legacy_filter, projection).sort("updated_at", -1).limit(500).to_list(500)
+        candidate_rows.extend(
+            item for item in legacy_rows
+            if expected_name and _normalize_atr_match(item.get("client_name")) == expected_name
+        )
         candidates = [
-            item for item in rows
+            item for item in candidate_rows
             if (
                 str(item.get("client_id") or "") == expected_client_id
-                or (
-                    not item.get("client_id")
-                    and expected_name
-                    and _normalize_atr_match(item.get("client_name")) == expected_name
-                )
+                or (not item.get("client_id") and expected_name
+                    and _normalize_atr_match(item.get("client_name")) == expected_name)
             )
         ]
     elif expected_name:
-        rows = await db.prosumator.find(query, {"_id": 0}).to_list(500)
-        candidates = [item for item in rows if _normalize_atr_match(item.get("client_name")) == expected_name]
+        candidate_rows = await db.prosumator.find(query, projection).sort("updated_at", -1).limit(500).to_list(500)
+        candidates = [
+            item for item in candidate_rows
+            if _normalize_atr_match(item.get("client_name")) == expected_name
+        ]
     else:
         return None
 
@@ -1763,7 +1783,11 @@ async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None
         candidates = [item for item in candidates if _normalize_atr_match(item.get("pod")) == pod]
     elif address:
         candidates = [item for item in candidates if _normalize_atr_match(item.get("address")) == address]
-    return candidates[0] if len(candidates) == 1 else None
+    if len(candidates) != 1 or not candidates[0].get("id"):
+        return None
+    return await db.prosumator.find_one(
+        {**query, "id": str(candidates[0]["id"])}, {"_id": 0}
+    )
 
 
 async def dossier_ctx(owner, item_id: str):
@@ -2972,6 +2996,7 @@ async def startup():
         await db[m].create_index([("owner", 1), ("updated_at", -1)], name="owner_updated_at")
     for field in NUMERIC_CLIENT_SEARCH_FIELDS:
         await db.clients.create_index([("owner", 1), (field, 1)], name=f"owner_{field}")
+    await db.prosumator.create_index([("owner", 1), ("client_id", 1), ("pod", 1)], name="owner_client_id_pod")
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     jwt_secret = os.environ.get("JWT_SECRET", "")
