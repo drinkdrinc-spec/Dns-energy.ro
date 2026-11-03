@@ -88,7 +88,9 @@ export function PowerDossier({ id, form, setVal }) {
       {!selectedPros && <details className="mt-3 rounded-xl border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="power-equipment-config">
         <summary className="cursor-pointer text-sm font-semibold">Echipamente pentru cererea de spor</summary>
         <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Alege invertorul, panourile și bateria din catalog. Datele se preiau în Anexa 1 și în dosarul generat.</p>
-        <CefEditor value={form.power_cef || { grid: { supply: form.current_supply || "" }, inverters: [], shared_batteries: [] }} onChange={(value) => setVal("power_cef", value)} />\n      </details>}\n      {(selectedPros || equipment.length > 0 || batteryItems.length > 0) && <section className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="power-linked-equipment">
+        <CefEditor value={form.power_cef || { grid: { supply: form.current_supply || "" }, inverters: [], shared_batteries: [] }} onChange={(value) => setVal("power_cef", value)} />
+      </details>}
+      {(selectedPros || equipment.length > 0 || batteryItems.length > 0) && <section className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="power-linked-equipment">
         <b className="text-xs">Echipamente incluse în Anexa 1</b>
         <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
           <span><b>Invertor:</b> {inverterText.length ? inverterText.join("; ") : "nespecificat"}</span>
