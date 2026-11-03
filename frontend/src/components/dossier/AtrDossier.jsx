@@ -162,14 +162,14 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
       return true;
     });
   })();
-  const catalogEvidenceMissing = catalogRequirements.flatMap((item) =>
+  const catalogEvidenceMissing = selectedPros ? catalogRequirements.flatMap((item) =>
     ["Fișă tehnică", "Declarație de conformitate"].filter((documentKind) =>
       !catalogFiles.some((file) => file.kind === documentKind && (
         item.catalogId ? file.catalog_id === item.catalogId
           : String(file.model || "").trim().toLocaleLowerCase("ro-RO") === item.model.toLocaleLowerCase("ro-RO")
       ))
     ).map((documentKind) => `${documentKind} — ${item.model || item.kind}`)
-  );
+  ) : [];
   const catalogEquipmentComplete = Boolean(selectedPros && catalogRequirements.length > 0 && catalogEvidenceMissing.length === 0);
   const equipmentSummary = (() => {
     const cef = selectedPros?.cef || form.atr_cef || {};
