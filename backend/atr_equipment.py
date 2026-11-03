@@ -74,7 +74,9 @@ def catalog_documents_complete(cef: dict | None, files: list[dict] | None) -> bo
     for battery in cef.get("shared_batteries") or []:
         if isinstance(battery, dict):
             add(battery.get("catalog_id"))
-    add((cef.get("grid") or {}).get("meter_catalog_id"))
+    meter_id = (cef.get("grid") or {}).get("meter_catalog_id")
+    if meter_id:
+        add(meter_id)
     requirements = list(dict.fromkeys(requirements))
     if not requirements or any(not item for item in requirements):
         return False
