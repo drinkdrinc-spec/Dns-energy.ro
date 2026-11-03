@@ -94,6 +94,36 @@ def test_supplier_search_finds_model_on_later_depozit_solar_page(monkeypatch):
 
 
 
+def test_supplier_search_returns_all_discovered_matches_in_pages(monkeypatch):
+    category_url = "https://depozitsolar.ro/invertoare"
+    product_urls = [f"https://depozitsolar.ro/invertor-deye-model-{i}" for i in range(9)]
+    listing = "<nav>" + "".join(
+        f'<a href="/invertor-deye-model-{i}">Invertor Deye Model {i}</a>' for i in range(9)
+    ) + "</nav>"
+
+    async def fake_get(_client, url, host):
+        if url == category_url:
+            content = listing.encode()
+        elif url in product_urls:
+            content = f"<html><h1>Invertor Deye Model {product_urls.index(url)}</h1></html>".encode()
+        else:
+            return None
+        return httpx.Response(200, content=content, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(supplier_catalog, "_get", fake_get)
+    first = asyncio.run(supplier_catalog.search_supplier_products("Deye", "Invertor", offset=0, limit=4))
+    second = asyncio.run(supplier_catalog.search_supplier_products("Deye", "Invertor", offset=4, limit=4))
+    third = asyncio.run(supplier_catalog.search_supplier_products("Deye", "Invertor", offset=8, limit=4))
+
+    assert len(first["products"]) == 4
+    assert first["next_offset"] == 4 and first["has_more"]
+    assert len(second["products"]) == 4
+    assert second["next_offset"] == 8 and second["has_more"]
+    assert len(third["products"]) == 1
+    assert third["next_offset"] == 9 and not third["has_more"]
+    assert len({item["product_url"] for result in (first, second, third) for item in result["products"]}) == 9
+
+
 def test_smart_meter_category_searches_only_compatible_sources(monkeypatch):
     search_url = "https://solartech.ro/?s=Deye&post_type=product"
     product_url = "https://solartech.ro/smartmeter-deye-sdm120ct"

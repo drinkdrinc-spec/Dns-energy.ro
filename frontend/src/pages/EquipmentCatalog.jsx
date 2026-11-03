@@ -144,6 +144,8 @@ export default function EquipmentCatalog() {
   const [form, setForm] = useState(null);
   const [supplierResults, setSupplierResults] = useState([]);
   const [supplierLoading, setSupplierLoading] = useState(false);
+  const [supplierNextOffset, setSupplierNextOffset] = useState(0);
+  const [supplierHasMore, setSupplierHasMore] = useState(false);
   const [supplierImporting, setSupplierImporting] = useState("");
   const [feedbacks, setFeedbacks] = useState([]);
   const [feedbackUpdating, setFeedbackUpdating] = useState("");
@@ -200,13 +202,23 @@ export default function EquipmentCatalog() {
   };
   const remove = async (id) => { if (!window.confirm("Ștergi modelul din catalog?")) return; await api.delete(`/data/catalog/${id}`); load(); };
 
-  const searchSuppliers = async () => {
+  const searchSuppliers = async (append = false) => {
     if (q.trim().length < 2) return toast.info("Scrie cel puțin două caractere pentru căutarea la furnizori.");
+    const offset = append ? supplierNextOffset : 0;
     setSupplierLoading(true);
     try {
-      const { data } = await api.get("/catalog/supplier-search", { params: { q: q.trim(), category: cat } });
-      setSupplierResults(Array.isArray(data.products) ? data.products : []);
-      if (!data.products?.length) toast.info(data.message || "Nu s-au găsit produse.");
+      const { data } = await api.get("/catalog/supplier-search", {
+        params: { q: q.trim(), category: cat, offset, limit: 24 }, timeout: 60000,
+      });
+      const products = Array.isArray(data.products) ? data.products : [];
+      setSupplierResults((previous) => {
+        if (!append) return products;
+        const seen = new Set(previous.map((product) => product.product_url));
+        return [...previous, ...products.filter((product) => !seen.has(product.product_url))];
+      });
+      setSupplierNextOffset(Number(data.next_offset) || offset);
+      setSupplierHasMore(Boolean(data.has_more));
+      if (!products.length && !append && !data.has_more) toast.info(data.message || "Nu s-au găsit produse.");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Căutarea la furnizori nu este disponibilă acum.");
     } finally { setSupplierLoading(false); }
@@ -380,6 +392,7 @@ export default function EquipmentCatalog() {
             </button>
           </article>)}
         </div>}
+        {supplierHasMore && <div className="mt-3 flex justify-center"><Btn variant="secondary" onClick={() => searchSuppliers(true)} disabled={supplierLoading} data-testid="supplier-search-more">{supplierLoading ? "Se încarcă…" : "Încarcă următoarele rezultate"}</Btn></div>}
       </section>
       <div className="den-panel">
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">

@@ -217,21 +217,33 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     }
   };
 
-  const [supplierSearch, setSupplierSearch] = useState({ kind: "", loading: false, products: [], message: "" });
+  const [supplierSearch, setSupplierSearch] = useState({ kind: "", loading: false, products: [], message: "", nextOffset: 0, hasMore: false, query: "", category: "" });
 
-  const searchSupplierCatalog = async (kind) => {
-    const query = String(catalogSearch[kind] || "").trim();
-    const category = { inverter: "Invertor", panel: "Panou", battery: "Baterie", meter: "Smart meter" }[kind];
+  const searchSupplierCatalog = async (kind, append = false) => {
+    const query = append ? supplierSearch.query : String(catalogSearch[kind] || "").trim();
+    const category = append ? supplierSearch.category : { inverter: "Invertor", panel: "Panou", battery: "Baterie", meter: "Smart meter" }[kind];
     if (query.length < 2) {
-      setSupplierSearch({ kind, loading: false, products: [], message: "Introdu cel puțin două caractere din marcă sau model." });
+      setSupplierSearch({ kind, loading: false, products: [], message: "Introdu cel puțin două caractere din marcă sau model.", nextOffset: 0, hasMore: false, query, category });
       return;
     }
-    setSupplierSearch({ kind, loading: true, products: [], message: "" });
+    const offset = append ? supplierSearch.nextOffset : 0;
+    setSupplierSearch((previous) => ({ ...previous, kind, loading: true, message: "", query, category }));
     try {
-      const { data } = await api.get("/catalog/supplier-search", { params: { q: query, category }, timeout: 45000 });
-      setSupplierSearch({ kind, loading: false, products: data.products || [], message: data.message || "" });
+      const { data } = await api.get("/catalog/supplier-search", {
+        params: { q: query, category, offset, limit: 24 }, timeout: 60000,
+      });
+      const products = data.products || [];
+      setSupplierSearch((previous) => {
+        const seen = new Set(append ? previous.products.map((product) => product.product_url) : []);
+        return {
+          kind, loading: false,
+          products: [...(append ? previous.products : []), ...products.filter((product) => !seen.has(product.product_url))],
+          message: data.message || "", nextOffset: Number(data.next_offset) || offset,
+          hasMore: Boolean(data.has_more), query, category,
+        };
+      });
     } catch (error) {
-      setSupplierSearch({ kind, loading: false, products: [], message: error.response?.data?.detail || "Căutarea la furnizori nu este disponibilă momentan." });
+      setSupplierSearch((previous) => ({ ...previous, kind, loading: false, message: error.response?.data?.detail || "Căutarea la furnizori nu este disponibilă momentan." }));
     }
   };
 
@@ -348,6 +360,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
               disabled={supplierSearch.loading} onClick={() => importSupplierModel(kind, product)}>Importă în catalog și selectează</button>
           </div>)}
         </div>}
+        {supplierSearch.kind === kind && supplierSearch.hasMore && <button type="button" className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }} disabled={supplierSearch.loading} onClick={() => searchSupplierCatalog(kind, true)} data-testid={`supplier-search-more-${kind}`}>{supplierSearch.loading ? "Se încarcă…" : "Încarcă următoarele rezultate"}</button>}
         <select className="den-input" style={selectStyle} value={selected[kind] || ""} onChange={(e) => { choose(kind, e.target.value); setCatalogSearch((prev) => ({ ...prev, [kind]: "" })); }}>
           <option value="">Alege din catalog ({matches.length})...</option>
           {matches.map((x) => <option key={x.id} value={x.id}>{x.brand_model} {x.p_nom_kw ? `· ${x.p_nom_kw} kW` : x.w ? `· ${x.w} W` : x.kwh ? `· ${x.kwh} kWh` : ""}{!(x.datasheet && x.conformity) ? " · documente lipsă" : ""}</option>)}

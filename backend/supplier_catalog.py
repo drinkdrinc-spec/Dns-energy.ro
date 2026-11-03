@@ -265,7 +265,7 @@ def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
     urls.extend(url for _, url in sorted(pages)[:MAX_LISTING_PAGES - 1])
     return urls
 
-async def search_supplier_products(query: str, category: str) -> dict:
+async def search_supplier_products(query: str, category: str, offset: int = 0, limit: int = 24) -> dict:
     query = re.sub(r"\s+", " ", (query or "").strip())[:100]
     if len(query) < 2 or category not in CATEGORIES:
         return {"products": [], "sources": list(SOURCES), "message": "Introdu cel puțin două caractere și selectează invertor, panou, baterie sau smart meter."}
@@ -304,9 +304,16 @@ async def search_supplier_products(query: str, category: str) -> dict:
                         continue
                     seen.add(url)
                     candidates.append((name, source, category, url, title))
+        # Keep all matching candidates from the bounded listing pages and interleave suppliers.
+        by_supplier = {name: [row for row in candidates if row[0] == name] for name, _ in active_sources}
         balanced = []
-        for name, _ in active_sources:
-            balanced.extend([x for x in candidates if x[0] == name][:8])
+        for index in range(max((len(rows) for rows in by_supplier.values()), default=0)):
+            for name, _ in active_sources:
+                if index < len(by_supplier[name]):
+                    balanced.append(by_supplier[name][index])
+        offset = max(0, int(offset))
+        limit = max(1, min(48, int(limit)))
+        page_rows = balanced[offset:offset + limit]
         sem = asyncio.Semaphore(8)
 
         async def detail(row):
@@ -326,13 +333,15 @@ async def search_supplier_products(query: str, category: str) -> dict:
                 return {"supplier": name, "category": cat, "brand_model": title[:240], "product_url": url,
                         "price_text": price, "availability": stock, **_properties(doc), **_documents(doc, url)}
 
-        products = await asyncio.gather(*[detail(row) for row in balanced[:24]])
+        products = await asyncio.gather(*[detail(row) for row in page_rows])
     found, seen = [], set()
     for product in products:
         if product and product["product_url"] not in seen:
             found.append(product)
             seen.add(product["product_url"])
-    return {"products": found, "sources": list(SOURCES),
+    next_offset = offset + len(page_rows)
+    return {"products": found, "sources": list(SOURCES), "offset": offset,
+            "next_offset": next_offset, "has_more": next_offset < len(balanced),
             "message": "" if found else "Nu am găsit modele cu toate cuvintele din căutare. Încearcă modelul exact sau o căutare mai scurtă."}
 
 

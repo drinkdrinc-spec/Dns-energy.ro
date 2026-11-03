@@ -852,10 +852,14 @@ async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_
             "content_type": expected_type, "size": result.get("size", len(data))}
 
 @api_router.get("/catalog/supplier-search")
-async def catalog_supplier_search(q: str = Query(""), category: str = Query("Invertor"), user: dict = Depends(get_current_user)):
-    """Search public product listings from the configured Romanian equipment retailers."""
+async def catalog_supplier_search(
+    q: str = Query(""), category: str = Query("Invertor"),
+    offset: int = Query(0, ge=0, le=10000), limit: int = Query(24, ge=1, le=48),
+    user: dict = Depends(get_current_user),
+):
+    """Search public product listings in bounded pages from the configured suppliers."""
     guard("catalog", user)
-    return await SUPPLIER_CATALOG.search_supplier_products(q, category)
+    return await SUPPLIER_CATALOG.search_supplier_products(q, category, offset=offset, limit=limit)
 
 
 @api_router.get("/catalog/document-feedback")
