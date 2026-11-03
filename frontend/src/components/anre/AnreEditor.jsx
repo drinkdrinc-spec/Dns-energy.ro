@@ -6,9 +6,11 @@ import { Btn } from "@/components/Layout";
 import { streamAI, clean } from "@/lib/ai";
 
 const CO = [["name", "Denumire"], ["cui", "CUI"], ["regcom", "Nr. Reg. Comerțului"], ["address", "Sediu social"], ["rep_name", "Reprezentant legal"], ["rep_role", "Funcție"],
+  ["rep_cnp", "CNP reprezentant"], ["rep_id_series", "Serie CI"], ["rep_id_number", "Număr CI"], ["rep_id_issuer", "Eliberat de"], ["rep_id_date", "Data eliberării"],
+  ["bank_account", "IBAN"], ["bank_name", "Banca"], ["bank_branch", "Sucursala"], ["fax", "Fax"],
   ["email", "E-mail"], ["phone", "Telefon"], ["attest_no", "Nr. atestat existent"], ["attest_types", "Tipuri atestat existent"], ["attest_valid", "Valabil până la"]];
-const STAFF = [["name", "Nume"], ["role", "Funcție"], ["grade", "Grad/tip autorizare"], ["license", "Nr. legitimație"], ["license_valid", "Valabilă până la"], ["contract", "Contract"]];
-const EQ = [["name", "Dotare"], ["serial", "Serie/buc."], ["ownership", "Proprietate/folosință"], ["calibration", "Verificare metrologică"]];
+const STAFF = [["name", "Nume"], ["education", "Studii/calificare"], ["role", "Funcție"], ["grade", "Grad/tip autorizare"], ["license", "Nr. legitimație"], ["license_valid", "Valabilă până la"], ["contract", "Contract"], ["contract_duration", "Durata contractului"]];
+const EQ = [["group", "Categorie dotare"], ["name", "Dotare"], ["quantity", "Cantitate"], ["serial", "Serie"], ["ownership", "Proprietate/folosință"], ["calibration", "Verificare metrologică"]];
 const ORG = [["dept", "Compartiment"], ["name", "Responsabil"], ["activity", "Activități"]];
 
 function Rows({ cols, rows, onChange, tid }) {
