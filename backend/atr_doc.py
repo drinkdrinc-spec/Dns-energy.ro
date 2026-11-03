@@ -393,6 +393,30 @@ def _deer_table_row(table, index, values):
             _deer_cell(table.cell(index, col), value)
 
 
+def _set_deer_storage_choice(doc, batteries: list, inverters: list, cef: dict):
+    """Mark the official Annex 2 storage checkbox only when the saved configuration is explicit."""
+    yes = next((p for p in doc.paragraphs if "DEŢIN" in p.text.upper() and "NU DEŢIN" not in p.text.upper()), None)
+    no = next((p for p in doc.paragraphs if "NU DEŢIN" in p.text.upper()), None)
+    if not yes or not no:
+        return
+
+    if batteries:
+        selected = "yes"
+    elif inverters and all(inv.get("battery_mode") == "none" for inv in inverters) and not cef.get("shared_batteries"):
+        selected = "no"
+    else:
+        return
+
+    def set_choice(paragraph, label, checked):
+        paragraph.clear()
+        mark = paragraph.add_run("☒ " if checked else "☐ ")
+        mark.font.name = "Segoe UI Symbol"
+        paragraph.add_run(label)
+
+    set_choice(yes, "DEŢIN", selected == "yes")
+    set_choice(no, "NU DEŢIN.", selected == "no")
+
+
 def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dict) -> bytes:
     """Fill the official DEER DOCX template with known dossier values; never infer missing facts."""
     from base64 import b64decode
@@ -460,6 +484,8 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
     # Official DEER Anexa 1 and 4/5 technical tables share this ordering; Anexa 2 has fewer tables.
     tables = doc.tables
     is_annex2 = filename == "anexa2_existing.docx.b64"
+    if is_annex2:
+        _set_deer_storage_choice(doc, batteries, inverters, cef)
     power_table = 0
     if not is_annex2 and filename != "anexa3_update.docx.b64" and len(tables) > power_table:
         _deer_cell(tables[power_table].cell(0, 1), rec.get("p_abs_kw") or pros.get("bransament_kw"))
