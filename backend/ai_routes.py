@@ -360,11 +360,11 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
             return _parse(raw)
         extracted = await asyncio.wait_for(extract_with_ai(), timeout=25)
     except HTTPException as exc:
-        if exc.status_code == 403:
+        if exc.status_code in (402, 403):
             # Catalog text extraction is a local feature; AI entitlement is needed only for the model-assisted path.
             extracted = extract_equipment_specs(category, source_text)
             if not extracted:
-                raise HTTPException(status_code=403, detail="Pentru această fișă nu am găsit valori etichetate lizibile. Extragerea imaginilor scanate necesită funcția AI.")
+                raise HTTPException(status_code=exc.status_code, detail="Pentru această fișă nu am găsit valori etichetate lizibile. Extragerea imaginilor scanate necesită funcția AI.")
             engine = "local_text"
         elif exc.status_code == 503:
             extracted = extract_equipment_specs(category, source_text)
