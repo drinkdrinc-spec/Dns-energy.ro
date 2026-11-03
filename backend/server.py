@@ -41,6 +41,15 @@ async def healthz():
     return {"status": "ok"}
 
 
+@app.get("/readyz", include_in_schema=False)
+async def readyz():
+    try:
+        await asyncio.wait_for(client.admin.command("ping"), timeout=5.0)
+    except Exception:
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": {"mongodb": "unavailable"}})
+    return {"status": "ready", "checks": {"mongodb": "ok"}}
+
+
 # Existing Render service was provisioned with /docs as its health check.
 # In private mode FastAPI's interactive docs are disabled, so keep this path
 # as a harmless health alias until the service configuration is updated.
