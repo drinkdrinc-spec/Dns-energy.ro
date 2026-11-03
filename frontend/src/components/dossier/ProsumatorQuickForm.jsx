@@ -217,6 +217,44 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     }
   };
 
+  const [supplierSearch, setSupplierSearch] = useState({ kind: "", loading: false, products: [], message: "" });
+
+  const searchSupplierCatalog = async (kind) => {
+    const query = String(catalogSearch[kind] || "").trim();
+    const category = { inverter: "Invertor", panel: "Panou", battery: "Baterie", meter: "Smart meter" }[kind];
+    if (query.length < 2) {
+      setSupplierSearch({ kind, loading: false, products: [], message: "Introdu cel puțin două caractere din marcă sau model." });
+      return;
+    }
+    setSupplierSearch({ kind, loading: true, products: [], message: "" });
+    try {
+      const { data } = await api.get("/catalog/supplier-search", { params: { q: query, category }, timeout: 45000 });
+      setSupplierSearch({ kind, loading: false, products: data.products || [], message: data.message || "" });
+    } catch (error) {
+      setSupplierSearch({ kind, loading: false, products: [], message: error.response?.data?.detail || "Căutarea la furnizori nu este disponibilă momentan." });
+    }
+  };
+
+  const importSupplierModel = async (kind, product) => {
+    setSupplierSearch((prev) => ({ ...prev, loading: true, message: "" }));
+    try {
+      const { data } = await api.post("/catalog/supplier-import", {
+        supplier: product.supplier, category: product.category, product_url: product.product_url,
+      }, { timeout: 60000 });
+      const item = data.item;
+      if (!item?.id) throw new Error("Produsul nu a putut fi adăugat în catalog.");
+      setCatalog((prev) => [item, ...prev.filter((row) => row.id !== item.id)]);
+      choose(kind, item.id, item);
+      setCatalogSearch((prev) => ({ ...prev, [kind]: "" }));
+      setSupplierSearch({ kind: "", loading: false, products: [], message: "" });
+      setCatalogDocStatus([item.datasheet?.storage_path ? "fișa tehnică" : "", item.conformity?.storage_path ? "declarația de conformitate" : ""].filter(Boolean).length
+        ? "Model importat în catalogul firmei; documentele disponibile au fost descărcate și se atașează la dosar."
+        : "Model importat în catalogul firmei. Furnizorul nu a oferit documentele în format PDF verificabil; completează-le în Catalog echipamente.");
+    } catch (error) {
+      setSupplierSearch((prev) => ({ ...prev, loading: false, message: error.response?.data?.detail || error.message || "Modelul nu a putut fi importat." }));
+    }
+  };
+
   const addCatalogModel = async (kind, rawName) => {
     const brand_model = String(rawName || "").trim();
     if (!brand_model) return;
@@ -293,6 +331,23 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         <span>{label}</span>
         <input className="den-input mb-1" value={query} onChange={(e) => setCatalogSearch((prev) => ({ ...prev, [kind]: e.target.value }))}
           placeholder="Caută după marcă sau model..." aria-label={`Caută ${label} în catalog`} data-testid={`catalog-search-${kind}`} />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }}
+            disabled={supplierSearch.loading && supplierSearch.kind === kind}
+            onClick={() => searchSupplierCatalog(kind)}
+            data-testid={`supplier-search-${kind}`}>{supplierSearch.loading && supplierSearch.kind === kind ? "Se caută la furnizori…" : "Caută și în magazine"}</button>
+          <span className="text-xs" style={{ color: "var(--muted)" }}>Depozit Solar · SolarHev · SolarTech</span>
+        </div>
+        {supplierSearch.kind === kind && (supplierSearch.products.length > 0 || supplierSearch.message) && <div className="mt-2 space-y-2 rounded-lg border p-2" style={{ borderColor: "var(--line)" }}>
+          {supplierSearch.message && <p className="text-xs" role="status">{supplierSearch.message}</p>}
+          {supplierSearch.products.map((product) => <div key={product.product_url} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 p-2">
+            <div className="min-w-0"><p className="text-xs font-semibold">{product.brand_model}</p>
+              <p className="text-[11px]" style={{ color: "var(--muted)" }}>{product.supplier}{product.price_text ? ` · ${product.price_text}` : ""}{product.availability ? ` · ${product.availability}` : ""}</p>
+              <p className="text-[11px]" style={{ color: "var(--muted)" }}>{product.datasheet_url ? "Fișă PDF" : "Fișă indisponibilă"} · {product.conformity_url ? "conformitate PDF" : "conformitate indisponibilă"}</p></div>
+            <button type="button" className="rounded-lg border px-3 py-2 text-xs font-bold" style={{ borderColor: "var(--line)" }}
+              disabled={supplierSearch.loading} onClick={() => importSupplierModel(kind, product)}>Importă în catalog și selectează</button>
+          </div>)}
+        </div>}
         <select className="den-input" style={selectStyle} value={selected[kind] || ""} onChange={(e) => { choose(kind, e.target.value); setCatalogSearch((prev) => ({ ...prev, [kind]: "" })); }}>
           <option value="">Alege din catalog ({matches.length})...</option>
           {matches.map((x) => <option key={x.id} value={x.id}>{x.brand_model} {x.p_nom_kw ? `· ${x.p_nom_kw} kW` : x.w ? `· ${x.w} W` : x.kwh ? `· ${x.kwh} kWh` : ""}{!(x.datasheet && x.conformity) ? " · documente lipsă" : ""}</option>)}
