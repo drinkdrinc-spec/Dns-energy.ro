@@ -52,9 +52,19 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
   const clients = refOptions.clients || [];
   const pros = refOptions.prosumator || [];
   const norm = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
-  const explicitPros = form.pros_id ? pros.find((p) => p.id === form.pros_id) : null;
-  const linkedByClientId = form.client_id ? pros.filter((p) => p.client_id === form.client_id) : [];
-  const sameNamePros = pros.filter((p) => Boolean(form.client_name && norm(p.client_name) === norm(form.client_name)));
+  const locationKey = (value) => norm(value).replace(/[^a-z0-9]/g, "");
+  const matchesSelectedSite = (p) => {
+    const requestPod = String(form.pod || "").replace(/\s+/g, "").toUpperCase();
+    const dossierPod = String(p.pod || "").replace(/\s+/g, "").toUpperCase();
+    if (requestPod && dossierPod) return requestPod === dossierPod;
+    const requestAddress = locationKey(form.address);
+    const dossierAddress = locationKey(p.address);
+    return !requestAddress || !dossierAddress || requestAddress === dossierAddress;
+  };
+  const explicitCandidate = form.pros_id ? pros.find((p) => p.id === form.pros_id) : null;
+  const explicitPros = explicitCandidate && matchesSelectedSite(explicitCandidate) ? explicitCandidate : null;
+  const linkedByClientId = form.client_id ? pros.filter((p) => p.client_id === form.client_id && matchesSelectedSite(p)) : [];
+  const sameNamePros = pros.filter((p) => Boolean(form.client_name && norm(p.client_name) === norm(form.client_name) && matchesSelectedSite(p)));
   const linkedPros = explicitPros ? [explicitPros] : linkedByClientId.length ? linkedByClientId : sameNamePros;
   const needsManualPros = Boolean(!explicitPros && form.client_id && !linkedByClientId.length && sameNamePros.length);
   const autoPros = explicitPros ? [explicitPros] : linkedByClientId.length === 1 ? linkedByClientId : !form.client_id && sameNamePros.length === 1 ? sameNamePros : [];
