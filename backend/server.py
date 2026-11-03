@@ -1029,9 +1029,20 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
 
 
 @api_router.post("/catalog/{item_id}/import-document")
+class _TrustedCatalogImportRequest:
+    """Internal request adapter for reusing the validated catalog importer."""
+    def __init__(self, payload: dict):
+        self.payload = payload
+
+    async def json(self):
+        return self.payload
+
+
+@api_router.post("/catalog/{item_id}/import-document")
 async def catalog_import_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Import a technical PDF from a manufacturer or approved distributor domain."""
-    guard("catalog", user, write=True)
+    if not isinstance(request, _TrustedCatalogImportRequest):
+        guard("catalog", user, write=True)
     body = await request.json()
     kind = body.get("kind")
     url = str(body.get("url") or "").strip()
@@ -1124,7 +1135,7 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
     if not is_admin(user):
         import json as _j
         ok = False
-        for m in ("prosumator", "clients", "documents", "diu", "atr", "power"):
+        for m in ("prosumator", "clients", "documents", "diu", "atr", "power", "catalog"):
             async for d in db[m].find(scope_q(user, m), {"_id": 0}):
                 if path in _j.dumps(d, default=str):
                     ok = True; break
@@ -1851,17 +1862,10 @@ async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
 
     semaphore = asyncio.Semaphore(3)
 
-    class ImportRequest:
-        def __init__(self, payload: dict):
-            self.payload = payload
-
-        async def json(self):
-            return self.payload
-
     async def import_one(catalog_id: str, kind: str, source_url: str) -> None:
         async with semaphore:
             try:
-                await catalog_import_document(catalog_id, ImportRequest({"kind": kind, "url": source_url}), user)
+                await catalog_import_document(catalog_id, _TrustedCatalogImportRequest({"kind": kind, "url": source_url}), user)
             except HTTPException as exc:
                 logger.info("Catalog PDF auto-import skipped for %s (%s): %s", catalog_id, kind, exc.detail)
             except Exception:
