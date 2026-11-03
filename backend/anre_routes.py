@@ -9,6 +9,7 @@ from fastapi import HTTPException, Request, Depends, UploadFile, File, Form, Hea
 
 import server as S
 import anre_doc as AD
+from anre_rules import has_attestation_type
 
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
 PRICE = 3200.0
@@ -144,7 +145,7 @@ def check(d):
         for person in named_staff.values():
             if person.get("grade") and not person.get("license"):
                 rep["incomplete"].append(f"Fișa de personal: lipsește numărul legitimației ANRE pentru {person.get('name')}")
-    if d.get("kind") in ("b_c1a", "b_c2a") and "B" not in str(c.get("attest_types") or ""):
+    if d.get("kind") in ("b_c1a", "b_c2a") and not has_attestation_type(c.get("attest_types"), "B"):
         rep["issues"].append("Solicitare de extindere de la B, dar atestatul existent declarat nu conține tipul B — verificați eligibilitatea")
     for s in d.get("staff") or []:
         if s.get("license_valid") and s["license_valid"] < date.today().isoformat():
