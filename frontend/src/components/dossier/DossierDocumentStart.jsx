@@ -24,8 +24,8 @@ function putNonempty(base, next) {
   return out;
 }
 
-export function DossierDocumentStart({ onCreated }) {
-  const [open, setOpen] = useState(false);
+export function DossierDocumentStart({ onCreated, autoOpen = false }) {
+  const [open, setOpen] = useState(Boolean(autoOpen));
   const [values, setValues] = useState(EMPTY);
   const [files, setFiles] = useState({ ci: [], factura: [], cf: [], altele: [] });
   const [notes, setNotes] = useState({});
