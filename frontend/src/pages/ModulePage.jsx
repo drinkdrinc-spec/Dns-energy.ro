@@ -728,12 +728,43 @@ export default function ModulePage({ moduleKey }) {
                 const group = filtered.filter((item) => String(item.operator_stage || item.status || "În lucru").trim() === status);
                 return <section key={status} className="rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }} aria-label={`Stadiu ${status}`}>
                   <div className="mb-3 flex items-center justify-between gap-2 text-sm font-bold"><span>{status}</span><span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{group.length}</span></div>
-                  <div className="grid gap-2">{group.map((item) => <article key={item.id} className="rounded-lg border bg-white p-3 shadow-sm" style={{ borderColor: "var(--line)" }}>
-                    <div className="font-semibold leading-5">{item.client_name || item.number || "Dosar prosumator"}</div>
-                    <div className="mt-1 text-xs leading-5" style={{ color: "var(--muted)" }}>{item.number || "Fără număr"} · {item.power || item._kwp || "Putere necompletată"} kW</div>
-                    <div className="text-xs leading-5" style={{ color: "var(--muted)" }}>{item.operator || "Operator neales"}</div>
-                    <button type="button" className="mt-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => openEdit(item)}>Deschide</button>
-                  </article>)}</div>
+                  <div className="grid gap-2">{group.map((item) => {
+                    const client = prosumerFilterRows.find((row) => row.item.id === item.id)?.client;
+                    const inverters = item.cef?.inverters || [];
+                    const parsePower = (value) => {
+                      const parsed = Number(String(value ?? "").replace(",", "."));
+                      return Number.isFinite(parsed) ? parsed : 0;
+                    };
+                    const inverterKw = inverters.reduce((total, inverter) => {
+                      const power = parsePower(inverter.p_nom_kw || inverter.p_max_kw);
+                      const count = Math.max(1, parsePower(inverter.count || inverter.quantity) || 1);
+                      return total + power * count;
+                    }, 0) || parsePower(item.inverter_kw);
+                    const inverterModels = [...new Set(inverters.map((inverter) => inverter.brand_model || inverter.model).filter(Boolean))];
+                    const panelModels = [...new Set(inverters.map((inverter) => inverter.panel_model).filter(Boolean))];
+                    const batteryModels = [...new Set([
+                      ...inverters.filter((inverter) => inverter.battery_mode === "own").map((inverter) => inverter.battery?.model),
+                      ...(item.cef?.shared_batteries || []).map((battery) => battery.model),
+                    ].filter(Boolean))];
+                    const pod = item.pod || client?.pod || "";
+                    const pvKwp = installedPanelKwp(item);
+                    return <article key={item.id} className="rounded-lg border bg-white p-3 shadow-sm" style={{ borderColor: "var(--line)" }}>
+                      <div className="font-semibold leading-5">{item.client_name || item.number || "Dosar prosumator"}</div>
+                      <div className="mt-1 text-xs leading-5" style={{ color: "var(--muted)" }}>{item.number || "Fără număr"} · {item.request_type || "Tip cerere neales"}</div>
+                      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] leading-4">
+                        <div><span style={{ color: "var(--muted)" }}>POD </span>{pod || "necompletat"}</div>
+                        <div><span style={{ color: "var(--muted)" }}>Distribuitor </span>{item.operator || client?.operator || "neales"}</div>
+                        <div><span style={{ color: "var(--muted)" }}>Evacuare </span>{item.power ? String(item.power) + " kW" : "necompletată"}</div>
+                        <div><span style={{ color: "var(--muted)" }}>Invertor </span>{inverterKw ? Number(inverterKw.toFixed(2)) + " kW" : "neales"}</div>
+                        <div><span style={{ color: "var(--muted)" }}>Panouri </span>{pvKwp ? String(pvKwp) + " kWp" : (panelModels.length ? panelModels.join(", ") : "neprecizate")}</div>
+                        <div><span style={{ color: "var(--muted)" }}>Baterie </span>{batteryModels.length ? batteryModels.join(", ") : "fără date"}</div>
+                      </div>
+                      {(inverterModels.length > 0 || panelModels.length > 0) && <div className="mt-2 border-t pt-2 text-[11px] leading-4" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>
+                        {[inverterModels.length > 0 ? "Invertor: " + inverterModels.join(", ") : "", panelModels.length > 0 ? "Panouri: " + panelModels.join(", ") : ""].filter(Boolean).join(" · ")}
+                      </div>}
+                      <button type="button" className="mt-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => openEdit(item)}>Deschide</button>
+                    </article>;
+                  })}</div>
                 </section>;
               })}
             </div>
