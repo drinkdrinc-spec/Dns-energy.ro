@@ -141,8 +141,8 @@ export default function Dashboard() {
   }, [clientQuery]);
 
   const inboxItems = s.inbox || [];
-  const moduleLabels = { prosumator: "Prosumator", atr: "Cerere ATR", power: "Spor de putere", diu: "DI-U", mono: "Schemă monofilară" };
-  const inboxStatuses = [...new Set(inboxItems.map((item) => item.status || "În lucru"))];
+  const moduleLabels = { prosumator: "Prosumator", atr: "Cerere ATR", power: "Spor de putere", diu: "DI-U", mono: "Schemă monofilară", anre_dossiers: "Dosar ANRE" };
+  const inboxStatuses = [...new Set(inboxItems.map((item) => item.workflow_status || item.status || "În lucru"))];
   const inboxOperators = [...new Set(inboxItems.map((item) => item.operator || item.distributor).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, "ro-RO"));
   const normalizedInboxQuery = inboxQuery.trim().toLocaleLowerCase("ro-RO");
@@ -151,12 +151,13 @@ export default function Dashboard() {
       .filter(Boolean).join(" ").toLocaleLowerCase("ro-RO");
     return (!normalizedInboxQuery || searchText.includes(normalizedInboxQuery))
       && (inboxModule === "all" || item.module === inboxModule)
-      && (inboxStatus === "all" || (item.status || "În lucru") === inboxStatus)
+      && (inboxStatus === "all" || (item.workflow_status || item.status || "În lucru") === inboxStatus)
       && (inboxOperator === "all" || (item.operator || item.distributor) === inboxOperator);
   });
   const renderInboxItem = (item) => {
-    const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono" };
+    const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono", anre_dossiers: "/dosare-anre" };
     const path = paths[item.module] || "/prosumator";
+    const openParam = item.module === "anre_dossiers" ? "open" : "edit";
     const itemKey = item.module + "-" + item.id;
     const currentStatus = item.workflow_status || item.status || "În lucru";
     const stages = ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru depunere", "Depus la operator", "În așteptare la operator", "Avizat", "Respins", "Finalizat"];
@@ -165,12 +166,12 @@ export default function Dashboard() {
         data-testid={"inbox-item-" + item.module + "-" + item.id}
         className={`flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:shadow-sm ${inboxView === "kanban" ? "mb-2" : ""}`}
         style={{ borderColor: "var(--line)", background: "var(--surface, white)" }}>
-        <Link to={path + "?edit=" + encodeURIComponent(item.id)} className="min-w-0 flex-1">
+        <Link to={path + "?" + openParam + "=" + encodeURIComponent(item.id)} className="min-w-0 flex-1">
           <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
           <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}{item.pod ? " · POD " + item.pod : ""}{item.operator ? " · " + item.operator : ""}</span>
           <span className="block text-[10px] mt-1" style={{ color: "var(--muted)" }}>{item.updated_at ? new Date(item.updated_at).toLocaleDateString("ro-RO") : "—"}</span>
         </Link>
-        <select
+        {item.module === "anre_dossiers" ? <span className="shrink-0 rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "#eef4ff", color: "var(--blue)" }}>{currentStatus}</span> : <select
           className="den-input shrink-0 !w-auto max-w-[48%] !py-1 !px-2 !text-[11px] font-bold"
           aria-label={`Stadiul dosarului ${item.client_name || item.number || item.label}`}
           data-testid={"inbox-status-" + itemKey}
@@ -192,7 +193,7 @@ export default function Dashboard() {
           }}>
           {!stages.includes(currentStatus) && <option value={currentStatus}>{currentStatus}</option>}
           {stages.map((status) => <option key={status} value={status}>{status}</option>)}
-        </select>
+        </select>}
       </article>
     );
   };
@@ -208,9 +209,9 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Stat label="Clienți înregistrați" value={s.clients} foot="În baza de date" icon={Users} />
-        <Stat label="Dosare active" value={s.total_dossiers ?? (s.diu + s.mono)} foot="Prosumator, ATR, spor, DI-U și scheme" icon={FolderOpen} />
+        <Stat label="Dosare active" value={s.total_dossiers ?? (s.diu + s.mono)} foot="Prosumator, ATR, spor, DI-U, scheme și ANRE" icon={FolderOpen} />
         <Stat label="Scheme monofilare" value={s.mono} foot="Înregistrări" icon={GitBranch} />
-        <Stat label="De verificat" value={s.pending} foot="Documente incomplete" color="var(--amber)" icon={AlertTriangle} />
+        <Stat label="Necesită atenție" value={s.pending} foot="Dosare în lucru sau de verificat" color="var(--amber)" icon={AlertTriangle} />
       </div>
 
       <section className="den-panel mb-6" aria-labelledby="dashboard-workload-title" data-testid="dashboard-workload">
@@ -286,8 +287,8 @@ export default function Dashboard() {
             <div className="flex gap-3 overflow-x-auto pb-2" data-testid="dashboard-inbox-kanban">
               {inboxStatuses.filter((status) => inboxStatus === "all" || status === inboxStatus).map((status) => (
                 <div key={status} className="min-w-[260px] flex-1 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }}>
-                  <h3 className="text-xs font-extrabold uppercase tracking-wide mb-3">{status}<span className="ml-2 font-normal" style={{ color: "var(--muted)" }}>{visibleInboxItems.filter((item) => (item.status || "În lucru") === status).length}</span></h3>
-                  {visibleInboxItems.filter((item) => (item.status || "În lucru") === status).map(renderInboxItem)}
+                  <h3 className="text-xs font-extrabold uppercase tracking-wide mb-3">{status}<span className="ml-2 font-normal" style={{ color: "var(--muted)" }}>{visibleInboxItems.filter((item) => (item.workflow_status || item.status || "În lucru") === status).length}</span></h3>
+                  {visibleInboxItems.filter((item) => (item.workflow_status || item.status || "În lucru") === status).map(renderInboxItem)}
                 </div>
               ))}
             </div>

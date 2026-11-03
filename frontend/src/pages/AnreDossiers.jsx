@@ -12,7 +12,7 @@ export default function AnreDossiers() {
   const { user } = useAuth();
   const [list, setList] = useState([]);
   const [companyProfile, setCompanyProfile] = useState(null);
-  const [open, setOpen] = useState(null);
+  const [open, setOpen] = useState(() => new URLSearchParams(window.location.search).get("open") || null);
   const fromMail = new URLSearchParams(window.location.search).get("tip") === "vizare";
   const [kind, setKind] = useState(fromMail ? "vizare" : "nou");
   const load = () => api.get("/anre/dossiers").then((r) => setList(r.data));

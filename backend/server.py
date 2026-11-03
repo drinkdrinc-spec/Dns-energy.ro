@@ -734,6 +734,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         {"$nor": [
             {"client_name": {"$regex": r"^TEST", "$options": "i"}},
             {"number": {"$regex": r"^TEST[-_]", "$options": "i"}},
+            {"company.name": {"$regex": r"^TEST", "$options": "i"}},
         ]},
     ]}
     client_test_filter = {"$and": [
@@ -747,7 +748,6 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     clients = await db.clients.count_documents({**scope_q(user, "clients"), **client_test_filter})
     diu = await db.diu.count_documents({**owner, **test_dossier_filter})
     mono = await db.mono.count_documents({**scope_q(user, "mono"), **test_dossier_filter})
-    pending = await db.diu.count_documents({**owner, **test_dossier_filter, "status": {"$in": ["În lucru", "Documente de completat", "În verificare"]}})
     recent = await db.diu.find({**owner, **test_dossier_filter}).sort("created_at", -1).to_list(5)
 
     # A compact, actionable work inbox inspired by the reference app's dossier list.
@@ -758,10 +758,12 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         ("power", "Spor de putere"),
         ("diu", "Dosar DI-U"),
         ("mono", "Schemă monofilară"),
+        ("anre_dossiers", "Dosar ANRE"),
     ]
     inbox = []
     projection = {"_id": 0, "id": 1, "client_name": 1, "number": 1,
                   "pod": 1, "operator": 1, "operator_name": 1, "distributor": 1,
+                  "company.name": 1,
                   "kwp": 1, "inverter_kw": 1, "status": 1, "workflow_status": 1, "operator_stage": 1,
                   "updated_at": 1, "created_at": 1}
     for module, label in inbox_modules:
@@ -771,7 +773,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                 "id": row.get("id"),
                 "module": module,
                 "label": label,
-                "client_name": row.get("client_name") or "",
+                "client_name": row.get("client_name") or (row.get("company") or {}).get("name") or "",
                 "number": row.get("number") or "",
                 "pod": row.get("pod") or row.get("pod_number") or "",
                 "operator": row.get("operator") or row.get("operator_name") or row.get("distributor") or "",
@@ -799,6 +801,8 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         ]).to_list(length=None):
             stage = str(row.get("_id") or "În lucru")
             stage_counts[stage] = stage_counts.get(stage, 0) + int(row.get("count") or 0)
+        if module == "anre_dossiers":
+            continue
         for row in await db[module].aggregate([
             {"$match": match},
             {"$project": {"group": operator_expr}},
@@ -806,6 +810,16 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         ]).to_list(length=None):
             operator = str(row.get("_id") or "Operator necompletat")
             operator_counts[operator] = operator_counts.get(operator, 0) + int(row.get("count") or 0)
+
+    # Count work that still needs attention across every dossier module shown
+    # in the inbox, not just DI-U. A separate workflow_status takes precedence
+    # over the technical or operator status stored in `status`.
+    attention_stages = {
+        "În lucru", "Documente de completat", "În verificare", "Documente lipsă",
+        "În completare", "Ciornă", "Așteaptă depunere", "Pregătit pentru depunere",
+        "Pregătit pentru semnare", "PV Teste / PIF",
+    }
+    pending = sum(count for stage, count in stage_counts.items() if stage in attention_stages)
 
     return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
             "recent": [clean(r) for r in recent], "inbox": inbox[:12],
