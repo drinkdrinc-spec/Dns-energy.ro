@@ -117,16 +117,18 @@ export default function Dashboard() {
   const [clientQuery, setClientQuery] = useState("");
   const [clientResults, setClientResults] = useState([]);
   const [searchingClients, setSearchingClients] = useState(false);
+  const [clientSearchFailed, setClientSearchFailed] = useState(false);
   useEffect(() => { api.get("/stats/dashboard").then((r) => setS(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     const query = clientQuery.trim();
-    if (query.length < 2) { setClientResults([]); setSearchingClients(false); return undefined; }
+    if (query.length < 2) { setClientResults([]); setSearchingClients(false); setClientSearchFailed(false); return undefined; }
     let cancelled = false;
     setClientResults([]);
+    setClientSearchFailed(false);
     setSearchingClients(true);
-    const timer = setTimeout(() => api.get("/data/clients", { params: { q: query } })
-      .then((r) => { if (!cancelled) setClientResults((r.data || []).slice(0, 8)); })
-      .catch(() => { if (!cancelled) setClientResults([]); })
+    const timer = setTimeout(() => api.get("/clients/search", { params: { q: query } })
+      .then((r) => { if (!cancelled) { setClientResults((r.data?.results || []).slice(0, 8)); setClientSearchFailed((r.data?.unavailable || []).includes("Client")); } })
+      .catch(() => { if (!cancelled) { setClientResults([]); setClientSearchFailed(true); } })
       .finally(() => { if (!cancelled) setSearchingClients(false); }), 250);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [clientQuery]);
@@ -158,20 +160,20 @@ export default function Dashboard() {
           className="den-input w-full"
           value={clientQuery}
           onChange={(event) => setClientQuery(event.target.value)}
-          placeholder="Caută nume, POD, telefon, e-mail sau adresă…"
+          placeholder="Caută nume, CI/CUI, POD, telefon, e-mail sau adresă…"
           aria-label="Caută în baza de clienți"
           data-testid="dashboard-client-search-input"
         />
         {clientQuery.trim().length >= 2 && <div className="mt-2 divide-y" style={{ borderColor: "var(--line)" }} aria-live="polite">
           {searchingClients ? <div className="py-3 text-xs" style={{ color: "var(--muted)" }}>Caut în baza de date…</div> : clientResults.length ? clientResults.map((client) => (
-            <Link key={client.id} to={"/clienti?edit=" + encodeURIComponent(client.id)} className="flex items-center justify-between gap-3 py-3 hover:bg-slate-50" data-testid={"dashboard-client-result-" + client.id}>
+            <Link key={client.id} to={client.href} className="flex items-center justify-between gap-3 py-3 hover:bg-slate-50" data-testid={"dashboard-client-result-" + client.id}>
               <span className="min-w-0">
-                <b className="block text-sm truncate">{client.name || "Client fără nume"}</b>
-                <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{[client.pod, client.phone, client.address].filter(Boolean).join(" · ") || "Deschide fișa clientului"}</span>
+                <b className="block text-sm truncate">{client.title || "Client fără nume"}</b>
+                <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{client.detail || "Deschide fișa clientului"}</span>
               </span>
               <ArrowRight size={16} className="shrink-0" style={{ color: "var(--blue)" }} />
             </Link>
-          )) : <div className="py-3 text-xs" style={{ color: "var(--muted)" }}>Nu am găsit clienți pentru această căutare.</div>}
+          )) : <div className="py-3 text-xs" style={{ color: "var(--muted)" }}>{clientSearchFailed ? "Căutarea bazei de clienți nu este disponibilă momentan." : "Nu am găsit clienți pentru această căutare."}</div>}
         </div>}
       </section>
 
@@ -244,13 +246,14 @@ export default function Dashboard() {
         ) : (
           <div className="divide-y" style={{ borderColor: "var(--line)" }}>
             {s.recent.map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-3 py-3">
+              <Link key={r.id} to={`/diu?edit=${encodeURIComponent(r.id)}`} aria-label={`Deschide dosarul DI-U ${r.number || ""} pentru ${r.client_name || "client"}`} data-testid={`recent-dossier-${r.id}`}
+                className="flex items-center justify-between gap-3 py-3 rounded-lg px-2 -mx-2 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <div className="min-w-0">
                   <div className="font-semibold text-sm break-words">{r.number || "Fără număr"} · {r.client_name || "—"}</div>
                   <div className="text-[12px]" style={{ color: "var(--muted)" }}>{r.type} · {r.power ? `${r.power} kW` : "—"}</div>
                 </div>
                 <span className="shrink-0 text-[11px] font-bold px-3 py-1 rounded-full" style={{ background: "#fff1d6", color: "#a65b00" }}>{r.status || "În lucru"}</span>
-              </div>
+              </Link>
             ))}
           </div>
         )}

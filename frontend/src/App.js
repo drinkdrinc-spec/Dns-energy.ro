@@ -34,8 +34,8 @@ import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
 
 function Protected({ children }) {
-  const { user } = useAuth();
-  if (user === null) return <div className="min-h-screen grid place-items-center text-sm text-slate-400">Se încarcă...</div>;
+  const { user, authChecking } = useAuth();
+  if (user === null) return <div className="min-h-screen grid place-items-center text-sm text-slate-500" role="status">{authChecking ? "Verific sesiunea DNS Energy…" : "Pregătesc accesul…"}</div>;
   if (!user) { if (window.location.search) sessionStorage.setItem("den_next", window.location.pathname + window.location.search); return <Navigate to="/login" replace />; }
   return children;
 }

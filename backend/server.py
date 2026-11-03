@@ -18,6 +18,7 @@ import re
 import bcrypt
 import jwt
 import requests
+from client_search import build_client_search_queries, NUMERIC_CLIENT_SEARCH_FIELDS
 import io
 import zipfile
 from datetime import datetime, timezone, timedelta
@@ -396,7 +397,7 @@ def clean(doc: dict) -> dict:
 
 
 QUICK_SEARCH_MODULES = [
-    ("clients", "Client", "client_name", ["name", "phone", "email", "cnp", "pod", "address", "locality", "county"], "/clienti"),
+    ("clients", "Client", "client_name", ["name", "phone", "email", "cnp", "idcode", "cui", "regcom", "id_series", "id_number", "pod", "address", "locality", "county"], "/clienti"),
     ("prosumator", "Dosar prosumator", "client_name", ["client_name", "number", "pod", "address", "locality", "county", "operator"], "/prosumator"),
     ("atr", "Cerere ATR", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/cerere-atr"),
     ("power", "Spor de putere", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/spor-putere"),
@@ -425,7 +426,7 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
         rows = await db[module].find(query, {"_id": 0, "id": 1, "name": 1, "client_name": 1, "client_id": 1,
                                              "number": 1, "original_filename": 1, "doc_type": 1, "kind": 1,
                                              "brand_model": 1, "category": 1, "supplier": 1,
-                                             "pod": 1, "address": 1, "locality": 1, "county": 1,
+                                             "pod": 1, "address": 1, "locality": 1, "county": 1, "phone": 1, "email": 1, "cui": 1, "regcom": 1,
                                              "operator": 1, "title": 1, "filename": 1, "type": 1,
                                              "is_test": 1}).sort("updated_at", -1).limit(5).to_list(5)
         matches = []
@@ -436,7 +437,7 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
             if not item_id:
                 continue
             client_name = row.get(name_key) or row.get("name") or "Înregistrare fără nume"
-            detail = " · ".join(str(row.get(k)) for k in ("number", "pod", "locality", "county", "operator") if row.get(k))
+            detail = " · ".join(str(row.get(k)) for k in ("number", "pod", "phone", "email", "cui", "regcom", "locality", "county", "operator") if row.get(k))
             title = client_name
             href = f"{route}?edit={item_id}"
             if module == "catalog":
@@ -453,10 +454,12 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
 
     module_matches = await asyncio.gather(*(search_module(spec) for spec in QUICK_SEARCH_MODULES), return_exceptions=True)
     collections = []
-    for matches in module_matches:
+    unavailable = []
+    for spec, matches in zip(QUICK_SEARCH_MODULES, module_matches):
         if isinstance(matches, Exception):
             logger.warning("Quick search collection failed: %s", type(matches).__name__)
             collections.append([])
+            unavailable.append(spec[1])
             continue
         collections.append(matches)
 
@@ -469,8 +472,58 @@ async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: d
             if index < len(items):
                 results.append(items[index])
                 if len(results) >= 24:
-                    return {"results": results}
-    return {"results": results}
+                    return {"results": results, "unavailable": unavailable}
+    return {"results": results, "unavailable": unavailable}
+
+@api_router.get("/clients/search")
+async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), user: dict = Depends(get_current_user)):
+    """Search only the signed-in tenant's clients for the dashboard typeahead."""
+    term = q.strip()
+    if len(term) < 2:
+        return {"results": [], "unavailable": []}
+    guard("clients", user)
+    queries = build_client_search_queries(scope_q(user, "clients"), term)
+    projection = {"_id": 0, "id": 1, "name": 1, "pod": 1, "phone": 1, "email": 1,
+                  "address": 1, "locality": 1, "county": 1, "cui": 1, "regcom": 1, "is_test": 1, "updated_at": 1}
+
+    async def fetch_matches(query: dict, indexed_field: str | None = None):
+        cursor = db.clients.find(query, projection)
+        if indexed_field:
+            # Keep prefix searches on owner+field indexes. Without the hint,
+            # the planner may choose owner+updated_at and scan every client
+            # belonging to this tenant before applying the identifier filter.
+            cursor = cursor.hint(f"owner_{indexed_field}")
+        return await cursor.sort("updated_at", -1).limit(8).to_list(8)
+
+    if term.isdigit():
+        query_rows = await asyncio.gather(*(
+            fetch_matches(query, field)
+            for query, field in zip(queries, NUMERIC_CLIENT_SEARCH_FIELDS)
+        ))
+    else:
+        query_rows = await asyncio.gather(*(fetch_matches(query) for query in queries))
+    by_id = {}
+    for rows in query_rows:
+        for row in rows:
+            item_id = str(row.get("id") or "")
+            if not item_id:
+                continue
+            previous = by_id.get(item_id)
+            if previous is None or str(row.get("updated_at") or "") > str(previous.get("updated_at") or ""):
+                by_id[item_id] = row
+
+    results = []
+    for row in sorted(by_id.values(), key=lambda item: str(item.get("updated_at") or ""), reverse=True)[:8]:
+        name = str(row.get("name") or "")
+        if row.get("is_test") or re.search(r"\bTEST\b", name, re.I):
+            continue
+        item_id = str(row.get("id") or "")
+        detail = " · ".join(str(row.get(k)) for k in ("pod", "phone", "email", "cui", "regcom", "address", "locality", "county") if row.get(k))
+        results.append({"id": item_id, "module": "clients", "label": "Client",
+                        "title": name or "Client fără nume", "detail": detail,
+                        "href": f"/clienti?edit={item_id}"})
+    return {"results": results, "unavailable": []}
+
 
 @api_router.get("/data/{module}")
 async def list_items(module: str, q: Optional[str] = None, user: dict = Depends(get_current_user)):
@@ -480,10 +533,36 @@ async def list_items(module: str, q: Optional[str] = None, user: dict = Depends(
     query = scope_q(user, module)
     if module == "catalog":
         await seed_catalog(user["id"])
-    items = await db[module].find(query).sort("created_at", -1).to_list(2000)
+    search_fields = {
+        "clients": ("name", "phone", "email", "cnp", "idcode", "id_number", "pod", "address", "locality", "county", "cui", "regcom"),
+        "prosumator": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
+        "diu": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "pros_id"),
+        "atr": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
+        "power": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
+        "documents": ("client_name", "title", "name", "filename", "original_filename", "doc_type", "kind", "type", "pod"),
+        "catalog": ("brand_model", "category", "supplier", "manufacturer", "model"),
+        "projects": ("name", "number", "client_name", "address", "locality", "county", "status"),
+        "works": ("name", "number", "client_name", "address", "locality", "county", "status"),
+        "mono": ("client_name", "number", "title", "address", "pod", "status"),
+        "panels": ("client_name", "number", "title", "address", "pod", "status"),
+        "anti": ("client_name", "number", "title", "address", "pod", "status"),
+        "pram": ("client_name", "number", "title", "pod", "instrument", "status"),
+        "equipment": ("name", "brand_model", "category", "serial", "manufacturer"),
+        "archived_dossiers": ("client_name", "number", "title", "address", "pod", "operator"),
+        "staff": ("name", "email", "phone", "function", "staff_id"),
+        "instruments": ("name", "model", "serial", "type", "manufacturer"),
+    }
+    term = str(q or "").strip()
+    if term and module in search_fields:
+        # Apply the filter in MongoDB. Avoid transferring large dossier rows and
+        # embedded file metadata to the browser just to search their JSON text.
+        pattern = re.compile(re.escape(term), re.IGNORECASE)
+        query = {"$and": [query, {"$or": [{field: pattern} for field in search_fields[module]]}]}
+        return [clean(i) for i in await db[module].find(query).sort("created_at", -1).limit(2000).to_list(2000)]
+    items = await db[module].find(query).sort("created_at", -1).limit(2000).to_list(2000)
     items = [clean(i) for i in items]
-    if q:
-        ql = q.lower()
+    if term:
+        ql = term.lower()
         items = [i for i in items if ql in str(i).lower()]
     return items
 
@@ -1685,22 +1764,42 @@ async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None
             if same_client:
                 return selected
 
+    # Resolve modern records using indexed client_id lookups. Legacy dossiers
+    # without client_id are fetched with a narrow projection, so their large CEF
+    # payloads do not have to be loaded just to match a name/POD.
+    projection = {"_id": 0, "id": 1, "client_id": 1, "client_name": 1, "pod": 1, "address": 1}
+    candidate_rows = []
     if expected_client_id:
-        rows = await db.prosumator.find(query, {"_id": 0}).to_list(500)
+        candidate_rows = await db.prosumator.find(
+            {**query, "client_id": expected_client_id}, projection
+        ).sort("updated_at", -1).limit(500).to_list(500)
+        legacy_filter = {
+            **query,
+            "$or": [
+                {"client_id": {"$exists": False}},
+                {"client_id": None},
+                {"client_id": ""},
+            ],
+        }
+        legacy_rows = await db.prosumator.find(legacy_filter, projection).sort("updated_at", -1).limit(500).to_list(500)
+        candidate_rows.extend(
+            item for item in legacy_rows
+            if expected_name and _normalize_atr_match(item.get("client_name")) == expected_name
+        )
         candidates = [
-            item for item in rows
+            item for item in candidate_rows
             if (
                 str(item.get("client_id") or "") == expected_client_id
-                or (
-                    not item.get("client_id")
-                    and expected_name
-                    and _normalize_atr_match(item.get("client_name")) == expected_name
-                )
+                or (not item.get("client_id") and expected_name
+                    and _normalize_atr_match(item.get("client_name")) == expected_name)
             )
         ]
     elif expected_name:
-        rows = await db.prosumator.find(query, {"_id": 0}).to_list(500)
-        candidates = [item for item in rows if _normalize_atr_match(item.get("client_name")) == expected_name]
+        candidate_rows = await db.prosumator.find(query, projection).sort("updated_at", -1).limit(500).to_list(500)
+        candidates = [
+            item for item in candidate_rows
+            if _normalize_atr_match(item.get("client_name")) == expected_name
+        ]
     else:
         return None
 
@@ -1710,7 +1809,11 @@ async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None
         candidates = [item for item in candidates if _normalize_atr_match(item.get("pod")) == pod]
     elif address:
         candidates = [item for item in candidates if _normalize_atr_match(item.get("address")) == address]
-    return candidates[0] if len(candidates) == 1 else None
+    if len(candidates) != 1 or not candidates[0].get("id"):
+        return None
+    return await db.prosumator.find_one(
+        {**query, "id": str(candidates[0]["id"])}, {"_id": 0}
+    )
 
 
 async def dossier_ctx(owner, item_id: str):
@@ -2917,6 +3020,9 @@ async def startup():
         # Keep tenant-scoped list and quick-search sorts efficient as collections grow.
         await db[m].create_index([("owner", 1), ("created_at", -1)], name="owner_created_at")
         await db[m].create_index([("owner", 1), ("updated_at", -1)], name="owner_updated_at")
+    for field in NUMERIC_CLIENT_SEARCH_FIELDS:
+        await db.clients.create_index([("owner", 1), (field, 1)], name=f"owner_{field}")
+    await db.prosumator.create_index([("owner", 1), ("client_id", 1), ("updated_at", -1)], name="owner_client_id_updated_at")
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     jwt_secret = os.environ.get("JWT_SECRET", "")
