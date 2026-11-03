@@ -123,6 +123,8 @@ export default function Dashboard() {
   const [inboxModule, setInboxModule] = useState("all");
   const [inboxStatus, setInboxStatus] = useState("all");
   const [inboxOperator, setInboxOperator] = useState("all");
+  const [workflowStatusBusy, setWorkflowStatusBusy] = useState("");
+  const [workflowStatusError, setWorkflowStatusError] = useState("");
   useEffect(() => { api.get("/stats/dashboard").then((r) => setS(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     const query = clientQuery.trim();
@@ -155,20 +157,43 @@ export default function Dashboard() {
   const renderInboxItem = (item) => {
     const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono" };
     const path = paths[item.module] || "/prosumator";
+    const itemKey = item.module + "-" + item.id;
+    const currentStatus = item.workflow_status || item.status || "În lucru";
+    const stages = ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru depunere", "Depus la operator", "În așteptare la operator", "Avizat", "Respins", "Finalizat"];
     return (
-      <Link key={item.module + "-" + item.id} to={path + "?edit=" + encodeURIComponent(item.id)}
+      <article key={itemKey}
         data-testid={"inbox-item-" + item.module + "-" + item.id}
         className={`flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:shadow-sm ${inboxView === "kanban" ? "mb-2" : ""}`}
         style={{ borderColor: "var(--line)", background: "var(--surface, white)" }}>
-        <span className="min-w-0">
+        <Link to={path + "?edit=" + encodeURIComponent(item.id)} className="min-w-0 flex-1">
           <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
           <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}{item.pod ? " · POD " + item.pod : ""}{item.operator ? " · " + item.operator : ""}</span>
-        </span>
-        <span className="shrink-0 text-right">
-          <span className="block text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#edf4ff", color: "var(--blue)" }}>{item.status || "În lucru"}</span>
           <span className="block text-[10px] mt-1" style={{ color: "var(--muted)" }}>{item.updated_at ? new Date(item.updated_at).toLocaleDateString("ro-RO") : "—"}</span>
-        </span>
-      </Link>
+        </Link>
+        <select
+          className="den-input shrink-0 !w-auto max-w-[48%] !py-1 !px-2 !text-[11px] font-bold"
+          aria-label={`Stadiul dosarului ${item.client_name || item.number || item.label}`}
+          data-testid={"inbox-status-" + itemKey}
+          value={currentStatus}
+          disabled={workflowStatusBusy === itemKey}
+          onChange={async (event) => {
+            const nextStatus = event.target.value;
+            setWorkflowStatusBusy(itemKey);
+            setWorkflowStatusError("");
+            try {
+              await api.patch(`/data/${encodeURIComponent(item.module)}/${encodeURIComponent(item.id)}/status`, { status: nextStatus });
+              const refreshed = await api.get("/stats/dashboard");
+              setS(refreshed.data);
+            } catch (error) {
+              setWorkflowStatusError(error.response?.data?.detail || "Nu am putut salva stadiul dosarului.");
+            } finally {
+              setWorkflowStatusBusy("");
+            }
+          }}>
+          {!stages.includes(currentStatus) && <option value={currentStatus}>{currentStatus}</option>}
+          {stages.map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
+      </article>
     );
   };
 
@@ -222,6 +247,7 @@ export default function Dashboard() {
       <AtrDeadlines />
 
       <section className="den-panel mb-6" aria-labelledby="dashboard-inbox-title" data-testid="dashboard-inbox">
+        {workflowStatusError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{workflowStatusError}</p>}
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--blue)" }}>ACTIVITATE RECENTĂ</div>

@@ -660,24 +660,26 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
         doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
     return clean(doc)
 
-@api_router.patch("/data/prosumator/{item_id}/status")
-async def update_prosumer_status(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Update only the dossier's short workflow status, without changing technical data."""
-    guard("prosumator", user, write=True)
-    await check_access(user, "prosumator", item_id)
+@api_router.patch("/data/{module}/{item_id}/status")
+async def update_dossier_workflow_status(module: str, item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Update a dashboard workflow label without overwriting the dossier's technical/operator status."""
+    if module not in ("prosumator", "atr", "power", "diu", "mono"):
+        raise HTTPException(status_code=404, detail="Modulul nu acceptă stadii de lucru rapide")
+    guard(module, user, write=True)
+    await check_access(user, module, item_id)
     body = await request.json()
     status = str(body.get("status") or "").strip()
     if not status or len(status) > 80:
         raise HTTPException(status_code=400, detail="Stadiul trebuie să conțină între 1 și 80 de caractere.")
     updated_at = datetime.now(timezone.utc).isoformat()
-    result = await db.prosumator.update_one(
+    result = await db[module].update_one(
         {"id": item_id, "owner": user["id"]},
-        {"$set": {"status": status, "updated_at": updated_at, "updated_by": user.get("email")}},
+        {"$set": {"workflow_status": status, "updated_at": updated_at, "updated_by": user.get("email")}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
-    await audit(user, "actualizare stadiu", "prosumator", item_id, ["status"])
-    return {"ok": True, "id": item_id, "status": status, "updated_at": updated_at}
+    await audit(user, "actualizare stadiu flux", module, item_id, ["workflow_status"])
+    return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at}
 
 
 @api_router.delete("/data/{module}/{item_id}")
@@ -732,7 +734,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     inbox = []
     projection = {"_id": 0, "id": 1, "client_name": 1, "number": 1,
                   "pod": 1, "operator": 1, "operator_name": 1, "distributor": 1,
-                  "kwp": 1, "inverter_kw": 1, "status": 1, "operator_stage": 1,
+                  "kwp": 1, "inverter_kw": 1, "status": 1, "workflow_status": 1, "operator_stage": 1,
                   "updated_at": 1, "created_at": 1}
     for module, label in inbox_modules:
         rows = await db[module].find({**scope_q(user, module), **test_dossier_filter}, projection).sort("updated_at", -1).limit(5).to_list(5)
@@ -747,7 +749,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                 "operator": row.get("operator") or row.get("operator_name") or row.get("distributor") or "",
                 "kwp": row.get("kwp") or row.get("panel_kwp") or "",
                 "inverter_kw": row.get("inverter_kw") or row.get("power_kw") or "",
-                "status": row.get("status") or row.get("operator_stage") or "În lucru",
+                "status": row.get("workflow_status") or row.get("status") or row.get("operator_stage") or "În lucru",
                 "updated_at": row.get("updated_at") or row.get("created_at") or "",
             })
     inbox.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
@@ -756,7 +758,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     # aggregate counts over every non-test record in the user's own scope.
     stage_counts = {}
     operator_counts = {}
-    stage_expr = {"$let": {"vars": {"value": {"$ifNull": ["$status", "$operator_stage"]}},
+    stage_expr = {"$let": {"vars": {"value": {"$ifNull": ["$workflow_status", {"$ifNull": ["$status", "$operator_stage"]}]}},
                            "in": {"$cond": [{"$or": [{"$eq": ["$$value", None]}, {"$eq": ["$$value", ""]}]}, "În lucru", "$$value"]}}}
     operator_expr = {"$let": {"vars": {"value": {"$ifNull": ["$operator", {"$ifNull": ["$operator_name", "$distributor"]}]}},
                               "in": {"$cond": [{"$or": [{"$eq": ["$$value", None]}, {"$eq": ["$$value", ""]}]}, "Operator necompletat", "$$value"]}}}
