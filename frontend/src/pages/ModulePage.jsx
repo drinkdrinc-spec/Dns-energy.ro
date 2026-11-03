@@ -860,7 +860,7 @@ export default function ModulePage({ moduleKey }) {
           </div>}
           {key === "prosumator" && recordsView === "list" && <div className="grid gap-3 sm:hidden" data-testid="mobile-prosumer-actions">
             {filtered.map((it) => {
-              const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\\s+/g, " ");
+              const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
               const diu = linkedDiu.find((d) => d.pros_id === it.id || (d.client_id ? d.client_id === it.client_id : normalize(d.client_name) === normalize(it.client_name)));
               const actionClass = "inline-flex min-h-9 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold";
               return <article key={it.id} className="rounded-xl border p-4 shadow-sm" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid={`prosumer-card-${it.id}`}>
@@ -1067,3 +1067,4 @@ export default function ModulePage({ moduleKey }) {
     </div>
   );
 }
+
