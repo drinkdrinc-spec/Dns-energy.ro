@@ -273,6 +273,10 @@ class LoginReq(BaseModel):
     email: EmailStr
     password: str
 
+class PasswordChangeReq(BaseModel):
+    current_password: str
+    new_password: str
+
 # ---------------- Auth routes ----------------
 STATUS_MSG = {"pending": "Contul așteaptă aprobarea administratorului", "suspended": "Contul este suspendat — contactați administratorul",
               "disabled": "Contul este dezactivat"}
@@ -335,6 +339,30 @@ async def login(body: LoginReq, request: Request):
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return pub_user(user)
+
+@api_router.post("/auth/change-password")
+async def change_password(body: PasswordChangeReq, user: dict = Depends(get_current_user)):
+    current = body.current_password or ""
+    new = body.new_password or ""
+    if len(new) < 12:
+        raise HTTPException(status_code=400, detail="Parola nouă trebuie să aibă cel puțin 12 caractere")
+    if len(new.encode("utf-8")) > 72:
+        raise HTTPException(status_code=400, detail="Parola nouă este prea lungă; limita este 72 de octeți")
+    if current == new:
+        raise HTTPException(status_code=400, detail="Alege o parolă diferită de cea actuală")
+    account = await db.users.find_one({"id": user["uid"]}, {"_id": 0, "password_hash": 1, "email": 1})
+    try:
+        valid = bool(account and verify_password(current, account.get("password_hash") or ""))
+    except (ValueError, TypeError):
+        valid = False
+    if not valid:
+        raise HTTPException(status_code=400, detail="Parola actuală este incorectă")
+    await db.users.update_one({"id": user["uid"]}, {"$set": {
+        "password_hash": hash_password(new), "password_changed_at": datetime.now(timezone.utc).isoformat()
+    }})
+    await db.login_attempts.delete_many({"identifier": f"login:{account['email'].lower()}"})
+    await audit(user, "schimbare parolă", "auth", user["uid"], [])
+    return {"ok": True}
 
 def require(user: dict, *roles):
     if user.get("role", "admin") not in roles:
@@ -3299,7 +3327,8 @@ async def startup():
             "password_hash": hash_password(admin_password), "name": "Administrator",
             "role": "admin", "created_at": datetime.now(timezone.utc).isoformat()})
         logger.info("Admin seeded")
-    elif not verify_password(admin_password, existing["password_hash"]):
+    elif not existing.get("password_hash"):
+        # Seed a missing credential once; do not overwrite an existing password on every deploy.
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
     PLATFORM["id"] = (await db.users.find_one({"email": admin_email}))["id"]
     await db.users.update_one({"id": PLATFORM["id"]}, {"$set": {"role": "admin", "status": "active", "tenant": None}})
