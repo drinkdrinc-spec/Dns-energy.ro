@@ -716,21 +716,11 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                     except (httpx.HTTPError, ValueError) as exc:
                         note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
                 if op_key == "rer" and ATR.storage_details(pros, rec):
-                    storage_form = {"title": "Anexa Retele Electrice aferentă instalațiilor de stocare",
-                                    "url": RER_STORAGE_FORM_URL}
-                    try:
-                        storage_pdf, storage_name = await _fetch_registry_annex(storage_form, op_key)
-                        archive.writestr(f"Anexe oficiale/Formulare originale/{storage_name}", storage_pdf)
-                        storage_completed, storage_fields = _prefill_official_pdf(storage_pdf, rec, client, pros)
-                        if storage_fields:
-                            storage_stem = re.sub(r"[^A-Za-z0-9_-]+", "_", storage_name.rsplit(".", 1)[0]).strip("_")
-                            archive.writestr(f"Anexe oficiale/{storage_stem}_completata.pdf", storage_completed)
-                            note.append(f"Anexa oficială pentru stocare a fost completată în {storage_fields} câmpuri etichetate; originalul a fost păstrat.")
-                        else:
-                            note.append("Anexa oficială pentru stocare a fost inclusă în original; câmpurile ei nu sunt etichetate pentru precompletare automată.")
-                    except (httpx.HTTPError, ValueError) as exc:
-                        note.append(f"Anexa oficială pentru instalația de stocare nu a putut fi atașată: {exc}")
-                        note.append(f"Descărcați formularul de aici: {RER_STORAGE_FORM_URL}")
+                    note.append(
+                        "Instalația de stocare declarată și datele tehnice disponibile apar în fișa de precompletare. "
+                        "Anexa tehnică separată pentru stocare nu se adaugă automat; confirmați cu operatorul dacă este "
+                        f"necesară pentru categoria și invertorul concret: {RER_STORAGE_FORM_URL}"
+                    )
             elif annex_no:
                 note.append(f"Nu există în registru un formular oficial Anexa {annex_no} verificabil pentru operatorul și tipul cererii selectate.")
                 official_pages = {
