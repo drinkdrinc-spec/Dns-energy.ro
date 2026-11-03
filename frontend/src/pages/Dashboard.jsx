@@ -160,7 +160,7 @@ export default function Dashboard() {
           className="den-input w-full"
           value={clientQuery}
           onChange={(event) => setClientQuery(event.target.value)}
-          placeholder="Caută nume, POD, telefon, e-mail sau adresă…"
+          placeholder="Caută nume, CI/CUI, POD, telefon, e-mail sau adresă…"
           aria-label="Caută în baza de clienți"
           data-testid="dashboard-client-search-input"
         />
