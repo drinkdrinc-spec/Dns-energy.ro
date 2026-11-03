@@ -12,7 +12,7 @@ const TYPES = [
   ["altele", "4. Alte documente", "PDF, imagini, DOCX și XLSX pot fi citite și rezumate; DOC/XLS și alte formate se atașează pentru verificare manuală."],
 ];
 
-const EMPTY = { client_name: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "" };
+const EMPTY = { client_name: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", request_type: "Racordare prosumator — fără spor de putere" };
 
 // Some mobile document pickers report a blank or generic MIME type even when the
 // filename is a supported PDF/image. Use the extension as a safe fallback.
@@ -165,6 +165,12 @@ export function DossierDocumentStart({ onCreated }) {
     <input className="den-input" value={values[key] || ""} onChange={(e) => setValues((prev) => {
       const next = { ...prev, [key]: e.target.value };
       if (key === "hq_address" && prev.address_same_as_ci) next.address = e.target.value;
+      if (key === "pod" && !String(prev.operator || "").trim()) {
+        const pod = e.target.value.trim().toUpperCase();
+        if (pod.startsWith("RO001")) next.operator = "Rețele Electrice Muntenia S.A.";
+        else if (pod.startsWith("RO002")) next.operator = "Rețele Electrice Dobrogea S.A.";
+        else if (pod.startsWith("RO005")) next.operator = "Rețele Electrice Banat S.A.";
+      }
       return next;
     })} data-testid={`intake-${key}`} /></label>;
 
@@ -247,12 +253,15 @@ export function DossierDocumentStart({ onCreated }) {
           </details>
         </div>}
         {step === 2 && <section className="rounded-lg border bg-white p-4" style={{ borderColor: "var(--line)" }}>
-          <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Tipul dosarului</div>
-          <label className="flex items-start gap-3 rounded-lg border p-3" style={{ borderColor: "var(--blue)", background: "#f7faff" }}>
-            <input type="radio" name="dossier-kind" checked readOnly className="mt-1" />
-            <span><b className="block text-sm">Dosar de prosumator</b><span className="text-xs" style={{ color: "var(--muted)" }}>Se creează în modulul Prosumator; documentele încărcate rămân atașate dosarului și apar în opis.</span></span>
-          </label>
-          <div className="mt-3 rounded-lg p-3 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Verifică datele citite din acte înainte de creare. Dacă un câmp nu apare în document, îl poți completa ulterior în dosar.</div>
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Tipul dosarului de prosumator</div>
+          {[
+            ["Racordare prosumator — fără spor de putere", "Fără spor de putere", "Se pregătește notificarea aplicabilă operatorului (de regulă Anexa 2)."],
+            ["Spor de putere + prosumator", "Cu spor de putere", "Se pregătește cererea de racordare aplicabilă operatorului (de regulă Anexa 1)."],
+          ].map(([value, title, description]) => <label key={value} className="mb-2 flex items-start gap-3 rounded-lg border p-3 last:mb-0" style={{ borderColor: values.request_type === value ? "var(--blue)" : "var(--line)", background: values.request_type === value ? "#f7faff" : "#fff" }}>
+            <input type="radio" name="dossier-kind" value={value} checked={values.request_type === value} onChange={() => setValues((prev) => ({ ...prev, request_type: value }))} className="mt-1" data-testid={value.includes("spor") ? "intake-request-type-increase" : "intake-request-type-standard"} />
+            <span><b className="block text-sm">{title}</b><span className="text-xs" style={{ color: "var(--muted)" }}>{description}</span></span>
+          </label>)}
+          <div className="mt-3 rounded-lg p-3 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Documentele încărcate rămân atașate dosarului și apar în opis. Verifică datele extrase; formularele exacte depind de operator și se verifică înainte de depunere.</div>
         </section>}
         {notes.altele?.length > 0 && <div className="rounded-lg bg-slate-50 p-3 text-xs"><b>Documente suplimentare:</b><ul className="list-disc pl-5">{notes.altele.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
         <div className="flex justify-between gap-2 pt-2"><div>{step > 0 && <Btn variant="secondary" onClick={() => setStep((current) => current - 1)} disabled={!!busy}>Înapoi</Btn>}</div><div className="flex gap-2"><Btn variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
