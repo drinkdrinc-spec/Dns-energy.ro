@@ -1135,13 +1135,18 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
     if not is_admin(user):
         import json as _j
         ok = False
-        for m in ("prosumator", "clients", "documents", "diu", "atr", "power", "catalog"):
+        for m in ("prosumator", "clients", "documents", "diu", "atr", "power", "mono", "panels", "anti", "pram", "equipment", "works", "projects", "catalog"):
             async for d in db[m].find(scope_q(user, m), {"_id": 0}):
                 if path in _j.dumps(d, default=str):
                     ok = True; break
             if ok:
                 break
-        if not ok and not await db.staff.find_one({"owner": user["id"], "id": user.get("staff_id")}) :
+        # A team member may read their own stored qualification/signature files,
+        # but having a staff profile must not grant access to every tenant file.
+        if not ok and user.get("staff_id"):
+            person = await db.staff.find_one({"owner": user["id"], "id": user["staff_id"]}, {"_id": 0})
+            ok = bool(person and path in _j.dumps(person, default=str))
+        if not ok:
             raise HTTPException(status_code=404, detail="Fișier inexistent sau fără drept de acces")
     try:
         data, content_type = get_object(path)
