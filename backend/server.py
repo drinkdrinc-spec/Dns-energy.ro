@@ -1143,11 +1143,19 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         if not isinstance(f, dict) or not str(f.get("storage_path") or "").startswith(APP_NAME + "/uploads/" + str(user["id"]) + "/"):
             raise HTTPException(status_code=400, detail="Document invalid sau neîncărcat în contul curent")
     identity_code = str(d.get("cnp") or "").strip()
+    selected_client_id = str(d.pop("client_id", "") or "").strip()
     client = None
-    if identity_code:
+    if selected_client_id:
+        client = await db.clients.find_one({**scope_q(user, "clients"), "id": selected_client_id}, {"_id": 0})
+        if not client:
+            raise HTTPException(status_code=404, detail="Clientul selectat nu există în contul curent")
+        stored_identity = str(client.get("idcode") or client.get("cui") or "").strip()
+        if identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+            raise HTTPException(status_code=409, detail="CNP/CUI din documente nu corespunde clientului selectat")
+    if not client and identity_code:
         client = await db.clients.find_one({**scope_q(user, "clients"),
             "$or": [{"idcode": identity_code}, {"cui": identity_code}]}, {"_id": 0})
-    if not client:
+    if not client and not selected_client_id:
         client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
     stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
     # A same-name client with a different CNP/CUI is a separate person/company.
