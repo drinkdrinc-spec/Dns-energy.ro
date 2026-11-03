@@ -2996,7 +2996,7 @@ async def startup():
         await db[m].create_index([("owner", 1), ("updated_at", -1)], name="owner_updated_at")
     for field in NUMERIC_CLIENT_SEARCH_FIELDS:
         await db.clients.create_index([("owner", 1), (field, 1)], name=f"owner_{field}")
-    await db.prosumator.create_index([("owner", 1), ("client_id", 1), ("pod", 1)], name="owner_client_id_pod")
+    await db.prosumator.create_index([("owner", 1), ("client_id", 1), ("updated_at", -1)], name="owner_client_id_updated_at")
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     jwt_secret = os.environ.get("JWT_SECRET", "")
