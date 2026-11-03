@@ -89,7 +89,7 @@ def test_smart_meter_category_searches_only_compatible_sources(monkeypatch):
 def test_panel_temperature_coefficients_require_explicit_percent_per_degree_units():
     valid = html.fromstring("""
         <table>
-          <tr><th>Temperature coefficient of Voc</th><td>-0.25 %/°C</td></tr>
+          <tr><th>Temperature coefficient Voc</th><td>−0.25 %/°C</td></tr>
           <tr><th>Temperature coefficient of Vmp</th><td>-0.29 %/°C</td></tr>
           <tr><th>Temperature coefficient of Pmax</th><td>-0.35 %/°C</td></tr>
         </table>
