@@ -9,14 +9,14 @@ def _number(value) -> float:
         return 0.0
 
 
-def from_request(rec: dict | None) -> dict:
+def from_request(rec: dict | None, field: str = "atr_cef") -> dict:
     """Expose explicitly selected ATR equipment in the same shape as a prosumer record.
 
     This is a snapshot from the ATR form, not a fabricated installation record. Empty
     equipment returns an empty mapping so existing "equipment required" checks remain.
     """
     rec = rec or {}
-    cef = rec.get("atr_cef")
+    cef = rec.get(field)
     if not isinstance(cef, dict):
         return {}
     inverters = [item for item in (cef.get("inverters") or []) if isinstance(item, dict)]
