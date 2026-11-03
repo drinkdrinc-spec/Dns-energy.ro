@@ -117,6 +117,8 @@ export default function ModulePage({ moduleKey }) {
   const [checks, setChecks] = useState({});
   const [refOptions, setRefOptions] = useState({});
   const [q, setQ] = useState("");
+  const [remoteSearchItems, setRemoteSearchItems] = useState(null);
+  const [remoteSearchFailed, setRemoteSearchFailed] = useState(false);
   const [filterClient, setFilterClient] = useState("");
   const [filterOperator, setFilterOperator] = useState("");
   const [filterCounty, setFilterCounty] = useState("");
@@ -156,6 +158,27 @@ export default function ModulePage({ moduleKey }) {
     const message = error?.response?.data?.detail || "Nu s-au putut încărca înregistrările. Încearcă din nou.";
     toast.error(message);
   });
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) {
+      setRemoteSearchItems(null);
+      setRemoteSearchFailed(false);
+      return undefined;
+    }
+    let active = true;
+    setRemoteSearchItems(null);
+    setRemoteSearchFailed(false);
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/data/${key}`, { params: { q: term } });
+        if (active) setRemoteSearchItems(Array.isArray(data) ? data : []);
+      } catch {
+        if (active) setRemoteSearchFailed(true);
+      }
+    }, 220);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [q, key]);
 
   useEffect(() => {
     setForm(null); setEditId(null); setChecks({}); setQ("");
@@ -440,17 +463,30 @@ export default function ModulePage({ moduleKey }) {
   const filtered = useMemo(() => {
     const ql = q.trim().toLocaleLowerCase("ro-RO");
     const isProsumator = key === "prosumator";
-    return (isProsumator ? prosumerFilterRows : visibleItems).filter((entry) => {
-      const row = isProsumator ? entry : { item: entry, searchable: JSON.stringify(entry).toLocaleLowerCase("ro-RO") };
+    const prosumerById = new Map(prosumerFilterRows.map((row) => [row.item.id, row]));
+    const source = remoteSearchItems === null
+      ? visibleItems
+      : (showTestRecords ? remoteSearchItems : remoteSearchItems.filter((item) => !["clients", "prosumator", "diu"].includes(key) || !isTestRecord(item)));
+    return source.map((entry) => {
+      if (!isProsumator) return { item: entry, searchable: JSON.stringify(entry).toLocaleLowerCase("ro-RO") };
+      return prosumerById.get(entry.id) || {
+        item: entry,
+        clientName: entry.client_name || "",
+        operator: entry.operator || "",
+        county: entry.county || "",
+        locality: entry.locality || entry.city || entry.town || entry.commune || entry.village || "",
+        searchable: JSON.stringify(entry).toLocaleLowerCase("ro-RO"),
+      };
+    }).filter((row) => {
       const item = row.item;
-      if (ql && !row.searchable.includes(ql)) return false;
+      if (ql && remoteSearchItems === null && !row.searchable.includes(ql)) return false;
       if (isProsumator && filterClient && normalizeClientName(row.clientName) !== normalizeClientName(filterClient)) return false;
       if (isProsumator && filterOperator && normalizeClientName(row.operator) !== normalizeClientName(filterOperator)) return false;
       if (isProsumator && filterCounty && normalizeClientName(row.county) !== normalizeClientName(filterCounty)) return false;
       if (isProsumator && filterLocality && normalizeClientName(row.locality) !== normalizeClientName(filterLocality)) return false;
       return true;
-    }).map((entry) => key === "prosumator" ? entry.item : entry);
-  }, [key, visibleItems, prosumerFilterRows, q, filterClient, filterOperator, filterCounty, filterLocality]);
+    }).map((row) => row.item);
+  }, [key, visibleItems, prosumerFilterRows, q, remoteSearchItems, showTestRecords, filterClient, filterOperator, filterCounty, filterLocality]);
 
   const checkedCount = cfg.checklist ? cfg.checklist.filter((c) => checks[c]).length : 0;
 
@@ -618,6 +654,7 @@ export default function ModulePage({ moduleKey }) {
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
             <input data-testid="search-input" className="den-input w-[240px]" style={{ paddingLeft: 34 }} placeholder="Caută..." value={q} onChange={(e) => setQ(e.target.value)} />
+            {remoteSearchFailed && <span className="mt-1 block text-[11px] text-amber-700" role="status">Căutarea online nu răspunde; folosesc înregistrările deja încărcate.</span>}
           </div>
         </div>
 
