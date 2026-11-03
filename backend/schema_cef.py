@@ -149,7 +149,10 @@ class CefDrawing(Flowable):
                 coupling = str(bt.get("coupling") or "").strip().upper()
                 battery_x = rx + rw / 2
                 battery_top = 66 * mm
-                if coupling == "DC":
+                # The battery pack connects to its inverter on DC even when the
+                # storage system is AC-coupled to the site. AC coupling is shown
+                # by the inverter's separate AC branch to the common bus.
+                if coupling in ("DC", "AC"):
                     self.line(bx + 3 * mm + lw, iy + 4 * mm, battery_x, iy + 4 * mm, dc=True)
                     self.line(battery_x, iy + 4 * mm, battery_x, 73 * mm, dc=True)
                     c.setStrokeColor(RED); c.setLineWidth(0.8)
@@ -157,9 +160,6 @@ class CefDrawing(Flowable):
                     c.line(battery_x - 2 * mm, 69.5 * mm, battery_x + 2 * mm, 72.5 * mm)
                     c.setFont("LSB", 4.8); c.setFillColor(RED); c.drawCentredString(battery_x, 74 * mm, "QBAT DC")
                     self.line(battery_x, 69 * mm, battery_x, battery_top, dc=True)
-                elif coupling == "AC":
-                    self.line(bx + 3 * mm + lw, iy + 4 * mm, battery_x, iy + 4 * mm)
-                    self.line(battery_x, iy + 4 * mm, battery_x, battery_top)
                 coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
                 battery_section = bt.get("cable_section") or bp.get("section")
                 battery_fuse = bt.get("fuse_a") or bp.get("fuse_a")
@@ -187,9 +187,14 @@ class CefDrawing(Flowable):
             switch_u = b.get("dc_switch_voltage_v")
             switch_i = b.get("dc_switch_current_a")
             switch_text = f"Qbat DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "Qbat DC: tensiune/curent nominal de confirmat"
+            modules = max(1, int(C.n(b.get("modules"), 1) or 1))
+            module_kwh = C.n(b.get("kwh"))
+            total_kwh = module_kwh * modules
+            if not total_kwh and C.n(b.get("ah")) and C.n(b.get("voltage")):
+                total_kwh = C.n(b.get("ah")) * C.n(b.get("voltage")) / 1000 * modules
             self.box(bx + 3 * mm, 42 * mm, cw - 6 * mm, 30 * mm, f"BATERIE COMUNĂ ({coupling_label})",
                      [str(b.get("model") or "—"),
-                      f"{v(b.get('modules'), ' mod.')} × {v(b.get('kwh'), ' kWh')} · total {v(b.get('kwh'), ' kWh')}",
+                      f"{modules} × {v(module_kwh, ' kWh')} · total {v(total_kwh, ' kWh')}",
                       f"Ubat {v(b.get('voltage'), ' V')} · Imax {v(b.get('i_max'), ' A')}",
                       f"Cablu DC: {v(battery_section, ' mm²')} · siguranță: {v(battery_fuse, ' A')}",
                       switch_text,
@@ -198,8 +203,8 @@ class CefDrawing(Flowable):
             if coupling in ("AC", "DC"):
                 for j, u in enumerate(users):
                     yy = 70 * mm - j * 2.2 * mm
-                    self.line(cx[u], 72 * mm, cx[u], yy, dc=coupling == "DC")
-                    self.line(cx[u], yy, bx + 3 * mm, yy, dc=coupling == "DC")
+                    self.line(cx[u], 72 * mm, cx[u], yy, dc=True)
+                    self.line(cx[u], yy, bx + 3 * mm, yy, dc=True)
         # legend
         c = self.canv
         c.setFont("LS", 6); c.setFillColor(colors.black)
