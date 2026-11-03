@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, Btn } from "@/components/Layout";
-import { api } from "@/lib/api";
-import { ClipboardCheck, Plus, Save, Search, ExternalLink, MapPin, Ruler, TriangleAlert, CheckCircle2 } from "lucide-react";
+import { api, openAuthenticatedFile } from "@/lib/api";
+import { ClipboardCheck, Plus, Save, Search, ExternalLink, MapPin, Ruler, TriangleAlert, CheckCircle2, Upload, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const EMPTY = {
@@ -30,6 +30,7 @@ export default function Simulare() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const planInput = useRef(null);
 
   const load = async () => {
     setLoading(true); setError("");
@@ -75,6 +76,21 @@ export default function Simulare() {
     } finally { setSaving(false); }
   };
 
+  const uploadPlan = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !form) return;
+    const data = new FormData(); data.append("file", file);
+    try {
+      const response = await api.post("/upload", data, { headers: { "Content-Type": "multipart/form-data" } });
+      set("plan_file", response.data);
+      set("drawing_source", file.name);
+      toast.success("Planul a fost încărcat la proiect.");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Planul nu a putut fi încărcat.");
+    } finally {
+      if (planInput.current) planInput.current.value = "";
+    }
+  };
   const gateCount = GATES.filter(([key]) => Boolean(form?.[key])).length;
   const ready = gateCount === GATES.length;
   const options = (category) => catalog.filter((item) => item.category === category);
@@ -139,6 +155,17 @@ export default function Simulare() {
               <div><h2 className="font-bold">Plan și geometrie</h2><p className="text-xs" style={{ color: "var(--muted)" }}>Înregistrează sursa și cotele reale înainte de calcul. Acest ecran nu inventează măsurători și nu desenează geometria în locul proiectantului.</p></div></div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Sursa planului / fișierului"><input className="den-input" value={text(form.drawing_source)} onChange={(e) => set("drawing_source", e.target.value)} placeholder="Nume fișier, link sau număr plan" /></Field>
+              <div className="den-field block"><span className="mb-1 block text-xs font-semibold">Plan atașat (PDF sau imagine)</span>
+                <input ref={planInput} type="file" accept="application/pdf,image/*" className="hidden" onChange={uploadPlan} />
+                <div className="flex min-h-10 flex-wrap items-center gap-2">
+                  <Btn type="button" variant="secondary" onClick={() => planInput.current?.click()}><Upload size={14} /> Încarcă plan</Btn>
+                  {form.plan_file?.storage_path && <>
+                    <button type="button" className="inline-flex items-center gap-1 text-xs font-semibold underline" style={{ color: "var(--blue)" }} onClick={() => openAuthenticatedFile("/files/" + form.plan_file.storage_path)}><FileText size={14} /> {form.plan_file.original_filename || form.plan_file.filename || "Deschide planul"}</button>
+                    <button type="button" title="Elimină planul atașat" onClick={() => set("plan_file", null)} className="rounded border p-2" style={{ borderColor: "var(--line)" }}><Trash2 size={14} /></button>
+                  </>}
+                </div>
+                <small className="mt-1 block text-xs" style={{ color: "var(--muted)" }}>Fișierul se atașează proiectului curent; cotele și orientarea trebuie verificate de proiectant.</small>
+              </div>
               <Field label="Geometrie și cote măsurate"><textarea className="den-input min-h-24" value={text(form.roof_geometry)} onChange={(e) => set("roof_geometry", e.target.value)} placeholder="Notează separat fiecare versant/zonă și dimensiunile verificate." /></Field>
             </div>
             <div className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--line)" }}>
