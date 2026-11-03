@@ -316,11 +316,11 @@ export default function ModulePage({ moduleKey }) {
   const openNew = () => { setForm(key === "atr" ? { date: new Date().toISOString().slice(0, 10), submission_mode: "Solicitantul depune direct" } : {}); setEditId(null); setChecks({}); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); };
   const updateQuickStatus = async (item, status) => {
-    if (!status || status === item.status) return;
+    if (!status || status === (item.workflow_status || item.status)) return;
     setStatusSavingId(item.id);
     try {
-      const { data } = await api.patch("/data/prosumator/" + encodeURIComponent(item.id) + "/status", { status });
-      setItems((current) => current.map((row) => row.id === item.id ? { ...row, status: data.status, updated_at: data.updated_at } : row));
+      const { data } = await api.patch("/data/" + encodeURIComponent(key) + "/" + encodeURIComponent(item.id) + "/status", { status });
+      setItems((current) => current.map((row) => row.id === item.id ? { ...row, workflow_status: data.status, updated_at: data.updated_at } : row));
       toast.success("Stadiul dosarului a fost actualizat.");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Stadiul nu a putut fi actualizat.");
@@ -871,8 +871,8 @@ export default function ModulePage({ moduleKey }) {
                     <p className="text-xs" style={{ color: "var(--muted)" }}>{it.operator || "Operator neales"}</p>
                     <label className="mt-2 flex items-center gap-2 text-xs font-semibold" style={{ color: "var(--muted)" }}>
                       Stadiu
-                      <select className="den-input min-h-9 min-w-0 py-1 text-xs" value={it.status || "În lucru"} disabled={Boolean(statusSavingId)} onChange={(event) => updateQuickStatus(it, event.target.value)} aria-label={"Stadiu dosar " + (it.number || it.id)} data-testid={"quick-status-mobile-" + it.id}>
-                        {[...new Set([it.status, ...PROSUMER_QUICK_STATUSES].filter(Boolean))].map((status) => <option key={status} value={status}>{status}</option>)}
+                      <select className="den-input min-h-9 min-w-0 py-1 text-xs" value={it.workflow_status || it.status || "În lucru"} disabled={Boolean(statusSavingId)} onChange={(event) => updateQuickStatus(it, event.target.value)} aria-label={"Stadiu dosar " + (it.number || it.id)} data-testid={"quick-status-mobile-" + it.id}>
+                        {[...new Set([it.workflow_status, it.status, ...PROSUMER_QUICK_STATUSES].filter(Boolean))].map((status) => <option key={status} value={status}>{status}</option>)}
                       </select>
                     </label>
                   </div>
@@ -962,8 +962,8 @@ export default function ModulePage({ moduleKey }) {
                   <tr key={it.id} className="border-t hover:bg-[#fafcff]" style={{ borderColor: "var(--line)" }}>
                     {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">
                       {key === "prosumator" && c.key === "status" ? (
-                        <select className="den-input min-h-9 min-w-[150px] py-1 text-xs" value={it.status || "În lucru"} disabled={Boolean(statusSavingId)} onChange={(event) => updateQuickStatus(it, event.target.value)} aria-label={"Stadiu dosar " + (it.number || it.id)} data-testid={"quick-status-" + it.id}>
-                          {[...new Set([it.status, ...PROSUMER_QUICK_STATUSES].filter(Boolean))].map((status) => <option key={status} value={status}>{status}</option>)}
+                        <select className="den-input min-h-9 min-w-[150px] py-1 text-xs" value={it.workflow_status || it.status || "În lucru"} disabled={Boolean(statusSavingId)} onChange={(event) => updateQuickStatus(it, event.target.value)} aria-label={"Stadiu dosar " + (it.number || it.id)} data-testid={"quick-status-" + it.id}>
+                          {[...new Set([it.workflow_status, it.status, ...PROSUMER_QUICK_STATUSES].filter(Boolean))].map((status) => <option key={status} value={status}>{status}</option>)}
                         </select>
                       ) : (it[c.key] || "—")}
                     </td>)}
