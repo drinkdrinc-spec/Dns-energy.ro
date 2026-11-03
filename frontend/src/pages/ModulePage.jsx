@@ -507,7 +507,7 @@ export default function ModulePage({ moduleKey }) {
   }, [key, visibleItems]);
 
   const checkedCount = cfg.checklist ? cfg.checklist.filter((c) => checks[c]).length : 0;
-  const currentOdStage = Math.max(0, PROSUMER_OD_STAGES.indexOf(form.operator_stage));
+  const currentOdStage = Math.max(0, PROSUMER_OD_STAGES.indexOf(form?.operator_stage));
 
   return (
     <div>
