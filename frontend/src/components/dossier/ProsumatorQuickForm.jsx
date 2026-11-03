@@ -6,6 +6,24 @@ const field = (cfg, name) => (cfg.fields || []).find((f) => f.name === name);
 const title = (f, fallback) => f?.label?.replace(/\s*\*$/, "") || fallback;
 const selectStyle = { borderColor: "var(--line)" };
 
+function supplierCatalogBlockReason(item) {
+  if (item?.category !== "Invertor" || !item?.supplier) return "";
+  const model = String(item.brand_model || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(?:kit|bundle|pachet)\b|\bcu\s+(?:baterie|acumulator)\b|\bwith\s+(?:battery|accumulator)\b|\b(?:baterie|acumulator)\s+inclus/.test(model)
+      || /\b(?:invertor|inverter)\b.*(?:\+|&|\band\b).*\b(?:baterie|acumulator|battery)\b/.test(model)) {
+    return "Pachet cu baterie — nu este un model individual de invertor";
+  }
+  const titlePower = model.match(/\b(\d+(?:[.,]\d+)?)\s*kw\b/);
+  const catalogPower = Number(item.p_nom_kw);
+  if (titlePower && Number.isFinite(catalogPower) && catalogPower > 0) {
+    const namedPower = Number(titlePower[1].replace(",", "."));
+    if (Math.abs(namedPower - catalogPower) > Math.max(0.1, namedPower * 0.03)) {
+      return `Puterea din denumire (${namedPower} kW) diferă de catalog (${catalogPower} kW)`;
+    }
+  }
+  return "";
+}
+
 // Propose strings only when both catalog datasheets provide the limits needed to check them.
 function panelCountForPower(powerKw, panelW) {
   const kw = Number(powerKw), watts = Number(panelW);
@@ -104,6 +122,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       const seen = new Set();
       return catalog.filter((item) => {
         if (item.category !== category || /\bTEST\b/i.test(String(item.brand_model || ""))) return false;
+        if (supplierCatalogBlockReason(item)) return false;
         // Keep legacy seed rows with electrical values contradicted by the attached manufacturer sheet out of new designs.
         if (item.category === "Panou" && item.brand_model === "Aiko Neostar 475 W"
           && Number(item.voc) === 40.2 && Number(item.vmp) === 33.6 && Number(item.isc) === 14.9 && Number(item.imp) === 14.15) return false;
@@ -122,6 +141,9 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       meter: unique("Smart meter"),
     };
   }, [catalog]);
+  const blockedSupplierModels = useMemo(() => catalog
+    .filter((item) => Boolean(supplierCatalogBlockReason(item))), [catalog]);
+  const blockedSelectedModels = blockedSupplierModels.filter((item) => Object.values(selected).includes(item.id));
 
   const cefUpdate = (kind, item, id, panelCountOverride) => {
     const currentForm = formRef.current;
@@ -451,6 +473,10 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     <div className="rounded-2xl border p-4" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Configurare</p><h3 className="mt-1 text-lg font-bold">Echipamente și dimensionare</h3></div>
         {catalogLoading ? <span className="text-xs" style={{ color: "var(--muted)" }}>Se încarcă catalogul…</span> : <span className="text-xs" style={{ color: "var(--muted)" }}>{catalog.length} modele în catalog</span>}</div>
+      {!!blockedSupplierModels.length && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status" data-testid="catalog-supplier-quality-warning">
+        {blockedSupplierModels.length} modele importate sunt ascunse din configurare deoarece par pachete cu baterie sau au puterea din denumire diferită de valoarea din catalog. Verifică fișa tehnică și corectează-le în Catalog echipamente înainte de folosire.
+        {!!blockedSelectedModels.length && ` Selecția curentă conține ${blockedSelectedModels.length} model/e de verificat.`}
+      </p>}
       <div className="grid gap-3 sm:grid-cols-2">
         {catalogSelect("inverter", "Invertor")}
         {input("inverter_count", "Număr invertoare", "number")}
@@ -487,4 +513,5 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     </div>
   </div>;
 }
+
 
