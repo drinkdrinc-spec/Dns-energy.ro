@@ -742,6 +742,15 @@ export default function ModulePage({ moduleKey }) {
               {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}&case=power-increase`} data-testid="quick-prosumer-power">Spor de putere</a>}
               {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">Creează DI-U</a>}
             </div>
+            {Array.isArray(form.workflow_history) && form.workflow_history.length > 0 && <details className="mt-3 rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="prosumer-workflow-history">
+              <summary className="cursor-pointer text-xs font-bold">Istoric schimbări de stadiu ({form.workflow_history.length})</summary>
+              <ol className="mt-2 space-y-2">
+                {[...form.workflow_history].slice(-8).reverse().map((entry, index) => <li key={`${entry.at || "event"}-${index}`} className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
+                  <span>{entry.from || "—"} → <b>{entry.to || "—"}</b></span>
+                  <span style={{ color: "var(--muted)" }}>{entry.at ? new Date(entry.at).toLocaleString("ro-RO") : "Dată indisponibilă"}{entry.by ? ` · ${entry.by}` : ""}</span>
+                </li>)}
+              </ol>
+            </details>}
           </section>}
           {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} /> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">

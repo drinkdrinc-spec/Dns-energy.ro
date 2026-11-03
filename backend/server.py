@@ -770,9 +770,15 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                   "pod": 1, "operator": 1, "operator_name": 1, "distributor": 1,
                   "company.name": 1,
                   "kwp": 1, "inverter_kw": 1, "status": 1, "workflow_status": 1, "operator_stage": 1,
+                  "next_action": 1, "next_action_due": 1,
                   "updated_at": 1, "created_at": 1}
     for module, label in inbox_modules:
-        rows = await db[module].find({**scope_q(user, module), **test_dossier_filter}, projection).sort("updated_at", -1).limit(5).to_list(5)
+        module_scope = {**scope_q(user, module), **test_dossier_filter}
+        recent_rows = await db[module].find(module_scope, projection).sort("updated_at", -1).limit(5).to_list(5)
+        scheduled_rows = await db[module].find(
+            {**module_scope, "next_action": {"$exists": True, "$nin": [None, ""]}}, projection
+        ).sort("next_action_due", 1).limit(5).to_list(5)
+        rows = list({row.get("id"): row for row in [*recent_rows, *scheduled_rows] if row.get("id")}.values())
         for row in rows:
             inbox.append({
                 "id": row.get("id"),
@@ -785,9 +791,16 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                 "kwp": row.get("kwp") or row.get("panel_kwp") or "",
                 "inverter_kw": row.get("inverter_kw") or row.get("power_kw") or "",
                 "status": row.get("workflow_status") or row.get("status") or row.get("operator_stage") or "În lucru",
+                "next_action": row.get("next_action") or "",
+                "next_action_due": row.get("next_action_due") or "",
                 "updated_at": row.get("updated_at") or row.get("created_at") or "",
             })
-    inbox.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+    # Prioritize scheduled work. The user enters both action and due date; we do not infer either.
+    inbox.sort(key=lambda item: (
+        not bool(item.get("next_action")),
+        str(item.get("next_action_due") or "9999-12-31"),
+        str(item.get("updated_at") or ""),
+    ))
 
     # Full workload summaries for the dashboard; unlike the inbox, these are
     # aggregate counts over every non-test record in the user's own scope.
@@ -827,7 +840,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     pending = sum(count for stage, count in stage_counts.items() if stage in attention_stages)
 
     return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
-            "recent": [clean(r) for r in recent], "inbox": inbox[:12],
+            "recent": [clean(r) for r in recent], "inbox": inbox[:24],
             "total_dossiers": sum(stage_counts.values()),
             "stage_counts": dict(sorted(stage_counts.items(), key=lambda item: (-item[1], item[0]))),
             "operator_counts": dict(sorted(operator_counts.items(), key=lambda item: (-item[1], item[0])))}

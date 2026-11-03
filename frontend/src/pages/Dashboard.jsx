@@ -115,6 +115,11 @@ export default function Dashboard() {
     const openParam = item.module === "anre_dossiers" ? "open" : "edit";
     const itemKey = item.module + "-" + item.id;
     const currentStatus = item.workflow_status || item.status || "În lucru";
+    const dueDate = item.next_action_due ? new Date(`${item.next_action_due}T00:00:00`) : null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const hasValidDueDate = dueDate && !Number.isNaN(dueDate.getTime());
+    const overdue = hasValidDueDate && dueDate < today;
     const stages = ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru depunere", "Depus la operator", "În așteptare la operator", "Avizat", "Respins", "Finalizat"];
     return (
       <article key={itemKey}
@@ -124,6 +129,7 @@ export default function Dashboard() {
         <Link to={path + "?" + openParam + "=" + encodeURIComponent(item.id)} className="min-w-0 flex-1">
           <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
           <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}{item.pod ? " · POD " + item.pod : ""}{item.operator ? " · " + item.operator : ""}</span>
+          {item.next_action && <span className="mt-1 block truncate text-xs font-semibold" style={{ color: overdue ? "#b43b2f" : "var(--blue)" }} data-testid={`inbox-action-${itemKey}`}>Următorul pas: {item.next_action}{hasValidDueDate ? ` · ${dueDate.toLocaleDateString("ro-RO")}` : ""}{overdue ? " · depășit" : ""}</span>}
           <span className="block text-[10px] mt-1" style={{ color: "var(--muted)" }}>{item.updated_at ? new Date(item.updated_at).toLocaleDateString("ro-RO") : "—"}</span>
         </Link>
         {item.module === "anre_dossiers" ? <span className="shrink-0 rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "#eef4ff", color: "var(--blue)" }}>{currentStatus}</span> : <select
@@ -208,7 +214,7 @@ export default function Dashboard() {
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--blue)" }}>ACTIVITATE RECENTĂ</div>
             <h2 id="dashboard-inbox-title" className="text-lg sm:text-xl font-bold">Dosare de urmărit</h2>
-            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>Deschide direct cererile și dosarele lucrate recent, în ordinea ultimei actualizări.</p>
+            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>Acțiunile și termenele introduse în dosare apar primele; celelalte sunt ordonate după ultima actualizare.</p>
           </div>
           <div className="flex items-center gap-1 shrink-0 rounded-lg border p-1" style={{ borderColor: "var(--line)" }} aria-label="Mod vizualizare dosare">
             <button type="button" onClick={() => setInboxView("list")} aria-pressed={inboxView === "list"} aria-label="Vizualizare listă" title="Listă" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "list" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><ListIcon size={17} /></button>
