@@ -134,7 +134,8 @@ class CefDrawing(Flowable):
                     self.line(sx + sw / 2, dy, sx + sw / 2, 30 * mm, dc=True)
                     self.box(sx, 2 * mm, sw, 28 * mm, f"S{k + 1} / MPPT{s['mppt']}",
                              [f"{s['panels']}× {v(inv.get('panel_w'), ' W')}", str(inv.get("panel_model") or "")[:30],
-                              f"Voc {s['voc_cold']:.0f} V@{res['tmin']:g}°C", f"Vmp {s['vmp_stc']:.0f} V", f"{s['kwp']:.2f} kWp"], "pv")
+                              (f"Voc {s['voc_cold']:.0f} V@{res['tmin']:g}°C" if s.get("voc_cold") is not None else "Voc rece la Tmin: NECONFIRMAT"),
+                             f"Vmp {s['vmp_stc']:.0f} V", f"{s['kwp']:.2f} kWp"], "pv")
             rx = bx + 3 * mm + lw + 2 * mm
             rw = cw - lw - 7 * mm
             if inv.get("backup", {}).get("enabled"):
