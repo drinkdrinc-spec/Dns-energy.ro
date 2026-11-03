@@ -87,6 +87,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
     o.need("cef.grid.bransament_kw", "Putere aprobată (kW)", grid.get("bransament_kw"), G)
     o.need("cef.grid.earthing", "Sistem de legare la pământ (TN-C-S / TT)", grid.get("earthing"), G)
     o.need("cef.grid.ik_ka", "Curent de scurtcircuit la punctul de racord Ik (kA, din ATR/OD)", grid.get("ik_ka"), G)
+    o.need("cef.grid.column_length", "Lungime coloană BMP→TG (m)", grid.get("column_length"), G)
     o.need("cef.grid.bmp_a", "Întreruptor BMP (A)", grid.get("bmp_a"), G)
     o.need("cef.grid.tg_breaker_a", "Întreruptor general TG (A)", grid.get("tg_breaker_a"), G)
     o.need("cef.grid.spd_ac", "SPD AC (tip)", grid.get("spd_ac"), G)
@@ -230,6 +231,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         if inv.get("battery_mode") == "own":
             o.need(f"cef.inverters.{i}.battery.model", "Model baterie", bat.get("model"), T)
             o.need(f"cef.inverters.{i}.battery.i_max", "Curent max descărcare baterie (A)", bat.get("i_max"), T)
+            o.need(f"cef.inverters.{i}.battery.cable_length", "Lungime cablu baterie (m)", bat.get("cable_length"), T)
             ibat = n(bat.get("i_max"))
             if ibat:
                 battery_proposal = r.get("proposals", {}).get("battery") or {}
@@ -334,6 +336,8 @@ def apply(cef: dict) -> tuple[dict, list]:
             put(bat, "fuse_a", proposal.get("fuse_a"), f"cef.inverters.{i}.battery.fuse_a")
     gd = cef.setdefault("grid", {})
     put(gd, "bmp_a", base["grid"]["main_proposal"], "cef.grid.bmp_a")
+    if has(gd.get("column_length")):
+        put(gd, "column_section", base["grid"].get("main_section_proposal"), "cef.grid.column_section")
     cef["auto_filled"] = sorted(set((cef.get("auto_filled") or []) + filled))
     return cef, filled
 
