@@ -199,7 +199,7 @@ def check_inverters(user: dict, d: dict):
 
 # ---------------- Object storage ----------------
 # New files use MongoDB GridFS; legacy files are read-through migrated only when the old source remains accessible.
-from gridfs_storage import init_storage, put_object, get_object, LegacyObjectUnavailable
+from gridfs_storage import init_storage, put_object, get_object, has_gridfs_object, LegacyObjectUnavailable
 
 @app.exception_handler(LegacyObjectUnavailable)
 async def legacy_file_unavailable(request: Request, exc: LegacyObjectUnavailable):
@@ -1818,6 +1818,15 @@ async def catalog_files(owner: str, rec: dict) -> list:
         for k, label in (("datasheet", "Fișă tehnică"), ("conformity", "Declarație de conformitate")):
             f = it.get(k)
             if f and f.get("storage_path"):
+                # Old records can still point at the retired object store. Read-through
+                # migrates accessible files to GridFS; unavailable files must not count
+                # as evidence that the dossier contains the required equipment document.
+                if not has_gridfs_object(f["storage_path"]):
+                    try:
+                        get_object(f["storage_path"])
+                    except Exception as exc:
+                        logger.warning("Catalog document unavailable for %s (%s): %s", cid, k, exc)
+                        continue
                 out.append({"catalog_id": cid, "model": it.get("brand_model"), "kind": label, **f})
     return out
 
@@ -1831,9 +1840,11 @@ async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
             continue
         for kind in ("datasheet", "conformity"):
             existing = item.get(kind)
-            if isinstance(existing, dict) and existing.get("storage_path"):
+            if (isinstance(existing, dict) and existing.get("storage_path")
+                    and has_gridfs_object(existing["storage_path"])):
                 continue
-            source_url = item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
+            source_url = (item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
+                          or (existing.get("source_url") if isinstance(existing, dict) else ""))
             if source_url:
                 candidates.append((catalog_id, kind, str(source_url)))
 
