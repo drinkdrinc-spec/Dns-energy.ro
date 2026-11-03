@@ -84,6 +84,7 @@ const requirementState = (item, docs, form) => {
 
 
 export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
+  const [workflowStep, setWorkflowStep] = useState(0);
   const [pros, setPros] = useState([]);
   const [pid, setPid] = useState(form.pros_id || "");
   const [docs, setDocs] = useState(null);
@@ -118,9 +119,27 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
     } finally { setImporting(false); }
   };
   const pdf = (doc) => `/diu/${id}/pdf?doc=${doc}`
+  const workflow = [
+    ["Client & racordare", "Verifică datele clientului, POD-ul și ATR-ul."],
+    ["Executant", "Confirmă reprezentantul și semnătura firmei."],
+    ["Plan & schemă", "Completează circuitele și verifică schema instalației."],
+    ["Buletine", "Introdu numai măsurători PRAM efectiv realizate."],
+    ["Piese & generare", "Verifică lista operatorului și descarcă documentele."],
+  ];
+  const goToWorkflowStep = (index) => {
+    setWorkflowStep(index);
+    const targets = ["diu-client-racordare", "diu-executant", "diu-plan-schema", "diu-pram-section", "diu-piese-generare"];
+    const target = document.getElementById(targets[index]);
+    const details = target?.closest("details");
+    if (details) details.open = true;
+    window.setTimeout(() => target?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
+  };
 
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="diu-dossier">
+      <nav className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-5" aria-label="Etapele dosarului DI-U" data-testid="diu-workflow-stepper">
+        {workflow.map(([title, description], index) => <button key={title} type="button" onClick={() => goToWorkflowStep(index)} aria-current={workflowStep === index ? "step" : undefined} title={description} className="rounded-lg border px-3 py-2 text-left text-xs font-semibold" style={{ borderColor: workflowStep === index ? "var(--blue)" : "var(--line)", background: workflowStep === index ? "#eaf1ff" : "#fff", color: workflowStep === index ? "var(--blue)" : "var(--muted)" }} data-testid={`diu-workflow-step-${index + 1}`}><span className="mr-1">{index + 1}.</span>{title}</button>)}
+      </nav>
       <h3 className="font-bold">Dosarul instalației de utilizare — documente automate</h3>
       <div className="flex flex-wrap items-end gap-2 mt-3">
         <div className="den-field min-w-[260px]"><label>Pornește din dosarul de prosumator</label>
@@ -153,7 +172,7 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
           <DiuCircuits form={form} setVal={setVal} />
         </div>
       </details>
-      <div className="flex items-center justify-between flex-wrap gap-2 mt-5">
+      <div id="diu-piese-generare" className="flex items-center justify-between flex-wrap gap-2 mt-5">
         <div className="text-xs font-bold" style={{ color: docs?.complete ? "#166534" : "#9b2c2c" }} data-testid="diu-docs-state">
           {docs ? (docs.complete ? "Toate documentele sunt complete" : "Unele documente au date lipsă (export CIORNĂ)") : ""} · stările se actualizează după „Salvează”</div>
         <div className="flex gap-2">
@@ -175,3 +194,4 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
     </div>
   );
 }
+
