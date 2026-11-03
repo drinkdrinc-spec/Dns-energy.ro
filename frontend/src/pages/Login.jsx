@@ -32,7 +32,8 @@ export default function Login() {
       await login(email, password);
       toast.success("Autentificare reușită");
     } catch (ex) {
-      const detail = ex.response?.data?.detail;\n      setErr(detail ? formatApiErrorDetail(detail) : !ex.response ? "Serverul nu a răspuns. Verifică conexiunea și încearcă din nou." : formatApiErrorDetail(detail));
+      const detail = ex.response?.data?.detail;
+      setErr(detail ? formatApiErrorDetail(detail) : !ex.response ? "Serverul nu a răspuns. Verifică conexiunea și încearcă din nou." : formatApiErrorDetail(detail));
     } finally { setLoading(false); }
   };
 
@@ -72,7 +73,13 @@ export default function Login() {
             <label className="text-xs flex items-start gap-2 mt-3"><input type="checkbox" checked={gdpr} onChange={(e) => setGdpr(e.target.checked)} data-testid="register-gdpr" />
               Sunt de acord cu prelucrarea datelor de mai sus exclusiv pentru administrarea contului și facturare (GDPR).</label>
           </>}
-          {authIssue && <div className="text-[13px] my-4 rounded-lg px-3 py-3" style={{ background: "#fff8e6", color: "#805600" }} role="status" data-testid="auth-service-warning">\n            <p>{authIssue}</p>\n            <button type="button" onClick={refresh} disabled={authChecking} className="mt-2 font-bold underline disabled:opacity-60" data-testid="auth-retry">\n              {authChecking ? "Se verifică sesiunea…" : "Reîncearcă verificarea"}\n            </button>\n          </div>}\n          {err && <div data-testid="login-error" className="text-[13px] my-4 rounded-lg px-3 py-2" style={{ background: "#fff0f0", color: "#b33333" }}>{err}</div>}
+          {authIssue && <div className="text-[13px] my-4 rounded-lg px-3 py-3" style={{ background: "#fff8e6", color: "#805600" }} role="status" data-testid="auth-service-warning">
+            <p>{authIssue}</p>
+            <button type="button" onClick={refresh} disabled={authChecking} className="mt-2 font-bold underline disabled:opacity-60" data-testid="auth-retry">
+              {authChecking ? "Se verifică sesiunea…" : "Reîncearcă verificarea"}
+            </button>
+          </div>}
+          {err && <div data-testid="login-error" className="text-[13px] my-4 rounded-lg px-3 py-2" style={{ background: "#fff0f0", color: "#b33333" }}>{err}</div>}
           <Btn type="submit" data-testid="login-submit" className="w-full justify-center mt-4 min-h-12" disabled={loading}>
             {loading ? "Se verifică..." : reg ? "Trimite cererea de cont" : "Intră în cont"}
           </Btn>
