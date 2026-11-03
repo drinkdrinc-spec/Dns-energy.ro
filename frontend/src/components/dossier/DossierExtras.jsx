@@ -16,7 +16,7 @@ export function DossierExtras({ form, setVal, compact = false }) {
   const reglajValuesComplete = REGLAJ.every(([k]) => String(rg[k]?.val || "").trim() && String(rg[k]?.t || "").trim());
   const setT = (k, f, v) => setVal("tests", { ...ts, [k]: { ...(ts[k] || {}), [f]: v } });
   return (
-    <div className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
+    <div id={compact ? "diu-executant" : undefined} className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
       {compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <h4 className="font-bold text-sm mb-1">Semnătura reprezentantului firmei</h4>
         <p className="text-xs" style={{ color: "var(--muted)" }}>Documentele au un singur semnatar: reprezentantul firmei executante. Semnătura și ștampila se preiau din setările firmei, dacă sunt configurate; aplicația nu inventează semnături.</p>
@@ -87,3 +87,4 @@ export function DossierExtras({ form, setVal, compact = false }) {
     </div>
   );
 }
+
