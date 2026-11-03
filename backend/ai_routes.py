@@ -500,19 +500,65 @@ async def collect(chat: LlmChat, text: str) -> str:
     return out
 
 
-async def run_precheck(summary: dict, what: str) -> list:
+def local_precheck(summary: dict) -> list:
+    """Rule-based fallback when the AI provider is unavailable; it never invents measurements."""
+    items, seen = [], set()
+
+    def add(value, severity="important"):
+        text = str(value or "").strip()
+        if not text:
+            return
+        text = text[:300]
+        if text.casefold() in seen or len(items) >= 15:
+            return
+        seen.add(text.casefold())
+        items.append({"text": text, "severity": severity if severity in SEV else "important"})
+
+    for key in ("date_comune_lipsa", "common_missing", "lipsuri"):
+        values = summary.get(key)
+        if isinstance(values, (list, tuple)):
+            for value in values:
+                add("Verifică: " + (value.get("text") or value.get("label") or str(value) if isinstance(value, dict) else str(value)), "important")
+
+    for key in ("opis", "documente"):
+        rows = summary.get(key)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            missing = row.get("lipsa", row.get("missing"))
+            status = str(row.get("status") or "").casefold()
+            if missing and "opțional" not in status and "optional" not in status:
+                label = row.get("document") or row.get("title") or row.get("name") or "document din opis"
+                add("Lipsește sau trebuie verificat: " + str(label), "important")
+
+    config = summary.get("configurare_cef") or summary.get("config") or {}
+    if isinstance(config, dict):
+        for value in config.get("erori") or config.get("errors") or []:
+            add("Eroare de configurare tehnică: " + str(value), "critic")
+        for value in config.get("avertizari") or config.get("warnings") or []:
+            add("Avertizare tehnică de verificat: " + str(value), "minor")
+
+    if not items:
+        add("Verificarea locală nu a găsit lipsuri în datele structurate. Confirmă documentele și valorile față de actele originale.", "minor")
+    return items
+
+
+async def run_precheck(summary: dict, what: str) -> dict:
     prompt = (f"Verifică {what}. Răspunde DOAR cu JSON valid: "
               '{"items":[{"text":"acțiune concretă de verificat sau completat","severity":"critic|important|minor"}]}. '
-              "Maximum 15 puncte, fiecare scurt (max 160 caractere), fără puncte pentru date corecte. Dacă dosarul e complet și coerent, items = [].\n\nDOSAR (JSON):\n"
+              "Maximum 15 puncte, fiecare scurt (max 160 caractere), fără puncte pentru date corecte. Dacă dosarul e complet și coerent, items = [].\\n\\nDOSAR (JSON):\\n"
               + json.dumps(summary, ensure_ascii=False, default=str)[:14000])
     try:
         out = await collect(new_chat("Ești verificator de dosare electrice pentru D-ENERGY. " + RULES), prompt)
         raw = _parse(out).get("items") or []
+        items = [{"text": str(i.get("text"))[:300], "severity": i.get("severity") if i.get("severity") in SEV else "important"}
+                 for i in raw if isinstance(i, dict) and i.get("text")][:15]
+        return {"items": items, "engine": "openai"}
     except Exception as e:
-        logger.error(f"AI precheck failed: {e}")
-        raise HTTPException(status_code=502, detail="Verificarea AI nu a putut fi efectuată acum. Poți continua și fără ea.")
-    return [{"text": str(i.get("text"))[:300], "severity": i.get("severity") if i.get("severity") in SEV else "important"}
-            for i in raw if isinstance(i, dict) and i.get("text")][:15]
+        logger.warning("AI precheck unavailable; using local dossier checks: %s", type(e).__name__)
+        return {"items": local_precheck(summary), "engine": "rules"}
 
 
 async def save_ack(user, module, item_id, request):
@@ -535,8 +581,8 @@ async def ai_precheck(item_id: str, request: Request, user: dict = Depends(get_c
         draft = body.get("form") if isinstance(body, dict) else None
     except Exception:
         draft = None
-    items = await run_precheck(await dossier_summary(user, item_id, draft), "dosarul de prosumator înainte de FINALIZARE")
-    pc = {"at": now(), "by": user.get("email"), "items": items, "checked": []}
+    review = await run_precheck(await dossier_summary(user, item_id, draft), "dosarul de prosumator înainte de FINALIZARE")
+    pc = {"at": now(), "by": user.get("email"), **review, "checked": []}
     await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {"ai_precheck": pc}})
     return pc
 
@@ -567,9 +613,9 @@ async def ai_diu_precheck(item_id: str, request: Request, user: dict = Depends(g
                "pram_general": r.get("pram_m") or {}, "client": {k: client.get(k) for k in ("name", "address", "phone", "email") if client.get(k)},
                "executant": {k: s.get(k) for k in ("company", "anre_attest", "anre_valid", "rep") if s.get(k)},
                "documente": [{"nr": p["nr"], "document": p["title"], "status": p["status"], "lipsa": p["missing"]} for p in DD.positions(r, s)]}
-    items = await run_precheck(summary, "dosarul instalației de utilizare (DI-U) înainte de PREDAREA către beneficiar: completitudine documente, "
-                                        "coerență circuite/protecții/secțiuni, rezultate PRAM (izolație ≥1 MΩ, DDR ≤300 ms, priză ≤ valoarea admisă), date recepție/PIF/garanție")
-    pc = {"at": now(), "by": user.get("email"), "items": items, "checked": []}
+    review = await run_precheck(summary, "dosarul instalației de utilizare (DI-U) înainte de PREDAREA către beneficiar: completitudine documente, "
+                                        "coerență circuite/protecții/secțiuni, rezultate PRAM, date recepție/PIF/garanție")
+    pc = {"at": now(), "by": user.get("email"), **review, "checked": []}
     await db.diu.update_one({"id": item_id, "owner": user["id"]}, {"$set": {"ai_precheck": pc}})
     return pc
 
