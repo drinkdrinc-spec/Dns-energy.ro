@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, ShieldCheck, Search, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ExternalLink, ShieldCheck, Search, AlertTriangle, CheckCircle2, Archive } from "lucide-react";
 import { PageHeader, Btn } from "@/components/Layout";
 import { api, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 
@@ -45,17 +45,28 @@ function operatorId(value) {
 
 export default function DistributionPortals() {
   const [pros, setPros] = useState([]);
+  const [atrCases, setAtrCases] = useState([]);
+  const [powerCases, setPowerCases] = useState([]);
   const [prosId, setProsId] = useState("");
   const [pod, setPod] = useState("");
   const [manual, setManual] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
-    api.get("/data/prosumator").then((r) => setPros(Array.isArray(r.data) ? r.data : [])).catch(() => setLoadFailed(true));
+    Promise.allSettled([api.get("/data/prosumator"), api.get("/data/atr"), api.get("/data/power")]).then((results) => {
+      const [prosResult, atrResult, powerResult] = results;
+      if (prosResult.status === "fulfilled") setPros(Array.isArray(prosResult.value.data) ? prosResult.value.data : []);
+      else setLoadFailed(true);
+      if (atrResult.status === "fulfilled") setAtrCases(Array.isArray(atrResult.value.data) ? atrResult.value.data : []);
+      if (powerResult.status === "fulfilled") setPowerCases(Array.isArray(powerResult.value.data) ? powerResult.value.data : []);
+    });
   }, []);
   const selectedPros = pros.find((item) => item.id === prosId) || null;
   const result = useMemo(() => detectOperator(pod), [pod]);
   const selectedId = manual || result.match || operatorId(selectedPros?.operator);
   const selected = PORTALS.find((p) => p.id === selectedId);
+  // Only explicitly linked records are offered for download; never infer a dossier from a shared name.
+  const linkedAtr = atrCases.filter((item) => selectedPros && item.pros_id === selectedPros.id);
+  const linkedPower = powerCases.filter((item) => selectedPros && item.pros_id === selectedPros.id);
   // DEER routes all new applications through the unified dedicated portal.
   // Legacy regional portals remain useful only for historical records.
   const historicalPortalUrl = selectedId === "deer" ? deerRegionalPortal(selectedPros?.county) : null;
@@ -126,6 +137,9 @@ export default function DistributionPortals() {
                 <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${selectedPros.id}/pdf?download=1`, `schema_monofilara_${selectedPros.id.slice(0, 8)}.pdf`)}>Descarcă schema</button>
                 <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${selectedPros.id}`, `pram_priza_${selectedPros.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
                 <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/pv_pif/${selectedPros.id}`, `pif_${selectedPros.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
+                {linkedAtr.map((item) => <button type="button" key={item.id} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/atr/${item.id}/package.zip`, `pachet_ATR_${item.number || item.id.slice(0, 8)}.zip`)} data-testid="portal-atr-package"><Archive size={13} className="inline mr-1" /> Pachet ATR {item.number || item.client_name || ""}</button>)}
+                {linkedPower.map((item) => <button type="button" key={item.id} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/power/${item.id}/package.zip`, `pachet_spor_putere_${item.number || item.id.slice(0, 8)}.zip`)} data-testid="portal-power-package"><Archive size={13} className="inline mr-1" /> Pachet spor {item.number || item.client_name || ""}</button>)}
+                {!linkedAtr.length && !linkedPower.length && <span className="text-xs basis-full" style={{ color: "var(--muted)" }} data-testid="portal-no-linked-package">Nu există încă o cerere ATR sau de spor legată explicit de acest dosar. Creeaz-o din butonul „Pregătește cererea ATR”.</span>}
               </div>
             </div>}
             <a href={portalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-4 ml-2 rounded-lg px-4 py-3 text-sm font-bold text-white" style={{ background: "var(--blue)" }} data-testid="portal-open-selected">
