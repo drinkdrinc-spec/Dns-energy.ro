@@ -45,10 +45,14 @@ function equipmentSummary(pros) {
 }
 
 export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
+  const [step, setStep] = useState(0);
   const fields = cfg.fields || [];
   const isDeer = /deer|distribuție energie electrică|distributie energie electrica/i.test(String(form.operator || ""));
   const basic = fields.filter((f) => BASIC.has(f.name) && (f.name !== "deer_case" || isDeer));
   const advanced = fields.filter((f) => !BASIC.has(f.name));
+  const clientSiteNames = new Set(["client_name", "pod", "operator", "address", "kind"]);
+  const clientSiteFields = basic.filter((f) => clientSiteNames.has(f.name));
+  const requestFields = basic.filter((f) => !clientSiteNames.has(f.name));
   const clients = refOptions.clients || [];
   const pros = refOptions.prosumator || [];
   const norm = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
@@ -128,13 +132,38 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
     </label>;
   };
 
+  const summary = [
+    ["Client", form.client_name], ["POD", form.pod], ["Operator", form.operator], ["Loc", form.address],
+    ["Tip loc", form.kind], ["Solicitare", form.request_type || form.deer_case],
+    ["Putere absorbită solicitată", form.p_abs_kw ? `${form.p_abs_kw} kW` : ""],
+    ["Putere evacuată solicitată", form.p_evac_kw ? `${form.p_evac_kw} kW` : ""],
+  ].filter(([, value]) => value);
+
   return <div className="space-y-4" data-testid="atr-quick-form">
-    <div>
-      <h3 className="text-sm font-bold mb-1">Datele de bază ale cererii</h3>
-      <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Alege clientul; datele cunoscute din fișa clientului se preiau automat. Completează POD-ul de pe factură și confirmă tipul solicitării.</p>
-      <div className="grid sm:grid-cols-2 gap-3">{basic.map(renderField)}</div>
-    </div>
-    {form.client_id && <section className="rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-linked-equipment">
+    <nav className="grid grid-cols-3 gap-2" aria-label="Pașii cererii ATR" data-testid="atr-stepper">
+      {["Client & loc de consum", "Existent & solicitat", "Rezumat"].map((title, index) => <button key={title} type="button" onClick={() => setStep(index)} aria-current={step === index ? "step" : undefined} className="rounded-lg border px-3 py-2 text-left text-xs font-semibold" style={{ borderColor: step === index ? "var(--blue)" : "var(--line)", background: step === index ? "#eaf1ff" : "#fff", color: step === index ? "var(--blue)" : "var(--muted)" }} data-testid={`atr-step-${index + 1}`}><span className="mr-1">{index + 1}.</span>{title}</button>)}
+    </nav>
+    {step === 0 && <section data-testid="atr-step-client-site">
+      <h3 className="text-sm font-bold mb-1">Client și loc de consum</h3>
+      <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Alege clientul. Datele din fișa lui se completează automat; verifică POD-ul și adresa pe factura de energie.</p>
+      <div className="grid sm:grid-cols-2 gap-3">{clientSiteFields.map(renderField)}</div>
+    </section>}
+    {step === 1 && <section data-testid="atr-step-request">
+      <h3 className="text-sm font-bold mb-1">Existent și solicitat</h3>
+      <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Alege procedura și puterile solicitate. Echipamentele se preiau din dosarul prosumator asociat.</p>
+      <div className="grid sm:grid-cols-2 gap-3">{requestFields.map(renderField)}</div>
+      <details className="mt-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-extra-fields">
+        <summary className="cursor-pointer text-sm font-semibold">Alte date pentru formularul ATR</summary>
+        <div className="grid sm:grid-cols-2 gap-3 mt-3">{advanced.map(renderField)}</div>
+      </details>
+    </section>}
+    {step === 2 && <section className="rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-step-summary">
+      <h3 className="text-sm font-bold">Rezumatul cererii</h3>
+      <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Verifică datele preluate și echipamentele înainte de salvare și generarea anexelor.</p>
+      <dl className="mt-3 grid gap-2 sm:grid-cols-2">{summary.map(([name, value]) => <div key={name} className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}><dt className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{name}</dt><dd className="mt-1 text-sm font-semibold">{value}</dd></div>)}</dl>
+      {form.client_id && <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Dosarul asociat și lista de echipamente sunt disponibile în pasul anterior.</p>}
+    </section>}
+    {step === 1 && form.client_id && <section className="rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-linked-equipment">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h3 className="text-sm font-bold">Echipamente transferate în cererea ATR</h3>
           <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Date preluate din dosarul prosumator ales. Fișele tehnice și declarațiile existente în catalog intră automat în ZIP-ul ATR.</p></div>
@@ -153,9 +182,10 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
           <p className="sm:col-span-2 text-xs" style={{ color: "var(--muted)" }}>Confirmați modelul și puterile cu fișele tehnice. Dacă documentul operatorului nu are câmp pentru baterie, aceasta rămâne listată în anexa tehnică a pachetului.</p>
         </div>}
     </section>}
-    <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-extra-fields">
-      <summary className="cursor-pointer text-sm font-semibold">Alte date pentru formularul ATR</summary>
-      <div className="grid sm:grid-cols-2 gap-3 mt-3">{advanced.map(renderField)}</div>
-    </details>
+    <div className="flex justify-between gap-2">
+      <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }} onClick={() => setStep((current) => Math.max(0, current - 1))} disabled={step === 0} data-testid="atr-step-back">Înapoi</button>
+      {step < 2 && <button type="button" className="rounded-lg px-4 py-2 text-xs font-bold text-white" style={{ background: "var(--blue)" }} onClick={() => setStep((current) => Math.min(2, current + 1))} data-testid="atr-step-next">Continuă</button>}
+    </div>
   </div>;
 }
+
