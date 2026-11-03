@@ -122,6 +122,7 @@ export default function Dashboard() {
   const [inboxQuery, setInboxQuery] = useState("");
   const [inboxModule, setInboxModule] = useState("all");
   const [inboxStatus, setInboxStatus] = useState("all");
+  const [inboxOperator, setInboxOperator] = useState("all");
   useEffect(() => { api.get("/stats/dashboard").then((r) => setS(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     const query = clientQuery.trim();
@@ -140,13 +141,16 @@ export default function Dashboard() {
   const inboxItems = s.inbox || [];
   const moduleLabels = { prosumator: "Prosumator", atr: "Cerere ATR", power: "Spor de putere", diu: "DI-U", mono: "Schemă monofilară" };
   const inboxStatuses = [...new Set(inboxItems.map((item) => item.status || "În lucru"))];
+  const inboxOperators = [...new Set(inboxItems.map((item) => item.operator || item.distributor).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "ro-RO"));
   const normalizedInboxQuery = inboxQuery.trim().toLocaleLowerCase("ro-RO");
   const visibleInboxItems = inboxItems.filter((item) => {
     const searchText = [item.client_name, item.number, item.label, item.pod, item.operator, item.distributor]
       .filter(Boolean).join(" ").toLocaleLowerCase("ro-RO");
     return (!normalizedInboxQuery || searchText.includes(normalizedInboxQuery))
       && (inboxModule === "all" || item.module === inboxModule)
-      && (inboxStatus === "all" || (item.status || "În lucru") === inboxStatus);
+      && (inboxStatus === "all" || (item.status || "În lucru") === inboxStatus)
+      && (inboxOperator === "all" || (item.operator || item.distributor) === inboxOperator);
   });
   const renderInboxItem = (item) => {
     const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono" };
@@ -198,7 +202,7 @@ export default function Dashboard() {
             <button type="button" onClick={() => setInboxView("kanban")} aria-pressed={inboxView === "kanban"} aria-label="Vizualizare Kanban" title="Kanban" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "kanban" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><LayoutGrid size={17} /></button>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3" data-testid="dashboard-inbox-filters">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 mb-3" data-testid="dashboard-inbox-filters">
           <input className="den-input w-full" value={inboxQuery} onChange={(event) => setInboxQuery(event.target.value)}
             placeholder="Caută client, număr dosar, POD sau operator…" aria-label="Caută dosare după client, număr, POD sau operator" />
           <select className="den-input w-full" value={inboxModule} onChange={(event) => setInboxModule(event.target.value)} aria-label="Filtrează după tipul dosarului">
@@ -208,6 +212,10 @@ export default function Dashboard() {
           <select className="den-input w-full" value={inboxStatus} onChange={(event) => setInboxStatus(event.target.value)} aria-label="Filtrează după starea dosarului">
             <option value="all">Toate stările</option>
             {inboxStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+          <select className="den-input w-full" value={inboxOperator} onChange={(event) => setInboxOperator(event.target.value)} aria-label="Filtrează după operatorul de distribuție">
+            <option value="all">Toți operatorii</option>
+            {inboxOperators.map((operator) => <option key={operator} value={operator}>{operator}</option>)}
           </select>
         </div>
         {visibleInboxItems.length === 0 ? (
