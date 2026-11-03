@@ -742,6 +742,16 @@ export default function ModulePage({ moduleKey }) {
               {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}&case=power-increase`} data-testid="quick-prosumer-power">Spor de putere</a>}
               {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">Creează DI-U</a>}
             </div>
+            <details className="mt-3 rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="prosumer-blockers">
+              <summary className="cursor-pointer text-xs font-bold">Blocaje active ({Array.isArray(form.workflow_blockers) ? form.workflow_blockers.filter((item) => String(item || "").trim()).length : 0})</summary>
+              <label className="mt-2 block text-xs font-semibold" htmlFor="prosumer-workflow-blockers">Notează ce lipsește sau ce așteptăm, câte un blocaj pe rând</label>
+              <textarea id="prosumer-workflow-blockers" className="den-input mt-1 w-full" rows={3}
+                value={Array.isArray(form.workflow_blockers) ? form.workflow_blockers.join("\n") : String(form.workflow_blockers || "")}
+                onChange={(event) => setVal("workflow_blockers", event.target.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean))}
+                placeholder={"Ex.: Așteptăm răspunsul operatorului\nLipsește extrasul CF"}
+                data-testid="prosumer-workflow-blockers-input" />
+              <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Blocajele se salvează împreună cu dosarul când apeși „Salvează”. Nu modifică datele tehnice și nu trimit informații către operator.</p>
+            </details>
             {Array.isArray(form.workflow_history) && form.workflow_history.length > 0 && <details className="mt-3 rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="prosumer-workflow-history">
               <summary className="cursor-pointer text-xs font-bold">Istoric schimbări de stadiu ({form.workflow_history.length})</summary>
               <ol className="mt-2 space-y-2">
