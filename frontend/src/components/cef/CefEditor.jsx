@@ -111,6 +111,17 @@ export function CefEditor({ value, onChange }) {
       setSupplierMessage(item.datasheet?.storage_path && item.conformity?.storage_path
         ? `${item.brand_model} a fost importat cu fișa și declarația disponibile. Caută-l în selectorul de model.`
         : `${item.brand_model} a fost importat în catalog. Unele documente sau valori tehnice nu sunt publicate ori nu au putut fi preluate; verifică fișa și completează datele lipsă înainte de proiectare.`);
+      if (item.datasheet?.storage_path) {
+        api.post("/ai/catalog/" + item.id + "/extract")
+          .then(({ data: result }) => {
+            const count = Object.keys(result?.filled || {}).length;
+            setSupplierMessage(count
+              ? item.brand_model + ": " + count + " parametri extrași din fișă. Verifică valorile înainte de proiectare."
+              : (result?.message || ("Fișa pentru " + item.brand_model + " a fost salvată; nu s-au găsit valori noi.")));
+            api.get("/data/catalog").then(({ data: rows }) => setCatalog(rows)).catch(() => {});
+          })
+          .catch(() => setSupplierMessage("Fișa pentru " + item.brand_model + " a fost salvată, dar extragerea nu a reușit. Modelul poate fi completat ulterior din catalog."));
+      }
     } catch (error) {
       setSupplierMessage(error.response?.data?.detail || error.message || "Modelul nu a putut fi importat.");
     } finally {
