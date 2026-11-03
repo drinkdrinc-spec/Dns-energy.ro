@@ -118,8 +118,6 @@ DEER_ANNEXES = [
      "https://www.distributie-energie.ro/wp-content/uploads/2023/12/1.-Loc-consum-si-producere-nou-_Anexa-nr-1.docx"),
     ("anexa 2", "Anexa nr. 2", "Notificare loc existent",
      "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx"),
-    ("", "Anexa nr. 2", "Notificare loc existent",
-     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx"),
 ]
 
 
@@ -128,7 +126,7 @@ def deer_annex_info(rec: dict):
     if not case:
         return None
     for marker, annex, title, url in DEER_ANNEXES:
-        if marker == "" or marker in case:
+        if marker in case:
             return annex, title, url
     return None
 
