@@ -51,6 +51,18 @@ function installedPanelKwp(pros) {
   return pros.cef?.total_kwp || pros.panel_kwp || pros._kwp || "";
 }
 
+const PROSUMER_OD_STAGES = [
+  "Depunerea cererii de racordare",
+  "Emiterea avizului tehnic de racordare",
+  "Încheierea contractului de racordare și încredințarea execuției lucrării de racordare",
+  "Execuția instalației de racordare",
+  "Depunerea dosarului instalației electrice interioare",
+  "Recepția instalației electrice de racordare",
+  "Emiterea certificatului de racordare",
+  "Încheierea contractului de furnizare a energiei electrice",
+  "Punerea sub tensiune a instalației de utilizare"
+];
+
 function normalizeClientName(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
 }
@@ -488,6 +500,7 @@ export default function ModulePage({ moduleKey }) {
   }, [key, visibleItems, prosumerFilterRows, q, remoteSearchItems, showTestRecords, filterClient, filterOperator, filterCounty, filterLocality]);
 
   const checkedCount = cfg.checklist ? cfg.checklist.filter((c) => checks[c]).length : 0;
+  const currentOdStage = Math.max(0, PROSUMER_OD_STAGES.indexOf(form.operator_stage));
 
   return (
     <div>
@@ -583,6 +596,23 @@ export default function ModulePage({ moduleKey }) {
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
           {key === "prosumator" && editId && <section className="mb-5 rounded-xl border p-3 sm:p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="prosumer-quick-actions">
+          {key === "prosumator" && editId && <section className="mb-5 rounded-xl border p-3 sm:p-4" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid="prosumer-operator-progress">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div><h3 className="text-sm font-bold">Urmărirea dosarului la operator</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează etapa curentă pentru a vedea progresul până la punerea sub tensiune.</p></div>
+              <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: form.operator_stage ? "#eaf1ff" : "#f1f5f9", color: form.operator_stage ? "var(--blue)" : "var(--muted)" }} data-testid="prosumer-stage-count">{form.operator_stage ? `Etapa ${currentOdStage + 1} din ${PROSUMER_OD_STAGES.length}` : "Etapă nealeasă"}</span>
+            </div>
+            <div className="grid grid-cols-9 gap-1.5" role="group" aria-label="Etapele dosarului la operator">
+              {PROSUMER_OD_STAGES.map((stage, index) => <button key={stage} type="button" title={stage} aria-label={`Etapa ${index + 1}: ${stage}`} aria-pressed={form.operator_stage === stage} onClick={() => setVal("operator_stage", stage)} className="min-h-9 rounded-lg border text-xs font-bold transition" style={{ borderColor: form.operator_stage === stage ? "var(--blue)" : "var(--line)", background: form.operator_stage === stage ? "var(--blue)" : (form.operator_stage && index < currentOdStage ? "#eaf1ff" : "#fff"), color: form.operator_stage === stage ? "#fff" : (form.operator_stage && index < currentOdStage ? "var(--blue)" : "var(--muted)") }} data-testid={`prosumer-stage-${index + 1}`}>{index + 1}</button>)}
+            </div>
+            <label className="den-field mt-3 block"><span className="text-xs font-semibold">Etapa curentă</span>
+              <select className="den-input mt-1" value={form.operator_stage || ""} onChange={(event) => setVal("operator_stage", event.target.value)} data-testid="prosumer-stage-select">
+                <option value="">Alege etapa curentă…</option>{PROSUMER_OD_STAGES.map((stage, index) => <option key={stage} value={stage}>{index + 1}. {stage}</option>)}
+              </select>
+            </label>
+            {form.operator_stage && <p className="mt-2 text-xs font-medium" style={{ color: "var(--blue)" }}>{form.operator_stage}</p>}
+            <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Stadiul se păstrează împreună cu dosarul când apeși „Salvează”. Actualizarea stadiului nu depune cereri în portalul operatorului.</p>
+          </section>}
+          
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div><div className="text-sm font-bold">{form.client_name || "Dosar prosumator"}</div><div className="text-xs" style={{ color: "var(--muted)" }}>{[form.operator, form.pod && `POD ${form.pod}`, form.status].filter(Boolean).join(" · ")}</div></div>
               <span className="text-xs font-semibold" style={{ color: "var(--blue)" }}>Acțiuni rapide dosar</span>
@@ -694,8 +724,8 @@ export default function ModulePage({ moduleKey }) {
           <>
           {key === "prosumator" && recordsView === "board" && <div className="mb-4 overflow-x-auto" data-testid="prosumator-kanban">
             <div className="grid min-w-[280px] gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[...new Set(filtered.map((item) => String(item.status || "În lucru").trim()))].map((status) => {
-                const group = filtered.filter((item) => String(item.status || "În lucru").trim() === status);
+              {[...new Set(filtered.map((item) => String(item.operator_stage || item.status || "În lucru").trim()))].map((status) => {
+                const group = filtered.filter((item) => String(item.operator_stage || item.status || "În lucru").trim() === status);
                 return <section key={status} className="rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }} aria-label={`Stadiu ${status}`}>
                   <div className="mb-3 flex items-center justify-between gap-2 text-sm font-bold"><span>{status}</span><span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{group.length}</span></div>
                   <div className="grid gap-2">{group.map((item) => <article key={item.id} className="rounded-lg border bg-white p-3 shadow-sm" style={{ borderColor: "var(--line)" }}>
