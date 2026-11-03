@@ -44,11 +44,13 @@ SOURCES = {
     },
 }
 DOCUMENT_HOSTS = {
-    "depozitsolar.ro", "solarhev.ro", "solartech.ro", "deyeinverter.com", "huawei.com", "goodwe.com",
-    "sungrowpower.com", "solis.com", "ginlong.com", "fronius.com", "sma.de", "sma-solar.com",
-    "jinkosolar.com", "longi.com", "aikosolar.com", "aiko.com", "trinasolar.com", "canadiansolar.com",
-    "qcells.com", "jasolar.com", "pylontech.com", "bydbatterybox.com", "fox-ess.com", "foxess.com",
-    "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com",
+    "depozitsolar.ro", "solarhev.ro", "solartech.ro", "deyeinverter.com", "deyeess.com", "huawei.com", "goodwe.com",
+    "sungrowpower.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de", "sma-solar.com",
+    "jinkosolar.com", "jinkosolar.eu", "longi.com", "aikosolar.com", "aiko.com", "trinasolar.com", "canadiansolar.com",
+    "qcells.com", "ja-solar.com", "jasolar.com", "pylontech.com", "pylontech.com.cn", "pylontech.us", "bydbatterybox.com", "fox-ess.com", "foxess.com",
+    "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com", "risenenergy.com",
+    "solarshop.baywa-re.lv", "hqsmartcloud.com", "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro",
+    "reteleelectrice.ro", "distributieoltenia.ro",
 }
 CATEGORIES = {"Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"}
 MAX_LISTING_PAGES = 6
@@ -97,12 +99,21 @@ def _safe_page(url: str, host: str) -> bool:
     return parsed.scheme == "https" and (parsed.hostname or "").lower().rstrip(".") in (host, "www." + host) and not parsed.username and not parsed.password
 
 
-def _safe_document(url: str, supplier_host: str) -> bool:
+def _safe_document_host(url: str, supplier_host: str) -> bool:
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower().rstrip(".")
-    return parsed.scheme == "https" and not parsed.username and not parsed.password and parsed.path.lower().endswith(".pdf") and any(
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    return parsed.scheme == "https" and not parsed.username and not parsed.password and port in (None, 443) and any(
         host == domain or host.endswith("." + domain) for domain in (supplier_host, *DOCUMENT_HOSTS)
     )
+
+
+def _safe_document(url: str, supplier_host: str) -> bool:
+    parsed = urlparse(url)
+    return _safe_document_host(url, supplier_host) and parsed.path.lower().endswith(".pdf")
 
 
 def _product_title(doc) -> str:
@@ -363,5 +374,51 @@ async def get_public_product(supplier: str, category: str, url: str) -> dict | N
         price, stock = _offer(doc)
         return {"supplier": supplier, "category": category, "brand_model": title[:240], "product_url": url,
                 "price_text": price, "availability": stock, **_properties(doc), **_documents(doc, url)}
+
+
+async def fetch_public_pdf(url: str, supplier_host: str, max_bytes: int) -> tuple[bytes, str] | None:
+    """Fetch a linked PDF while validating each bounded HTTPS redirect."""
+    if not _safe_document(url, supplier_host):
+        return None
+    chunks: list[bytes] = []
+    total = 0
+    current_url = url
+    timeout = httpx.Timeout(20, connect=8)
+    try:
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=False,
+            headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"},
+        ) as client:
+            for _ in range(6):
+                async with client.stream("GET", current_url) as response:
+                    if response.status_code in (301, 302, 303, 307, 308):
+                        location = response.headers.get("location")
+                        if not location:
+                            return None
+                        next_url = urljoin(current_url, location)
+                        if not _safe_document_host(next_url, supplier_host):
+                            return None
+                        current_url = next_url
+                        continue
+                    if response.status_code != 200 or not _safe_document_host(str(response.url), supplier_host):
+                        return None
+                    length = response.headers.get("content-length")
+                    if length and length.isdigit() and int(length) > max_bytes:
+                        return None
+                    async for chunk in response.aiter_bytes(64 * 1024):
+                        total += len(chunk)
+                        if total > max_bytes:
+                            return None
+                        chunks.append(chunk)
+                    break
+            else:
+                return None
+    except httpx.HTTPError:
+        return None
+    data = b"".join(chunks)
+    if not data.startswith(b"%PDF-"):
+        return None
+    return data, current_url
 
 

@@ -1021,22 +1021,20 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
     now = datetime.now(timezone.utc).isoformat()
     for kind in ("datasheet", "conformity"):
         doc_url = product.get(kind + "_url") or ""
-        host = (urlparse(doc_url).hostname or "").lower().rstrip(".")
         source_host = SUPPLIER_CATALOG.SOURCES[supplier]["host"]
         if not doc_url or not SUPPLIER_CATALOG._safe_document(doc_url, source_host):
             continue
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=20, follow_redirects=False, headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"}) as client:
-                response = await client.get(doc_url)
-            data = response.content
-            if response.status_code != 200 or len(data) > MAX_UPLOAD_BYTES or not data.startswith(b"%PDF-"):
+            fetched = await SUPPLIER_CATALOG.fetch_public_pdf(doc_url, source_host, MAX_UPLOAD_BYTES)
+            if not fetched:
                 continue
+            data, resolved_url = fetched
+            host = (urlparse(resolved_url).hostname or "").lower().rstrip(".")
             path = f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.pdf"
             stored = put_object(path, data, "application/pdf")
             item[kind] = {"storage_path": stored["path"], "original_filename": f"{product['brand_model']} — {kind}.pdf",
                           "content_type": "application/pdf", "size": len(data), "source_url": doc_url,
-                          "source_host": host, "imported_at": now}
+                          "source_host": host, "resolved_url": resolved_url, "imported_at": now}
             item[kind + "_source_url"] = doc_url
         except Exception as exc:
             logger.info("Supplier catalog document unavailable (%s): %s", kind, str(exc)[:160])

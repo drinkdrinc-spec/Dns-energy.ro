@@ -80,6 +80,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
   const [addingModel, setAddingModel] = useState({});
   const [catalogDocStatus, setCatalogDocStatus] = useState("");
   const pendingDocImports = useRef(0);
+  const formRef = useRef(form);
+  formRef.current = form;
   useEffect(() => {
     api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setProblem("Catalogul nu s-a putut încărca. Poți salva datele de bază și selecta echipamentele ulterior.")).finally(() => setCatalogLoading(false));
   }, []);
@@ -122,7 +124,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
   }, [catalog]);
 
   const cefUpdate = (kind, item, id, panelCountOverride) => {
-    const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] };
+    const currentForm = formRef.current;
+    const cef = currentForm.cef || { grid: {}, inverters: [], shared_batteries: [] };
     const old = cef.inverters?.[0] || { id: "main", strings: [], ac: { material: "Cu", install: "C" }, dc: { material: "Cu", cable_type: "H1Z2Z2-K" }, battery_mode: "none" };
     const inv = { ...old };
     const existingStrings = inv.strings || [];
@@ -130,23 +133,23 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     if (kind === "inverter") Object.assign(inv, item ? {
       catalog_id: item.id, brand_model: item.brand_model, type: item.type, phases: item.phases, p_nom_kw: item.p_nom_kw, p_max_kw: item.p_max_kw,
       vdc_max: item.vdc_max, mppt_min: item.mppt_min, mppt_max: item.mppt_max, mppt_count: item.mppt_count, imax_mppt: item.imax_mppt, bat_i_max: item.bat_i_max,
-      red_limit_mode: item.red_limit_mode || "Nu este declarată", count: Math.max(1, Number(form.inverter_count) || 1),
+      red_limit_mode: item.red_limit_mode || "Nu este declarată", count: Math.max(1, Number(currentForm.inverter_count) || 1),
     } : { catalog_id: "", brand_model: "", p_nom_kw: "", p_max_kw: "", type: "", phases: "", count: 1 });
     if (kind === "panel") Object.assign(inv, item ? {
       panel_catalog_id: item.id, panel_model: item.brand_model, panel_w: item.w, panel_voc: item.voc, panel_vmp: item.vmp,
       panel_isc: item.isc, panel_coef_voc: item.coef_voc, panel_coef_vmp: item.coef_vmp,
     } : { panel_catalog_id: "", panel_model: "", panel_w: "", panel_voc: "", panel_vmp: "", panel_isc: "", panel_coef_voc: "", panel_coef_vmp: "" });
     if (kind === "battery") Object.assign(inv, item ? {
-      battery_mode: "own", battery: { ...(inv.battery || {}), ...batteryCatalogData(item, inv.phases), modules: Number(form.battery_count || 1) },
+      battery_mode: "own", battery: { ...(inv.battery || {}), ...batteryCatalogData(item, inv.phases), modules: Number(currentForm.battery_count || 1) },
     } : { battery_mode: "none", battery: {} });
     if (kind === "meter") setVal("cef", { ...cef, grid: { ...(cef.grid || {}), meter: item?.brand_model || "", meter_catalog_id: item?.id || "" } });
     else {
       if (canReplaceStrings) {
-        const proposal = proposeStrings(inv, panelCountOverride ?? form.panel_count);
+        const proposal = proposeStrings(inv, panelCountOverride ?? currentForm.panel_count);
         if (proposal) inv.strings = proposal;
         else if (existingStrings.every((x) => x.auto_generated)) inv.strings = [];
       }
-      const nextCef = { ...cef, grid: { ...(cef.grid || {}), ...(form.supply ? { supply: form.supply } : {}), ...(form.bransament_kw ? { bransament_kw: Number(form.bransament_kw) } : {}) }, inverters: [inv, ...(cef.inverters || []).slice(1)] };
+      const nextCef = { ...cef, grid: { ...(cef.grid || {}), ...(currentForm.supply ? { supply: currentForm.supply } : {}), ...(currentForm.bransament_kw ? { bransament_kw: Number(currentForm.bransament_kw) } : {}) }, inverters: [inv, ...(cef.inverters || []).slice(1)] };
       setVal("cef", nextCef);
       if (kind === "inverter" || kind === "battery") {
         const hasBattery = hasConfiguredStorage({ cef: nextCef });
@@ -158,26 +161,27 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
   };
 
   const choose = (kind, id, providedItem = null) => {
+    const currentForm = formRef.current;
     const item = providedItem || options[kind].find((x) => x.id === id);
     let panelCountOverride;
     setVal("catalog_selection", { ...selected, [kind]: id || "" });
     if (kind === "inverter") {
       setVal("inverter", item?.brand_model || ""); setVal("inverter_kw", item?.p_nom_kw || "");
-      setVal("inverter_count", item ? (form.inverter_count || 1) : "");
+      setVal("inverter_count", item ? (currentForm.inverter_count || 1) : "");
 
     } else if (kind === "panel") {
       setVal("panels", item?.brand_model || ""); setVal("panel_w", item?.w || "");
-      const suggestedCount = item ? panelCountForPower(form.power, item.w) : "";
-      const hasSavedCount = form.panel_count !== undefined && form.panel_count !== null && String(form.panel_count).trim() !== "";
-      const autoMode = Boolean(item) && (form.panel_count_auto === true || (!hasSavedCount && form.panel_count_auto !== false));
+      const suggestedCount = item ? panelCountForPower(currentForm.power, item.w) : "";
+      const hasSavedCount = currentForm.panel_count !== undefined && currentForm.panel_count !== null && String(currentForm.panel_count).trim() !== "";
+      const autoMode = Boolean(item) && (currentForm.panel_count_auto === true || (!hasSavedCount && currentForm.panel_count_auto !== false));
       const useSuggestion = Boolean(suggestedCount) && autoMode;
       panelCountOverride = useSuggestion ? suggestedCount : undefined;
-      setVal("panel_count", useSuggestion ? suggestedCount : (item ? (form.panel_count || "") : ""));
+      setVal("panel_count", useSuggestion ? suggestedCount : (item ? (currentForm.panel_count || "") : ""));
       setVal("panel_count_auto", autoMode);
     } else if (kind === "battery") {
       setVal("battery", item?.brand_model || ""); setVal("battery_kwh", item?.kwh || "");
       setVal("battery_v", item?.voltage || ""); setVal("battery_ah", item?.ah || "");
-      setVal("battery_coupling", item?.coupling || ""); setVal("battery_count", item ? (form.battery_count || 1) : "");
+      setVal("battery_coupling", item?.coupling || ""); setVal("battery_count", item ? (currentForm.battery_count || 1) : "");
 
     } else setVal("smart_meter_type", item?.brand_model || "");
     cefUpdate(kind, item, id, panelCountOverride);
@@ -254,14 +258,32 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       const { data } = await api.post("/catalog/supplier-import", {
         supplier: product.supplier, category: product.category, product_url: product.product_url,
       }, { timeout: 60000 });
-      const item = data.item;
+      let item = data.item;
       if (!item?.id) throw new Error("Produsul nu a putut fi adăugat în catalog.");
+      let extractedFields = [];
+      let extractionFailed = false;
+      if (item.datasheet?.storage_path) {
+        setCatalogDocStatus("Fișa PDF a fost importată. Citesc specificațiile modelului pentru completarea dosarului…");
+        try {
+          const extraction = await api.post(`/ai/catalog/${encodeURIComponent(item.id)}/extract`, {}, { timeout: 35000 });
+          extractedFields = Object.keys(extraction.data?.filled || {});
+          const refreshed = await api.get("/data/catalog", { timeout: 20000 });
+          item = (Array.isArray(refreshed.data) ? refreshed.data : []).find((row) => row.id === item.id) || item;
+        } catch {
+          // Keep the selected catalog entry and its imported files usable when AI is unavailable.
+          extractionFailed = true;
+        }
+      }
       setCatalog((prev) => [item, ...prev.filter((row) => row.id !== item.id)]);
       choose(kind, item.id, item);
       setCatalogSearch((prev) => ({ ...prev, [kind]: "" }));
       setSupplierSearch({ kind: "", loading: false, products: [], message: "" });
-      setCatalogDocStatus([item.datasheet?.storage_path ? "fișa tehnică" : "", item.conformity?.storage_path ? "declarația de conformitate" : ""].filter(Boolean).length
-        ? "Model importat în catalogul firmei; documentele disponibile au fost descărcate și se atașează la dosar."
+      const importedDocuments = [item.datasheet?.storage_path ? "fișa tehnică" : "", item.conformity?.storage_path ? "declarația de conformitate" : ""].filter(Boolean);
+      const extractionNote = extractedFields.length
+        ? ` ${extractedFields.length} valori au fost extrase din fișa tehnică și completate numai în câmpurile goale.`
+        : extractionFailed ? " Extragerea automată a specificațiilor nu a fost disponibilă; valorile lipsă rămân necompletate." : "";
+      setCatalogDocStatus(importedDocuments.length
+        ? `Model importat în catalogul firmei; ${importedDocuments.join(" și ")} se atașează la dosar.${extractionNote}`
         : "Model importat în catalogul firmei. Furnizorul nu a oferit documentele în format PDF verificabil; completează-le în Catalog echipamente.");
     } catch (error) {
       setSupplierSearch((prev) => ({ ...prev, loading: false, message: error.response?.data?.detail || error.message || "Modelul nu a putut fi importat." }));
