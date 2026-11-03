@@ -44,7 +44,7 @@ def test_short_term_returns_no_query():
     assert build_client_search_query({"owner": "tenant-123"}, "a") is None
 
 
-def test_numeric_prefix_regex_escapes_special_characters_in_nonstandard_digit_input():
+def test_text_search_escapes_regex_metacharacters():
     query = build_client_search_query({"owner": "tenant-123"}, "12+")
     field_query = next(part for part in _parts(query) if "$or" in part)
     assert field_query["$or"][0]["name"].search("12+") is None
