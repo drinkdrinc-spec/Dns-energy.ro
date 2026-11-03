@@ -2857,6 +2857,43 @@ async def power_package(item_id: str, authorization: str = Header(None), auth: s
         except HTTPException as exc:
             notes.append(f"Formularul oficial OD nu a putut fi inclus automat (HTTP {exc.status_code}): {exc.detail}")
 
+        # Rețele Electrice has a separate storage annex. Include it when this
+        # power-increase package declares BESS so its model and technical values
+        # travel with the matching Annex 1 instead of being left out of the ZIP.
+        pros_for_package = {}
+        pros_id = rec.get("pros_id")
+        linked_prosumer = await db.prosumator.find_one(
+            {**scope_q(user, "prosumator"), "id": pros_id}, {"id": 1}
+        ) if pros_id else None
+        if linked_prosumer:
+            pros_for_package, _pros_client, _pros_settings, _pros_info = await dossier_ctx(user, pros_id)
+        else:
+            from atr_equipment import from_request
+            pros_for_package = from_request(rec, field="power_cef") or {}
+        guard_power_prosumer_scope(rec, pros_for_package)
+        package_operator = ATR.op_key(rec.get("operator"), pros_for_package.get("operator"), client.get("operator"))
+        if package_operator == "rer" and ATR.storage_details(pros_for_package, rec):
+            try:
+                from atr_routes import RER_STORAGE_FORM_URL, _fetch_registry_annex, _prefill_official_pdf
+                storage_form = {
+                    "title": "Anexa Rețele Electrice aferentă instalațiilor de stocare",
+                    "url": RER_STORAGE_FORM_URL,
+                }
+                storage_pdf, storage_name = await _fetch_registry_annex(storage_form, "rer")
+                add_file(archive, f"Anexe oficiale/Formulare originale/{storage_name}", storage_pdf)
+                completed_storage, filled_storage = _prefill_official_pdf(
+                    storage_pdf, rec, client, pros_for_package
+                )
+                if filled_storage:
+                    storage_stem = re.sub(r"[^A-Za-z0-9_-]+", "_", storage_name.rsplit(".", 1)[0]).strip("_")
+                    add_file(archive, f"Anexe oficiale/{storage_stem}_completata.pdf", completed_storage)
+                    notes.append(f"Anexa oficială pentru instalația de stocare inclusă și precompletată în {filled_storage} câmpuri etichetate; originalul a fost păstrat.")
+                else:
+                    notes.append("Anexa oficială pentru instalația de stocare inclusă în original; câmpurile nu permit precompletare automată. Verificați și completați manual.")
+            except Exception as exc:
+                logger.warning("Power package storage annex unavailable (%s): %s", type(exc).__name__, exc)
+                notes.append("Anexa oficială Rețele Electrice pentru instalația de stocare nu a putut fi atașată. Verificați sursa oficială și includeți-o manual înainte de depunere.")
+
         owner_prefix = f"{APP_NAME}/uploads/{user['id']}/"
         attachment_count = 0
         for slot, files in (rec.get("attachments") or {}).items():
