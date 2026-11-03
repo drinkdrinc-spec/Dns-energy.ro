@@ -246,13 +246,14 @@ export default function Dashboard() {
         ) : (
           <div className="divide-y" style={{ borderColor: "var(--line)" }}>
             {s.recent.map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-3 py-3">
+              <Link key={r.id} to={`/diu?edit=${encodeURIComponent(r.id)}`} aria-label={`Deschide dosarul DI-U ${r.number || ""} pentru ${r.client_name || "client"}`} data-testid={`recent-dossier-${r.id}`}
+                className="flex items-center justify-between gap-3 py-3 rounded-lg px-2 -mx-2 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <div className="min-w-0">
                   <div className="font-semibold text-sm break-words">{r.number || "Fără număr"} · {r.client_name || "—"}</div>
                   <div className="text-[12px]" style={{ color: "var(--muted)" }}>{r.type} · {r.power ? `${r.power} kW` : "—"}</div>
                 </div>
                 <span className="shrink-0 text-[11px] font-bold px-3 py-1 rounded-full" style={{ background: "#fff1d6", color: "#a65b00" }}>{r.status || "În lucru"}</span>
-              </div>
+              </Link>
             ))}
           </div>
         )}
