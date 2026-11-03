@@ -1,8 +1,8 @@
 import re
 
 
-NUMERIC_CLIENT_SEARCH_FIELDS = ("idcode", "cnp", "id_number", "phone", "pod")
-TEXT_CLIENT_SEARCH_FIELDS = ("name", "email", "phone", "pod", "address", "locality", "county")
+NUMERIC_CLIENT_SEARCH_FIELDS = ("idcode", "cnp", "cui", "id_number", "phone", "pod")
+TEXT_CLIENT_SEARCH_FIELDS = ("name", "email", "phone", "pod", "address", "locality", "county", "cui", "regcom", "id_series", "id_number")
 
 
 def _base_filters(scope: dict) -> list[dict]:
