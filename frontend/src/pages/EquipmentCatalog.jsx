@@ -163,6 +163,16 @@ export default function EquipmentCatalog() {
       if (!product.datasheet_url && !product.conformity_url) {
         toast.warning("Furnizorul nu a expus linkuri directe către fișă sau certificat; poți adăuga documentele ulterior.");
       }
+      // Extract explicit values from an imported datasheet without delaying catalog access.
+      if (!data.existing && data.item?.id && data.item?.datasheet?.storage_path) {
+        api.post(`/ai/catalog/${data.item.id}/extract`)
+          .then(({ data: result }) => {
+            const count = Object.keys(result?.filled || {}).length;
+            if (count) toast.success(`${count} parametri tehnici extrași automat din fișa modelului.`);
+            load();
+          })
+          .catch(() => toast.info("Fișa a fost salvată. Extragerea automată nu este disponibilă acum; modelul rămâne în catalog și poate fi completat ulterior."));
+      }
     } catch (e) {
       toast.error(e.response?.data?.detail || "Produsul nu a putut fi adăugat în catalog.");
     } finally { setSupplierImporting(""); }
