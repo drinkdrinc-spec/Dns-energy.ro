@@ -139,6 +139,7 @@ export default function ModulePage({ moduleKey }) {
   const location = useLocation();
   const key = moduleKey || params.module;
   const cfg = MODULES[key];
+  const startDocuments = key === "prosumator" && new URLSearchParams(location.search).get("start") === "documents";
   const { user } = useAuth();
   const role = user?.role || "admin";
   const canDelete = role === "admin" || (role !== "limitat" && !["prosumator", "clients"].includes(key));
@@ -596,7 +597,7 @@ export default function ModulePage({ moduleKey }) {
             <h2 className="mt-2 max-w-2xl text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: "#13243d" }}>Pornește din actele clientului</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "var(--muted)" }}>Încarcă CI, factura și cartea funciară. Aplicația extrage datele disponibile, le salvează la client și deschide dosarul pentru verificare.</p>
             <div className="mt-5 flex flex-wrap items-center gap-2">
-              <DossierDocumentStart onCreated={(data) => { setForm({ ...data }); setEditId(data.id); setChecks(data.checklist || {}); load(); }} />
+              <DossierDocumentStart autoOpen={startDocuments} onCreated={(data) => { setForm({ ...data }); setEditId(data.id); setChecks(data.checklist || {}); load(); }} />
               <Btn variant="secondary" onClick={openNew} data-testid="prosumer-manual-start"><Plus size={15} /> Introducere manuală</Btn>
             </div>
             <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Datele extrase rămân de verificat. Sistemul nu completează măsurători reale în locul instalatorului.</p>
