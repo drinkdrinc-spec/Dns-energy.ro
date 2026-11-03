@@ -66,6 +66,9 @@ FIELD_LABELS = {
     "imax_mppt": ("curent maxim mppt", "max input current per mppt"),
     "w": ("putere nominala modul", "putere maxima modul", "rated power", "maximum power"),
     "voc": ("tensiune circuit deschis", "open circuit voltage", "voc"),
+    "coef_voc": ("coeficient temperatura voc", "temperature coefficient of voc", "temp coefficient voc", "temperature coefficient open circuit voltage", "temp coef voc"),
+    "coef_vmp": ("coeficient temperatura vmp", "temperature coefficient of vmp", "temp coefficient vmp", "temperature coefficient voltage at maximum power", "temp coef vmp"),
+    "temp_pmax": ("coeficient temperatura pmax", "temperature coefficient of pmax", "temp coefficient pmax", "temperature coefficient maximum power"),
     "vmp": ("tensiune la putere maxima", "voltage at maximum power", "vmp", "vmpp"),
     "isc": ("curent de scurtcircuit", "short circuit current", "isc"),
     "imp": ("curent la putere maxima", "current at maximum power", "imp", "impp"),
@@ -76,7 +79,8 @@ FIELD_LABELS = {
 }
 FIELD_UNITS = {
     "p_nom_kw": "kw", "p_max_kw": "kw", "vdc_max": "v", "mppt_min": "v", "mppt_max": "v",
-    "mppt_count": "count", "imax_mppt": "a", "w": "w", "voc": "v", "vmp": "v", "isc": "a", "imp": "a",
+    "mppt_count": "count", "imax_mppt": "a", "w": "w", "voc": "v", "coef_voc": "percent_per_c",
+    "coef_vmp": "percent_per_c", "temp_pmax": "percent_per_c", "vmp": "v", "isc": "a", "imp": "a",
     "kwh": "kwh", "ah": "ah", "voltage": "v", "i_max": "a",
 }
 
@@ -172,9 +176,13 @@ def _properties(doc):
                 match = re.search(r"[-+]?\d+(?:[.,]\d+)?", nv)
                 if not match:
                     continue
-                unit = _norm(nv[match.end():]).replace(" ", "")
+                raw_unit = nv[match.end():].strip().lower().replace("−", "-")
+                unit = _norm(raw_unit).replace(" ", "")
                 expected = FIELD_UNITS[field]
-                if expected != "count" and expected not in unit:
+                if expected == "percent_per_c":
+                    if not re.search(r"%\s*(?:/\s*(?:°|deg)?\s*(?:c|k)|per\s*(?:°|deg)?\s*(?:c|k))", raw_unit):
+                        continue
+                elif expected != "count" and expected not in unit:
                     continue
                 number = float(match.group().replace(",", "."))
                 if expected == "w" and "kw" in unit:
