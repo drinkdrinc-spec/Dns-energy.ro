@@ -2016,6 +2016,19 @@ import power_doc as PWR
 import atr_doc as ATR
 
 
+def guard_power_prosumer_scope(rec: dict, pros: dict):
+    installed_kwp = ATR.installed_pv_kwp_for_record(rec or {}, pros or {})
+    if installed_kwp is not None and installed_kwp > 400:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Puterea instalată este {installed_kwp:g} kWp, peste limita de 400 kW a procedurii de racordare pentru prosumatori. "
+                "Nu genera Anexa 1 de spor pentru acest caz. Creează cererea ATR generală conform Regulamentului ANRE nr. 59/2013; "
+                "pentru DEER, selectează procedura dedicată instalațiilor >400 kW."
+            ),
+        )
+
+
 @api_router.get("/atr/{item_id}/official-docx")
 async def atr_official_docx(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
@@ -2290,6 +2303,7 @@ async def power_official_docx(item_id: str, authorization: str = Header(None), a
         from atr_equipment import from_request
         pros = from_request(rec, field="power_cef")
 
+    guard_power_prosumer_scope(rec, pros)
     operator = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
     if operator != "deer":
         raise HTTPException(status_code=422, detail="Formularul DOCX completabil este disponibil pentru DEER. Pentru alți operatori, folosiți formularele oficiale din registrul OD.")
@@ -2344,6 +2358,7 @@ async def power_official_annex(item_id: str, authorization: str = Header(None), 
         from atr_equipment import from_request
         pros = from_request(rec, field="power_cef")
 
+    guard_power_prosumer_scope(rec, pros)
     operator_key = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
     if not operator_key:
         raise HTTPException(status_code=422, detail="Selectați operatorul de distribuție în dosar.")
@@ -2419,6 +2434,7 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
     else:
         from atr_equipment import from_request
         pros = from_request(rec, field="power_cef") or None
+    guard_power_prosumer_scope(rec, pros or {})
     power_catalog_files = []
     direct_catalog_complete = False
     if pros and info is None:
