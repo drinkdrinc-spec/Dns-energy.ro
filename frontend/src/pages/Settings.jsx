@@ -9,6 +9,8 @@ export default function Settings() {
   const [loaded, setLoaded] = useState(false);
   const [companyExtract, setCompanyExtract] = useState(null);
   const [companyExtracting, setCompanyExtracting] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   useEffect(() => { api.get("/settings").then((r) => setF({ company: "", brand: "", rep: "", phone: "", address: "", ...r.data })).catch(() => {}).finally(() => setLoaded(true)); }, []);
 
@@ -57,6 +59,27 @@ export default function Settings() {
     toast.success("Setări salvate");
   };
 
+  const changePassword = async () => {
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      toast.error("Confirmarea parolei noi nu corespunde.");
+      return;
+    }
+    if (passwordForm.new_password.length < 12) {
+      toast.error("Parola nouă trebuie să aibă cel puțin 12 caractere.");
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await api.post("/auth/change-password", { current_password: passwordForm.current_password, new_password: passwordForm.new_password });
+      setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
+      toast.success("Parola a fost schimbată.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Nu am putut schimba parola.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   const fields = [
     ["company", "Denumire firmă"], ["brand", "Brand aplicație"], ["rep", "Reprezentant"],
     ["phone", "Telefon firmă"], ["cui", "CUI"], ["regcom", "Nr. Registrul Comerțului"],
@@ -97,6 +120,16 @@ export default function Settings() {
       </div>
       <div className="mt-6"><Btn onClick={save} disabled={!loaded} data-testid="save-settings"><Save size={15} /> Salvează setările</Btn></div>
       </div>
+      <section className="den-panel max-w-2xl mt-5" aria-labelledby="password-change-title" data-testid="account-password-change">
+        <h2 id="password-change-title" className="font-bold text-base">Securitatea contului</h2>
+        <p className="text-xs mt-1 mb-4" style={{ color: "var(--muted)" }}>Schimbă parola contului conectat. Folosește minimum 12 caractere; parola actuală este necesară pentru confirmare.</p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="den-field sm:col-span-2"><label htmlFor="current-password">Parola actuală</label><input id="current-password" className="den-input" type="password" autoComplete="current-password" value={passwordForm.current_password} onChange={(e) => setPasswordForm((p) => ({ ...p, current_password: e.target.value }))} data-testid="current-password" /></div>
+          <div className="den-field"><label htmlFor="new-password">Parolă nouă</label><input id="new-password" className="den-input" type="password" autoComplete="new-password" value={passwordForm.new_password} onChange={(e) => setPasswordForm((p) => ({ ...p, new_password: e.target.value }))} data-testid="new-password" /></div>
+          <div className="den-field"><label htmlFor="confirm-password">Confirmă parola nouă</label><input id="confirm-password" className="den-input" type="password" autoComplete="new-password" value={passwordForm.confirm_password} onChange={(e) => setPasswordForm((p) => ({ ...p, confirm_password: e.target.value }))} data-testid="confirm-password" /></div>
+        </div>
+        <Btn className="mt-4" onClick={changePassword} disabled={passwordSaving} data-testid="change-password">{passwordSaving ? "Se salvează..." : "Schimbă parola"}</Btn>
+      </section>
     </div>
   );
 }
