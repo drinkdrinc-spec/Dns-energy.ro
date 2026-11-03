@@ -330,6 +330,17 @@ async def anre_package(did: str, authorization: str = Header(None), auth: str = 
         raise HTTPException(status_code=400, detail="Pachetul final se generează după rezolvarea tuturor lipsurilor (vezi raportul de verificare)")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("00_CITITI_INAINTE_DE_DEPUNERE.txt", "\n".join([
+            "INSTRUCTIUNI DE DEPUNERE — DOSAR ANRE",
+            "",
+            "Verificati formularul si cerintele curente pe pagina oficiala ANRE:",
+            "https://anre.ro/participanti-la-piata-de-energie/persoane-juridice/energie-electrica/",
+            "",
+            "Cererea trebuie semnata de reprezentantul legal sau persoana imputernicita pe fiecare pagina si insotita de opis.",
+            "Pentru tipurile de cerere cu tarif, atasati dovada platii tarifului ANRE din pozitia corespunzatoare a opisului.",
+            "Acest pachet este pregatit pentru verificare; DNS Energy nu il transmite si nu il semneaza in numele solicitantului.",
+            "Verificati autenticitatea, actualitatea si completitudinea tuturor documentelor inainte de depunere.",
+        ]))
         z.writestr("01_Opis/Opis.pdf", AD.opis_pdf(d, items(d)))
         for i in items(d):
             folder = "02_Cerere" if i["key"] == "cerere" else "03_Anexe_si_declaratii" if i["key"] in ("decl_9", "decl_10") else "04_Documente_generate" if i["key"] in GEN else "05_Documente_client"
