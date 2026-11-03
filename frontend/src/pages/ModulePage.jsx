@@ -86,6 +86,28 @@ const PROSUMER_QUICK_STATUSES = [
   "Prosumator activ",
 ];
 
+function atrEquipmentSummary(item, prosumers) {
+  const pros = (prosumers || []).find((record) => record.id === item.pros_id);
+  if (!pros) return [];
+  const inverters = pros.cef?.inverters || [];
+  const inverterModels = [...new Set(inverters.map((inv) => inv.brand_model || inv.model).filter(Boolean))];
+  const panelModels = [...new Set(inverters.map((inv) => inv.panel_model).filter(Boolean))];
+  const batteryModels = [...new Set([
+    ...inverters.filter((inv) => inv.battery_mode === "own").map((inv) => inv.battery?.model),
+    ...(pros.cef?.shared_batteries || []).map((battery) => battery.model),
+  ].filter(Boolean))];
+  const inverterKw = inverters.reduce((sum, inv) => sum + (Number(inv.p_nom_kw || inv.p_max_kw) || 0) * Math.max(1, Number(inv.count || inv.quantity) || 1), 0);
+  const batteryKwh = inverters.filter((inv) => inv.battery_mode === "own").reduce((sum, inv) => {
+    const battery = inv.battery || {};
+    return sum + (Number(battery.capacity_kwh || battery.kwh) || 0) * Math.max(1, Number(battery.modules || battery.count) || 1) * Math.max(1, Number(inv.count || inv.quantity) || 1);
+  }, 0) + (pros.cef?.shared_batteries || []).reduce((sum, battery) => sum + (Number(battery.capacity_kwh || battery.kwh) || 0) * Math.max(1, Number(battery.modules || battery.count) || 1), 0);
+  const panelKwp = installedPanelKwp(pros);
+  return [
+    inverterModels.length ? `Invertor: ${inverterModels.join(", ")}${inverterKw ? ` · ${Number(inverterKw.toFixed(2))} kW` : ""}` : "",
+    panelModels.length ? `Panouri: ${panelModels.join(", ")}${panelKwp ? ` · ${panelKwp} kWp` : ""}` : "",
+    batteryModels.length ? `Baterie: ${batteryModels.join(", ")}${batteryKwh ? ` · ${Number(batteryKwh.toFixed(2))} kWh` : ""}` : "",
+  ].filter(Boolean);
+}
 function normalizeClientName(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
 }
@@ -907,6 +929,7 @@ export default function ModulePage({ moduleKey }) {
                     <span className="mt-1 block truncate text-sm">{item.client_name || "Client necompletat"}</span>
                     <span className="mt-1 block text-xs" style={{ color: "var(--muted)" }}>{[item.operator, item.address, item.pod && `POD ${item.pod}`].filter(Boolean).join(" · ") || "Operator și loc de consum necompletate"}</span>
                     <span className="mt-2 block text-xs font-semibold" style={{ color: "var(--blue)" }}>{[item.request_type || item.deer_case, item.p_abs_kw && `${item.p_abs_kw} kW absorbit`, item.p_evac_kw && `${item.p_evac_kw} kW evacuat`].filter(Boolean).join(" · ") || "Deschide cererea pentru detalii"}</span>
+                    {atrEquipmentSummary(item, refOptions.prosumator).map((detail) => <span key={detail} className="mt-1 block text-[11px] leading-4" style={{ color: "var(--muted)" }}>{detail}</span>)}
                   </button>)}</div>
                 </section>;
               })}
