@@ -76,6 +76,38 @@ def test_deer_annexes_keep_battery_details_out_of_inverter_kw_table(deer_case, i
     if inverter_table_index == 6:
         assert "10 kWh/modul" in inverter_table_text
 
+def test_annex2_marks_declared_battery_and_leaves_no_storage_unchecked():
+    pros = {
+        "operator": "DEER",
+        "cef": {
+            "inverters": [{
+                "brand_model": "Invertor 10 kW",
+                "battery_mode": "own",
+                "battery": {"model": "Baterie 10 kWh", "kwh": 10, "modules": 1},
+            }],
+        },
+    }
+    doc = Document(io.BytesIO(atr_doc.render_deer_official_docx(
+        {"operator": "DEER", "deer_case": "Loc existent — notificare — Anexa 2"}, {}, {}, pros
+    )))
+    choices = [p.text.strip() for p in doc.paragraphs if "DEŢIN" in p.text.upper()]
+    assert "☒ DEŢIN" in choices
+    assert "☐ NU DEŢIN." in choices
+
+
+def test_annex2_marks_no_storage_only_when_configuration_is_explicit():
+    pros = {
+        "operator": "DEER",
+        "cef": {"inverters": [{"brand_model": "Invertor 10 kW", "battery_mode": "none"}]},
+    }
+    doc = Document(io.BytesIO(atr_doc.render_deer_official_docx(
+        {"operator": "DEER", "deer_case": "Loc existent — notificare — Anexa 2"}, {}, {}, pros
+    )))
+    choices = [p.text.strip() for p in doc.paragraphs if "DEŢIN" in p.text.upper()]
+    assert "☐ DEŢIN" in choices
+    assert "☒ NU DEŢIN." in choices
+
+
 def test_storage_details_ignores_undeclared_batteries():
     pros = {
         "cef": {
