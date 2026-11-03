@@ -247,7 +247,7 @@ export default function Dashboard() {
       <AtrDeadlines />
 
       <section className="den-panel mb-6" aria-labelledby="dashboard-inbox-title" data-testid="dashboard-inbox">
-        {workflowStatusError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{workflowStatusError}</p>
+        {workflowStatusError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{workflowStatusError}</p>}
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--blue)" }}>ACTIVITATE RECENTĂ</div>
