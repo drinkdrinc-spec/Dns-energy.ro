@@ -236,7 +236,7 @@ def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
     seen = {page_url}
     pages = []
     path_prefix = base.path.rstrip("/")
-    path_pattern = re.compile(rf"^{re.escape(path_prefix)}/page/(\\d+)/?$") if path_prefix else re.compile(r"^/page/(\\d+)/?$")
+    path_pattern = re.compile(rf"^{re.escape(path_prefix)}/page/(\d+)/?$") if path_prefix else re.compile(r"^/page/(\d+)/?$")
 
     def without_page(query):
         return {key: value for key, value in query.items() if key not in page_keys}
