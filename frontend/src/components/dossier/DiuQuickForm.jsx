@@ -131,7 +131,7 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
   const fieldByName = (name) => (cfg.fields || []).find((f) => f.name === name);
   const extras = (cfg.fields || []).filter((f) => f.type === "section" || !CORE.has(f.name));
 
-  return <div className="space-y-4" data-testid="diu-quick-form">
+  return <div id="diu-client-racordare" className="space-y-4" data-testid="diu-quick-form">
     <section className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "linear-gradient(135deg, #f2f7ff 0%, #fff 76%)" }}>
       <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)" }}>Predare lucrare · DI-U</p>
       <h3 className="mt-1 text-lg font-bold">Pornește din client și instalație</h3>
@@ -173,3 +173,4 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
     </details>
   </div>;
 }
+
