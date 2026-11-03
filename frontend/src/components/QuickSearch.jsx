@@ -81,7 +81,7 @@ export function QuickSearch() {
       className="mb-5 flex min-h-11 w-full items-center gap-3 rounded-xl border bg-white px-4 text-left text-sm shadow-sm transition hover:border-blue-300"
       style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="quick-search-open">
       <Search size={17} style={{ color: "var(--blue)" }} />
-      <span className="flex-1">Caută client, POD sau număr de dosar…</span>
+      <span className="flex-1">Caută în baza firmei: clienți, dosare, documente și echipamente…</span>
       <kbd className="hidden rounded border px-1.5 py-0.5 text-[10px] sm:inline" style={{ borderColor: "var(--line)" }}>Ctrl K</kbd>
     </button>
 
@@ -94,7 +94,7 @@ export function QuickSearch() {
           <Search size={19} style={{ color: "var(--blue)" }} />
           <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => { if (event.key === "Enter" && results[0]) { navigate(results[0].href); close(); } }}
-            className="h-14 min-w-0 flex-1 bg-transparent text-sm outline-none" placeholder="Nume, CI/CUI, telefon, email, POD sau număr de dosar…"
+            className="h-14 min-w-0 flex-1 bg-transparent text-sm outline-none" placeholder="Nume, CI/CUI, telefon, email, POD, dosar, document sau model de echipament…"
             aria-label="Caută în clienți și dosare" data-testid="quick-search-input" autoComplete="off" />
           {loading && <Loader2 size={17} className="animate-spin" aria-label="Se caută" />}
           <button type="button" onClick={close} aria-label="Închide căutarea" className="rounded-md p-2 hover:bg-slate-100"><X size={17} /></button>
