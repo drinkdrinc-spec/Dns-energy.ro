@@ -700,7 +700,9 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     ]
     inbox = []
     projection = {"_id": 0, "id": 1, "client_name": 1, "number": 1,
-                  "status": 1, "operator_stage": 1, "updated_at": 1, "created_at": 1}
+                  "pod": 1, "operator": 1, "operator_name": 1, "distributor": 1,
+                  "kwp": 1, "inverter_kw": 1, "status": 1, "operator_stage": 1,
+                  "updated_at": 1, "created_at": 1}
     for module, label in inbox_modules:
         rows = await db[module].find({**scope_q(user, module), **test_dossier_filter}, projection).sort("updated_at", -1).limit(5).to_list(5)
         for row in rows:
@@ -710,6 +712,10 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                 "label": label,
                 "client_name": row.get("client_name") or "",
                 "number": row.get("number") or "",
+                "pod": row.get("pod") or row.get("pod_number") or "",
+                "operator": row.get("operator") or row.get("operator_name") or row.get("distributor") or "",
+                "kwp": row.get("kwp") or row.get("panel_kwp") or "",
+                "inverter_kw": row.get("inverter_kw") or row.get("power_kw") or "",
                 "status": row.get("status") or row.get("operator_stage") or "În lucru",
                 "updated_at": row.get("updated_at") or row.get("created_at") or "",
             })
