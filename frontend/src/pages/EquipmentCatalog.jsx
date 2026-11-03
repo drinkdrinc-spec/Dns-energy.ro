@@ -6,15 +6,17 @@ import { F, Check } from "@/components/cef/F";
 import { Plus, Pencil, Trash2, Upload, FileText, X, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
-const CATS = ["Invertor", "Panou", "Baterie", "Smart meter"];
+const CATS = ["Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"];
 const FIELDS = {
   Invertor: [["type", "Tip", ["Hibrid", "On-grid", "Invertor de baterie (AC)"]], ["phases", "Faze", ["Trifazat", "Monofazat"]], ["p_nom_kw", "Pn (kW)"], ["p_max_kw", "Pmax (kW)"], ["red_limit_mode", "Limitare putere în RED", ["Nu este declarată", "Limitare putere evacuată", "Zero export"]],
     ["vdc_max", "Udc max (V)"], ["mppt_min", "MPPT min (V)"], ["mppt_max", "MPPT max (V)"], ["mppt_count", "Nr. MPPT"], ["imax_mppt", "Imax / MPPT (A)"], ["isc_max_mppt", "Isc max admisibil / MPPT (A)"], ["battery_voltage", "Tensiune baterie compatibilă", null, "text"], ["bat_i_max", "Curent max baterie (A)"]],
   Panou: [["w", "Putere (W)"], ["voc", "Voc (V)"], ["vmp", "Vmp (V)"], ["isc", "Isc (A)"], ["imp", "Imp (A)"], ["coef_voc", "Coef. Voc (%/°C)"], ["coef_vmp", "Coef. Vmp (%/°C)"], ["temp_noct", "NOCT (°C)"], ["temp_pmax", "Coef. Pmax (%/°C)"]],
   Baterie: [["kwh", "kWh / modul"], ["ah", "Ah"], ["voltage", "Tensiune (V)"], ["tech", "Tehnologie", ["LV", "HV"]], ["coupling", "Cuplare", ["DC", "AC"]], ["i_max", "Curent max descărcare (A)"], ["max_fuse_a", "Siguranță maximă admisă (A)"], ["breaker_a", "Întrerupător DC: curent nominal (A)"], ["breaker_voltage_dc", "Întrerupător DC: tensiune nominală (Vdc)"], ["breaker_poles", "Întrerupător DC: poli"], ["breaker_icu_ka", "Întrerupător DC: capacitate de rupere (kA)"], ["breaker_source_url", "Sursă pentru protecția DC", null, "url"]],
   "Smart meter": [["phases", "Faze", ["Trifazat", "Monofazat"]], ["current_max_a", "Curent nominal/max (A)"], ["voltage_nominal_v", "Tensiune nominală", null, "text"], ["frequency_hz", "Frecvență", null, "text"], ["protocol", "Protocol comunicație", null, "text"], ["wiring", "Configurație rețea", null, "text"], ["accuracy_class", "Clasă precizie", null, "text"]],
+  Gateway: [["compatible_inverters", "Invertoare compatibile", null, "text"], ["protocol", "Protocol comunicație", null, "text"], ["interfaces", "Interfețe (Wi-Fi/Ethernet/RS485)", null, "text"], ["max_devices", "Număr maxim de dispozitive"], ["monitoring_platform", "Platformă de monitorizare", null, "text"]],
+  Optimizator: [["compatible_inverters", "Invertoare compatibile", null, "text"], ["p_max_w", "Putere maximă modul (W)"], ["vdc_max", "Tensiune maximă intrare (V)"], ["imax_mppt", "Curent maxim intrare (A)"], ["model_scope", "Domeniu de utilizare (modul/string)", null, "text"]],
 };
-const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || ""} · ${i.type || ""}` : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V` : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.voltage ?? "—"} V · protecție DC ${i.breaker_a ?? "—"} A / ${i.breaker_voltage_dc ?? "—"} V` : [i.phases, i.current_max_a ? i.current_max_a + " A max" : null, i.voltage_nominal_v, i.frequency_hz, i.protocol, i.wiring, i.accuracy_class].filter(Boolean).join(" · ");
+const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || ""} · ${i.type || ""}` : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V` : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.voltage ?? "—"} V · protecție DC ${i.breaker_a ?? "—"} A / ${i.breaker_voltage_dc ?? "—"} V` : i.category === "Smart meter" ? [i.phases, i.current_max_a ? i.current_max_a + " A max" : null, i.voltage_nominal_v, i.frequency_hz, i.protocol, i.wiring, i.accuracy_class].filter(Boolean).join(" · ") : i.category === "Gateway" ? [i.compatible_inverters, i.protocol, i.interfaces, i.max_devices ? `${i.max_devices} dispozitive` : null, i.monitoring_platform].filter(Boolean).join(" · ") : [i.compatible_inverters, i.p_max_w ? `${i.p_max_w} W` : null, i.vdc_max ? `${i.vdc_max} V max` : null, i.imax_mppt ? `${i.imax_mppt} A max` : null, i.model_scope].filter(Boolean).join(" · ");
 
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
@@ -137,7 +139,7 @@ export default function EquipmentCatalog() {
     if (q && !String(i.brand_model || "").toLocaleLowerCase("ro-RO").includes(q.toLocaleLowerCase("ro-RO"))) return false;
     if (phaseFilter && String(i.phases || "").toLocaleLowerCase("ro-RO") !== phaseFilter.toLocaleLowerCase("ro-RO")) return false;
     if (typeFilter && String(i.type || "").toLocaleLowerCase("ro-RO") !== typeFilter.toLocaleLowerCase("ro-RO")) return false;
-    const measure = Number(cat === "Invertor" ? i.p_nom_kw : cat === "Panou" ? i.w : cat === "Baterie" ? i.kwh : i.current_max_a);
+    const measure = Number(cat === "Invertor" ? i.p_nom_kw : cat === "Panou" ? i.w : cat === "Baterie" ? i.kwh : cat === "Smart meter" ? i.current_max_a : cat === "Gateway" ? i.max_devices : i.p_max_w);
     if (minValue !== "" && (!Number.isFinite(measure) || measure < Number(minValue))) return false;
     if (maxValue !== "" && (!Number.isFinite(measure) || measure > Number(maxValue))) return false;
     const hasDatasheet = Boolean(i.datasheet || i.datasheet_url || i.datasheet_source_url);
@@ -149,7 +151,7 @@ export default function EquipmentCatalog() {
     && !/\bTEST\b/i.test(String(i.brand_model || ""))
     && Boolean(i.datasheet || i.datasheet_url || i.datasheet_source_url)
     && Boolean(i.conformity || i.conformity_url || i.conformity_source_url)).length;
-  const measureLabel = cat === "Invertor" ? "putere nominală (kW)" : cat === "Panou" ? "putere panou (W)" : cat === "Baterie" ? "capacitate (kWh)" : "curent max. (A)";
+  const measureLabel = cat === "Invertor" ? "putere nominală (kW)" : cat === "Panou" ? "putere panou (W)" : cat === "Baterie" ? "capacitate (kWh)" : cat === "Smart meter" ? "curent max. (A)" : cat === "Gateway" ? "dispozitive" : "putere modul (W)";
   const clearFilters = () => { setPhaseFilter(""); setTypeFilter(""); setMinValue(""); setMaxValue(""); setCompleteDocsOnly(false); setQ(""); };
 
   const save = async () => {
