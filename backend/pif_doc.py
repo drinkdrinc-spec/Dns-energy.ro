@@ -69,7 +69,42 @@ def render(rec: dict, client: dict, s: dict) -> bytes:
     gm = p.get("grounding_measured") or (rec.get("cef") or {}).get("grid", {}).get("grounding_ohm") or rec.get("grounding_ohm")
     story += [T(rows, [30, 10, 10, 12, 14, 12, 12]), Spacer(1, 3),
               P(f"Rezistența prizei de pământ (valoare măsurată, conform buletinului PRAM): {e(gm) + ' Ω' if gm else M}"),
-              Spacer(1, 4), P("3. Verificări vizuale și funcționale", "b"),
+              Spacer(1, 4), P("3. Serii echipamente identificate la punerea în funcțiune", "b")]
+    serials = p.get("serials") or {}
+    serial_rows = [["Echipament", "Model", "Serie"]]
+    cef = rec.get("cef") or {}
+    for i, inv in enumerate(cef.get("inverters") or []):
+        count = max(1, min(100, int(CEF.n(inv.get("count") or inv.get("quantity"), 1) or 1)))
+        for unit in range(count):
+            key = f"{i}.{unit}"
+            label = f"Invertor {i + 1}" + (f" — unitatea {unit + 1}" if count > 1 else "")
+            serial_rows.append([label, e(inv.get("brand_model")) or M, e((serials.get("inverters") or {}).get(key)) or "Neînregistrată"])
+    battery_items = []
+    for i, inv in enumerate(cef.get("inverters") or []):
+        battery = inv.get("battery") or {}
+        if inv.get("battery_mode") == "own" and battery.get("model"):
+            count = max(1, min(100, int(CEF.n(battery.get("modules") or battery.get("count"), 1) or 1)))
+            battery_items.extend((f"inv-{i}-{unit}", f"Baterie invertor {i + 1}" + (f" — modulul {unit + 1}" if count > 1 else ""), battery.get("model")) for unit in range(count))
+    for i, battery in enumerate(cef.get("shared_batteries") or []):
+        count = max(1, min(100, int(CEF.n(battery.get("modules") or battery.get("count"), 1) or 1)))
+        battery_items.extend((f"shared-{i}-{unit}", f"Baterie {i + 1}" + (f" — modulul {unit + 1}" if count > 1 else ""), battery.get("model")) for unit in range(count))
+    for key, label, model in battery_items:
+        serial_rows.append([label, e(model) or M, e((serials.get("batteries") or {}).get(key)) or "Neînregistrată"])
+    panel_serials = serials.get("panels") or []
+    if isinstance(panel_serials, str):
+        panel_serials = panel_serials.splitlines()
+    panel_serials = [str(value).strip() for value in panel_serials if str(value).strip()]
+    panel_count = CEF.check(cef).get("totals", {}).get("panels") or rec.get("panel_count") or 0
+    panel_models = sorted({str(inv.get("panel_model")) for inv in cef.get("inverters") or [] if inv.get("panel_model")})
+    panel_model = ", ".join(panel_models) or M
+    if panel_serials:
+        serial_rows.extend([[f"Panou {index + 1}", panel_model, e(value)] for index, value in enumerate(panel_serials)])
+    elif panel_count:
+        serial_rows.append([f"Panouri ({panel_count} configurate)", panel_model, "Neînregistrate"])
+    if len(serial_rows) == 1:
+        serial_rows.append(["—", "Nu sunt echipamente declarate", ""])
+    story += [T(serial_rows, [30, 48, 34]), Spacer(1, 4), P("Seriile se completează după citirea etichetelor echipamentelor. Lipsa unei serii nu reprezintă o măsurătoare și nu confirmă conformitatea.", "small"),
+              Spacer(1, 4), P("4. Verificări vizuale și funcționale", "b"),
               T([["Nr.", "Verificare", "Rezultat"]] + [[str(k + 1), c, e((p.get("checks") or {}).get(str(k)))] for k, c in enumerate(CHECKS)], [6, 74, 20])]
     if p.get("notes"):
         story.append(P(f"Observații: {e(p['notes'])}"))

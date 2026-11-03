@@ -470,16 +470,43 @@ def doc_pv_receptie(ctx):
 
 def doc_serii(ctx):
     rows = [["Echipament", "Serie"]]
-    for inv in inverters(ctx):
-        rows.append([f"Invertor {escape(inv.get('brand_model') or '')}", escape(inv.get("serial") or "")])
-    for p in panel_rows(ctx):
-        rows.append([f"{p['n']}× panou {escape(p['model'])}", escape(ctx.raw("panel_serials") or "")])
-    for b in storage(ctx):
-        rows.append([f"Baterie {escape(b.get('model'))}", escape(b.get("serial") or "")])
+    cef = ctx.r.get("cef") or {}
+    serials = (ctx.r.get("pif") or {}).get("serials") or {}
+    inverter_serials = serials.get("inverters") or {}
+    for i, inv in enumerate(inverters(ctx)):
+        count = max(1, min(100, int(num(inv.get("count") or inv.get("quantity"), 1) or 1)))
+        for unit in range(count):
+            key = f"{i}.{unit}"
+            label = f"Invertor {i + 1}" + (f" — unitatea {unit + 1}" if count > 1 else "")
+            value = inverter_serials.get(key) or (inv.get("serial") if count == 1 else "")
+            rows.append([f"{label} {escape(inv.get('brand_model') or '')}", escape(str(value or ""))])
+    panel_serials = serials.get("panels")
+    if isinstance(panel_serials, str):
+        panel_serials = panel_serials.splitlines()
+    panel_serials = [str(value).strip() for value in panel_serials or [] if str(value).strip()]
+    if not panel_serials and ctx.raw("panel_serials"):
+        panel_serials = [str(ctx.raw("panel_serials"))]
+    panel_models = sorted({str(inv.get("panel_model")) for inv in cef.get("inverters") or [] if inv.get("panel_model")})
+    if panel_serials:
+        rows.extend([[f"Panou {i + 1} {escape(', '.join(panel_models))}", escape(value)] for i, value in enumerate(panel_serials)])
+    else:
+        for p in panel_rows(ctx):
+            rows.append([f"{p['n']}× panou {escape(p['model'])}", ""])
+    battery_serials = serials.get("batteries") or {}
+    battery_items = []
+    for i, inv in enumerate(cef.get("inverters") or []):
+        battery = inv.get("battery") or {}
+        if inv.get("battery_mode") == "own" and battery.get("model"):
+            count = max(1, min(100, int(num(battery.get("modules") or battery.get("count"), 1) or 1)))
+            battery_items.extend((f"inv-{i}-{unit}", f"Baterie invertor {i + 1}" + (f" — modulul {unit + 1}" if count > 1 else ""), battery.get("model"), battery.get("serial") if count == 1 else "") for unit in range(count))
+    for i, battery in enumerate(cef.get("shared_batteries") or []):
+        count = max(1, min(100, int(num(battery.get("modules") or battery.get("count"), 1) or 1)))
+        battery_items.extend((f"shared-{i}-{unit}", f"Baterie {i + 1}" + (f" — modulul {unit + 1}" if count > 1 else ""), battery.get("model"), battery.get("serial") if count == 1 else "") for unit in range(count))
+    if not battery_items:
+        battery_items = [(f"legacy-{i}", "Baterie", b.get("model"), b.get("serial")) for i, b in enumerate(storage(ctx))]
+    rows.extend([[f"{label} {escape(model or '')}", escape(str(battery_serials.get(key) or legacy_serial or ""))] for key, label, model, legacy_serial in battery_items])
     return hdr() + [B("title", "ANEXĂ — SERII ECHIPAMENTE"), B("table", rows, [90, 84], True),
                     sign(["Am predat — Executant,", f"<b>{ctx.company}</b>", ctx.rep, "semnătura și ștampila"], ["Am primit — Beneficiar,", f"<b>{ctx.name}</b>", "semnătura"])]
-
-
 def doc_pv_pif(ctx):
     st = storage(ctx)
     invs = inverters(ctx)
