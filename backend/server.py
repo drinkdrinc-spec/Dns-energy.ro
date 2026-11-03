@@ -2277,6 +2277,9 @@ async def power_official_docx(item_id: str, authorization: str = Header(None), a
     ):
         pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
         client = {**(pclient or {}), **(client or {})}
+    else:
+        from atr_equipment import from_request
+        pros = from_request(rec, field="power_cef")
 
     operator = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
     if operator != "deer":
@@ -2328,6 +2331,9 @@ async def power_official_annex(item_id: str, authorization: str = Header(None), 
     ):
         pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
         client = {**(pclient or {}), **(client or {})}
+    else:
+        from atr_equipment import from_request
+        pros = from_request(rec, field="power_cef")
 
     operator_key = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
     if not operator_key:
@@ -2393,7 +2399,7 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
     rec = await check_access(user, "power", item_id)
     client = await get_client(user["id"], rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    pros, auto = None, {}
+    pros, auto, info = None, {}, None
     if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
         pros, pclient, ps, info = await dossier_ctx(user, rec["pros_id"])
         client = client or pclient
@@ -2401,8 +2407,20 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
         bykey = {p["key"]: p for p in info["positions"]}
         auto = {"h": [bykey.get("receptie")], "i": [bykey.get("priza")], "k": [bykey.get("schema")],
                 "j": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
+    else:
+        from atr_equipment import from_request
+        pros = from_request(rec, field="power_cef") or None
+    power_catalog_files = []
+    direct_catalog_complete = False
+    if pros and info is None and ATR.is_prod(rec):
+        from atr_equipment import catalog_documents_complete as direct_catalog_documents_complete
+        await auto_import_selected_catalog_documents(user, pros)
+        power_catalog_files = await catalog_files(user["id"], pros)
+        direct_catalog_complete = direct_catalog_documents_complete(pros.get("cef"), power_catalog_files)
     att = rec.get("attachments") or {}
     attached = {k for k, v in att.items() if v}
+    if direct_catalog_complete:
+        attached.add("j")
     # Only mark auto-linked source documents present after the prosumer opis has
     # cleared their missing-data and approval checks. Draft PDFs may still be
     # included in the full bundle, but they cannot make Anexa 1 appear complete.
@@ -2414,15 +2432,15 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
     for key, position in source_positions.items():
         if position and position.get("auto_status") in ("generat", "atașat"):
             attached.add(key)
-    if pros and not rec.get("is_test") and catalog_documents_complete(pros, (info or {}).get("positions", [])):
+    if pros and info is not None and not rec.get("is_test") and catalog_documents_complete(pros, info.get("positions", [])):
         attached.add("j")
     parts = [PWR.render_anexa1(rec, client, base, pros or {}, attached, ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")))]
     unavailable = []
     annex_registry_issue = ""
-    if pros and not rec.get("is_test"):
+    if pros and info is not None and not rec.get("is_test"):
         # Use the same per-model catalog evidence as the prosumer and ATR dossiers;
         # a datasheet for one model cannot satisfy another model's requirement.
-        if not catalog_documents_complete(pros, (info or {}).get("positions", [])):
+        if not catalog_documents_complete(pros, info.get("positions", [])):
             attached.discard("j")
             parts[0] = PWR.render_anexa1(rec, client, base, pros, attached,
                 ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator")))
@@ -2485,6 +2503,14 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
                     except Exception as e:
                         logger.error(f"power auto {k}: {e}")
                         unavailable.append(p.get("title") or title)
+        if info is None and power_catalog_files:
+            for catalog_file in power_catalog_files:
+                try:
+                    payload, content_type = get_object(catalog_file["storage_path"])
+                    parts.append(OPIS.file_pdf(payload, content_type))
+                except Exception as exc:
+                    logger.warning("Power direct catalog PDF could not be included: %s", exc)
+                    unavailable.append(catalog_file.get("original_filename") or catalog_file.get("model") or "fișă catalog")
     new_request = rec.get("request_kind") == "nou"
     juridical = "jurid" in str((client or {}).get("kind") or "").lower()
     required_keys = {"a"} | ({"b"} if juridical else set()) | ({"c", "d", "e", "f", "g"} if new_request else {"h", "i", "j", "k"})
