@@ -1328,6 +1328,44 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         if value not in (None, "") and client.get(key) in (None, ""):
             client[key] = value
             client_updates[key] = value
+
+    # Keep consumption locations reusable on the client. A distinct POD is a
+    # distinct service point even when the street address is shared.
+    site_fields = ("address", "county", "locality", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc")
+    site_values = {key: str(d.get(key) or "").strip() for key in site_fields}
+    if any(site_values.values()):
+        sites = client.get("consumption_sites")
+        if not isinstance(sites, list):
+            sites = []
+        clean_location_key = lambda value: re.sub(r"\s+", " ", str(value or "").strip().casefold())
+        pod_key = clean_location_key(site_values["pod"])
+        address_key = clean_location_key(site_values["address"])
+        match_index = None
+        for index, saved_site in enumerate(sites):
+            if not isinstance(saved_site, dict):
+                continue
+            saved_pod = clean_location_key(saved_site.get("pod"))
+            same_pod = bool(pod_key and saved_pod == pod_key)
+            same_unmetered_address = (
+                not pod_key and not saved_pod and address_key
+                and clean_location_key(saved_site.get("address")) == address_key
+                and clean_location_key(saved_site.get("locality")) == clean_location_key(site_values["locality"])
+                and clean_location_key(saved_site.get("county")) == clean_location_key(site_values["county"])
+            )
+            if same_pod or same_unmetered_address:
+                match_index = index
+                break
+        if match_index is None:
+            sites.append({"id": str(uuid.uuid4()), **{key: value for key, value in site_values.items() if value},
+                          "created_at": now, "updated_at": now})
+        else:
+            merged_site = dict(sites[match_index])
+            merged_site.update({key: value for key, value in site_values.items() if value})
+            merged_site["updated_at"] = now
+            sites[match_index] = merged_site
+        client["consumption_sites"] = sites[-100:]
+        client_updates["consumption_sites"] = client["consumption_sites"]
+
     d["client_id"] = client["id"]
     if not d.get("number"):
         year = datetime.now().year

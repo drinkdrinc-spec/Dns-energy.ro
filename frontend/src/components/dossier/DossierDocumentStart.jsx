@@ -57,6 +57,19 @@ const COUNTY_OPERATOR = {
   ilfov: "Rețele Electrice Muntenia S.A.",
   bucuresti: "Rețele Electrice Muntenia S.A.",
 };
+
+const LOCATION_FIELDS = ["address", "county", "locality", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc"];
+function clientConsumptionSites(client) {
+  const saved = Array.isArray(client?.consumption_sites)
+    ? client.consumption_sites.filter((site) => site && typeof site === "object").map((site, index) => ({ ...site, id: String(site.id || ("saved-" + index)) }))
+    : [];
+  if (saved.length) return saved;
+  if (["address", "pod", "locality", "county"].some((key) => String(client?.[key] || "").trim())) {
+    return [{ id: "legacy", ...Object.fromEntries(LOCATION_FIELDS.map((key) => [key, client?.[key] || ""])) }];
+  }
+  return [];
+}
+
 const normalizeLocation = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim().replace(/^(jud(?:etul)?|municipiul|mun) /, "");
 function distributorSuggestion(pod, county) {
   const code = String(pod || "").replace(/\s+/g, "").toUpperCase();
@@ -90,6 +103,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [clientSearch, setClientSearch] = useState("");
   const [clientMatches, setClientMatches] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
+  const [selectedSiteId, setSelectedSiteId] = useState("new");
   const [operatorManuallySet, setOperatorManuallySet] = useState(false);
   const inputs = useRef({});
 
@@ -99,13 +113,29 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     try {
       setBusy("client");
       const { data: client } = await api.get(`/data/clients/${encodeURIComponent(result.id)}`);
-      const selected = { ...client, title: client.name || result.title, detail: result.detail };
-      setSelectedClient(selected); setClientSearch(""); setClientMatches([]);
-      setValues((prev) => ({ ...EMPTY, ...prev, client_id: selected.id, client_name: selected.title || "", cnp: selected.idcode || selected.cui || "", id_series: selected.id_series || "", id_number: selected.id_number || "", phone: selected.phone || "", email: selected.email || "", hq_address: selected.hq_address || "", address: selected.address || "", county: selected.county || "", locality: selected.locality || "", pod: selected.pod || "", operator: selected.operator || distributorSuggestion(selected.pod, selected.county), cf_nr: selected.cf_nr || "", cadastral_nr: selected.cadastral_nr || "" }));
+      const sites = clientConsumptionSites(client);
+      const firstSite = sites[0] || null;
+      const selected = { ...client, title: client.name || result.title, detail: result.detail, consumption_sites: sites };
+      setSelectedClient(selected); setSelectedSiteId(firstSite?.id || "new"); setClientSearch(""); setClientMatches([]);
+      setValues((prev) => ({ ...EMPTY, ...prev, client_id: selected.id, client_name: selected.title || "", cnp: selected.idcode || selected.cui || "", id_series: selected.id_series || "", id_number: selected.id_number || "", phone: selected.phone || "", email: selected.email || "", hq_address: selected.hq_address || "", ...Object.fromEntries(LOCATION_FIELDS.map((key) => [key, firstSite?.[key] || selected[key] || ""])), operator: firstSite?.operator || selected.operator || distributorSuggestion(firstSite?.pod || selected.pod, firstSite?.county || selected.county), address_same_as_ci: false }));
       setOperatorManuallySet(Boolean(selected.operator));
     } catch (error) {
       toast.error(error.response?.data?.detail || "Nu am putut încărca datele clientului selectat.");
     } finally { setBusy(""); }
+  };
+
+
+  const selectConsumptionSite = (siteId) => {
+    setSelectedSiteId(siteId);
+    if (siteId === "new") {
+      setOperatorManuallySet(false);
+      setValues((prev) => ({ ...prev, ...Object.fromEntries(LOCATION_FIELDS.map((key) => [key, ""])), address_same_as_ci: false }));
+      return;
+    }
+    const site = (selectedClient?.consumption_sites || []).find((item) => String(item.id) === String(siteId));
+    if (!site) return;
+    setOperatorManuallySet(Boolean(site.operator));
+    setValues((prev) => ({ ...prev, ...Object.fromEntries(LOCATION_FIELDS.map((key) => [key, site[key] || ""])), address_same_as_ci: false }));
   };
 
   useEffect(() => {
@@ -224,7 +254,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       toast.success("Clientul și dosarul au fost create cu documentele în opis.");
       setOpen(false); setStep(0); onCreated(data);
       setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
-      setSelectedClient(null); setClientSearch(""); setOperatorManuallySet(false);
+      setSelectedClient(null); setSelectedSiteId("new"); setClientSearch(""); setOperatorManuallySet(false);
     } catch (e) { toast.error(e.response?.data?.detail || "Nu am putut crea dosarul"); }
     finally { setBusy(""); }
   };
@@ -257,7 +287,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Client existent sau client nou</div>
           {selectedClient ? <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: "#f2f7ff" }}>
             <span><b>{selectedClient.title}</b><span className="ml-2 text-xs" style={{ color: "var(--muted)" }}>{selectedClient.detail}</span></span>
-            <button type="button" className="text-xs font-semibold underline" onClick={() => { setSelectedClient(null); setClientSearch(""); setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({}); }}>Schimbă clientul</button>
+            <button type="button" className="text-xs font-semibold underline" onClick={() => { setSelectedClient(null); setSelectedSiteId("new"); setClientSearch(""); setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({}); }}>Schimbă clientul</button>
           </div> : <>
             <input className="den-input" value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Caută după nume, CNP/CUI sau telefon" aria-label="Caută un client existent" data-testid="intake-client-search" />
             {clientMatches.length > 0 && <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border" style={{ borderColor: "var(--line)" }} role="listbox" aria-label="Clienți găsiți">
@@ -300,6 +330,14 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         </div>
         </>}
         {step === 1 && <div className="space-y-3 pt-2">
+          {selectedClient && <label className="den-field">
+            <span>Loc de consum salvat pentru client</span>
+            <select className="den-input" value={selectedSiteId} onChange={(event) => selectConsumptionSite(event.target.value)} data-testid="intake-consumption-site">
+              <option value="new">Loc de consum nou pentru acest client</option>
+              {(selectedClient.consumption_sites || []).map((site, index) => <option key={site.id} value={site.id}>{[site.address, site.locality, site.county, site.pod && ("POD " + site.pod)].filter(Boolean).join(" · ") || ("Loc de consum " + (index + 1))}</option>)}
+            </select>
+            <small>Locurile salvate se completează din nou în dosar. Alege „loc nou” pentru alt POD sau altă adresă.</small>
+          </label>}
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Loc de consum din factură</div>
             <div className="grid sm:grid-cols-2 gap-3">
