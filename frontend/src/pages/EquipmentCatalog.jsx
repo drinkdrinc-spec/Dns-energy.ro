@@ -104,6 +104,11 @@ export default function EquipmentCatalog() {
   const initialCategory = initialSearch.get("category");
   const [cat, setCat] = useState(CATS.includes(initialCategory) ? initialCategory : "Invertor");
   const [q, setQ] = useState(initialSearch.get("q") || "");
+  const [phaseFilter, setPhaseFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [minValue, setMinValue] = useState("");
+  const [maxValue, setMaxValue] = useState("");
+  const [completeDocsOnly, setCompleteDocsOnly] = useState(false);
   const [form, setForm] = useState(null);
   const [supplierResults, setSupplierResults] = useState([]);
   const [supplierLoading, setSupplierLoading] = useState(false);
@@ -127,7 +132,25 @@ export default function EquipmentCatalog() {
     if (params.has("q")) setQ(params.get("q") || "");
     if (CATS.includes(nextCategory)) setCat(nextCategory);
   }, [location.search]);
-  const rows = useMemo(() => items.filter((i) => i.category === cat && !/\bTEST\b/i.test(String(i.brand_model || "")) && (!q || i.brand_model?.toLowerCase().includes(q.toLowerCase()))), [items, cat, q]);
+  const rows = useMemo(() => items.filter((i) => {
+    if (i.category !== cat || /\bTEST\b/i.test(String(i.brand_model || ""))) return false;
+    if (q && !String(i.brand_model || "").toLocaleLowerCase("ro-RO").includes(q.toLocaleLowerCase("ro-RO"))) return false;
+    if (phaseFilter && String(i.phases || "").toLocaleLowerCase("ro-RO") !== phaseFilter.toLocaleLowerCase("ro-RO")) return false;
+    if (typeFilter && String(i.type || "").toLocaleLowerCase("ro-RO") !== typeFilter.toLocaleLowerCase("ro-RO")) return false;
+    const measure = Number(cat === "Invertor" ? i.p_nom_kw : cat === "Panou" ? i.w : cat === "Baterie" ? i.kwh : i.current_max_a);
+    if (minValue !== "" && (!Number.isFinite(measure) || measure < Number(minValue))) return false;
+    if (maxValue !== "" && (!Number.isFinite(measure) || measure > Number(maxValue))) return false;
+    const hasDatasheet = Boolean(i.datasheet || i.datasheet_url || i.datasheet_source_url);
+    const hasConformity = Boolean(i.conformity || i.conformity_url || i.conformity_source_url);
+    if (completeDocsOnly && !(hasDatasheet && hasConformity)) return false;
+    return true;
+  }), [items, cat, q, phaseFilter, typeFilter, minValue, maxValue, completeDocsOnly]);
+  const completeDocsCount = items.filter((i) => i.category === cat
+    && !/\bTEST\b/i.test(String(i.brand_model || ""))
+    && Boolean(i.datasheet || i.datasheet_url || i.datasheet_source_url)
+    && Boolean(i.conformity || i.conformity_url || i.conformity_source_url)).length;
+  const measureLabel = cat === "Invertor" ? "putere nominală (kW)" : cat === "Panou" ? "putere panou (W)" : cat === "Baterie" ? "capacitate (kWh)" : "curent max. (A)";
+  const clearFilters = () => { setPhaseFilter(""); setTypeFilter(""); setMinValue(""); setMaxValue(""); setCompleteDocsOnly(false); setQ(""); };
 
   const save = async () => {
     if (!form.brand_model) return toast.error("Completează marca și modelul");
@@ -266,9 +289,29 @@ export default function EquipmentCatalog() {
         </div>}
       </section>
       <div className="den-panel">
-        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <h2 className="text-lg font-bold">{cat} <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({rows.length})</span></h2>
-          <input className="den-input" style={{ width: 240 }} placeholder="Caută model..." value={q} onChange={(e) => setQ(e.target.value)} data-testid="catalog-db-search" />
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div>
+            <h2 className="text-lg font-bold">{cat} <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({rows.length})</span></h2>
+            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{completeDocsCount} modele au fișă tehnică și document de conformitate atașate sau indicate de producător.</p>
+          </div>
+          <input className="den-input w-full sm:w-[260px]" placeholder="Caută marcă sau model..." value={q} onChange={(e) => setQ(e.target.value)} data-testid="catalog-db-search" />
+        </div>
+        <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" data-testid="catalog-filters">
+          {(cat === "Invertor" || cat === "Smart meter") && <select className="den-input" value={phaseFilter} onChange={(e) => setPhaseFilter(e.target.value)} aria-label="Filtrează după faze" data-testid="catalog-filter-phases">
+            <option value="">Monofazat și trifazat</option><option value="Monofazat">Monofazat</option><option value="Trifazat">Trifazat</option>
+          </select>}
+          {cat === "Invertor" && <select className="den-input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Filtrează după tipul invertorului" data-testid="catalog-filter-type">
+            <option value="">Toate tipurile</option><option value="Hibrid">Hibrid</option><option value="On-grid">On-grid</option><option value="Invertor de baterie (AC)">Invertor de baterie (AC)</option>
+          </select>}
+          <div className="flex gap-2">
+            <input className="den-input min-w-0" type="number" min="0" placeholder={`Min. ${measureLabel}`} value={minValue} onChange={(e) => setMinValue(e.target.value)} aria-label={`Valoare minimă: ${measureLabel}`} data-testid="catalog-filter-min" />
+            <input className="den-input min-w-0" type="number" min="0" placeholder={`Max. ${measureLabel}`} value={maxValue} onChange={(e) => setMaxValue(e.target.value)} aria-label={`Valoare maximă: ${measureLabel}`} data-testid="catalog-filter-max" />
+          </div>
+          <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)" }}>
+            <input type="checkbox" checked={completeDocsOnly} onChange={(e) => setCompleteDocsOnly(e.target.checked)} data-testid="catalog-filter-complete-docs" />
+            Doar modele cu fișă și conformitate
+          </label>
+          {(phaseFilter || typeFilter || minValue || maxValue || completeDocsOnly || q) && <button type="button" onClick={clearFilters} className="text-xs font-semibold underline justify-self-start" data-testid="catalog-clear-filters">Șterge filtrele</button>}
         </div>
         <div className="space-y-3" data-testid="catalog-cards">
           {rows.map((i) => (
