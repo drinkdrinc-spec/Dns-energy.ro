@@ -25,6 +25,6 @@ def build_client_search_query(scope: dict, term: str) -> dict | None:
             scope,
             field_query,
             {"is_test": {"$ne": True}},
-            {"name": {"$not": re.compile(r"\\bTEST\\b", re.I)}},
+            {"name": {"$not": re.compile(r"\bTEST\b", re.I)}},
         ]
     }
