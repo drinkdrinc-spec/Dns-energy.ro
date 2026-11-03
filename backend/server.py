@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 52241)
-Total output lines: 3488
-
 import asyncio
 from dotenv import load_dotenv
 from pathlib import Path
@@ -1040,7 +1037,1498 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
             item[kind] = {"storage_path": stored["path"], "original_filename": f"{product['brand_model']} — {kind}.pdf",
                           "content_type": "application/pdf", "size": len(data), "source_url": doc_url,
                           "source_host": host, "imported_at": now}
-            item[…22241 tokens truncated…
+            item[kind + "_source_url"] = doc_url
+        except Exception as exc:
+            logger.info("Supplier catalog document unavailable (%s): %s", kind, str(exc)[:160])
+    record = _new(user, item)
+    await db.catalog.insert_one(dict(record))
+    await audit(user, "import produs catalog furnizor", "catalog", record["id"], ["category", "brand_model", "supplier", "source_url", *[k for k in ("datasheet", "conformity") if k in item]])
+    return {"ok": True, "existing": False, "item": clean(record)}
+
+
+@api_router.post("/catalog/{item_id}/import-document")
+class _TrustedCatalogImportRequest:
+    """Internal request adapter for reusing the validated catalog importer."""
+    def __init__(self, payload: dict):
+        self.payload = payload
+
+    async def json(self):
+        return self.payload
+
+
+@api_router.post("/catalog/{item_id}/import-document")
+async def catalog_import_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Import a technical PDF from a manufacturer or approved distributor domain."""
+    if not isinstance(request, _TrustedCatalogImportRequest):
+        guard("catalog", user, write=True)
+    body = await request.json()
+    kind = body.get("kind")
+    url = str(body.get("url") or "").strip()
+    if kind not in ("datasheet", "conformity") or len(url) > 2048:
+        raise HTTPException(status_code=400, detail="Tipul documentului sau linkul nu este valid")
+    from urllib.parse import urlparse
+    import httpx
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    trusted_document_domains = (
+        "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "deyeess.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de",
+        "sma-solar.com", "fox-ess.com", "aikosolar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com",
+        "risenenergy.com", "bydbatterybox.com", "dyness.com", "pylontech.com.cn", "pylontech.us", "solarshop.baywa-re.lv", "solaxpower.com", "jinkosolar.eu",
+        "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro", "depozitsolar.ro", "solarhev.ro", "solartech.ro", "hqsmartcloud.com",
+    )
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in trusted_document_domains):
+        raise HTTPException(status_code=400, detail="Folosește un link HTTPS de la producător sau distribuitorul autorizat.")
+    item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Modelul nu există în catalog")
+    def allowed_official_url(candidate: str) -> tuple[str, object]:
+        parsed_candidate = urlparse(candidate)
+        candidate_host = (parsed_candidate.hostname or "").lower().rstrip(".")
+        try:
+            candidate_port = parsed_candidate.port
+        except ValueError:
+            candidate_port = -1
+        if (parsed_candidate.scheme != "https" or parsed_candidate.username or parsed_candidate.password
+                or candidate_port not in (None, 443)
+                or not any(candidate_host == domain or candidate_host.endswith("." + domain) for domain in trusted_document_domains)):
+            raise HTTPException(status_code=400, detail="Redirecționarea a părăsit domeniul oficial permis.")
+        return candidate_host, parsed_candidate
+
+    try:
+        from urllib.parse import urljoin
+        chunks, total = [], 0
+        current_url = url
+        async with httpx.AsyncClient(timeout=25, follow_redirects=False) as client:
+            for hop in range(6):
+                async with client.stream("GET", current_url, headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"}) as response:
+                    if response.status_code in (301, 302, 303, 307, 308):
+                        location = response.headers.get("location")
+                        if not location:
+                            raise HTTPException(status_code=400, detail="Sursa a trimis o redirecționare fără destinație.")
+                        next_url = urljoin(current_url, location)
+                        allowed_official_url(next_url)
+                        current_url = next_url
+                        continue
+                    if response.status_code != 200:
+                        raise HTTPException(status_code=400, detail=f"Sursa a răspuns cu HTTP {response.status_code}; verifică linkul PDF.")
+                    final_host, _ = allowed_official_url(str(response.url))
+                    length = response.headers.get("content-length")
+                    if length and length.isdigit() and int(length) > 25 * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail="Documentul depășește limita de 25 MB")
+                    async for chunk in response.aiter_bytes(64 * 1024):
+                        total += len(chunk)
+                        if total > 25 * 1024 * 1024:
+                            raise HTTPException(status_code=413, detail="Documentul depășește limita de 25 MB")
+                        chunks.append(chunk)
+                    break
+            else:
+                raise HTTPException(status_code=400, detail="Sursa a depășit limita de 5 redirecționări.")
+        data = b"".join(chunks)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=400, detail="Documentul nu a putut fi preluat de la sursa oficială.")
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(status_code=415, detail="Linkul nu a returnat un PDF valid")
+    stored = put_object(f"{APP_NAME}/catalog/{user['id']}/{item_id}/{kind}_{uuid.uuid4().hex}.pdf", data, "application/pdf")
+    doc = {"storage_path": stored["path"], "original_filename": f"{item.get('brand_model', 'model')} — {kind}.pdf",
+           "content_type": "application/pdf", "size": len(data), "source_url": url, "source_host": final_host,
+           "resolved_url": current_url, "imported_at": datetime.now(timezone.utc).isoformat()}
+    await db.catalog.update_one({"id": item_id, "owner": user["id"]}, {"$set": {kind: doc, f"{kind}_source_url": url}})
+    await audit(user, "import document catalog", "catalog", item_id, [kind, "source_url"])
+    return {"ok": True, "kind": kind, "source_url": url, "size": len(data)}
+
+
+@api_router.get("/files/{path:path}")
+async def download(path: str, authorization: str = Header(None), auth: str = Query(None),
+                   module: str = Query("documents")):
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    elif auth:
+        token = auth
+    if not token:
+        raise HTTPException(status_code=401, detail="Neautentificat")
+    user = await user_from_token(None, token)
+    if f"/{user['id']}/" not in path:
+        raise HTTPException(status_code=404, detail="Fișier inexistent")
+    if not is_admin(user):
+        import json as _j
+        ok = False
+        for m in ("prosumator", "clients", "documents", "diu", "atr", "power", "mono", "panels", "anti", "pram", "equipment", "works", "projects", "catalog"):
+            async for d in db[m].find(scope_q(user, m), {"_id": 0}):
+                if path in _j.dumps(d, default=str):
+                    ok = True; break
+            if ok:
+                break
+        # A team member may read their own stored qualification/signature files,
+        # but having a staff profile must not grant access to every tenant file.
+        if not ok and user.get("staff_id"):
+            person = await db.staff.find_one({"owner": user["id"], "id": user["staff_id"]}, {"_id": 0})
+            ok = bool(person and path in _j.dumps(person, default=str))
+        if not ok:
+            raise HTTPException(status_code=404, detail="Fișier inexistent sau fără drept de acces")
+    try:
+        data, content_type = get_object(path)
+    except LegacyObjectUnavailable as exc:
+        raise HTTPException(status_code=410, detail=str(exc)) from exc
+    return Response(content=data, media_type=content_type)
+
+# ---------------- AI extraction & document generation ----------------
+import docgen
+from ai_extract import extract_pdf, extract_gpt, extract_office_text, extract_gpt_text, extract_office_local
+
+async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> dict:
+    token = authorization[7:] if authorization and authorization.startswith("Bearer ") else auth
+    if not token:
+        raise HTTPException(status_code=401, detail="Neautentificat")
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token invalid")
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="Utilizator inexistent")
+    if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
+        admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+        if not admin_email or user.get("email", "").lower() != admin_email or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
+    if user.get("status", "active") != "active":
+        raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
+    return await finish_user(user)
+
+@api_router.post("/ai/extract")
+async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"), user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    # Document intake is part of the prosumer workflow. The route already checks the\n    # prosumer module entitlement above; do not require a second AI-only feature for\n    # selectable-text PDFs and local Office extraction. GPT/OCR remains feature-gated below.\n    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
+    if not data:
+        raise HTTPException(status_code=400, detail="Fișierul este gol")
+    filename = str(file.filename or "document.pdf")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+    ct = str(file.content_type or "").split(";", 1)[0].strip().lower()
+    # Mobile pickers sometimes send application/octet-stream (or no MIME type).
+    # Infer the supported type from the extension in those cases.
+    if not ct or ct == "application/octet-stream":
+        ct = MIME_TYPES.get(ext, "application/octet-stream")
+    ct = validate_upload_payload(filename, ct, data)
+    office_types = {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+    image_types = ("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence")
+    if ct != "application/pdf" and ct not in image_types and ct not in office_types:
+        raise HTTPException(status_code=400, detail="Citire automată pentru PDF, imagini, DOCX și XLSX. Alte formate pot fi atașate și verificate manual.")
+    if doc_type not in {"auto", "ci", "factura", "cf", "other"}:
+        raise HTTPException(status_code=400, detail="Tip de document invalid")
+    use_gpt = has_feature(user, "ai_gpt") and "ai_gpt" not in user["plan"].get("disabled", [])
+    try:
+        if ct in office_types:
+            if use_gpt:
+                fields = await extract_gpt_text(extract_office_text(data, ct), doc_type)
+            else:
+                fields = extract_office_local(data, ct, doc_type)
+        else:
+            fields = await extract_pdf(data, ct, doc_type, use_ai=use_gpt)
+    except Exception as e:
+        logger.error(f"AI extract failed: {e}")
+        if ct in image_types and not os.environ.get("OPENAI_API_KEY"):
+            raise HTTPException(status_code=503, detail="Pentru citirea fotografiilor și a documentelor scanate este necesară configurarea serviciului AI în API.")
+        if ct == "application/pdf" and not os.environ.get("OPENAI_API_KEY") and not isinstance(e, ValueError):
+            raise HTTPException(status_code=503, detail="PDF-ul pare scanat sau nu are etichete text recunoscute. Pentru citirea AI a scanurilor trebuie configurată cheia OPENAI_API_KEY în serviciul API.")
+        raise HTTPException(status_code=502, detail=str(e) if isinstance(e, ValueError) else "Nu am putut citi documentul. Încearcă din nou.")
+    expected = {
+        "ci": [
+            (("client_name",), "numele titularului"),
+            (("cnp",), "CNP/CUI"),
+            (("hq_address", "address"), "domiciliul"),
+            (("id_series",), "seria CI"),
+            (("id_number",), "numărul CI"),
+        ],
+        "factura": [
+            (("pod",), "codul POD"),
+            (("consumption_address", "address"), "adresa locului de consum"),
+            (("operator",), "operatorul de distribuție"),
+        ],
+        "cf": [
+            (("owner_name", "client_name"), "proprietarul"),
+            (("cf_nr",), "numărul cărții funciare"),
+        ],
+    }
+    selected_type = doc_type if doc_type in expected else str(fields.get("doc_type") or "").casefold()
+    missing_fields = []
+    if selected_type in expected:
+        for aliases, label in expected[selected_type]:
+            if not any(fields.get(key) not in (None, "", "null") for key in aliases):
+                missing_fields.append(label)
+    warning = None
+    if missing_fields:
+        warning = "Lipsesc date care trebuie verificate sau completate: " + ", ".join(missing_fields) + "."
+    stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
+    engine = fields.pop("_engine", "OpenAI (GPT-4.1 mini)")
+    return {"data": fields, "engine": engine, "warning": warning, "missing_fields": missing_fields,
+            "file": {"storage_path": stored["path"], "original_filename": file.filename,
+                     "content_type": ct, "size": len(data)}}
+
+def _new(user, extra):
+    now = datetime.now(timezone.utc).isoformat()
+    return {"id": str(uuid.uuid4()), "owner": user["id"], "created_at": now, "updated_at": now,
+            **({"created_by": user["uid"], "created_by_email": user.get("email")} if user.get("uid") else {}), **extra}
+
+@api_router.post("/import/prosumator")
+async def import_prosumator(request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    d = await request.json()
+    for k in ("_id", "id", "owner", "created_at", "updated_at"):
+        d.pop(k, None)
+    name = (d.get("client_name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Lipsește numele beneficiarului")
+    check_inverters(user, d)
+    files = d.get("files") or []
+    if not isinstance(files, list):
+        raise HTTPException(status_code=400, detail="Lista de documente este invalidă")
+    for f in files:
+        if not isinstance(f, dict) or not str(f.get("storage_path") or "").startswith(APP_NAME + "/uploads/" + str(user["id"]) + "/"):
+            raise HTTPException(status_code=400, detail="Document invalid sau neîncărcat în contul curent")
+    identity_code = str(d.get("cnp") or "").strip()
+    selected_client_id = str(d.pop("client_id", "") or "").strip()
+    client = None
+    if selected_client_id:
+        client = await db.clients.find_one({**scope_q(user, "clients"), "id": selected_client_id}, {"_id": 0})
+        if not client:
+            raise HTTPException(status_code=404, detail="Clientul selectat nu există în contul curent")
+        stored_identity = str(client.get("idcode") or client.get("cui") or "").strip()
+        if identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+            raise HTTPException(status_code=409, detail="CNP/CUI din documente nu corespunde clientului selectat")
+    if not client and identity_code:
+        client = await db.clients.find_one({**scope_q(user, "clients"),
+            "$or": [{"idcode": identity_code}, {"cui": identity_code}]}, {"_id": 0})
+    if not client and not selected_client_id:
+        client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
+    stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
+    # A same-name client with a different CNP/CUI is a separate person/company.
+    if client and identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+        client = None
+
+    if d.get("pod"):
+        duplicate_match = []
+        if client:
+            duplicate_match.append({"client_id": client["id"]})
+        if identity_code:
+            duplicate_match.extend([{"cnp": identity_code}, {"idcode": identity_code}])
+        else:
+            duplicate_match.append({"client_name": name})
+        duplicate = await db.prosumator.find_one({**scope_q(user, "prosumator"), "pod": d["pod"], "$or": duplicate_match}, {"id": 1})
+        if duplicate:
+            raise HTTPException(status_code=409, detail="Există deja un dosar pentru acest client și acest POD")
+    if not client:
+        client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""), "email": d.get("email", ""),
+                             "address": d.get("address", ""), "hq_address": d.get("hq_address", ""), "county": d.get("county", ""),
+                             "locality": d.get("locality", ""), "pod": d.get("pod", ""), "operator": d.get("operator", ""), "cadastral_nr": d.get("cadastral_nr", ""),
+                             "cf_nr": d.get("cf_nr", ""), "supplier": d.get("supplier", ""), "rep_name": d.get("rep_name", ""),
+                             "regcom": d.get("regcom", ""), "kind": d.get("kind", "")})
+        client["docs"] = client.get("docs") or {}
+        await db.clients.insert_one(dict(client))
+    client.setdefault("docs", {})
+    client_values = {"name": name, "idcode": d.get("cnp"), "id_series": d.get("id_series"), "id_number": d.get("id_number"),
+                     "phone": d.get("phone"), "email": d.get("email"),
+                     "address": d.get("address"), "hq_address": d.get("hq_address"), "county": d.get("county"),
+                     "locality": d.get("locality"), "pod": d.get("pod"), "operator": d.get("operator"), "cadastral_nr": d.get("cadastral_nr"),
+                     "cf_nr": d.get("cf_nr"), "supplier": d.get("supplier"), "rep_name": d.get("rep_name"),
+                     "regcom": d.get("regcom"), "kind": d.get("kind")}
+    client_updates = {}
+    for key, value in client_values.items():
+        if value not in (None, "") and client.get(key) in (None, ""):
+            client[key] = value
+            client_updates[key] = value
+
+    # Keep consumption locations reusable on the client. A distinct POD is a
+    # distinct service point even when the street address is shared.
+    site_fields = ("address", "county", "locality", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc")
+    site_values = {key: str(d.get(key) or "").strip() for key in site_fields}
+    if any(site_values.values()):
+        sites = client.get("consumption_sites")
+        if not isinstance(sites, list):
+            sites = []
+        clean_location_key = lambda value: re.sub(r"\s+", " ", str(value or "").strip().casefold())
+        pod_key = clean_location_key(site_values["pod"])
+        address_key = clean_location_key(site_values["address"])
+        match_index = None
+        for index, saved_site in enumerate(sites):
+            if not isinstance(saved_site, dict):
+                continue
+            saved_pod = clean_location_key(saved_site.get("pod"))
+            same_pod = bool(pod_key and saved_pod == pod_key)
+            same_unmetered_address = (
+                not pod_key and not saved_pod and address_key
+                and clean_location_key(saved_site.get("address")) == address_key
+                and clean_location_key(saved_site.get("locality")) == clean_location_key(site_values["locality"])
+                and clean_location_key(saved_site.get("county")) == clean_location_key(site_values["county"])
+            )
+            if same_pod or same_unmetered_address:
+                match_index = index
+                break
+        if match_index is None:
+            sites.append({"id": str(uuid.uuid4()), **{key: value for key, value in site_values.items() if value},
+                          "created_at": now, "updated_at": now})
+        else:
+            merged_site = dict(sites[match_index])
+            merged_site.update({key: value for key, value in site_values.items() if value})
+            merged_site["updated_at"] = now
+            sites[match_index] = merged_site
+        client["consumption_sites"] = sites[-100:]
+        client_updates["consumption_sites"] = client["consumption_sites"]
+
+    d["client_id"] = client["id"]
+    if not d.get("number"):
+        year = datetime.now().year
+        nums = [int(x["number"].split("-")[-1]) for x in await db.prosumator.find(
+            {"owner": user["id"], "number": {"$regex": f"^PROS-{year}-\\d+$"}}, {"number": 1}).to_list(5000)]
+        d["number"] = f"PROS-{year}-{(max(nums) if nums else 0) + 1:03d}"
+    if not d.get("status"):
+        d["status"] = "În pregătire"
+    files = d.get("files") or []
+    d = derive_cef(d)
+    pros = _new(user, d)
+    await db.prosumator.insert_one(dict(pros))
+    await sync_catalog_files_to_documents(user, pros)
+    sz = docgen.sizing(d)
+    await db.works.insert_one(_new(user, {"title": f"Sistem fotovoltaic {docgen.fmt(sz['kwp'] or docgen.num(d.get('power')))} kWp — {name}",
+        "client_name": name, "type": "Sistem fotovoltaic", "status": "Finalizat" if d.get("status") == "Prosumator activ" else "În execuție",
+        "start_date": d.get("date", ""), "responsible": d.get("executant_rep", ""), "notes": f"Generat din dosar {pros['number']}", "pros_ref": pros["id"]}))
+    changed_slots = False
+    for f in files:
+        kind = f.get("kind")
+        slot = {"ci": "ci", "factura": "factura", "cf": "cf"}.get(kind)
+        clean_file = {k: f.get(k) for k in ("storage_path", "original_filename", "content_type", "size")}
+        if slot:
+            existing = client["docs"].setdefault(slot, [])
+            if not any(x.get("storage_path") == clean_file["storage_path"] for x in existing if isinstance(x, dict)):
+                existing.append(clean_file)
+                changed_slots = True
+        await db.documents.insert_one(_new(user, {"client_id": client["id"], "client_name": name,
+            "kind": "Dosar prosumator", "doc_type": f.get("doc_type") or "Document importat",
+            **clean_file, "pros_ref": pros["id"]}))
+    await db.clients.update_one({"id": client["id"], "owner": user["id"]}, {"$set": {
+        **client_updates,
+        "docs": client["docs"], "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return clean(pros)
+
+@api_router.get("/docs/types")
+async def doc_types(user: dict = Depends(get_current_user)):
+    return [{"key": k, "label": v[0]} for k, v in docgen.DOCS.items()]
+
+@api_router.get("/docs/sizing/{item_id}")
+async def doc_sizing(item_id: str, user: dict = Depends(get_current_user)):
+    rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    return docgen.sizing(rec)
+
+@api_router.get("/docs/{doc_type}/{item_id}")
+async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(None), auth: str = Query(None),
+                       attach: int = Query(0)):
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+
+    is_power_increase = str(rec.get("request_type") or "").strip() == "Spor de putere + prosumator"
+    client = await get_client(user["id"], rec)
+    annex1 = None
+    annex1_worksheet = None
+    if is_power_increase:
+        # Use the actual Annex 1 PDF registered for the client's distribution operator.
+        operator = str(rec.get("operator") or client.get("operator") or "").lower()
+        if "delgaz" in operator:
+            operator_key = "delgaz"
+            op_names = ["delgaz grid", "delgaz"]
+        elif "rețele electrice" in operator or "retele electrice" in operator or "e-distribu" in operator:
+            operator_key = "rer"
+            op_names = ["rețele electrice românia", "rețele electrice"]
+        elif "oltenia" in operator:
+            operator_key = "oltenia"
+            op_names = ["distribuție energie oltenia", "distributie energie oltenia"]
+        elif "deer" in operator or "distribuție energie electrică" in operator or "distributie energie electrica" in operator:
+            operator_key = "deer"
+            op_names = ["deer", "distribuție energie electrică romania", "distributie energie electrica romania"]
+        else:
+            operator_key = ""
+            op_names = []
+        if op_names:
+            rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
+            candidates = [f for f in rows
+                if any(n in str(f.get("operator") or "").lower() for n in op_names)
+                and "prosumator" in str(f.get("kind") or "").lower()
+                and ("spor" in str(f.get("kind") or "").lower() or "anexa 1" in str(f.get("title") or "").lower())
+                and "anexa 1" in str(f.get("title") or "").lower()
+                and str(f.get("url") or "").lower().split("?")[0].endswith(".pdf")]
+            for item in candidates:
+                try:
+                    resp = requests.get(item["url"], timeout=20, headers={"User-Agent": "DNS-Energy/1.0"})
+                    if resp.status_code == 200 and resp.content.startswith(b"%PDF"):
+                        annex1 = {"bytes": resp.content, "title": item.get("title") or "Anexa 1 oficială"}
+                        break
+                except Exception as exc:
+                    logger.warning("Nu s-a putut descărca Anexa 1 oficială: %s", exc)
+        if annex1:
+            try:
+                import atr_routes as ATR_ROUTES
+                annex1["bytes"], annex1["prefilled_fields"] = ATR_ROUTES._prefill_official_pdf(
+                    annex1["bytes"], rec, client, rec
+                )
+                if operator_key:
+                    annex1_worksheet = ATR.render_operator_annex_prep(
+                        rec, client, rec, operator_key, 1, annex1.get("title") or "Anexa 1 oficială"
+                    )
+            except Exception:
+                logger.exception("Nu s-a putut pregăti fișa de completare pentru Anexa 1")
+        if doc_type == "notificare":
+            if not annex1:
+                raise HTTPException(status_code=404, detail="Nu există un PDF Anexa 1 disponibil în Registrul formularelor pentru distribuitorul selectat. Verificați/înregistrați formularul oficial; Anexa 2 nu va fi folosită la spor de putere.")
+            if annex1_worksheet:
+                writer = PdfWriter()
+                for page in PdfReader(io.BytesIO(annex1_worksheet)).pages:
+                    writer.add_page(page)
+                for page in PdfReader(io.BytesIO(annex1["bytes"])).pages:
+                    writer.add_page(page)
+                out = io.BytesIO()
+                writer.write(out)
+                annex_content = out.getvalue()
+            else:
+                annex_content = annex1["bytes"]
+            return Response(content=annex_content, media_type="application/pdf",
+                            headers={"Content-Disposition": disp("attachment", f"Anexa_1_spor_putere_{(rec.get('client_name') or 'prosumator').replace(' ', '_')}_COMPLETARE.pdf")})
+
+    if doc_type == "all":
+        # Dosarul complet include schema CEF o singură dată.
+        keys = [k for k in docgen.DOCS if k != "schema"]
+        if is_power_increase:
+            keys = [k for k in keys if k != "notificare"]
+    else:
+        keys = [doc_type]
+    if any(k not in docgen.DOCS for k in keys):
+        raise HTTPException(status_code=404, detail="Tip document inexistent")
+
+    third_party_pram = None
+    if rec.get("pram_source") == "third_party" and doc_type in ("buletin_priza", "all"):
+        uploaded = rec.get("pram_file") or {}
+        storage_path = str(uploaded.get("storage_path") or "")
+        if not storage_path or f"/{user['id']}/" not in storage_path:
+            raise HTTPException(status_code=422, detail="Încarcă buletinul PRAM PDF al firmei terțe înainte de generare.")
+        try:
+            pram_bytes, pram_type = get_object(storage_path)
+        except Exception as exc:
+            logger.warning("Nu s-a putut citi buletinul PRAM încărcat: %s", exc)
+            raise HTTPException(status_code=404, detail="Fișierul PRAM încărcat nu mai este disponibil. Încarcă-l din nou.") from exc
+        if pram_type != "application/pdf" or not pram_bytes.startswith(b"%PDF-"):
+            raise HTTPException(status_code=415, detail="Fișierul PRAM trebuie să fie un PDF valid.")
+        third_party_pram = pram_bytes
+
+    if doc_type == "buletin_priza" and third_party_pram:
+        filename = str((rec.get("pram_file") or {}).get("original_filename") or "buletin_pram_terta.pdf")
+        return Response(content=third_party_pram, media_type="application/pdf",
+                        headers={"Content-Disposition": disp("inline", filename)})
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    settings, _ = await effective_settings(user["id"], rec, base)
+    if doc_type == "all" and third_party_pram:
+        writer = PdfWriter()
+        for key in keys:
+            part = third_party_pram if key == "buletin_priza" else docgen.render([key], rec, settings, client)
+            for page in PdfReader(io.BytesIO(part)).pages:
+                writer.add_page(page)
+        combined = io.BytesIO()
+        writer.write(combined)
+        pdf = combined.getvalue()
+    else:
+        pdf = docgen.render(keys, rec, settings, client)
+
+    if doc_type == "all" and is_power_increase and annex1:
+        try:
+            # Fișa de precompletare precedă formularul oficial; Anexa 2 nu se folosește pentru spor.
+            writer = PdfWriter()
+            if annex1_worksheet:
+                for page in PdfReader(io.BytesIO(annex1_worksheet)).pages:
+                    writer.add_page(page)
+            for page in PdfReader(io.BytesIO(annex1["bytes"])).pages:
+                writer.add_page(page)
+            for page in PdfReader(io.BytesIO(pdf)).pages:
+                writer.add_page(page)
+            merged = io.BytesIO()
+            writer.write(merged)
+            pdf = merged.getvalue()
+        except Exception as exc:
+            logger.warning("Nu s-a putut atașa Anexa 1 oficială: %s", exc)
+
+    # Attach catalog technical sheets and declarations.
+    if attach or doc_type == "all":
+        await auto_import_selected_catalog_documents(user, rec)
+        pdf = merge_pdfs(pdf, await catalog_files(user["id"], rec))
+    fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{fname}")})
+
+# ---------------- CEF checks & catalog ----------------
+import cef as CEF
+import supplier_catalog as SUPPLIER_CATALOG
+from catalog_seed import SEED as CATALOG_SEED, NOTE as CATALOG_NOTE, missing_seed_values as missing_catalog_seed_values
+from pypdf import PdfReader, PdfWriter
+import io
+
+async def seed_catalog(owner: str):
+    # Seed idempotent: adaugă numai modelele lipsă și pentru conturile deja existente.
+    await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
+    await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
+    existing = await db.catalog.find({"owner": owner}, {"id": 1, "category": 1, "brand_model": 1,
+        "datasheet_url": 1, "conformity_url": 1, "datasheet_source_url": 1, "conformity_source_url": 1,
+        "i_max": 1, "coupling": 1, "voltage_1ph": 1, "voltage_3ph": 1, "i_max_source_url": 1,
+        "_id": 0}).to_list(10000)
+    by_key = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()): x for x in existing}
+    missing = []
+    for item in CATALOG_SEED:
+        key = (item.get("category"), (item.get("brand_model") or "").strip().casefold())
+        row = by_key.get(key)
+        if row:
+            # Backfill manufacturer source links without overwriting a link the user already set.
+            source_updates = {f"{kind}_url": item[f"{kind}_url"] for kind in ("datasheet", "conformity")
+                              if item.get(f"{kind}_url") and not row.get(f"{kind}_url") and not row.get(f"{kind}_source_url")}
+            verified_updates = missing_catalog_seed_values(row, item)
+            if source_updates or verified_updates:
+                updates = {**source_updates, **verified_updates}
+                await db.catalog.update_one({"id": row["id"], "owner": owner}, {"$set": updates})
+                row.update(updates)
+            continue
+        created = _new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE})
+        missing.append(created)
+        by_key[key] = created
+    if missing:
+        await db.catalog.insert_many(missing)
+
+def derive_cef(d: dict) -> dict:
+    if (d.get("cef") or {}).get("inverters"):
+        f = CEF.flatten({k: v for k, v in d.items() if k != "power"})
+        for k in ("power", "inverter", "inverter_kw", "panel_count", "panels"):
+            if not d.get(k):
+                d[k] = f.get(k)
+    return d
+
+@api_router.post("/cef/check")
+async def cef_check(request: Request, user: dict = Depends(get_current_user)):
+    return CEF.check(await request.json())
+
+# ---------------- Schemă monofilară (generator nou) ----------------
+import sizing as SZ
+import sld as SLD
+from sld_demo import DEMO_REC, DEMO_CLIENT
+
+SLD_ROLES = {"designer": "Proiectant schemă", "verifier": "Verificator schemă"}
+
+from urllib.parse import quote as _q
+import unicodedata as _ud
+
+def disp(kind: str, name: str) -> str:
+    a = _ud.normalize("NFKD", name).encode("ascii", "ignore").decode().replace('"', "") or "document"
+    return f"{kind}; filename=\"{a}\"; filename*=UTF-8''{_q(name)}"
+
+def pdf_resp(data: bytes, name: str):
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
+
+async def sld_ctx(owner, item_id: str):
+    if isinstance(owner, dict):
+        await check_access(owner, "prosumator", item_id); owner = owner["id"]
+    rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    rec = CEF.from_legacy(rec)
+    client = await get_client(owner, rec)
+    base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
+    s, warns = await effective_settings(owner, rec, base)
+    if (rec.get("cef") or {}).get("from_legacy"):
+        warns = list(warns) + ["Schema folosește datele din fișa dosarului (invertor, panouri, baterie). Repartizarea pe stringuri/MPPT nu este definită — "
+                               "configurați stringurile în Configuratorul CEF pentru o schemă completă."]
+    res = SZ.compute(rec, client)
+    state = SZ.state(rec, client, s)
+    return rec, client, s, res, state, warns
+
+@api_router.get("/sld/demo/pdf")
+async def sld_demo(authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("A3")):
+    user = await user_from_token(authorization, auth)
+    s = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    res = SZ.compute(DEMO_REC, DEMO_CLIENT)
+    return pdf_resp(SLD.render(DEMO_REC, DEMO_CLIENT, s, res, {"status": "draft"}, fmt, demo=True), "schema_monofilara_DEMO.pdf")
+
+@api_router.get("/sld/{item_id}")
+async def sld_status(item_id: str, user: dict = Depends(get_current_user)):
+    rec, client, s, res, state, warns = await sld_ctx(user, item_id)
+    sld = rec.get("sld") or {}
+    signers = rec.get("signers") or {}
+    people = {}
+    for role in SLD_ROLES:
+        sid = signers.get(role)
+        p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
+        people[role] = {"name": p.get("name"), "eligible": staff_eligible(p), "email": p.get("email")} if p else None
+    return {"items": res["items"], "missing": res["missing"], "errors": res["errors"], "warnings": res["warnings"], "cables": res["cables"],
+            "ready": res["ready"], "format": res["format"], "totals": res["base"]["totals"], "approval": state, "settings_warnings": warns,
+            "source": sld.get("source") or "generated", "upload": sld.get("upload"), "revision": sld.get("revision") or 0,
+            "auto_filled": (rec.get("cef") or {}).get("auto_filled") or [], "people": people,
+            "history": [{k: v for k, v in h.items() if k not in ("hash", "values")} | {"current": h.get("hash") == state["fingerprint"], "index": i, "has_values": bool(h.get("values"))}
+                        for i, h in reversed(list(enumerate(sld.get("history") or [])))],
+            "approval_requests": (sld.get("approval_requests") or [])[-5:], "is_test": bool(rec.get("is_test")),
+            "from_legacy": bool((rec.get("cef") or {}).get("from_legacy"))}
+
+@api_router.post("/sld/{item_id}/import-legacy")
+async def sld_import_legacy(item_id: str, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    rec = await check_access(user, "prosumator", item_id)
+    new = CEF.from_legacy(rec)
+    if not (new.get("cef") or {}).get("from_legacy"):
+        raise HTTPException(status_code=400, detail="Dosarul are deja o configurație CEF sau nu are date de invertor/panouri")
+    cef = {k: v for k, v in new["cef"].items() if k != "from_legacy"}
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef}})
+    await audit(user, "update", "prosumator", item_id, ["cef (preluat din fișa dosarului pentru schema monofilară)"])
+    return {"ok": True}
+
+@api_router.get("/sld/{item_id}/pdf")
+async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("auto"), download: int = Query(0)):
+    user = await user_from_token(authorization, auth)
+    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
+    name = f"schema_monofilara_{rec.get('number') or item_id}.pdf"
+    return Response(content=SLD.render(rec, client, s, res, state, fmt), media_type="application/pdf",
+                    headers={"Content-Disposition": disp("attachment" if download else "inline", name)})
+
+@api_router.get("/sld/{item_id}/report")
+async def sld_report(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
+    return pdf_resp(SLD.report(rec, client, s, res, state), f"raport_calcul_{rec.get('number') or item_id}.pdf")
+
+@api_router.post("/sld/{item_id}/apply")
+async def sld_apply(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    body = await request.json() if (await request.body()) else {}
+    cef, filled = SZ.apply(body.get("cef") or rec.get("cef") or {})
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef}})
+    await audit(user, "dimensionare automată", "prosumator", item_id, filled)
+    return {"filled": filled, "cef": cef}
+
+@api_router.put("/sld/{item_id}/source")
+async def sld_source(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    body = await request.json()
+    rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    sld = rec.get("sld") or {}
+    if body.get("source") in ("generated", "uploaded"):
+        sld["source"] = body["source"]
+    if body.get("upload"):
+        sld["upload"] = body["upload"]
+    if body.get("clear_upload"):
+        sld.pop("upload", None)
+        if sld.get("source") == "uploaded":
+            sld["source"] = "generated"
+    if sld.get("source") == "uploaded" and not sld.get("upload"):
+        raise HTTPException(status_code=400, detail="Încărcați întâi schema realizată de specialist.")
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"sld": sld}})
+    await audit(user, "schemă — sursă", "prosumator", item_id, [sld.get("source") or "generated"])
+    return sld
+
+@api_router.post("/sld/{item_id}/approve")
+async def sld_approve(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    require(user, "admin", "inginer")
+    need(user, "prosumator", True)
+    role = (await request.json()).get("role")
+    if role not in SLD_ROLES:
+        raise HTTPException(status_code=400, detail="Rol invalid")
+    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
+    sld = rec.get("sld") or {}
+    src = sld.get("source") or "generated"
+    if src == "generated" and not res["ready"]:
+        raise HTTPException(status_code=400, detail=f"Schema nu poate fi aprobată: {len(res['missing'])} date lipsă, {len(res['errors'])} erori.")
+    if src == "uploaded" and not sld.get("upload"):
+        raise HTTPException(status_code=400, detail="Nu există schemă încărcată.")
+    sid = (rec.get("signers") or {}).get(role)
+    p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
+    if not p:
+        raise HTTPException(status_code=400, detail=f"Selectați {SLD_ROLES[role].lower()} în secțiunea Semnatari a dosarului (din Setări de bază → Personal).")
+    if not staff_eligible(p):
+        raise HTTPException(status_code=400, detail=f"{p.get('name')} nu are o autorizație valabilă și verificată în Setări de bază.")
+    auth_doc = next((a for a in p.get("auths") or [] if a.get("verified")), {})
+    rev = (sld.get("revision") or 0) + (1 if state["status"] == "stale" else 0)
+    aps = {r: a for r, a in (sld.get("approvals") or {}).items() if state["status"] != "stale" and r != role}
+    sld.update({"revision": rev, "approval": {"role": role, "role_label": SLD_ROLES[role], "staff_id": sid, "name": p.get("name"),
+                                             "auth": f"{auth_doc.get('type', '')} nr. {auth_doc.get('number', '')}".strip(), "source": src,
+                                             "at": datetime.now(timezone.utc).isoformat(), "by": user.get("email")}})
+    rec["sld"] = sld
+    sld["approval"]["hash"] = SZ.fingerprint(rec, client)
+    aps[role] = sld["approval"]
+    sld["approvals"] = aps
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"sld": sld}})
+    rec2, client2, s2, res2, st2, _ = await sld_ctx(user, item_id)
+    if src == "uploaded":
+        f = sld["upload"]
+    else:
+        pdf = SLD.render(rec2, client2, s2, res2, st2)
+        stored = put_object(f"{APP_NAME}/sld/{user['id']}/{item_id}/rev{rev}_{uuid.uuid4().hex[:8]}.pdf", pdf, "application/pdf")
+        f = {"storage_path": stored["path"], "original_filename": f"schema_rev{rev}.pdf", "content_type": "application/pdf", "size": len(pdf)}
+    entry = {"revision": rev, "at": sld["approval"]["at"], "role": role, "role_label": SLD_ROLES[role], "name": p.get("name"),
+             "auth": sld["approval"]["auth"], "hash": sld["approval"]["hash"], "source": src, "file": f, "by": user.get("email"),
+             "values": SLD.snapshot(rec2, res2)}
+    await db.prosumator.update_one({"id": item_id}, {"$push": {"sld.history": entry}})
+    await audit(user, "schemă aprobată", "prosumator", item_id, [role, p.get("name")])
+    return sld["approval"]
+
+async def deliver(owner: str, is_test: bool, to: str, subject: str, html: str) -> str:
+    """Returns the address actually used, or '' when not sent (test dossier without test e-mail)."""
+    if is_test:
+        st = await db.settings.find_one({"owner": owner}, {"_id": 0, "test_email": 1}) or {}
+        to = (st.get("test_email") or "").strip()
+        if "@" not in to:
+            return ""
+        subject = "[TEST] " + subject
+        html = '<p style="color:#b03a2e;font-family:Arial"><b>DOSAR DE TEST — date fictive. Nu este un document sau o semnătură oficială.</b></p>' + html
+    await send_email(to=to, subject=subject, html=html)
+    return to
+
+@api_router.get("/sld/{item_id}/compare")
+async def sld_compare(item_id: str, a: int, b: int, user: dict = Depends(get_current_user)):
+    rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    h = (rec.get("sld") or {}).get("history") or []
+    if not (0 <= a < len(h) and 0 <= b < len(h)):
+        raise HTTPException(status_code=404, detail="Revizie inexistentă")
+    va, vb = h[a].get("values"), h[b].get("values")
+    if not va or not vb:
+        raise HTTPException(status_code=400, detail="Una dintre versiuni a fost aprobată înainte de salvarea valorilor pentru comparare")
+    rows = [{"key": k, "a": va.get(k, "—"), "b": vb.get(k, "—"), "changed": va.get(k) != vb.get(k)} for k in dict.fromkeys(list(va) + list(vb))]
+    meta = lambda x: {k: x.get(k) for k in ("revision", "at", "name", "role_label", "source")}
+    return {"a": meta(h[a]), "b": meta(h[b]), "rows": rows, "changed": sum(r["changed"] for r in rows)}
+
+async def request_approval(user: dict, item_id: str, origin: str, auto: bool):
+    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
+    sld = rec.get("sld") or {}
+    if state["status"] == "approved":
+        raise HTTPException(status_code=400, detail="Schema este deja aprobată pentru configurația actuală")
+    if (sld.get("source") or "generated") == "generated" and not res["ready"]:
+        raise HTTPException(status_code=400, detail=f"Datele nu sunt complete: {len(res['missing'])} lipsă, {len(res['errors'])} erori")
+    if auto and sld.get("approval_request_hash") == state["fingerprint"]:
+        return None
+    if not origin.startswith("https://"):
+        raise HTTPException(status_code=400, detail="Adresa aplicației (origin) lipsește — deschideți cererea din aplicație")
+    sent = []
+    for role, label in SLD_ROLES.items():
+        sid = (rec.get("signers") or {}).get(role)
+        p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
+        if not p or "@" not in (p.get("email") or ""):
+            continue
+        link = f"{origin.rstrip('/')}/prosumator"
+        html = (f'<div style="font-family:Arial,sans-serif;color:#0b1f3a"><p>Bună ziua, {hesc(p["name"])},</p>'
+                f'<p>Schema monofilară și dimensionarea tehnică pentru <b>{hesc(str(client.get("name") or rec.get("client_name") or ""))}</b> '
+                f'(dosar {hesc(str(rec.get("number") or ""))}) sunt complete și așteaptă verificarea dvs. ca {hesc(label.lower())}.</p>'
+                f'<p><a href="{hesc(link)}">Deschide aplicația D-ENERGY</a> → Dosar de prosumator → secțiunea „Schemă monofilară”.</p></div>')
+        to = await deliver(user["id"], bool(rec.get("is_test")), p["email"], f"Cerere de aprobare schemă — {rec.get('number') or ''}", html)
+        sent.append({"role": role, "name": p["name"], "to": to, "sent": bool(to)})
+    entry = {"at": datetime.now(timezone.utc).isoformat(), "auto": auto, "recipients": sent, "by": user.get("email")}
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"sld.approval_request_hash": state["fingerprint"]}, "$push": {"sld.approval_requests": entry}})
+    await audit(user, "cerere aprobare schemă", "prosumator", item_id, [x["name"] for x in sent])
+    return entry
+
+@api_router.post("/sld/{item_id}/request-approval")
+async def sld_request_approval(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    b = await request.json() if (await request.body()) else {}
+    entry = await request_approval(user, item_id, b.get("origin") or request.headers.get("origin") or "", False)
+    if not entry["recipients"]:
+        raise HTTPException(status_code=400, detail="Nu există proiectant/verificator selectat cu e-mail completat")
+    return entry
+
+@api_router.post("/sld/{item_id}/send-sign")
+async def sld_send_sign(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True); need(user, "sign_remote", True)
+    b = await request.json()
+    role = b.get("role")
+    if role not in SLD_ROLES:
+        raise HTTPException(status_code=400, detail="Rol invalid")
+    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
+    if state["status"] != "approved":
+        raise HTTPException(status_code=400, detail="Schema trebuie aprobată înainte de semnare")
+    sid = (rec.get("signers") or {}).get(role)
+    p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
+    if not p or not staff_eligible(p):
+        raise HTTPException(status_code=400, detail=f"{SLD_ROLES[role]}: persoană neselectată sau fără autorizație valabilă și verificată")
+    if "@" not in (p.get("email") or ""):
+        raise HTTPException(status_code=400, detail=f"Completați e-mailul pentru {p.get('name')} în Setări de bază → Personal")
+    keys = [k for k in (b.get("pos_keys") or ["schema"]) if k in ("schema", "fisa_tehnica")] or ["schema"]
+    reqs = await create_sign_requests(user, item_id, keys, [{"name": p["name"], "email": p["email"], "phone": p.get("phone") or "", "role": SLD_ROLES[role]}], parse_days(b.get("expires_days")))
+    origin = (b.get("origin") or "").rstrip("/")
+    for r in reqs:
+        link = f"{origin}/semneaza/{r['token']}"
+        html = (f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0b1f3a">'
+                f'<p>Bună ziua, {hesc(p["name"])},</p><p>Vă rugăm să verificați și să semnați documentul <b>{hesc(r["doc_title"])}</b> '
+                f'pentru beneficiarul {hesc(str(r.get("client_name") or ""))}, în calitate de {hesc(SLD_ROLES[role].lower())}.</p>'
+                f'<p><a href="{hesc(link)}" style="background:#2878f0;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Deschide documentul</a></p>'
+                f'<p>La semnare veți primi un cod unic pe această adresă de e-mail. Linkul este personal și expiră la {r["expires_at"][:10]}.</p></td></tr></table>')
+        to = await deliver(user["id"], bool(rec.get("is_test")), p["email"], f"Semnare {r['doc_title'][:60]}", html)
+        if to:
+            await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Link trimis"}, "$push": {"history": hist("Link trimis", None, f"e-mail automat către {mask(to)}; de {user.get('email')}")}})
+        else:
+            await db.sign_requests.update_one({"id": r["id"]}, {"$push": {"history": hist("E-mail netrimis", None, "dosar de TEST fără e-mail de test configurat în Setări de bază")}})
+        r["email_sent"] = bool(to)
+    await audit(user, "schemă trimisă la semnare", "prosumator", item_id, [role, p.get("name")])
+    return [{**{k: v for k, v in r.items()}, "status": "Link trimis" if r.get("email_sent") else "De trimis"} for r in reqs]
+
+@api_router.post("/sld/{item_id}/unapprove")
+async def sld_unapprove(item_id: str, user: dict = Depends(get_current_user)):
+    require(user, "admin", "inginer")
+    need(user, "prosumator", True)
+    await check_access(user, "prosumator", item_id)
+    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"sld.approval": "", "sld.approvals": ""}})
+    await audit(user, "schemă — aprobare retrasă", "prosumator", item_id, [])
+    return {"ok": True}
+
+
+def catalog_ids(rec: dict) -> list:
+    c = rec.get("cef") or {}
+    ids = []
+    for i in c.get("inverters") or []:
+        ids += [i.get("catalog_id"), i.get("panel_catalog_id"), (i.get("battery") or {}).get("catalog_id")]
+    ids += [b.get("catalog_id") for b in c.get("shared_batteries") or []]
+    g = c.get("grid") or {}
+    ids.append(g.get("meter_catalog_id"))
+    return list(dict.fromkeys(x for x in ids if x))
+
+async def catalog_files(owner: str, rec: dict) -> list:
+    out = []
+    for cid in catalog_ids(rec):
+        it = await db.catalog.find_one({"owner": owner, "id": cid}, {"_id": 0})
+        if not it:
+            continue
+        for k, label in (("datasheet", "Fișă tehnică"), ("conformity", "Declarație de conformitate")):
+            f = it.get(k)
+            if f and f.get("storage_path"):
+                # Old records can still point at the retired object store. Read-through
+                # migrates accessible files to GridFS; unavailable files must not count
+                # as evidence that the dossier contains the required equipment document.
+                if not has_gridfs_object(f["storage_path"]):
+                    try:
+                        get_object(f["storage_path"])
+                    except Exception as exc:
+                        logger.warning("Catalog document unavailable for %s (%s): %s", cid, k, exc)
+                        continue
+                out.append({"catalog_id": cid, "model": it.get("brand_model"), "kind": label, **f})
+    return out
+
+async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
+    """Fetch missing official PDFs for equipment selected in a dossier; never block the save on source failures."""
+    owner = user["id"]
+    candidates = []
+    for catalog_id in catalog_ids(rec):
+        item = await db.catalog.find_one({"owner": owner, "id": catalog_id}, {"_id": 0})
+        if not item:
+            continue
+        for kind in ("datasheet", "conformity"):
+            existing = item.get(kind)
+            if (isinstance(existing, dict) and existing.get("storage_path")
+                    and has_gridfs_object(existing["storage_path"])):
+                continue
+            source_url = (item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
+                          or (existing.get("source_url") if isinstance(existing, dict) else ""))
+            if source_url:
+                candidates.append((catalog_id, kind, str(source_url)))
+
+    semaphore = asyncio.Semaphore(3)
+
+    async def import_one(catalog_id: str, kind: str, source_url: str) -> None:
+        async with semaphore:
+            try:
+                await catalog_import_document(catalog_id, _TrustedCatalogImportRequest({"kind": kind, "url": source_url}), user)
+            except HTTPException as exc:
+                logger.info("Catalog PDF auto-import skipped for %s (%s): %s", catalog_id, kind, exc.detail)
+            except Exception:
+                logger.exception("Catalog PDF auto-import failed for %s (%s)", catalog_id, kind)
+
+    if candidates:
+        await asyncio.gather(*(import_one(*candidate) for candidate in candidates))
+
+
+async def sync_catalog_files_to_documents(user: dict, rec: dict) -> int:
+    """Attach selected equipment datasheets and conformity declarations to the client dossier."""
+    await auto_import_selected_catalog_documents(user, rec)
+    owner = user["id"]
+    client_name = rec.get("client_name", "")
+    client = await db.clients.find_one(
+        {**scope_q(user, "clients"), "name": client_name}, {"_id": 0, "id": 1}
+    ) or {}
+    added = 0
+    for f in await catalog_files(owner, rec):
+        exists = await db.documents.find_one({
+            "owner": owner,
+            "storage_path": f["storage_path"],
+            "client_name": client_name,
+        }, {"_id": 1})
+        if exists:
+            continue
+        await db.documents.insert_one(_new(user, {
+            "client_id": client.get("id", ""),
+            "client_name": client_name,
+            "kind": "Catalog",
+            "doc_type": f"{f['kind']} — {f['model']}",
+            "storage_path": f["storage_path"],
+            "original_filename": f.get("original_filename"),
+            "content_type": f.get("content_type"),
+            "size": f.get("size"),
+            "pros_ref": rec.get("id"),
+        }))
+        added += 1
+    return added
+
+@api_router.get("/prosumator/{item_id}/catalog-files")
+async def pros_catalog_files(item_id: str, user: dict = Depends(get_current_user)):
+    rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    return await catalog_files(user["id"], rec)
+
+@api_router.post("/prosumator/{item_id}/attach-catalog")
+async def attach_catalog(item_id: str, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    added = await sync_catalog_files_to_documents(user, rec)
+    return {"added": added}
+
+def merge_pdfs(base: bytes, extra: list) -> bytes:
+    w = PdfWriter()
+    for p in PdfReader(io.BytesIO(base)).pages:
+        w.add_page(p)
+    for f in extra:
+        if "pdf" not in (f.get("content_type") or "") and not str(f.get("storage_path")).endswith(".pdf"):
+            continue
+        try:
+            data, _ = get_object(f["storage_path"])
+            for p in PdfReader(io.BytesIO(data)).pages:
+                w.add_page(p)
+        except Exception as e:
+            logger.error(f"merge skip {f.get('storage_path')}: {e}")
+    out = io.BytesIO()
+    w.write(out)
+    return out.getvalue()
+
+# ---------------- Dossier opis (model PUBLISERV) ----------------
+import opis as OPIS
+
+async def apply_selected_client_defaults(owner: str, module: str, data: dict) -> dict:
+    """Copy verified client master data into a new dossier without replacing explicit entries."""
+    if module not in ("prosumator", "atr", "power", "diu") or not data.get("client_id"):
+        return data
+    client = await db.clients.find_one({"owner": owner, "id": str(data["client_id"])}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=400, detail="Clientul selectat nu există în agenda contului. Reîncarcă lista și selectează un client salvat.")
+    def pick(*keys):
+        return next((client.get(key) for key in keys if client.get(key) not in (None, "")), None)
+    kind = str(pick("kind", "type") or "").strip().casefold()
+    is_company = "jurid" in kind or kind in ("pj", "company", "firmă", "firma")
+    applicant_type = "Persoană juridică" if is_company else "Persoană fizică" if ("fiz" in kind or "pf" == kind or "person" in kind) else None
+    identifier = pick("idcode")
+    defaults = {
+        "client_name": pick("name", "full_name"),
+        "client_kind": applicant_type or pick("kind", "type"),
+        "applicant_type": applicant_type,
+        "cnp": pick("cnp") or (identifier if not is_company else None),
+        "cui": pick("cui") or (identifier if is_company else None),
+        "id_series": pick("id_series", "ci_series", "series"),
+        "id_number": pick("id_number", "id_no"),
+        "phone": pick("phone", "telephone"),
+        "email": pick("email"),
+        "county": pick("county"),
+        "locality": pick("locality"),
+        "operator": pick("operator"),
+        "pod": pick("pod"),
+        "cf_nr": pick("cf_nr", "land_registry_number"),
+        "cadastral_nr": pick("cadastral_nr", "cadastral_number"),
+        "supply": pick("supply", "connection_type"),
+        "client_address": pick("hq_address", "address"),
+        "consumption_address": pick("consumption_address", "pod_address", "address"),
+    }
+    if client.get("same_address_as_client") or client.get("same_address"):
+        defaults["address"] = pick("consumption_address", "pod_address", "address")
+    else:
+        defaults["address"] = pick("consumption_address", "pod_address")
+    for key, value in defaults.items():
+        if value not in (None, "") and data.get(key) in (None, ""):
+            data[key] = value
+    return data
+
+async def get_client(owner: str, rec: dict) -> dict:
+    c = None
+    if rec.get("client_id"):
+        c = await db.clients.find_one({"owner": owner, "id": rec["client_id"]}, {"_id": 0})
+    if not c and not rec.get("client_id") and rec.get("client_name"):
+        c = await db.clients.find_one({"owner": owner, "name": rec["client_name"]}, {"_id": 0})
+    return c or {}
+
+def _normalize_atr_match(value: str) -> str:
+    import unicodedata
+    text = unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode("ascii").casefold()
+    return "".join(char for char in text if char.isalnum())
+
+
+async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None) -> dict | None:
+    """Resolve a linked prosumer dossier only when the client and consumption point are unambiguous."""
+    rec, client = rec or {}, client or {}
+    query = scope_q(user, "prosumator")
+    expected_client_id = str(rec.get("client_id") or client.get("id") or "")
+    expected_name = _normalize_atr_match(rec.get("client_name") or client.get("name"))
+    selected_id = str(rec.get("pros_id") or "")
+    if selected_id:
+        selected = await db.prosumator.find_one({**query, "id": selected_id}, {"_id": 0})
+        if selected:
+            selected_client_id = str(selected.get("client_id") or "")
+            selected_name = _normalize_atr_match(selected.get("client_name"))
+            same_client = (selected_client_id == expected_client_id) if expected_client_id and selected_client_id else bool(expected_name and selected_name == expected_name)
+            if same_client:
+                return selected
+
+    # Resolve modern records using indexed client_id lookups. Legacy dossiers
+    # without client_id are fetched with a narrow projection, so their large CEF
+    # payloads do not have to be loaded just to match a name/POD.
+    projection = {"_id": 0, "id": 1, "client_id": 1, "client_name": 1, "pod": 1, "address": 1}
+    candidate_rows = []
+    if expected_client_id:
+        candidate_rows = await db.prosumator.find(
+            {**query, "client_id": expected_client_id}, projection
+        ).sort("updated_at", -1).limit(500).to_list(500)
+        legacy_filter = {
+            **query,
+            "$or": [
+                {"client_id": {"$exists": False}},
+                {"client_id": None},
+                {"client_id": ""},
+            ],
+        }
+        legacy_rows = await db.prosumator.find(legacy_filter, projection).sort("updated_at", -1).limit(500).to_list(500)
+        candidate_rows.extend(
+            item for item in legacy_rows
+            if expected_name and _normalize_atr_match(item.get("client_name")) == expected_name
+        )
+        candidates = [
+            item for item in candidate_rows
+            if (
+                str(item.get("client_id") or "") == expected_client_id
+                or (not item.get("client_id") and expected_name
+                    and _normalize_atr_match(item.get("client_name")) == expected_name)
+            )
+        ]
+    elif expected_name:
+        candidate_rows = await db.prosumator.find(query, projection).sort("updated_at", -1).limit(500).to_list(500)
+        candidates = [
+            item for item in candidate_rows
+            if _normalize_atr_match(item.get("client_name")) == expected_name
+        ]
+    else:
+        return None
+
+    pod = _normalize_atr_match(rec.get("pod") or client.get("pod"))
+    address = _normalize_atr_match(rec.get("address") or client.get("consumption_address"))
+    if pod:
+        candidates = [item for item in candidates if _normalize_atr_match(item.get("pod")) == pod]
+    elif address:
+        candidates = [item for item in candidates if _normalize_atr_match(item.get("address")) == address]
+    if len(candidates) != 1 or not candidates[0].get("id"):
+        return None
+    return await db.prosumator.find_one(
+        {**query, "id": str(candidates[0]["id"])}, {"_id": 0}
+    )
+
+
+async def dossier_ctx(owner, item_id: str):
+    if isinstance(owner, dict):
+        await check_access(owner, "prosumator", item_id); owner = owner["id"]
+    rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    rec = CEF.from_legacy(rec)
+    client = await get_client(owner, rec)
+    base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
+    settings, warns = await effective_settings(owner, rec, base)
+    info = await OPIS.build_positions(db, owner, rec, client, settings)
+    info["signer_warnings"] = warns
+    info["finalized"] = rec.get("snapshot", {}).get("at") if rec.get("snapshot") else None
+    return rec, client, settings, info
+
+def doc_status(expires: str, has_file: bool) -> str:
+    if not has_file:
+        return "lipsă"
+    if not expires:
+        return "valabil"
+    today = datetime.now(timezone.utc).date().isoformat()
+    soon = (datetime.now(timezone.utc).date() + timedelta(days=30)).isoformat()
+    return "expirat" if expires < today else ("aproape de expirare" if expires <= soon else "valabil")
+
+def staff_eligible(p: dict) -> bool:
+    return any(doc_status(a.get("expires", ""), bool(a.get("file"))) in ("valabil", "aproape de expirare") and a.get("verified")
+               for a in p.get("auths") or [])
+
+SIGN_ROLES = {"executant": "Reprezentant executant", "resp_tehnic": "Responsabil tehnic cu execuția", "electrician": "Electrician autorizat / inginer",
+              "verifier": "Verificator schemă", "measurer": "Verificator măsurători (buletin priză)", "designer": "Proiectant schemă"}
+
+async def effective_settings(owner: str, rec: dict, base: dict):
+    if rec.get("snapshot"):
+        return {**base, **rec["snapshot"]["settings"]}, []
+    s, warns = dict(base), []
+    sg = rec.get("signers") or {}
+    for role, label in SIGN_ROLES.items():
+        sid = sg.get(role)
+        if not sid:
+            continue
+        p = await db.staff.find_one({"owner": owner, "id": sid}, {"_id": 0})
+        if not p:
+            warns.append(f"{label}: persoana selectată nu mai există."); continue
+        if not staff_eligible(p):
+            warns.append(f"{label}: {p.get('name')} nu are o autorizație valabilă și verificată — nu este completat în documente.")
+            s[{"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]] = ""
+            continue
+        key = {"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]
+        s[key] = p.get("name")
+        if (p.get("signature") or {}).get("storage_path") and p.get("signature_authorized"):
+            s.setdefault("_sigs", {})[p.get("name")] = p["signature"]["storage_path"]
+        elif role == "executant":
+            warns.append(f"{label}: semnătura grafică a lui {p.get('name')} lipsește sau nu este autorizată — documentele rămân cu spațiu pentru semnătură olografă.")
+        auth = next((a for a in p.get("auths") or [] if a.get("verified") and doc_status(a.get("expires", ""), bool(a.get("file"))) != "expirat"), {})
+        s[key + "_auth"] = f"{auth.get('type', '')} nr. {auth.get('number', '')}".strip()
+    iid = rec.get("instrument_id")
+    if iid:
+        i = await db.instruments.find_one({"owner": owner, "id": iid}, {"_id": 0})
+        st = doc_status((i or {}).get("expires", ""), bool((i or {}).get("file")))
+        if not i or st in ("expirat", "lipsă"):
+            warns.append("Aparat de măsură: certificat " + ("expirat" if st == "expirat" else "lipsă") + " — datele aparatului nu sunt completate.")
+            s["meter_device"] = s["meter_serial"] = s["meter_valid"] = ""
+        else:
+            s["meter_device"], s["meter_serial"], s["meter_valid"] = i.get("maker_model"), i.get("serial"), i.get("expires")
+    if base.get("anre_valid") and doc_status(base["anre_valid"], True) == "expirat":
+        warns.append("Atestatul ANRE al firmei este expirat.")
+    if (base.get("stamp") or {}).get("storage_path") and (base["stamp"].get("content_type") or "").startswith("image/"):
+        s["_stamp_path"] = base["stamp"]["storage_path"]
+    elif sg.get("executant"):
+        warns.append("Ștampila firmei (imagine) nu este încărcată în Setări de bază — nu se aplică automat pe documente.")
+    return s, warns
+
+@api_router.post("/dossier/{item_id}/finalize")
+async def dossier_finalize(item_id: str, user: dict = Depends(get_current_user)):
+    require(user, "admin", "inginer", "electrician")
+    need(user, "prosumator", True)
+    rec = await check_access(user, "prosumator", item_id)
+    check_inverters(user, rec)
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    s, _ = await effective_settings(user["id"], {**rec, "snapshot": None}, base)
+    if SZ.state(rec, await get_client(user["id"], rec), s)["status"] != "approved":
+        raise HTTPException(status_code=400, detail="Dosarul nu poate fi finalizat: schema monofilară nu este verificată și aprobată de proiectant / verificator. Exportul rămâne disponibil ca CIORNĂ.")
+    snap = {"settings": {k: v for k, v in s.items() if k not in ("owner", "_id")}, "signers": rec.get("signers") or {},
+            "at": datetime.now(timezone.utc).isoformat(), "by": user.get("email")}
+    await db.prosumator.update_one({"id": item_id}, {"$set": {"snapshot": snap}, "$push": {"snapshot_history": snap}})
+    await audit(user, "finalizare", "prosumator", item_id, ["snapshot"])
+    return {"ok": True, "at": snap["at"]}
+
+@api_router.post("/dossier/{item_id}/reopen")
+async def dossier_reopen(item_id: str, user: dict = Depends(get_current_user)):
+    require(user, "admin", "inginer", "electrician")
+    need(user, "prosumator", True)
+    await check_access(user, "prosumator", item_id)
+    res = await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"snapshot": ""}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    await audit(user, "redeschidere", "prosumator", item_id, ["snapshot"])
+    return {"ok": True}
+
+@api_router.get("/dossier/{item_id}")
+async def dossier_info(item_id: str, user: dict = Depends(get_current_user)):
+    rec, client, _, info = await dossier_ctx(user, item_id)
+    return {**info, "client_id": client.get("id"), "client_kind": client.get("kind"), "statuses": OPIS.STATUSES,
+            "client": {"name": client.get("name") or rec.get("client_name") or "", "email": client.get("email") or "", "phone": client.get("phone") or ""}}
+
+@api_router.put("/dossier/{item_id}/item/{key}")
+async def dossier_item(item_id: str, key: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    body = await request.json()
+    rec = await check_access(user, "prosumator", item_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    _, _, _, info = await dossier_ctx(user, item_id)
+    if key not in {p["key"] for p in info["positions"]}:
+        raise HTTPException(status_code=404, detail="Poziție inexistentă în opis")
+    cur = (rec.get("opis") or {}).get(key) or {}
+    if "status" in body:
+        if body["status"] and body["status"] not in OPIS.STATUSES:
+            raise HTTPException(status_code=400, detail="Stadiu invalid")
+        cur["status"] = body["status"] or None
+    if body.get("upload"):
+        cur["upload"] = body["upload"]
+    if body.get("clear_upload"):
+        cur.pop("upload", None)
+    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {f"opis.{key}": cur, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    await audit(user, "opis", "prosumator", item_id, [key] + list(body.keys()))
+    return {"ok": True}
+
+@api_router.get("/dossier/{item_id}/file/{key}")
+async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int = 0, download: int = 0, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, settings, info = await dossier_ctx(user, item_id)
+    p = next((x for x in info["positions"] if x["key"] == key), None)
+    if key == "opis":
+        p = {"source": "generat", "docs": ["declaratie_autenticitate"], "key": "opis"}
+    if not p:
+        raise HTTPException(status_code=404, detail="Poziție inexistentă")
+    name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
+    if fmt == "docx":
+        if key == "fisa_tehnica":
+            docx = SLD.tech_sheet_docx(rec, client, settings, SZ.compute(rec, client), SZ.state(rec, client, settings))
+            return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            headers={"Content-Disposition": disp('attachment', f"{name}.docx")})
+        if key == "schema":
+            raise HTTPException(status_code=400, detail="Schema monofilară se exportă doar în PDF (vectorial)")
+        if p["source"] != "generat":
+            raise HTTPException(status_code=400, detail="Export Word doar pentru documentele generate")
+        docx = docgen.render_docx(p["docs"], rec, settings, client, info["titles"])
+        return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        headers={"Content-Disposition": disp('attachment', f"{name}.docx")})
+    parts = await OPIS.position_pdf(p, rec, client, settings, info["titles"], get_object, force_generated=bool(generated))
+    if not parts:
+        raise HTTPException(status_code=404, detail="Documentul nu este încă încărcat")
+    pdf = parts[0] if len(parts) == 1 else merge_pdfs(parts[0], [])
+    if len(parts) > 1:
+        w = PdfWriter()
+        for b in parts:
+            for pg in PdfReader(io.BytesIO(b)).pages:
+                w.add_page(pg)
+        o = io.BytesIO(); w.write(o); pdf = o.getvalue()
+    if rec.get("is_test") and key != "schema":
+        pdf = OPIS.mark_test(pdf)
+    elif p.get("source") == "generat" and (p.get("missing") or info.get("common_missing")):
+        pdf = OPIS.mark_test(pdf, "CIORNĂ — DATE / MĂSURĂTORI DE COMPLETAT", 28)
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('attachment' if download else 'inline', f"{name}.pdf")})
+
+@api_router.get("/dossier/{item_id}/export")
+async def dossier_export(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, settings, info = await dossier_ctx(user, item_id)
+    pdf = await OPIS.export_bundle(info, rec, client, settings, get_object, logger)
+    name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
+
+SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "pif_pv", "schema", "fisa_tehnica")
+
+@api_router.get("/dossier/{item_id}/simple")
+async def dossier_simple(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, settings, info = await dossier_ctx(user, item_id)
+    pos = [p for p in info["positions"] if p["key"] in SIMPLE_KEYS or p.get("source") == "catalog"]
+    sub = {**info, "positions": pos, "titles": [p["title"] for p in pos],
+           "complete": not any(p.get("missing") for p in pos) and not any(p.get("status") == "de completat" for p in pos)}
+    pdf = await OPIS.export_bundle(sub, rec, client, settings, get_object, logger)
+    name = f"DOSAR_PROSUMATOR_SIMPLU_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not sub['complete'] else ''}.pdf"
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
+
+import power_doc as PWR
+import atr_doc as ATR
+
+
+def guard_power_prosumer_scope(rec: dict, pros: dict):
+    installed_kwp = ATR.installed_pv_kwp_for_record(rec or {}, pros or {})
+    if installed_kwp is not None and installed_kwp > 400:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Puterea instalată este {installed_kwp:g} kWp, peste limita de 400 kW a procedurii de racordare pentru prosumatori. "
+                "Nu genera Anexa 1 de spor pentru acest caz. Creează cererea ATR generală conform Regulamentului ANRE nr. 59/2013; "
+                "pentru DEER, selectează procedura dedicată instalațiilor >400 kW."
+            ),
+        )
+
+
+@api_router.get("/atr/{item_id}/official-docx")
+async def atr_official_docx(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "atr", item_id)
+    client = await get_client(user["id"], rec)
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros = None
+    if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
+        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
+        client = {**(pclient or {}), **(client or {})}
+    try:
+        payload = ATR.render_deer_official_docx(rec, client or {}, settings, pros or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:
+        logger.exception("DEER official DOCX generation failed")
+        raise HTTPException(status_code=500, detail="Nu am putut genera formularul DEER. Verificați dacă șablonul oficial este disponibil.")
+    safe_name = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in str((client or {}).get("name") or "client")).strip().replace(" ", "_")
+    filename = f"DEER_{str(rec.get('deer_case') or 'cerere').replace(' ', '_')}_{safe_name}.docx"
+    return Response(content=payload, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": disp("attachment", filename)})
+
+@api_router.get("/atr/{item_id}/pdf")
+async def atr_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "atr", item_id)
+    pdf, name = await atr_pack(user, rec, full)
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
+
+def expected_catalog_document_keys(pros: dict) -> set:
+    """Return per-model datasheet and conformity keys required by the selected equipment."""
+    cef = (pros or {}).get("cef") or {}
+    expected = set()
+
+    def add(label: str, model, catalog_id):
+        name = str(model or "").strip()
+        # OPIS only creates catalog positions for equipment with an identified model.
+        if not name:
+            return
+        suffix = catalog_id or name
+        for kind in ("datasheet", "conformity"):
+            expected.add(f"cat_{kind}_{label}_{suffix}")
+
+    for inv in cef.get("inverters") or []:
+        add("invertor", inv.get("brand_model"), inv.get("catalog_id"))
+        add("panou", inv.get("panel_model"), inv.get("panel_catalog_id"))
+        if inv.get("battery_mode") == "own":
+            battery = inv.get("battery") or {}
+            add("baterie", battery.get("model"), battery.get("catalog_id"))
+    for battery in cef.get("shared_batteries") or []:
+        add("baterie", battery.get("model"), battery.get("catalog_id"))
+    grid = cef.get("grid") or {}
+    add("smart_meter", grid.get("meter"), grid.get("meter_catalog_id"))
+    return expected
+
+
+def catalog_documents_complete(pros: dict, positions: list) -> bool:
+    expected = expected_catalog_document_keys(pros)
+    available = {p.get("key") for p in positions or [] if p.get("source") == "catalog" and p.get("files")}
+    return bool(expected) and expected.issubset(available)
+
+
+ATR_CLIENT_DOC_SLOTS = (
+    ("ci", "Act de identitate"),
+    ("cf", "Extras de carte funciară"),
+    ("factura", "Factură de energie"),
+    ("certificat", "Certificat de înregistrare"),
+    ("constatator", "Certificat constatator ONRC"),
+    ("semnate", "Documente semnate"),
+)
+ATR_CLIENT_DOC_MAX_FILE = 25 * 1024 * 1024
+ATR_CLIENT_DOC_MAX_TOTAL = 100 * 1024 * 1024
+
+
+def atr_client_documents(user: dict, client: dict):
+    """Return only the selected client's uploaded documents stored in this user's namespace."""
+    docs = (client or {}).get("docs") or {}
+    owner_prefix = f"{APP_NAME}/uploads/{user['id']}/"
+    result, issues, total = [], [], 0
+    for slot, label in ATR_CLIENT_DOC_SLOTS:
+        entries = docs.get(slot) or []
+        if not isinstance(entries, list):
+            continue
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("original_filename") or f"{slot}.pdf")
+            path = str(item.get("storage_path") or "")
+            if not path.startswith(owner_prefix):
+                issues.append(f"{label} — fișierul nu aparține spațiului de stocare al contului.")
+                continue
+            try:
+                data, content_type = get_object(path)
+                size = len(data)
+                if size > ATR_CLIENT_DOC_MAX_FILE or total + size > ATR_CLIENT_DOC_MAX_TOTAL:
+                    issues.append(f"{label} — {name} nu a fost inclus (limita pachetului de documente client a fost depășită).")
+                    continue
+                total += size
+                result.append({"slot": slot, "label": label, "name": name, "data": data,
+                               "content_type": content_type or item.get("content_type") or "application/octet-stream"})
+            except Exception as exc:
+                logger.warning("ATR client document could not be read (%s): %s", path, exc)
+                issues.append(f"{label} — {name} nu a putut fi citit din stocare.")
+    return result, issues
+
+
+async def atr_pack(user: dict, rec: dict, full: int):
+    client = await get_client(user["id"], rec)
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros, info = None, None
+    linked_pros = await resolve_atr_prosumer(user, rec, client)
+    if linked_pros:
+        pros, pclient, base, info = await dossier_ctx(user, linked_pros["id"])
+        client = {**(pclient or {}), **(client or {})}
+        rec = {**rec, "pros_id": linked_pros["id"]}
+        # A linked prosumer dossier is authoritative evidence that this ATR covers production.
+        if "producere" not in str(rec.get("kind") or "").casefold():
+            rec["kind"] = "loc de consum și de producere"
+    else:
+        from atr_equipment import from_request
+        pros = from_request(rec) or None
+    atr_catalog_files = []
+    direct_catalog_complete = False
+    if pros and info is None:
+        from atr_equipment import catalog_documents_complete as atr_catalog_documents_complete
+        await auto_import_selected_catalog_documents(user, pros)
+        atr_catalog_files = await catalog_files(user["id"], pros)
+        direct_catalog_complete = atr_catalog_documents_complete(pros.get("cef"), atr_catalog_files)
+    att = rec.get("attachments") or {}
+    client_documents, client_document_issues = atr_client_documents(user, client)
+    auto = {}
+    if info and ATR.is_prod(rec):
+        bykey = {p["key"]: p for p in info["positions"]}
+        auto = {"schema": [bykey.get("schema")], "fise": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
+    attached = {k for k, v in att.items() if v}
+    # Client documents uploaded once in the client profile are valid supporting
+    # evidence for matching ATR checklist positions; do not infer unrelated items.
+    for document in client_documents:
+        if document["slot"] == "ci":
+            attached.add("id")
+        elif document["slot"] == "cf":
+            attached.add("cf")
+        elif document["slot"] == "constatator":
+            attached.add("constatator")
+    # A linked generated item is not proof of a ready document. Count schema only
+    # when the source opis says it is generated/attached; catalog evidence must
+    # exist for every selected model before it satisfies the required "fise" slot.
+    schema_position = (auto.get("schema") or [None])[0]
+    if schema_position and schema_position.get("auto_status") in ("generat", "atașat"):
+        attached.add("schema")
+    linked_catalog_complete = bool(info and auto.get("fise") and catalog_documents_complete(pros or {}, (info or {}).get("positions", [])))
+    catalog_complete = linked_catalog_complete if info else direct_catalog_complete
+    if pros and ATR.is_prod(rec) and catalog_complete:
+        attached.add("fise")
+    if pros and ATR.is_prod(rec) and "fise" in ATR.required(rec) and not catalog_complete:
+        attached.discard("fise")
+    parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
+    annex_registry_issue = ""
+    if full:
+        operator_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
+        if operator_key == "deer":
+            annex_pdf = ATR.render_deer_annex(rec, client, base, pros or {}, attached)
+            if annex_pdf:
+                parts.append(annex_pdf)
+        elif operator_key:
+            # Use the same annex selector as the ZIP package, and include a validated
+            # official PDF copy when the registry has one. DOC/DOCX originals remain
+            # in the ZIP; the main PDF stays explicit about that limitation.
+            from atr_routes import _registry_forms_for_request, _fetch_registry_annex, _prefill_official_pdf
+            annex_no, forms = await _registry_forms_for_request(operator_key, rec, pros or {})
+            if annex_no:
+                annex_pdf = ATR.render_operator_annex_prep(
+                    rec, client, pros or {}, operator_key, annex_no,
+                    forms[0].get("title", "") if forms else "")
+                parts.append(annex_pdf)
+                if not forms:
+                    annex_registry_issue = f"Nu există în registrul aplicației un formular oficial verificat pentru Anexa {annex_no} a operatorului selectat; fișa de precompletare nu înlocuiește formularul oficial."
+                else:
+                    try:
+                        official_data, official_name = await _fetch_registry_annex(forms[0], operator_key)
                         if official_name.lower().endswith(".pdf"):
                             completed_data, filled_fields = _prefill_official_pdf(
                                 official_data, rec, client, pros or {})
@@ -1747,254 +3235,3 @@ def evidence_page(r: dict, sig_png: bytes, meta: dict, declared: str, signed_at:
     for k, v in rows:
         c.setFont("LSB", 8.5); c.drawString(50, y, k)
         c.setFont("LS", 8.5)
-        txt = str(v)
-        while txt:
-            part = txt[:85]; txt = txt[85:]
-            c.drawString(230, y, part); y -= 12
-        y -= 4
-    y -= 10; c.setFont("LSB", 9); c.drawString(50, y, "Semnătura olografă trasată pe ecran:")
-    img = ImageReader(io.BytesIO(sig_png))
-    iw, ih = img.getSize(); s = min(260 / iw, 110 / ih)
-    c.drawImage(img, 50, y - 10 - ih * s, iw * s, ih * s, mask="auto")
-    c.rect(48, y - 12 - ih * s, iw * s + 4, ih * s + 4)
-    c.setFont("LS", 7); c.drawString(50, 40, "Istoricul complet al acțiunilor (deschideri, coduri trimise, semnare) este păstrat în aplicația emitentului.")
-    c.save()
-    return buf.getvalue()
-
-def stamp_pages(pdf: bytes, text: str) -> bytes:
-    w = PdfWriter()
-    for page in PdfReader(io.BytesIO(pdf)).pages:
-        pw, ph = float(page.mediabox.width), float(page.mediabox.height)
-        b = io.BytesIO(); c = rlc.Canvas(b, pagesize=(pw, ph)); c.setFont("LS", 6.5); c.setFillGray(0.35)
-        c.drawString(20, 10, text[:180]); c.save()
-        page.merge_page(PdfReader(io.BytesIO(b.getvalue())).pages[0]); w.add_page(page)
-    o = io.BytesIO(); w.write(o); return o.getvalue()
-
-async def rebuild_group(owner: str, gid: str):
-    reqs = await db.sign_requests.find({"owner": owner, "group_id": gid}, {"_id": 0}).sort("created_at", 1).to_list(50)
-    signed = [x for x in reqs if x["status"] == "Semnat" and x.get("evidence_path")]
-    base, _ = get_object(reqs[0]["doc_path"])
-    w = PdfWriter()
-    for pg in PdfReader(io.BytesIO(stamp_pages(base, ("[TEST — NU ESTE SEMNĂTURĂ OFICIALĂ] " if reqs[0].get("is_test") else "") + "Semnat electronic (semnătură simplă) de: " + ", ".join(f"{x['signer_name']} {x['signed_at'][:16]} UTC" for x in signed) + f" · SHA-256 original {reqs[0]['doc_sha256'][:16]}…"))).pages:
-        w.add_page(pg)
-    for x in signed:
-        ev, _ = get_object(x["evidence_path"])
-        for pg in PdfReader(io.BytesIO(ev)).pages:
-            w.add_page(pg)
-    o = io.BytesIO(); w.write(o); final = o.getvalue()
-    st = put_object(f"{APP_NAME}/sign/{owner}/{gid}/signed_{len(signed)}.pdf", final, "application/pdf")
-    f = {"storage_path": st["path"], "original_filename": f"{reqs[0]['pos_key']}_semnat.pdf", "content_type": "application/pdf", "size": len(final)}
-    if reqs[0].get("sld_hash"):
-        f["sld_hash"] = reqs[0]["sld_hash"]
-    if reqs[0].get("pif_hash"):
-        f["pif_hash"] = reqs[0]["pif_hash"]
-    await db.sign_requests.update_many({"owner": owner, "group_id": gid}, {"$set": {"signed_file": f, "signed_sha256": sha(final)}})
-    if len(signed) == len(reqs):
-        did, mod = reqs[0]["dossier_id"], reqs[0].get("module") or "prosumator"
-        if mod == "diu":
-            await db.diu.update_one({"id": did, "owner": owner}, {"$set": {f"signed.{reqs[0]['pos_key']}": {**f, "signed_at": signed[-1]["signed_at"]}}})
-        elif mod == "contracts":
-            await db.contracts.update_one({"id": did, "owner": owner}, {"$set": {"signed": {**f, "signed_at": signed[-1]["signed_at"]}, "status": "Semnat"},
-                                                                        "$push": {"history": {"at": now_iso(), "by": "semnătură electronică client", "event": "contract semnat de beneficiar"}}})
-        else:
-            await db.prosumator.update_one({"id": did, "owner": owner},
-                                           {"$set": {f"opis.{reqs[0]['pos_key']}.upload": f, f"opis.{reqs[0]['pos_key']}.status": "atașat"}})
-        prec = await db[mod].find_one({"id": did, "owner": owner}, {"_id": 0}) or {}
-        cl = await get_client(owner, prec)
-        await db.documents.insert_one({"id": str(uuid.uuid4()), "owner": owner, "created_at": now_iso(), "updated_at": now_iso(), "client_id": cl.get("id"),
-                                       "dossier_id": reqs[0]["dossier_id"], "client_name": reqs[0].get("client_name"), "kind": "Semnat electronic",
-                                       "doc_type": f"{reqs[0]['doc_title']} — semnat", **f})
-        if cl.get("id"):
-            await db.clients.update_one({"id": cl["id"], "owner": owner}, {"$push": {"docs.semnate": {**f, "original_filename": f"{reqs[0]['doc_title']} — semnat.pdf",
-                                                                                                    "signed_at": signed[-1]["signed_at"]}}})
-
-@api_router.post("/public/sign/{token}/sign")
-async def pub_sign(token: str, request: Request):
-    r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE:
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    b = await request.json()
-    declared = (b.get("declared_name") or "").strip()
-    if not b.get("intent") or not declared:
-        raise HTTPException(status_code=400, detail="Confirmă intenția de semnare și scrie numele complet")
-    if not r.get("otp_hash") or (r.get("otp_exp") or "") < now_iso():
-        raise HTTPException(status_code=400, detail="Cere un cod de verificare pe e-mail")
-    if r.get("otp_attempts", 0) >= 5:
-        raise HTTPException(status_code=429, detail="Prea multe încercări. Cere un cod nou.")
-    if sha(f"{r['id']}:{str(b.get('otp') or '').strip()}".encode()) != r["otp_hash"]:
-        await db.sign_requests.update_one({"id": r["id"]}, {"$inc": {"otp_attempts": 1}, "$push": {"history": hist("Cod greșit", client_meta(request))}})
-        raise HTTPException(status_code=400, detail="Cod incorect")
-    m = re.match(r"^data:image/png;base64,(.+)$", b.get("signature") or "")
-    if not m:
-        raise HTTPException(status_code=400, detail="Desenează semnătura")
-    png = base64.b64decode(m.group(1))
-    if len(png) < 800 or len(png) > 2_000_000:
-        raise HTTPException(status_code=400, detail="Semnătura nu este validă")
-    meta, at = client_meta(request), now_iso()
-    claim = await db.sign_requests.update_one({"id": r["id"], "token_hash": r["token_hash"], "status": {"$in": list(SIGN_ACTIVE)}, "otp_hash": r["otp_hash"]},
-                                              {"$set": {"status": "Semnat", "signed_at": at, "otp_hash": None}})
-    if claim.modified_count == 0:
-        raise HTTPException(status_code=409, detail="Documentul a fost deja semnat")
-    s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
-    ev = evidence_page(r, png, meta, declared, at, s.get("company") or "DNS HOSTESS SRL")
-    evp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/evidence_{r['id']}.pdf", ev, "application/pdf")
-    sigp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/signature_{r['id']}.png", png, "image/png")
-    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"declared_name": declared,
-        "evidence_path": evp["path"], "signature_path": sigp["path"], "sign_meta": meta, "otp_hash": None},
-        "$push": {"history": hist("Semnat", meta, f"identitate declarată: {declared}; cod e-mail verificat; intenție confirmată")}})
-    await rebuild_group(r["owner"], r["group_id"])
-    return {"ok": True, "signed_at": at}
-
-@api_router.post("/public/sign/{token}/refuse")
-async def pub_refuse(token: str, request: Request):
-    r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE:
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    reason = ((await request.json()).get("reason") or "").strip()[:500]
-    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Refuzat", "refused_reason": reason},
-                                                        "$push": {"history": hist("Refuzat", client_meta(request), reason)}})
-    return {"ok": True}
-
-# ---------------- Dosar de test ----------------
-import test_data as TD
-
-@api_router.post("/test-dossier")
-async def test_dossier_create(user: dict = Depends(get_current_user)):
-    require(user, "admin")
-    existing = await db.prosumator.find_one(
-        {"owner": user["id"], "is_test": True},
-        {"_id": 0, "id": 1, "number": 1, "client_name": 1},
-    )
-    if existing:
-        return {
-            "prosumator_id": existing["id"],
-            "number": existing.get("number"),
-            "client": existing.get("client_name"),
-            "already_exists": True,
-        }
-    st = await db.settings.find_one({"owner": user["id"]}, {"_id": 0, "test_email": 1}) or {}
-    stamp = datetime.now(timezone.utc).strftime("%m%d%H%M%S")
-    files = {}
-    for k, title in [("auth", "Autorizație personal (TEST)"), ("cert", "Certificat etalonare aparat (TEST)"), ("datasheet", "Fișă tehnică echipament (TEST)"),
-                     ("conformity", "Declarație de conformitate echipament (TEST)"), ("clientdoc", "Document client (TEST)")]:
-        data = TD.placeholder_pdf(title)
-        stored = put_object(f"{APP_NAME}/uploads/{user['id']}/test_{stamp}_{k}.pdf", data, "application/pdf")
-        files[k] = {"storage_path": stored["path"], "original_filename": f"TEST_{k}.pdf", "content_type": "application/pdf", "size": len(data)}
-    D = TD.build(stamp, (st.get("test_email") or "").strip() or None, files)
-    mk = lambda d: _new(user, {**d, "is_test": True})
-    staff = {}
-    for p in D["staff"]:
-        doc = mk({k: v for k, v in p.items() if k != "key"}); await db.staff.insert_one(dict(doc)); staff[p["key"]] = doc["id"]
-    inst = mk(D["instrument"]); await db.instruments.insert_one(dict(inst))
-    cat = {}
-    for c in D["catalog"]:
-        doc = mk(c); await db.catalog.insert_one(dict(doc)); cat[c["category"]] = doc["id"]
-    client_doc = mk(D["client"]); await db.clients.insert_one(dict(client_doc))
-    pros = D["prosumator"]
-    inv = pros["cef"]["inverters"][0]
-    inv["catalog_id"], inv["panel_catalog_id"] = cat["Invertor"], cat["Panou"]
-    inv["battery"]["catalog_id"] = cat["Baterie"]
-    pros["cef"]["grid"]["meter_catalog_id"] = cat["Smart meter"]
-    pros.update({"client_id": client_doc["id"], "instrument_id": inst["id"], "signers": {"designer": staff["designer"], "verifier": staff["verifier"]}})
-    pros = derive_cef(pros)
-    pdoc = mk(pros); await db.prosumator.insert_one(dict(pdoc))
-    diu = mk(D["diu"]); await db.diu.insert_one(dict(diu))
-    await db.pram.insert_one(dict(mk({**D["pram"], "diu_ref": diu["number"]})))
-    await audit(user, "creare dosar de test", "prosumator", pdoc["id"], [])
-    return {"prosumator_id": pdoc["id"], "number": pdoc["number"], "client": client_doc["name"], "test_email": st.get("test_email") or None}
-
-@api_router.delete("/test-dossier")
-async def test_dossier_delete(user: dict = Depends(get_current_user)):
-    require(user, "admin")
-    q = {"owner": user["id"], "is_test": True}
-    ids = [x["id"] for x in await db.prosumator.find(q, {"id": 1}).to_list(1000)]
-    n = (await db.sign_requests.delete_many({"owner": user["id"], "$or": [{"is_test": True}, {"dossier_id": {"$in": ids}}]})).deleted_count
-    for c in TD.TEST_COLLECTIONS:
-        n += (await db[c].delete_many(q)).deleted_count
-    n += (await db.documents.delete_many({"owner": user["id"], "client_name": {"$regex": "^TEST — "}})).deleted_count
-    await audit(user, "ștergere date de test", "prosumator", "", [str(n)])
-    return {"deleted": n}
-
-# ---------------- Startup ----------------
-@app.on_event("startup")
-async def startup():
-    await db.users.create_index("email", unique=True)
-    for m in MODULES:
-        await db[m].create_index("owner")
-        # Keep tenant-scoped list and quick-search sorts efficient as collections grow.
-        await db[m].create_index([("owner", 1), ("created_at", -1)], name="owner_created_at")
-        await db[m].create_index([("owner", 1), ("updated_at", -1)], name="owner_updated_at")
-    for field in NUMERIC_CLIENT_SEARCH_FIELDS:
-        await db.clients.create_index([("owner", 1), (field, 1)], name=f"owner_{field}")
-    await db.prosumator.create_index([("owner", 1), ("client_id", 1), ("updated_at", -1)], name="owner_client_id_updated_at")
-    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "")
-    jwt_secret = os.environ.get("JWT_SECRET", "")
-    if PRIVATE_MODE:
-        # Never boot a private staging service with fallback/default credentials.
-        if not admin_email or not admin_password:
-            raise RuntimeError("Private mode requires ADMIN_EMAIL and ADMIN_PASSWORD environment secrets")
-        if len(admin_password) < 16:
-            raise RuntimeError("Private mode requires ADMIN_PASSWORD with at least 16 characters")
-        if len(jwt_secret) < 32:
-            raise RuntimeError("Private mode requires JWT_SECRET with at least 32 characters")
-    else:
-        # Local development still needs explicit credentials; do not silently create admin123.
-        if not admin_email or not admin_password or not jwt_secret:
-            raise RuntimeError("Set ADMIN_EMAIL, ADMIN_PASSWORD and JWT_SECRET in backend/.env before startup")
-    existing = await db.users.find_one({"email": admin_email})
-    if not existing:
-        await db.users.insert_one({"id": str(uuid.uuid4()), "email": admin_email,
-            "password_hash": hash_password(admin_password), "name": "Administrator",
-            "role": "admin", "created_at": datetime.now(timezone.utc).isoformat()})
-        logger.info("Admin seeded")
-    elif not existing.get("password_hash"):
-        # Seed a missing credential once; do not overwrite an existing password on every deploy.
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
-    PLATFORM["id"] = (await db.users.find_one({"email": admin_email}))["id"]
-    await db.users.update_one({"id": PLATFORM["id"]}, {"$set": {"role": "admin", "status": "active", "tenant": None}})
-    for pl in DEFAULT_PLANS:
-        await db.plans.update_one({"code": pl["code"]}, {"$setOnInsert": pl}, upsert=True)
-    await db.billing_config.update_one({"id": "main"}, {"$setOnInsert": {"id": "main", "vat_rate": 21.0, "expired_policy": "read_only", "currency": "RON"}}, upsert=True)
-    docgen.IMG_LOADER = lambda p: get_object(p)[0]
-    await forms_routes.seed()
-    # Fail fast: do not report a healthy API when private file storage is unavailable.
-    init_storage()
-    logger.info("MongoDB GridFS object storage initialized")
-
-@app.on_event("shutdown")
-async def shutdown():
-    client.close()
-
-import billing_routes  # noqa: E402
-import forms_routes  # noqa: E402
-import atr_routes  # noqa: E402
-import sld_edit_routes  # noqa: E402
-import modules_routes  # noqa: E402
-import ai_routes  # noqa: E402
-import diu_routes  # noqa: E402
-import offers_routes  # noqa: E402
-import operator_routes  # noqa: E402
-import anre_routes  # noqa: E402
-import anre_templates  # noqa: E402
-app.include_router(api_router)
-# Restrict browser access to explicitly configured frontend origins.
-# Preserve deployment-specific origins and always allow the configured staging and DNS Energy web origins.
-_cors_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
-_cors_origins = [origin.strip().rstrip("/") for origin in _cors_raw.split(",") if origin.strip()]
-for _required_origin in (
-    "https://dns-energy-web.onrender.com",
-    "https://dns-energy.ro",
-    "https://www.dns-energy.ro",
-):
-    if _required_origin not in _cors_origins:
-        _cors_origins.append(_required_origin)
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=False,
-    allow_origins=_cors_origins,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
-)
-
-
