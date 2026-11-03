@@ -217,8 +217,9 @@ def check(cef: dict) -> dict:
             e.append(f"{tag}: invertor trifazat pe branșament monofazat — configurație incompatibilă.")
         if not tri and tri_grid and grid.get("supply") and not inv.get("phase"):
             w.append(f"{tag}: invertor monofazat pe racord trifazat — specifică faza (L1/L2/L3).")
+        is_battery_inverter = "invertor de baterie (ac)" in str(inv.get("kind") or inv.get("type") or "").lower()
         if not strings:
-            if inv.get("kind") != "Invertor de baterie (AC)":
+            if not is_battery_inverter:
                 w.append(f"{tag}: nu are stringuri definite.")
         if strings and not (n(inv.get("panel_voc")) and n(inv.get("panel_vmp"))):
             w.append(f"{tag}: lipsesc Voc/Vmp ale panoului — tensiunile stringurilor nu pot fi verificate.")
@@ -280,6 +281,8 @@ def check(cef: dict) -> dict:
             coupling = str(bat.get("coupling") or "").strip().upper()
             if not coupling:
                 w.append(f"{tag}: cuplarea bateriei nu este declarată; confirmați AC/DC din fișa tehnică înainte de validarea schemei.")
+            elif coupling == "AC":
+                e.append(f"{tag}: bateria proprie este setată cu cuplare AC în aceeași ramură de invertor. Pentru BESS cuplat AC la sistemul PV, selectați bateria ca «comună» și legați-o la un invertor separat de baterie (AC/PCS); bateria se conectează în DC la PCS.")
             if inv.get("type") == "On-grid" and coupling == "DC":
                 e.append(f"{tag}: invertor on-grid cu baterie cuplată DC — necesită invertor hibrid sau cuplare AC.")
             bv, vmin_, vmax_ = n(bat.get("voltage")), n(inv.get("bat_v_min")), n(inv.get("bat_v_max"))
@@ -375,6 +378,20 @@ def check(cef: dict) -> dict:
 
     for sid, users in shared_users.items():
         b = shared[sid]
+        coupling = str(b.get("coupling") or "").strip().upper()
+        user_types = [(u, str((invs[u - 1].get("kind") or invs[u - 1].get("type") or "")).lower()) for u in users]
+        battery_inverter_users = [u for u, inv_type in user_types if "invertor de baterie (ac)" in inv_type]
+        pv_inverter_users = [u for u, inv_type in user_types if "invertor de baterie (ac)" not in inv_type]
+        if coupling == "AC":
+            if not battery_inverter_users:
+                errors.append(f"Bateria comună «{b.get('model') or sid}» este AC-cuplată, dar nu este asociată unui invertor BESS / PCS separat de tip «Invertor de baterie (AC)».")
+            if pv_inverter_users:
+                errors.append(f"Bateria AC-cuplată «{b.get('model') or sid}» este legată direct la invertorul/invertoarele PV {pv_inverter_users}; legați-o numai la PCS-ul BESS, apoi conectați PCS-ul pe AC la bara TG.")
+        elif coupling == "DC":
+            if battery_inverter_users:
+                errors.append(f"Bateria comună DC «{b.get('model') or sid}» este legată la un invertor BESS AC {battery_inverter_users}; pentru DC-cuplare directă folosiți un invertor PV hibrid compatibil.")
+        else:
+            warnings.append(f"Bateria comună «{b.get('model') or sid}»: selectați arhitectura AC sau DC înainte de validarea schemei.")
         battery_proposal = battery_cable_proposal(b)
         shared_battery_proposals[sid] = battery_proposal
         if battery_proposal.get("section") is None:
@@ -512,3 +529,4 @@ def from_legacy(rec: dict) -> dict:
             grid[gk] = n(rec[rk], None) if gk != "supply" else rec[rk]
     cef.update({"inverters": invs, "grid": grid, "from_legacy": True})
     return {**rec, "cef": cef}
+

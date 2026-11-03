@@ -50,7 +50,8 @@ function SharedBatteries({ list, set, catalog }) {
           <F label="Tensiune (V)" type="number" value={b.voltage} onChange={(v) => upd(i, { voltage: v })} testid={`shared-${i}-v`} />
           <F label="Curent max descărcare (A)" type="number" value={b.i_max} onChange={(v) => upd(i, { i_max: v })} testid={`shared-${i}-imax`} />
           <F label="Siguranță max. admisă (A), din fișă" type="number" value={b.max_fuse_a} onChange={(v) => upd(i, { max_fuse_a: v })} testid={`shared-${i}-max-fuse`} />
-          <F label="Cuplare" value={b.coupling || ""} onChange={(v) => upd(i, { coupling: v })} options={["DC", "AC"]} testid={`shared-${i}-coupling`} />
+          <F label="Arhitectură BESS față de sistemul PV" value={b.coupling || ""} onChange={(v) => upd(i, { coupling: v })} options={["DC", "AC"]} testid={`shared-${i}-coupling`} />
+          {b.coupling === "AC" && <p className="sm:col-span-4 -mt-2 text-[11px] leading-4" style={{ color: "var(--muted)" }}>Pentru cuplare AC, adaugă un invertor separat de baterie/PCS și leagă această baterie la el. Schema și verificarea rămân incomplete până la selectarea PCS-ului și completarea datelor lui din fișa tehnică.</p>}
           <div className="flex items-end gap-3 pb-2">
             <Check label="Producătorul permite paralel" value={b.parallel_supported} onChange={(v) => upd(i, { parallel_supported: v })} testid={`shared-${i}-parallel`} />
             <button onClick={() => set(list.filter((_, j) => j !== i))} data-testid={`shared-${i}-remove`}><Trash2 size={15} style={{ color: "#b33333" }} /></button>
@@ -169,8 +170,15 @@ export function CefEditor({ value, onChange }) {
       </section>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="font-bold">Configurare CEF — invertoare, stringuri, baterii</h3>
-        <button onClick={() => set({ inverters: [...invs, { id: uid(), phases: cef.grid?.supply || "Trifazat", type: "Hibrid", strings: [{ panels: "", mppt: 1 }], battery_mode: "none", ac: { material: "Cu", install: "C" }, dc: { material: "Cu", cable_type: "H1Z2Z2-K" } }] })}
-          className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white" style={{ background: "var(--blue)" }} data-testid="add-inverter"><Plus size={15} /> Adaugă invertor</button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => set({ inverters: [...invs, { id: uid(), phases: cef.grid?.supply || "Trifazat", type: "Hibrid", strings: [{ panels: "", mppt: 1 }], battery_mode: "none", ac: { material: "Cu", install: "C" }, dc: { material: "Cu", cable_type: "H1Z2Z2-K" } }] })}
+            className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white" style={{ background: "var(--blue)" }} data-testid="add-inverter"><Plus size={15} /> Adaugă invertor PV</button>
+          <button type="button" onClick={() => {
+            const shared = cef.shared_batteries || [];
+            const selected = shared.length === 1 ? shared[0] : null;
+            set({ inverters: [...invs, { id: uid(), phases: cef.grid?.supply || "Trifazat", type: "Invertor de baterie (AC)", strings: [], battery_mode: selected ? "shared" : "none", ...(selected ? { shared_battery_id: selected.id } : {}), ac: { material: "Cu", install: "C" }, dc: { material: "Cu", cable_type: "RV-K" } }] });
+          }} className="inline-flex items-center gap-2 rounded-[9px] border px-4 py-2.5 text-[12px] font-bold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} data-testid="add-bess-inverter"><Plus size={15} /> Adaugă invertor BESS / PCS AC</button>
+        </div>
       </div>
       <Totals res={res} inverters={invs} />
       <GridCard grid={cef.grid || {}} set={(g) => set({ grid: g })} catalog={catalog} res={res} />
@@ -184,3 +192,4 @@ export function CefEditor({ value, onChange }) {
     </div>
   );
 }
+

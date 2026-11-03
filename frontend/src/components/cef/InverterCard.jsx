@@ -81,7 +81,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   return (
     <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid={t}>
       <div className="flex items-center justify-between gap-2 mb-2">
-        <h4 className="font-bold text-sm">Invertor {idx + 1} {res && <span className="font-normal text-xs" style={{ color: "var(--muted)" }}>· {res.kwp} kWp · DC/AC {res.dc_ac_ratio}{res.battery_kwh ? ` · ${res.battery_kwh} kWh` : ""}</span>}</h4>
+        <h4 className="font-bold text-sm">{inv.type === "Invertor de baterie (AC)" ? `Invertor BESS ${idx + 1}` : `Invertor ${idx + 1}`} {res && <span className="font-normal text-xs" style={{ color: "var(--muted)" }}>· {res.kwp} kWp · DC/AC {res.dc_ac_ratio}{res.battery_kwh ? ` · ${res.battery_kwh} kWh` : ""}</span>}</h4>
         <button onClick={remove} className="p-1.5 rounded hover:bg-[#fff0f0]" data-testid={`${t}-remove`} title="Elimină invertorul"><Trash2 size={15} style={{ color: "#b33333" }} /></button>
       </div>
       <div className="grid sm:grid-cols-4 gap-3">
@@ -145,7 +145,8 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           {inv.battery_mode === "own" && <>
             <CatalogPick items={catalog} category="Baterie" testid={`${t}-bat-pick`} onQueryChange={batteryModelText} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), ...batteryCatalogData(it, inv.phases) } })} />
             <F label="Model baterie" value={inv.battery?.model} onChange={batteryModelText} testid={`${t}-bat-model`} />
-            <F label="Cuplare" value={inv.battery?.coupling || ""} onChange={sub("battery", "coupling")} options={["DC", "AC"]} testid={`${t}-bat-coupling`} />
+            <F label="Conectare baterie la invertor" value={inv.battery?.coupling || ""} onChange={sub("battery", "coupling")} options={["DC"]} testid={`${t}-bat-coupling`} />
+            <p className="sm:col-span-4 -mt-2 text-[11px] leading-4" style={{ color: "var(--muted)" }}>Bateria proprie se conectează în DC la invertorul selectat. Pentru BESS cuplată AC față de sistemul PV, adaugă un invertor BESS / PCS separat și configurează bateria ca „comună”.</p>
             <F label="kWh / modul" type="number" value={inv.battery?.kwh} onChange={sub("battery", "kwh")} testid={`${t}-bat-kwh`} />
             <F label="Nr. module" type="number" value={inv.battery?.modules} onChange={sub("battery", "modules")} testid={`${t}-bat-modules`} />
             <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Alte date baterie din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
@@ -203,3 +204,4 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
     </div>
   );
 }
+

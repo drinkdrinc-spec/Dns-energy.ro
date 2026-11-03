@@ -152,7 +152,7 @@ class CefDrawing(Flowable):
                 # The battery pack connects to its inverter on DC even when the
                 # storage system is AC-coupled to the site. AC coupling is shown
                 # by the inverter's separate AC branch to the common bus.
-                if coupling in ("DC", "AC"):
+                if coupling == "DC":
                     self.line(bx + 3 * mm + lw, iy + 4 * mm, battery_x, iy + 4 * mm, dc=True)
                     self.line(battery_x, iy + 4 * mm, battery_x, 73 * mm, dc=True)
                     c.setStrokeColor(RED); c.setLineWidth(0.8)
@@ -165,7 +165,7 @@ class CefDrawing(Flowable):
                 battery_fuse = bt.get("fuse_a") or bp.get("fuse_a")
                 switch_u = bt.get("dc_switch_voltage_v")
                 switch_i = bt.get("dc_switch_current_a")
-                switch_text = f"Qbat DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "Qbat DC: tensiune/curent nominal de confirmat"
+                switch_text = f"QBAT DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "QBAT DC: tensiune/curent nominal de confirmat"
                 battery_lines = [
                     str(bt.get("model") or "—"),
                     f"{v(bt.get('modules'), ' mod.')} × {v(bt.get('kwh'), ' kWh')} · total {r.get('battery_kwh', 0):g} kWh",
@@ -174,6 +174,8 @@ class CefDrawing(Flowable):
                     switch_text,
                     f"Protecție: {bt.get('protection') or 'de confirmat'}",
                 ]
+                if coupling == "AC":
+                    battery_lines.append("PCS AC separat: neconfigurat în această ramură")
                 self.box(rx, 36 * mm, rw, 30 * mm, f"BATERIE ({coupling_label})", battery_lines, "bat",
                          dashed=bp.get("source") != "calculated" or not (switch_u and switch_i))
         for k, b in enumerate(shared):
@@ -181,12 +183,13 @@ class CefDrawing(Flowable):
             users = [i for i, inv in enumerate(invs) if inv.get("shared_battery_id") == b.get("id")]
             bp = res.get("shared_battery_proposals", {}).get(b.get("id"), {})
             coupling = str(b.get("coupling") or "").strip().upper()
+            link_users = [u for u in users if ("invertor de baterie (ac)" in str(invs[u].get("kind") or invs[u].get("type") or "").lower()) == (coupling == "AC")]
             coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
             battery_section = b.get("cable_section") or bp.get("section")
             battery_fuse = b.get("fuse_a") or bp.get("fuse_a")
             switch_u = b.get("dc_switch_voltage_v")
             switch_i = b.get("dc_switch_current_a")
-            switch_text = f"Qbat DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "Qbat DC: tensiune/curent nominal de confirmat"
+            switch_text = f"QBAT DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "QBAT DC: tensiune/curent nominal de confirmat"
             modules = max(1, int(C.n(b.get("modules"), 1) or 1))
             module_kwh = C.n(b.get("kwh"))
             total_kwh = module_kwh * modules
@@ -198,10 +201,14 @@ class CefDrawing(Flowable):
                       f"Ubat {v(b.get('voltage'), ' V')} · Imax {v(b.get('i_max'), ' A')}",
                       f"Cablu DC: {v(battery_section, ' mm²')} · siguranță: {v(battery_fuse, ' A')}",
                       switch_text,
-                      "Invertoare: " + ", ".join(f"INV {u + 1}" for u in users)], "bat",
+                      battery_connection], "bat",
                      dashed=bp.get("source") != "calculated" or not (switch_u and switch_i))
             if coupling in ("AC", "DC"):
-                for j, u in enumerate(users):
+                battery_connection = ("PCS BESS: " + ", ".join(f"INV {u + 1}" for u in link_users) if coupling == "AC"
+                                      else "Invertoare PV: " + ", ".join(f"INV {u + 1}" for u in link_users))
+                if not link_users:
+                    battery_connection = "Invertor compatibil: NESELECTAT"
+                for j, u in enumerate(link_users):
                     yy = 70 * mm - j * 2.2 * mm
                     self.line(cx[u], 72 * mm, cx[u], yy, dc=True)
                     self.line(cx[u], yy, bx + 3 * mm, yy, dc=True)
