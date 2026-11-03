@@ -654,13 +654,16 @@ export default function ModulePage({ moduleKey }) {
             </div>
             <label className="den-field mt-3 block"><span className="text-xs font-semibold">Etapa curentă</span>
               <select className="den-input mt-1" value={form.operator_stage || ""} onChange={(event) => setVal("operator_stage", event.target.value)} data-testid="prosumer-stage-select">
+                <option value="">Alege etapa curentă…</option>{PROSUMER_OD_STAGES.map((stage, index) => <option key={stage} value={stage}>{index + 1}. {stage}</option>)}
+              </select>
+            </label>
+            {form.operator_stage && <p className="mt-2 text-xs font-medium" style={{ color: "var(--blue)" }}>{form.operator_stage}</p>}
             {form.operator_stage && <div className="mt-3 rounded-lg border p-3" style={{ borderColor: "var(--line)", background: "#fbfcfe" }} data-testid="prosumer-stage-guidance">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div className="text-xs font-bold">Checklist pentru etapa aceasta</div><span className="text-[11px] font-semibold" style={{ color: "var(--muted)" }} data-testid="prosumer-stage-checklist-progress">{checkedOdGuidance} / {currentOdGuidance.length} verificate</span></div>
               <ul className="grid gap-1.5 text-xs leading-5 sm:grid-cols-2" style={{ color: "var(--muted)" }}>
                 {currentOdGuidance.map((item) => <li key={item}><label className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-white"><input className="mt-1 shrink-0" type="checkbox" checked={Boolean(currentOperatorStageDocuments[item])} onChange={(event) => setVal("operator_stage_documents", { ...operatorStageDocuments, [String(currentOdStage)]: { ...currentOperatorStageDocuments, [item]: event.target.checked } })} data-testid={`prosumer-stage-check-${currentOdStage + 1}`} /><span>{item}</span></label></li>)}
               </ul>
               <p className="mt-2 text-[11px] leading-4" style={{ color: "var(--muted)" }}>Bifele se salvează împreună cu dosarul și arată ce ai verificat sau pregătit. Nu marchează documente ca depuse și nu transmit date operatorului. Formularul exact depinde de operator, tipul cererii și ATR.</p>
-            </div>}       <p className="mt-2 text-[11px] leading-4" style={{ color: "var(--muted)" }}>Reperele urmează etapele afișate în portalul operatorului. Formularul, anexele și documentele exacte depind de operator, tipul solicitării și condițiile din ATR; această listă nu marchează documente ca depuse și nu transmite nimic operatorului.</p>
             </div>}
             <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Stadiul se păstrează împreună cu dosarul când apeși „Salvează”. Actualizarea stadiului nu depune cereri în portalul operatorului.</p>
           </section>}
