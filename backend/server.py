@@ -18,7 +18,7 @@ import re
 import bcrypt
 import jwt
 import requests
-from client_search import build_client_search_query, NUMERIC_CLIENT_SEARCH_FIELDS
+from client_search import build_client_search_queries, NUMERIC_CLIENT_SEARCH_FIELDS
 import io
 import zipfile
 from datetime import datetime, timezone, timedelta
@@ -482,18 +482,29 @@ async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), 
     if len(term) < 2:
         return {"results": [], "unavailable": []}
     guard("clients", user)
-    query = build_client_search_query(scope_q(user, "clients"), term)
+    queries = build_client_search_queries(scope_q(user, "clients"), term)
     projection = {"_id": 0, "id": 1, "name": 1, "pod": 1, "phone": 1, "email": 1,
-                  "address": 1, "locality": 1, "county": 1, "is_test": 1}
-    rows = await db.clients.find(query, projection).sort("updated_at", -1).limit(8).to_list(8)
+                  "address": 1, "locality": 1, "county": 1, "is_test": 1, "updated_at": 1}
+    query_rows = await asyncio.gather(*(
+        db.clients.find(query, projection).sort("updated_at", -1).limit(8).to_list(8)
+        for query in queries
+    ))
+    by_id = {}
+    for rows in query_rows:
+        for row in rows:
+            item_id = str(row.get("id") or "")
+            if not item_id:
+                continue
+            previous = by_id.get(item_id)
+            if previous is None or str(row.get("updated_at") or "") > str(previous.get("updated_at") or ""):
+                by_id[item_id] = row
+
     results = []
-    for row in rows:
+    for row in sorted(by_id.values(), key=lambda item: str(item.get("updated_at") or ""), reverse=True)[:8]:
         name = str(row.get("name") or "")
         if row.get("is_test") or re.search(r"\bTEST\b", name, re.I):
             continue
         item_id = str(row.get("id") or "")
-        if not item_id:
-            continue
         detail = " · ".join(str(row.get(k)) for k in ("pod", "phone", "email", "address", "locality", "county") if row.get(k))
         results.append({"id": item_id, "module": "clients", "label": "Client",
                         "title": name or "Client fără nume", "detail": detail,
