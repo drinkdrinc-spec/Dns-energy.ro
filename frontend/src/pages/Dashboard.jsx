@@ -119,6 +119,9 @@ export default function Dashboard() {
   const [searchingClients, setSearchingClients] = useState(false);
   const [clientSearchFailed, setClientSearchFailed] = useState(false);
   const [inboxView, setInboxView] = useState("list");
+  const [inboxQuery, setInboxQuery] = useState("");
+  const [inboxModule, setInboxModule] = useState("all");
+  const [inboxStatus, setInboxStatus] = useState("all");
   useEffect(() => { api.get("/stats/dashboard").then((r) => setS(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     const query = clientQuery.trim();
@@ -135,7 +138,16 @@ export default function Dashboard() {
   }, [clientQuery]);
 
   const inboxItems = s.inbox || [];
+  const moduleLabels = { prosumator: "Prosumator", atr: "Cerere ATR", power: "Spor de putere", diu: "DI-U", mono: "Schemă monofilară" };
   const inboxStatuses = [...new Set(inboxItems.map((item) => item.status || "În lucru"))];
+  const normalizedInboxQuery = inboxQuery.trim().toLocaleLowerCase("ro-RO");
+  const visibleInboxItems = inboxItems.filter((item) => {
+    const searchText = [item.client_name, item.number, item.label, item.pod, item.operator, item.distributor]
+      .filter(Boolean).join(" ").toLocaleLowerCase("ro-RO");
+    return (!normalizedInboxQuery || searchText.includes(normalizedInboxQuery))
+      && (inboxModule === "all" || item.module === inboxModule)
+      && (inboxStatus === "all" || (item.status || "În lucru") === inboxStatus);
+  });
   const renderInboxItem = (item) => {
     const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono" };
     const path = paths[item.module] || "/prosumator";
@@ -146,7 +158,7 @@ export default function Dashboard() {
         style={{ borderColor: "var(--line)", background: "var(--surface, white)" }}>
         <span className="min-w-0">
           <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
-          <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}</span>
+          <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}{item.pod ? " · POD " + item.pod : ""}{item.operator ? " · " + item.operator : ""}</span>
         </span>
         <span className="shrink-0 text-right">
           <span className="block text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: "#edf4ff", color: "var(--blue)" }}>{item.status || "În lucru"}</span>
@@ -186,19 +198,31 @@ export default function Dashboard() {
             <button type="button" onClick={() => setInboxView("kanban")} aria-pressed={inboxView === "kanban"} aria-label="Vizualizare Kanban" title="Kanban" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "kanban" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><LayoutGrid size={17} /></button>
           </div>
         </div>
-        {inboxItems.length === 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3" data-testid="dashboard-inbox-filters">
+          <input className="den-input w-full" value={inboxQuery} onChange={(event) => setInboxQuery(event.target.value)}
+            placeholder="Caută client, număr dosar, POD sau operator…" aria-label="Caută dosare după client, număr, POD sau operator" />
+          <select className="den-input w-full" value={inboxModule} onChange={(event) => setInboxModule(event.target.value)} aria-label="Filtrează după tipul dosarului">
+            <option value="all">Toate tipurile de dosar</option>
+            {Object.entries(moduleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <select className="den-input w-full" value={inboxStatus} onChange={(event) => setInboxStatus(event.target.value)} aria-label="Filtrează după starea dosarului">
+            <option value="all">Toate stările</option>
+            {inboxStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+        </div>
+        {visibleInboxItems.length === 0 ? (
           <div className="text-sm py-5 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>
-            Nu există încă dosare în lucru. Începe prin încărcarea documentelor clientului.
+            {inboxItems.length === 0 ? "Nu există încă dosare în lucru. Începe prin încărcarea documentelor clientului." : "Nu am găsit dosare care să corespundă filtrelor."}
           </div>
         ) : (
           inboxView === "list" ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">{inboxItems.map(renderInboxItem)}</div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">{visibleInboxItems.map(renderInboxItem)}</div>
           ) : (
             <div className="flex gap-3 overflow-x-auto pb-2" data-testid="dashboard-inbox-kanban">
-              {inboxStatuses.map((status) => (
+              {inboxStatuses.filter((status) => inboxStatus === "all" || status === inboxStatus).map((status) => (
                 <div key={status} className="min-w-[260px] flex-1 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }}>
-                  <h3 className="text-xs font-extrabold uppercase tracking-wide mb-3">{status}<span className="ml-2 font-normal" style={{ color: "var(--muted)" }}>{inboxItems.filter((item) => (item.status || "În lucru") === status).length}</span></h3>
-                  {inboxItems.filter((item) => (item.status || "În lucru") === status).map(renderInboxItem)}
+                  <h3 className="text-xs font-extrabold uppercase tracking-wide mb-3">{status}<span className="ml-2 font-normal" style={{ color: "var(--muted)" }}>{visibleInboxItems.filter((item) => (item.status || "În lucru") === status).length}</span></h3>
+                  {visibleInboxItems.filter((item) => (item.status || "În lucru") === status).map(renderInboxItem)}
                 </div>
               ))}
             </div>
