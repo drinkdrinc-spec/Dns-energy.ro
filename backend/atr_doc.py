@@ -175,6 +175,8 @@ def deer_annex_issues(rec: dict, pros: dict = None) -> list:
     case = str(rec.get("deer_case") or "").strip().casefold()
     if not case:
         return ["Selectați procedura DEER aplicabilă înainte de generarea sau depunerea dosarului."]
+    if not deer_annex_info(rec):
+        return ["Procedura DEER salvată nu corespunde unei anexe cunoscute. Selectați din nou procedura oficială înainte de generarea dosarului."]
     issues = []
     request = rtype(rec)
     if "loc nou" in case and request != "nou":
