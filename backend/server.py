@@ -2130,7 +2130,7 @@ async def atr_pack(user: dict, rec: dict, full: int):
         pros = from_request(rec) or None
     atr_catalog_files = []
     direct_catalog_complete = False
-    if pros and info is None and ATR.is_prod(rec):
+    if pros and info is None:
         from atr_equipment import catalog_documents_complete as atr_catalog_documents_complete
         await auto_import_selected_catalog_documents(user, pros)
         atr_catalog_files = await catalog_files(user["id"], pros)
@@ -2412,15 +2412,18 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
         pros = from_request(rec, field="power_cef") or None
     power_catalog_files = []
     direct_catalog_complete = False
-    if pros and info is None and ATR.is_prod(rec):
+    if pros and info is None:
         from atr_equipment import catalog_documents_complete as direct_catalog_documents_complete
         await auto_import_selected_catalog_documents(user, pros)
         power_catalog_files = await catalog_files(user["id"], pros)
         direct_catalog_complete = direct_catalog_documents_complete(pros.get("cef"), power_catalog_files)
     att = rec.get("attachments") or {}
     attached = {k for k, v in att.items() if v}
-    if direct_catalog_complete:
-        attached.add("j")
+    if pros and info is None:
+        if direct_catalog_complete:
+            attached.add("j")
+        else:
+            attached.discard("j")
     # Only mark auto-linked source documents present after the prosumer opis has
     # cleared their missing-data and approval checks. Draft PDFs may still be
     # included in the full bundle, but they cannot make Anexa 1 appear complete.
