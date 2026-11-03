@@ -103,7 +103,7 @@ const PROSUMER_QUICK_STATUSES = [
 ];
 
 function atrEquipmentSummary(item, prosumers) {
-  const pros = (prosumers || []).find((record) => record.id === item.pros_id);
+  const pros = resolveLinkedProsumer(item, prosumers || []).linked;
   if (!pros) return [];
   const inverters = pros.cef?.inverters || [];
   const inverterModels = [...new Set(inverters.map((inv) => inv.brand_model || inv.model).filter(Boolean))];
