@@ -1,12 +1,18 @@
+import base64
 import io
 import re
+import unicodedata
 import uuid
+from copy import deepcopy
+from pathlib import Path
 from copy import deepcopy
 from datetime import datetime, timezone, date
 
 from fastapi import HTTPException, Depends, UploadFile, File, Header, Query, Response
 from docx import Document
 from docx.table import _Row
+from docx.text.paragraph import Paragraph
+from docx.oxml.ns import qn
 from pypdf import PdfReader, PdfWriter
 
 import server as S
@@ -114,15 +120,230 @@ def fill_pdf(data, d):
     return out.getvalue()
 
 
+
+OFFICIAL_SOURCE_URL = "https://anre.ro/participanti-la-piata-de-energie/persoane-juridice/energie-electrica/"
+OFFICIAL_BUNDLE_PATH = Path(__file__).parent / "templates" / "anre" / "atestate_order_134_2021.docx.b64"
+OFFICIAL_ANNEXES = {"cerere": 4, "dotari": 5, "personal": 7, "decl_9": 9, "decl_10": 10}
+EQUIPMENT_GROUPS = {
+    "spatii": ("spatii tehnologice netehnologice", "spatii tehnologice", "spatii"),
+    "utilaje": ("utilaje",),
+    "topografice": ("echipamente topografice", "echipamente topografice", "topografice"),
+    "scule": ("scule dispozitive", "scule", "dispozitive"),
+    "masura": ("aparate de masura incercare verificare", "aparate de masura", "masura"),
+    "birotica": ("birotica hardware software", "birotica", "hardware software"),
+}
+GROUP_NAMES = {
+    "spatii": "Spații tehnologice/netehnologice",
+    "utilaje": "Utilaje",
+    "topografice": "Echipamente topografice",
+    "scule": "Scule, dispozitive",
+    "masura": "Aparate de măsură, încercare, verificare",
+    "birotica": "Birotică, hardware, software",
+}
+
+
+def official_template_info(key: str) -> dict | None:
+    annex = OFFICIAL_ANNEXES.get(key)
+    if annex is None or not OFFICIAL_BUNDLE_PATH.exists():
+        return None
+    return {"name": f"ANRE · Anexa nr. {annex} · Ordinul nr. 134/2021",
+            "source_url": OFFICIAL_SOURCE_URL, "annex": annex}
+
+
+def _norm(value):
+    value = unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode("ascii").casefold()
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+
+def _official_doc():
+    encoded = OFFICIAL_BUNDLE_PATH.read_text(encoding="ascii").strip()
+    return Document(io.BytesIO(base64.b64decode(encoded, validate=True)))
+
+
+def _paragraph_text(node, document):
+    return Paragraph(node, document._body).text.strip()
+
+
+def _trim_to_annex(document, annex):
+    body = document._element.body
+    children = list(body)
+    markers = []
+    for index, child in enumerate(children):
+        if child.tag != qn("w:p"):
+            continue
+        match = re.fullmatch(r"Anexa\\s+nr\\.\\s*(\\d+)", _paragraph_text(child, document), re.IGNORECASE)
+        if match:
+            markers.append((index, int(match.group(1))))
+    selected = next((index for index, number in markers if number == annex), None)
+    if selected is None:
+        raise ValueError(f"Anexa nr. {annex} nu există în modelul oficial ANRE încărcat")
+    following = next((index for index, number in markers if index > selected), len(children))
+    for index, child in enumerate(children):
+        if (index < selected or index >= following) and child.tag != qn("w:sectPr"):
+            body.remove(child)
+
+
+def _set_paragraph(paragraph, value):
+    if paragraph.runs:
+        paragraph.runs[0].text = str(value)
+        for run in paragraph.runs[1:]:
+            run.text = ""
+    else:
+        paragraph.add_run(str(value))
+
+
+def _company_value(company, key):
+    return str(company.get(key) or "[DE COMPLETAT]").strip()
+
+
+def _replace_annex4(document, data):
+    company = data.get("company") or {}
+    name = _company_value(company, "rep_name")
+    role = _company_value(company, "rep_role")
+    cnp = _company_value(company, "rep_cnp")
+    series = _company_value(company, "rep_id_series")
+    number = _company_value(company, "rep_id_number")
+    issuer = _company_value(company, "rep_id_issuer")
+    issue_date = _company_value(company, "rep_id_date")
+    firm = _company_value(company, "name")
+    address = _company_value(company, "address")
+    types = ", ".join(data.get("target_types") or []) or "[DE COMPLETAT]"
+    request = TYPES.get(data.get("kind"), "[DE COMPLETAT]")
+    paragraphs = list(document.paragraphs)
+    for paragraph in paragraphs:
+        text = paragraph.text.strip()
+        if text.startswith("Subsemnatul"):
+            _set_paragraph(paragraph,
+                f"Subsemnatul {name}, cod numeric personal {cnp}, posesor al actului de identitate seria {series} nr. {number}, "
+                f"eliberat de {issuer} la data {issue_date}, în calitate de {role}, reprezentant legal al operatorului economic "
+                f"{firm}, cu sediul social la {address}, solicit {request.lower()} pentru tipurile de atestate: {types}.")
+        elif text.startswith("Menţionez") or text.startswith("Menționez"):
+            _set_paragraph(paragraph,
+                f"Menționez că operatorul economic pe care îl reprezint este înmatriculat la Registrul Comerțului cu nr. "
+                f"{_company_value(company, 'regcom')}, are CUI nr. {_company_value(company, 'cui')} și contul nr. "
+                f"{_company_value(company, 'bank_account')} deschis la {_company_value(company, 'bank_name')}, "
+                f"sucursala {_company_value(company, 'bank_branch')}.")
+        elif text.startswith("În scopul comunicării"):
+            _set_paragraph(paragraph,
+                f"În scopul comunicării cu ANRE pot fi contactat la sediul operatorului economic, telefon "
+                f"{_company_value(company, 'phone')}, fax {_company_value(company, 'fax')}, e-mail "
+                f"{_company_value(company, 'email')}.")
+        elif text.startswith("Data"):
+            _set_paragraph(paragraph, f"Data: {date.today().strftime('%d.%m.%Y')}")
+
+
+def _fill_table_cell(cell, value):
+    cell.text = str(value or "")
+
+
+def _equipment_group(item):
+    value = _norm(item.get("group") or item.get("category") or "")
+    for key, terms in EQUIPMENT_GROUPS.items():
+        if any(term in value for term in terms):
+            return key
+    return None
+
+
+def _fill_equipment_table(table, data):
+    grouped = {key: [] for key in GROUP_NAMES}
+    for item in data.get("equipment") or []:
+        key = _equipment_group(item)
+        if key:
+            grouped[key].append(item)
+    rows = list(table.rows)
+    section_rows = {}
+    for index, row in enumerate(rows):
+        first = _norm(row.cells[0].text)
+        for key, terms in EQUIPMENT_GROUPS.items():
+            if any(term in first for term in terms):
+                section_rows[key] = index
+                break
+    ordered_sections = sorted(section_rows.items(), key=lambda item: item[1])
+    for group_index, (key, start) in enumerate(ordered_sections):
+        end = ordered_sections[group_index + 1][1] if group_index + 1 < len(ordered_sections) else len(rows)
+        data_rows = [rows[i] for i in range(start + 1, end) if _norm(rows[i].cells[0].text) in ("1", "2", "")]
+        items = grouped[key]
+        while len(data_rows) < len(items):
+            source = data_rows[-1] if data_rows else rows[start]
+            tr = deepcopy(source._tr)
+            source._tr.addnext(tr)
+            inserted = _Row(tr, table)
+            data_rows.append(inserted)
+        for index, row in enumerate(data_rows):
+            item = items[index] if index < len(items) else None
+            if not item:
+                for cell in row.cells:
+                    _fill_table_cell(cell, "")
+                continue
+            _fill_table_cell(row.cells[0], index + 1)
+            _fill_table_cell(row.cells[1], item.get("name"))
+            _fill_table_cell(row.cells[2], item.get("quantity"))
+            _fill_table_cell(row.cells[3], item.get("ownership"))
+
+
+def _fill_staff_table(table, data):
+    staff = data.get("staff") or []
+    rows = list(table.rows)
+    data_rows = rows[1:]
+    while len(data_rows) < len(staff):
+        source = data_rows[-1] if data_rows else rows[0]
+        tr = deepcopy(source._tr)
+        source._tr.addnext(tr)
+        data_rows.append(_Row(tr, table))
+    for index, row in enumerate(data_rows):
+        person = staff[index] if index < len(staff) else None
+        values = ["", "", "", "", "", "", ""]
+        if person:
+            license_text = "; ".join(str(value) for value in (
+                person.get("grade"), person.get("license"),
+                f"valabilă până la {person.get('license_valid')}" if person.get("license_valid") else None
+            ) if value)
+            values = [index + 1, person.get("name"), person.get("education"), person.get("role"),
+                      person.get("contract"), person.get("contract_duration"), license_text]
+        for cell, value in zip(row.cells, values):
+            _fill_table_cell(cell, value)
+
+
+def fill_official_annex(key, data):
+    annex = OFFICIAL_ANNEXES[key]
+    document = _official_doc()
+    _trim_to_annex(document, annex)
+    if key == "cerere":
+        _replace_annex4(document, data)
+    elif key == "decl_9":
+        company = data.get("company") or {}
+        for paragraph in document.paragraphs:
+            if paragraph.text.strip().startswith("Subsemnatul,"):
+                _set_paragraph(paragraph,
+                    f"Subsemnatul, {_company_value(company, 'rep_name')}, cod numeric personal {_company_value(company, 'rep_cnp')}, "
+                    f"posesor al actului de identitate seria {_company_value(company, 'rep_id_series')} nr. "
+                    f"{_company_value(company, 'rep_id_number')}, eliberat de {_company_value(company, 'rep_id_issuer')} la data "
+                    f"{_company_value(company, 'rep_id_date')}, în calitate de {_company_value(company, 'rep_role')}, "
+                    f"reprezentant legal al operatorului economic {_company_value(company, 'name')}, cu sediul în "
+                    f"{_company_value(company, 'address')}, înregistrat la Registrul Comerțului cu nr. "
+                    f"{_company_value(company, 'regcom')}, având CUI nr. {_company_value(company, 'cui')}, cunoscând prevederile art. 326 din Codul penal privind falsul în declarații, declar pe propria răspundere următoarele:")
+    elif key == "dotari" and document.tables:
+        _fill_equipment_table(document.tables[0], data)
+    elif key == "personal" and document.tables:
+        _fill_staff_table(document.tables[0], data)
+    out = io.BytesIO()
+    document.save(out)
+    return out.getvalue()
+
+
 async def filled(key, d):
     t = await db.anre_templates.find_one({"key": key}, {"_id": 0})
-    if not t:
-        return None
-    data = S.get_object(t["path"])[0]
-    if t["type"] == DOCX:
-        return fill_docx(data, d), DOCX, f"{key}.docx"
-    if t.get("fields"):
-        return fill_pdf(data, d), "application/pdf", f"{key}.pdf"
+    if t:
+        data = S.get_object(t["path"])[0]
+        if t["type"] == DOCX:
+            return fill_docx(data, d), DOCX, f"{key}.docx"
+        if t.get("fields"):
+            return fill_pdf(data, d), "application/pdf", f"{key}.pdf"
+    if key in OFFICIAL_ANNEXES and OFFICIAL_BUNDLE_PATH.exists():
+        try:
+            return fill_official_annex(key, d), DOCX, f"ANRE_Anexa_{OFFICIAL_ANNEXES[key]}.docx"
+        except Exception as exc:
+            S.log.warning("Nu s-a putut precompleta Anexa ANRE %s: %s", key, type(exc).__name__)
     return None
 
 
