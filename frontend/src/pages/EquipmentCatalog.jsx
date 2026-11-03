@@ -7,6 +7,7 @@ import { Plus, Pencil, Trash2, Upload, FileText, X, Sparkles } from "lucide-reac
 import { toast } from "sonner";
 
 const CATS = ["Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"];
+const hasStoredDocument = (item, kind) => Boolean(item?.[kind]?.storage_path);
 const FIELDS = {
   Invertor: [["type", "Tip", ["Hibrid", "On-grid", "Invertor de baterie (AC)"]], ["phases", "Faze", ["Trifazat", "Monofazat"]], ["p_nom_kw", "Pn (kW)"], ["p_max_kw", "Pmax (kW)"], ["red_limit_mode", "Limitare putere în RED", ["Nu este declarată", "Limitare putere evacuată", "Zero export"]],
     ["vdc_max", "Udc max (V)"], ["mppt_min", "MPPT min (V)"], ["mppt_max", "MPPT max (V)"], ["mppt_count", "Nr. MPPT"], ["imax_mppt", "Imax / MPPT (A)"], ["isc_max_mppt", "Isc max admisibil / MPPT (A)"], ["battery_voltage", "Tensiune baterie compatibilă", null, "text"], ["bat_i_max", "Curent max baterie (A)"]],
@@ -106,8 +107,8 @@ function DocSlot({ item, k, label, onUploaded }) {
     <div className="w-full min-w-0">
       <span className="flex w-full min-w-0 flex-wrap items-center gap-2">
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={up} data-testid={`upload-${k}-${item.id}`} />
-      {f ? <button type="button" onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)} className="inline-flex items-center gap-1 text-[12px] font-bold text-left" style={{ color: "var(--blue)" }} data-testid={`open-${k}-${item.id}`} title={f.source_url || "Document încărcat"}><FileText size={13} /> {label}</button>
-        : <span className="text-[12px]" style={{ color: "#b9770e" }}>{label} lipsă</span>}
+      {hasStoredDocument(item, k) ? <button type="button" onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)} className="inline-flex items-center gap-1 text-[12px] font-bold text-left" style={{ color: "var(--blue)" }} data-testid={`open-${k}-${item.id}`} title={f.source_url || "Document încărcat"}><FileText size={13} /> {label} atașată</button>
+        : <span className="text-[12px]" style={{ color: "#b9770e" }}>{f ? `${label} nepreluată` : `${label} lipsă`}</span>}
       {officialUrl && <a href={officialUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] underline" title="Deschide documentul de la producător">Sursă oficială ↗</a>}
       <button onClick={() => ref.current.click()} className="p-1 rounded hover:bg-[#eef4ff]" title={`Încarcă ${label}`} data-testid={`btn-upload-${k}-${item.id}`}><Upload size={13} style={{ color: "var(--blue)" }} /></button>
       <input className="den-input text-[11px] py-1 w-full sm:w-[220px] min-w-0" type="url" placeholder="Link PDF oficial HTTPS" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} aria-label={`Link oficial ${label}`} />
@@ -182,15 +183,15 @@ export default function EquipmentCatalog() {
     const measure = Number(cat === "Invertor" ? i.p_nom_kw : cat === "Panou" ? i.w : cat === "Baterie" ? i.kwh : cat === "Smart meter" ? i.current_max_a : cat === "Gateway" ? i.max_devices : i.p_max_w);
     if (minValue !== "" && (!Number.isFinite(measure) || measure < Number(minValue))) return false;
     if (maxValue !== "" && (!Number.isFinite(measure) || measure > Number(maxValue))) return false;
-    const hasDatasheet = Boolean(i.datasheet || i.datasheet_url || i.datasheet_source_url);
-    const hasConformity = Boolean(i.conformity || i.conformity_url || i.conformity_source_url);
+    const hasDatasheet = hasStoredDocument(i, "datasheet");
+    const hasConformity = hasStoredDocument(i, "conformity");
     if (completeDocsOnly && !(hasDatasheet && hasConformity)) return false;
     return true;
   }), [items, cat, q, phaseFilter, typeFilter, minValue, maxValue, completeDocsOnly]);
   const completeDocsCount = items.filter((i) => i.category === cat
     && !/\bTEST\b/i.test(String(i.brand_model || ""))
-    && Boolean(i.datasheet || i.datasheet_url || i.datasheet_source_url)
-    && Boolean(i.conformity || i.conformity_url || i.conformity_source_url)).length;
+    && hasStoredDocument(i, "datasheet")
+    && hasStoredDocument(i, "conformity")).length;
   const measureLabel = cat === "Invertor" ? "putere nominală (kW)" : cat === "Panou" ? "putere panou (W)" : cat === "Baterie" ? "capacitate (kWh)" : cat === "Smart meter" ? "curent max. (A)" : cat === "Gateway" ? "dispozitive" : "putere modul (W)";
   const clearFilters = () => { setPhaseFilter(""); setTypeFilter(""); setMinValue(""); setMaxValue(""); setCompleteDocsOnly(false); setQ(""); };
 
@@ -284,7 +285,7 @@ export default function EquipmentCatalog() {
   const [importingOfficial, setImportingOfficial] = useState(false);
   const importOfficialDocuments = async () => {
     const jobs = items.flatMap((item) => ["datasheet", "conformity"]
-      .filter((kind) => !item[kind] && (item[`${kind}_source_url`] || item[`${kind}_url`]))
+      .filter((kind) => !hasStoredDocument(item, kind) && (item[`${kind}_source_url`] || item[`${kind}_url`]))
       .map((kind) => ({ item, kind, url: item[`${kind}_source_url`] || item[`${kind}_url`] })));
     if (!jobs.length) return toast.info("Nu există PDF-uri oficiale noi de preluat; poți adăuga linkuri HTTPS în catalog.");
     setImportingOfficial(true);
@@ -398,7 +399,7 @@ export default function EquipmentCatalog() {
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <div>
             <h2 className="text-lg font-bold">{cat} <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({rows.length})</span></h2>
-            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{completeDocsCount} modele au fișă tehnică și document de conformitate atașate sau indicate de producător.</p>
+            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{completeDocsCount} modele au fișa tehnică și declarația de conformitate PDF salvate în catalog. Linkurile producătorului rămân surse de preluare până când PDF-ul este atașat.</p>
           </div>
           <input className="den-input w-full sm:w-[260px]" placeholder="Caută marcă sau model..." value={q} onChange={(e) => setQ(e.target.value)} data-testid="catalog-db-search" />
         </div>
@@ -415,7 +416,7 @@ export default function EquipmentCatalog() {
           </div>
           <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)" }}>
             <input type="checkbox" checked={completeDocsOnly} onChange={(e) => setCompleteDocsOnly(e.target.checked)} data-testid="catalog-filter-complete-docs" />
-            Doar modele cu fișă și conformitate
+            Doar modele cu PDF-urile atașate
           </label>
           {(phaseFilter || typeFilter || minValue || maxValue || completeDocsOnly || q) && <button type="button" onClick={clearFilters} className="text-xs font-semibold underline justify-self-start" data-testid="catalog-clear-filters">Șterge filtrele</button>}
         </div>
@@ -453,3 +454,4 @@ export default function EquipmentCatalog() {
     </div>
   );
 }
+

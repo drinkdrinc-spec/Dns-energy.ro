@@ -17,6 +17,7 @@ function datasheetNumber(value) {
   const parsed = Number(String(value).trim().replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
 }
+const hasStoredCatalogDocument = (item, kind) => Boolean(item?.[kind]?.storage_path);
 function batteryCatalogData(item, phases) {
   const breakerCurrent = item.breaker_a ?? item.dc_switch_current_a;
   const breakerVoltage = item.breaker_voltage_dc ?? item.dc_switch_voltage_v;
@@ -363,7 +364,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         {supplierSearch.kind === kind && supplierSearch.hasMore && <button type="button" className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }} disabled={supplierSearch.loading} onClick={() => searchSupplierCatalog(kind, true)} data-testid={`supplier-search-more-${kind}`}>{supplierSearch.loading ? "Se încarcă…" : "Încarcă următoarele rezultate"}</button>}
         <select className="den-input" style={selectStyle} value={selected[kind] || ""} onChange={(e) => { choose(kind, e.target.value); setCatalogSearch((prev) => ({ ...prev, [kind]: "" })); }}>
           <option value="">Alege din catalog ({matches.length})...</option>
-          {matches.map((x) => <option key={x.id} value={x.id}>{x.brand_model} {x.p_nom_kw ? `· ${x.p_nom_kw} kW` : x.w ? `· ${x.w} W` : x.kwh ? `· ${x.kwh} kWh` : ""}{!(x.datasheet && x.conformity) ? " · documente lipsă" : ""}</option>)}
+          {matches.map((x) => <option key={x.id} value={x.id}>{x.brand_model} {x.p_nom_kw ? `· ${x.p_nom_kw} kW` : x.w ? `· ${x.w} W` : x.kwh ? `· ${x.kwh} kWh` : ""}{!(hasStoredCatalogDocument(x, "datasheet") && hasStoredCatalogDocument(x, "conformity")) ? " · PDF-uri de verificat" : ""}</option>)}
         </select>
         {query && matches.length === 0 && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
           <small className="block text-amber-900">Modelul nu există încă în catalog.</small>
@@ -371,7 +372,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
             onClick={() => addCatalogModel(kind, query)}>{addingModel[kind] ? "Se adaugă…" : `Adaugă „${query.trim()}” în catalog`}</button>
           <small className="mt-1 block text-amber-900">Parametrii și documentele rămân necompletate până la încărcarea fișei oficiale.</small>
         </div>}
-        {selected[kind] && (() => { const x = options[kind].find((v) => v.id === selected[kind]); return x && <small className="block mt-1" style={{ color: "var(--muted)" }}>Date preluate din catalog{x.datasheet && x.conformity ? " · fișă și conformitate disponibile" : " · verifică fișa tehnică și conformitatea"}</small>; })()}
+        {selected[kind] && (() => { const x = options[kind].find((v) => v.id === selected[kind]); return x && <small className="block mt-1" style={{ color: "var(--muted)" }}>Date preluate din catalog{hasStoredCatalogDocument(x, "datasheet") && hasStoredCatalogDocument(x, "conformity") ? " · PDF-urile sunt atașate" : " · PDF-urile se preiau automat dacă există surse oficiale; verifică documentele lipsă în catalog"}</small>; })()}
       </label>
     );
   };
@@ -464,3 +465,4 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     </div>
   </div>;
 }
+
