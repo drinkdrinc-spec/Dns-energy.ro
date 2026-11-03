@@ -63,3 +63,16 @@ def test_atr_direct_catalog_equipment_requires_both_documents_per_model():
 def test_empty_atr_equipment_does_not_create_a_fake_prosumer_snapshot():
     assert atr_equipment.from_request({"atr_cef": {"inverters": [], "shared_batteries": []}}) == {}
     assert not atr_equipment.catalog_documents_complete({"inverters": []}, [])
+
+def test_power_request_can_reuse_direct_equipment_snapshot():
+    snapshot = atr_equipment.from_request({
+        "power_cef": {"inverters": [{"brand_model": "Test inverter", "p_nom_kw": 8, "count": 1,
+                                     "panel_w": 500, "strings": [{"panels": 16}]}],
+                     "shared_batteries": [], "grid": {"supply": "Trifazat"}},
+        "operator": "DEER",
+    }, field="power_cef")
+
+    assert snapshot["operator"] == "DEER"
+    assert snapshot["panel_count"] == 16
+    assert snapshot["panel_kwp"] == 8
+    assert snapshot["inverter_kw"] == 8
