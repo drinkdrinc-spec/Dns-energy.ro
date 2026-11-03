@@ -63,6 +63,18 @@ const PROSUMER_OD_STAGES = [
   "Punerea sub tensiune a instalației de utilizare"
 ];
 
+const PROSUMER_OD_STAGE_GUIDANCE = [
+  ["Cererea de racordare", "Actele clientului și ale locului de consum", "Cererea ATR și anexa oficială potrivită operatorului și situației"],
+  ["Emiterea avizului", "Avizul tehnic de racordare și condițiile impuse", "Notificările operatorului privind completări sau corecturi"],
+  ["Contractul de racordare", "Contractul și documentele de execuție, dacă sunt cerute", "Dovada achitării tarifelor aplicabile"],
+  ["Execuția racordării", "Proiectul și documentele lucrării de racordare", "Procesele-verbale și confirmările aferente execuției"],
+  ["Dosarul instalației interioare", "DI-U, schema monofilară și documentele echipamentelor", "PRAM, verificări și procese-verbale PIF, după caz"],
+  ["Recepția instalației", "Documentele de recepție și rezultatele probelor", "Remedierea și retrimiterea documentelor cerute de operator"],
+  ["Certificatul de racordare", "Certificatul emis de operator și condițiile de exploatare", "Verifică puterile și datele tehnice față de dosarul depus"],
+  ["Contractul de furnizare", "Contractul cu furnizorul ales", "Confirmarea datelor locului de consum și a titularului"],
+  ["Punerea sub tensiune", "Notificarea operatorului și confirmarea stării finale", "Păstrează dovada comunicării și actualizează dosarul ca activ"],
+];
+
 const PROSUMER_QUICK_STATUSES = [
   "Dosar în pregătire",
   "Gata de depunere",
@@ -642,6 +654,13 @@ export default function ModulePage({ moduleKey }) {
               </select>
             </label>
             {form.operator_stage && <p className="mt-2 text-xs font-medium" style={{ color: "var(--blue)" }}>{form.operator_stage}</p>}
+            {form.operator_stage && <div className="mt-3 rounded-lg border p-3" style={{ borderColor: "var(--line)", background: "#fbfcfe" }} data-testid="prosumer-stage-guidance">
+              <div className="mb-2 text-xs font-bold">Repere pentru etapa aceasta</div>
+              <ul className="grid gap-1.5 text-xs leading-5 sm:grid-cols-2" style={{ color: "var(--muted)" }}>
+                {PROSUMER_OD_STAGE_GUIDANCE[currentOdStage]?.map((item) => <li key={item} className="flex gap-2"><span aria-hidden="true" style={{ color: "var(--blue)" }}>•</span><span>{item}</span></li>)}
+              </ul>
+              <p className="mt-2 text-[11px] leading-4" style={{ color: "var(--muted)" }}>Reperele urmează etapele afișate în portalul operatorului. Formularul, anexele și documentele exacte depind de operator, tipul solicitării și condițiile din ATR; această listă nu marchează documente ca depuse și nu transmite nimic operatorului.</p>
+            </div>}
             <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Stadiul se păstrează împreună cu dosarul când apeși „Salvează”. Actualizarea stadiului nu depune cereri în portalul operatorului.</p>
           </section>}
           
