@@ -237,7 +237,7 @@ async def anre_update(did: str, request: Request, user: dict = Depends(get_curre
             date.fromisoformat(upd["filing_date"])
         except ValueError:
             raise HTTPException(status_code=400, detail="Data depunerii trebuie să fie în formatul AAAA-LL-ZZ")
-    if any(d.get(k) != v for k, v in upd.items()):
+    if any(d.get(k) != upd[k] for k in ("company", "staff", "equipment", "org", "target_types") if k in upd):
         for g in GEN:
             if (d.get("docs") or {}).get(g, {}).get("approved"):
                 upd[f"docs.{g}.approved"] = False
