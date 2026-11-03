@@ -109,7 +109,7 @@ export default function DistributionPortals() {
         </div>}
         <label className="block text-sm font-bold mb-2" htmlFor="portal-pod">POD-ul locului de consum</label>
         <div className="flex flex-col sm:flex-row gap-2">
-          <input id="portal-pod" className="den-input flex-1" value={pod} onChange={(e) => setPod(e.target.value)} placeholder="Introdu POD-ul de pe factură" autoComplete="off" />
+          <input id="portal-pod" className="den-input flex-1" value={pod} onChange={(e) => { setPod(e.target.value); setManual(""); }} placeholder="Introdu POD-ul de pe factură" autoComplete="off" />
           <Btn variant="secondary" onClick={() => { setPod(""); setManual(""); setProsId(""); }}>Șterge</Btn>
         </div>
         <div className="flex gap-2 items-start mt-3 text-sm" style={{ color: result.match ? "var(--ink)" : "var(--muted)" }}>
