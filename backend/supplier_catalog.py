@@ -125,8 +125,23 @@ def _product_title(doc) -> str:
 
 def _correct_category(title: str, category: str) -> bool:
     value = _norm(title)
+    padded = f" {value} "
+    # Retailers often list a hybrid inverter bundled with a battery as an
+    # inverter product. Importing that listing as a single device mixes two
+    # separate models and can contaminate the electrical data used in a dossier.
+    bundle_markers = (
+        " kit ", " bundle ", " pachet ", " cu baterie ", " cu acumulator ",
+        " with battery ", " with accumulator ", " battery included ",
+        " baterie inclusa ", " acumulator inclus ",
+    )
+    if any(marker in padded for marker in bundle_markers):
+        return False
+    if re.search(r"\b(?:invertor|inverter)\b.*(?:\+|&|\band\b).*\b(?:baterie|acumulator|battery)\b", value):
+        return False
+    if re.search(r"\b(?:baterie|acumulator|battery)\b.*(?:\+|&|\band\b).*\b(?:invertor|inverter)\b", value):
+        return False
     if category == "Invertor":
-        return value.startswith(("invertor ", "inverter ")) and " kit " not in f" {value} "
+        return value.startswith(("invertor ", "inverter "))
     if category == "Panou":
         return value.startswith(("panou ", "modul fotovoltaic", "solar panel"))
     if category == "Smart meter":
@@ -136,7 +151,7 @@ def _correct_category(title: str, category: str) -> bool:
         return any(term in value for term in ("gateway", "logger", "datalogger", "data logger", "concentrator"))
     if category == "Optimizator":
         return any(term in value for term in ("optimizator", "optimizer", "power optimizer"))
-    return value.startswith(("baterie ", "acumulator ", "acumulatori ", "battery ")) and " kit " not in f" {value} "
+    return value.startswith(("baterie ", "acumulator ", "acumulatori ", "battery "))
 
 
 def _json_products(doc):

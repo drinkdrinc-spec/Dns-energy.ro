@@ -6,6 +6,17 @@ from lxml import html
 import supplier_catalog
 
 
+def test_category_filter_excludes_inverter_and_battery_bundles():
+    assert supplier_catalog._correct_category("Invertor Deye 10 kW + Acumulator V-TAC 10 kWh", "Invertor") is False
+    assert supplier_catalog._correct_category("Invertor hibrid 10 kW cu baterie 10 kWh", "Invertor") is False
+    assert supplier_catalog._correct_category("Baterie 10 kWh cu invertor 5 kW", "Baterie") is False
+
+
+def test_category_filter_keeps_individual_equipment_models():
+    assert supplier_catalog._correct_category("Invertor Deye SUN-10K-SG04LP3-EU", "Invertor") is True
+    assert supplier_catalog._correct_category("Acumulator V-TAC 10 kWh", "Baterie") is True
+
+
 def test_listing_pages_are_bounded_and_stay_on_the_same_category():
     page = html.fromstring("""
         <nav>
