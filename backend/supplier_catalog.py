@@ -66,9 +66,9 @@ FIELD_LABELS = {
     "imax_mppt": ("curent maxim mppt", "max input current per mppt"),
     "w": ("putere nominala modul", "putere maxima modul", "rated power", "maximum power"),
     "voc": ("tensiune circuit deschis", "open circuit voltage", "voc"),
-    "coef_voc": ("coeficient temperatura voc", "temperature coefficient of voc", "temp coefficient voc", "temperature coefficient open circuit voltage", "temp coef voc"),
-    "coef_vmp": ("coeficient temperatura vmp", "temperature coefficient of vmp", "temp coefficient vmp", "temperature coefficient voltage at maximum power", "temp coef vmp"),
-    "temp_pmax": ("coeficient temperatura pmax", "temperature coefficient of pmax", "temp coefficient pmax", "temperature coefficient maximum power"),
+    "coef_voc": ("coeficient temperatura voc", "coeficient de temperatura voc", "temperature coefficient voc", "temperature coefficient of voc", "temp coefficient voc", "temperature coefficient open circuit voltage", "temp coef voc", "temp coeff voc"),
+    "coef_vmp": ("coeficient temperatura vmp", "coeficient de temperatura vmp", "temperature coefficient vmp", "temperature coefficient of vmp", "temp coefficient vmp", "temperature coefficient voltage at maximum power", "temp coef vmp", "temp coeff vmp"),
+    "temp_pmax": ("coeficient temperatura pmax", "coeficient de temperatura pmax", "temperature coefficient pmax", "temperature coefficient of pmax", "temp coefficient pmax", "temperature coefficient maximum power"),
     "vmp": ("tensiune la putere maxima", "voltage at maximum power", "vmp", "vmpp"),
     "isc": ("curent de scurtcircuit", "short circuit current", "isc"),
     "imp": ("curent la putere maxima", "current at maximum power", "imp", "impp"),
@@ -173,7 +173,8 @@ def _properties(doc):
         nk, nv = _norm(key), str(value).strip()
         for field, labels in FIELD_LABELS.items():
             if any(label in nk for label in labels):
-                match = re.search(r"[-+]?\d+(?:[.,]\d+)?", nv)
+                numeric_value = nv.replace("−", "-")
+                match = re.search(r"[-+]?\d+(?:[.,]\d+)?", numeric_value)
                 if not match:
                     continue
                 raw_unit = nv[match.end():].strip().lower().replace("−", "-")
