@@ -679,14 +679,19 @@ async def delete_item(module: str, item_id: str, user: dict = Depends(get_curren
 @api_router.get("/stats/dashboard")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
     owner = scope_q(user, "diu")
-    clients = await db.clients.count_documents(scope_q(user, "clients"))
-    diu = await db.diu.count_documents(owner)
-    mono = await db.mono.count_documents(scope_q(user, "mono"))
-    pending = await db.diu.count_documents({**owner, "status": {"$in": ["În lucru", "Documente de completat", "În verificare"]}})
     test_dossier_filter = {"$nor": [
         {"client_name": {"$regex": r"^TEST", "$options": "i"}},
         {"number": {"$regex": r"^TEST[-_]", "$options": "i"}},
     ]}
+    client_test_filter = {"$nor": [
+        {"name": {"$regex": r"^TEST", "$options": "i"}},
+        {"client_name": {"$regex": r"^TEST", "$options": "i"}},
+        {"company_name": {"$regex": r"^TEST", "$options": "i"}},
+    ]}
+    clients = await db.clients.count_documents({**scope_q(user, "clients"), **client_test_filter})
+    diu = await db.diu.count_documents({**owner, **test_dossier_filter})
+    mono = await db.mono.count_documents({**scope_q(user, "mono"), **test_dossier_filter})
+    pending = await db.diu.count_documents({**owner, **test_dossier_filter, "status": {"$in": ["În lucru", "Documente de completat", "În verificare"]}})
     recent = await db.diu.find({**owner, **test_dossier_filter}).sort("created_at", -1).to_list(5)
 
     # A compact, actionable work inbox inspired by the reference app's dossier list.
