@@ -90,6 +90,27 @@ function normalizeClientName(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
 }
 
+
+const CLIENT_SITE_FIELDS = ["address", "county", "locality", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc"];
+function clientConsumptionSites(client) {
+  const saved = Array.isArray(client?.consumption_sites)
+    ? client.consumption_sites.filter((site) => site && typeof site === "object").map((site, index) => ({ ...site, id: String(site.id || ("saved-" + index)) }))
+    : [];
+  if (saved.length) return saved;
+  if (["address", "pod", "locality", "county"].some((key) => String(client?.[key] || "").trim())) {
+    return [{ id: "legacy", ...Object.fromEntries(CLIENT_SITE_FIELDS.map((key) => [key, client?.[key] || ""])) }];
+  }
+  return [];
+}
+function clientSiteFor(client, preferredPod) {
+  const sites = clientConsumptionSites(client);
+  const pod = String(preferredPod || "").replace(/\s+/g, "").toUpperCase();
+  return (pod && sites.find((site) => String(site.pod || "").replace(/\s+/g, "").toUpperCase() === pod)) || sites[0] || null;
+}
+function clientSiteLabel(site, index) {
+  return [site.address, site.locality, site.county, site.pod && ("POD " + site.pod)].filter(Boolean).join(" · ") || ("Loc de consum " + (index + 1));
+}
+
 function resolveLinkedProsumer(atr, prosumers) {
   const explicit = atr.pros_id ? prosumers.find((prosumer) => prosumer.id === atr.pros_id) : null;
   if (explicit) return { linked: explicit, ambiguous: false };
@@ -246,6 +267,7 @@ export default function ModulePage({ moduleKey }) {
             ? linkedPros.find((item) => item.id === requestedProsId)
             : linkedPros.length === 1 ? linkedPros[0] : null;
           if (!client) return;
+          const site = clientSiteFor(client, pros?.pod);
           const kind = String(client.kind || "").toLowerCase();
           const caseName = params.get("case") || "";
           const requestType = caseName.toLocaleLowerCase("ro-RO").includes("spor") || caseName === "power-increase"
@@ -260,11 +282,14 @@ export default function ModulePage({ moduleKey }) {
               supply: pros.supply || "", p_abs_kw: pros.bransament_kw || "",
               pv_kw: installedPanelKwp(pros), p_evac_kw: pros.power || "" } : {}),
             applicant_type: /jurid/.test(kind) ? "Persoană juridică" : /fiz|persoan/.test(kind) ? "Persoană fizică" : "",
-            pod: client.pod || pros?.pod || "",
-            operator: client.operator || pros?.operator || "",
-            address: client.address || pros?.address || "",
-            cf_nr: client.cf_nr || pros?.cf_nr || "",
-            cadastral_nr: client.cadastral_nr || pros?.cadastral_nr || "",
+            client_site_id: site?.id || "",
+            pod: site?.pod || client.pod || pros?.pod || "",
+            operator: site?.operator || client.operator || pros?.operator || "",
+            address: site?.address || client.address || pros?.address || "",
+            cf_nr: site?.cf_nr || client.cf_nr || pros?.cf_nr || "",
+            cadastral_nr: site?.cadastral_nr || client.cadastral_nr || pros?.cadastral_nr || "",
+            locality: site?.locality || client.locality || "", county: site?.county || client.county || "",
+            supplier: site?.supplier || client.supplier || "", nlc: site?.nlc || client.nlc || "",
             request_type: requestType,
             ...(/deer|distributie energie electrica romania/i.test(String(client.operator || pros?.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")) && (caseName.toLocaleLowerCase("ro-RO").includes("spor") || caseName === "power-increase") ? { deer_case: "Loc existent — spor de putere — Anexa 1" } : {}),
           });
@@ -300,6 +325,7 @@ export default function ModulePage({ moduleKey }) {
             });
           }
           if (!client) return;
+          const site = clientSiteFor(client, pros?.pod);
           const grid = pros?.cef?.grid || {};
           const hasStorage = Boolean(pros && hasConfiguredStorage(pros));
           const circuits = (pros?.cef?.inverters || []).map((inv, index) => {
@@ -313,8 +339,12 @@ export default function ModulePage({ moduleKey }) {
             client_name: pros?.client_name || client.name || "",
             client_id: client.id,
             ...(pros ? { pros_id: pros.id, circuits } : {}),
-            address: pros?.address || client.address || "",
-            operator: pros?.operator || client.operator || "",
+            client_site_id: site?.id || "",
+            address: pros?.address || site?.address || client.address || "",
+            operator: pros?.operator || site?.operator || client.operator || "",
+            pod: pros?.pod || site?.pod || client.pod || "",
+            cf_nr: site?.cf_nr || client.cf_nr || "", cadastral_nr: site?.cadastral_nr || client.cadastral_nr || "",
+            locality: site?.locality || client.locality || "", county: site?.county || client.county || "",
             power: pros?.inverter_kw || pros?.power || "",
             atr: pros?.atr || "",
             type: pros ? (hasStorage ? "Sistem fotovoltaic hibrid" : "Sistem fotovoltaic on-grid") : "",
@@ -352,7 +382,7 @@ export default function ModulePage({ moduleKey }) {
     if (key === "atr" && name === "client_name") {
       const client = (refOptions.clients || []).find((c) => c.label === value);
       if (!client) {
-        setForm((p) => ({ ...p, client_name: value, client_id: "", pros_id: "", pod: "", operator: "", address: "",
+        setForm((p) => ({ ...p, client_name: value, client_id: "", client_site_id: "", pros_id: "", pod: "", operator: "", address: "",
           cf_nr: "", cadastral_nr: "", kind: "", supply: "", p_abs_kw: "", pv_kw: "", p_evac_kw: "", request_type: "", deer_case: "" }));
         return;
       }
@@ -363,15 +393,18 @@ export default function ModulePage({ moduleKey }) {
         return [client.name, client.label].some((name) => pName && pName === normalize(name));
       });
       const linked = linkedPros.length === 1 ? linkedPros[0] : null;
+      const site = clientSiteFor(client, linked?.pod);
       const clientKind = String(client.kind || "").toLowerCase();
       const applicantType = /jurid/.test(clientKind) ? "Persoană juridică" : /fiz|persoan/.test(clientKind) ? "Persoană fizică" : "";
       const next = {
-        client_name: value, client_id: client.id,
-        pod: client.pod || linked?.pod || "",
-        operator: client.operator || linked?.operator || "",
-        address: client.address || linked?.address || "",
-        cf_nr: client.cf_nr || linked?.cf_nr || "",
-        cadastral_nr: client.cadastral_nr || linked?.cadastral_nr || "",
+        client_name: value, client_id: client.id, client_site_id: site?.id || "",
+        pod: site?.pod || client.pod || linked?.pod || "",
+        operator: site?.operator || client.operator || linked?.operator || "",
+        address: site?.address || client.address || linked?.address || "",
+        cf_nr: site?.cf_nr || client.cf_nr || linked?.cf_nr || "",
+        cadastral_nr: site?.cadastral_nr || client.cadastral_nr || linked?.cadastral_nr || "",
+        locality: site?.locality || client.locality || "", county: site?.county || client.county || "",
+        supplier: site?.supplier || client.supplier || "", nlc: site?.nlc || client.nlc || "",
         applicant_type: applicantType,
         pros_id: linked?.id || "",
         kind: "", supply: "", p_abs_kw: "", pv_kw: "", p_evac_kw: "", request_type: "", deer_case: "",
@@ -385,10 +418,21 @@ export default function ModulePage({ moduleKey }) {
         if (linked.power) next.p_evac_kw = linked.power;
         if (/spor/i.test(String(linked.request_type || ""))) {
           next.request_type = "dezvoltarea unui utilizator existent (spor de putere)";
-          if (/deer|distributie energie electrica romania/i.test(String(client.operator || linked?.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) next.deer_case = "Loc existent — spor de putere — Anexa 1";
+          if (/deer|distributie energie electrica romania/i.test(String(next.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) next.deer_case = "Loc existent — spor de putere — Anexa 1";
         }
       }
       setForm((p) => ({ ...p, ...next }));
+      return;
+    }
+    if (key === "power" && name === "client_name") {
+      const client = (refOptions.clients || []).find((item) => item.label === value);
+      if (!client) {
+        setForm((prev) => ({ ...prev, client_name: value, client_id: "", client_site_id: "", address: "", operator: "", pod: "" }));
+        return;
+      }
+      const site = clientSiteFor(client);
+      setForm((prev) => ({ ...prev, client_name: value, client_id: client.id, client_site_id: site?.id || "",
+        ...Object.fromEntries(CLIENT_SITE_FIELDS.map((field) => [field, site?.[field] || client[field] || ""])) }));
       return;
     }
     if (key === "atr" && name === "deer_case") {
@@ -550,6 +594,10 @@ export default function ModulePage({ moduleKey }) {
   const currentOperatorStageDocuments = operatorStageDocuments[String(currentOdStage)] || {};
   const currentOdGuidance = PROSUMER_OD_STAGE_GUIDANCE[currentOdStage] || [];
   const checkedOdGuidance = currentOdGuidance.filter((item) => currentOperatorStageDocuments[item]).length;
+  const formClient = form?.client_id ? (refOptions.clients || []).find((client) => client.id === form.client_id) : null;
+  const formClientSites = clientConsumptionSites(formClient);
+  const formClientSite = formClientSites.find((site) => String(site.id) === String(form?.client_site_id || ""))
+    || clientSiteFor(formClient, form?.pod);
 
   return (
     <div>
@@ -688,6 +736,18 @@ export default function ModulePage({ moduleKey }) {
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
             </div>
           )}
+          {["atr", "power"].includes(key) && formClient && formClientSites.length > 0 && <section className="mt-4 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="client-consumption-site-selector">
+            <label className="den-field"><span>Loc de consum al clientului</span>
+              <select className="den-input" value={form.client_site_id || formClientSite?.id || ""} onChange={(event) => {
+                const site = formClientSites.find((item) => String(item.id) === String(event.target.value));
+                if (!site) return;
+                setForm((prev) => ({ ...prev, client_site_id: site.id, ...Object.fromEntries(CLIENT_SITE_FIELDS.map((field) => [field, site[field] || ""])) }));
+              }} data-testid="client-consumption-site-select">
+                {formClientSites.map((site, index) => <option key={site.id} value={site.id}>{clientSiteLabel(site, index)}</option>)}
+              </select>
+            </label>
+            <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>POD-ul și adresa selectate se completează în cerere. Verifică valorile față de factura locului de consum.</p>
+          </section>}
           {key === "atr" && form.pod_check_note && <div className="mt-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>{form.pod_check_note}</div>}
 
           {cfg.checklist && key !== "prosumator" && key !== "diu" && (

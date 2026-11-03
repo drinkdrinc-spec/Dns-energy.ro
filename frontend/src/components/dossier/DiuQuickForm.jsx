@@ -5,6 +5,25 @@ import { hasConfiguredStorage } from "@/lib/cefStorage";
 const CORE = new Set(["client_name", "type", "power", "address", "operator", "atr", "status"]);
 const norm = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
 
+const SITE_FIELDS = ["address", "county", "locality", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc"];
+function clientSites(client) {
+  const saved = Array.isArray(client?.consumption_sites)
+    ? client.consumption_sites.filter((site) => site && typeof site === "object").map((site, index) => ({ ...site, id: String(site.id || ("saved-" + index)) }))
+    : [];
+  if (saved.length) return saved;
+  if (["address", "pod", "locality", "county"].some((key) => String(client?.[key] || "").trim())) {
+    return [{ id: "legacy", ...Object.fromEntries(SITE_FIELDS.map((key) => [key, client?.[key] || ""])) }];
+  }
+  return [];
+}
+function siteFor(client, preferredPod) {
+  const sites = clientSites(client);
+  const pod = String(preferredPod || "").replace(/\s+/g, "").toUpperCase();
+  return (pod && sites.find((site) => String(site.pod || "").replace(/\s+/g, "").toUpperCase() === pod)) || sites[0] || null;
+}
+const siteLabel = (site, index) => [site.address, site.locality, site.county, site.pod && ("POD " + site.pod)].filter(Boolean).join(" · ") || ("Loc de consum " + (index + 1));
+
+
 function Field({ f, form, setVal, refOptions }) {
   if (f.type === "section") return <h4 className="sm:col-span-2 mt-3 border-t pt-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h4>;
   const value = form[f.name] ?? "";
@@ -32,10 +51,16 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
   useEffect(() => {
     if (!selectedClient || linked.length !== 1 || form.pros_id) return;
     const p = linked[0];
+    const site = siteFor(selectedClient, p.pod);
+    const site = siteFor(selectedClient, p.pod);
     const hasBattery = hasConfiguredStorage(p);
     const values = {
-      address: p.address || selectedClient.address || "",
-      operator: p.operator || selectedClient.operator || "",
+      client_site_id: site?.id || "",
+      address: p.address || site?.address || selectedClient.address || "",
+      operator: p.operator || site?.operator || selectedClient.operator || "",
+      pod: p.pod || site?.pod || selectedClient.pod || "",
+      cf_nr: site?.cf_nr || selectedClient.cf_nr || "", cadastral_nr: site?.cadastral_nr || selectedClient.cadastral_nr || "",
+      locality: site?.locality || selectedClient.locality || "", county: site?.county || selectedClient.county || "",
       power: p.inverter_kw || p.power || p.cef?.total_kw || "",
       atr: p.atr || "",
       type: hasBattery ? "Sistem fotovoltaic hibrid" : "Sistem fotovoltaic on-grid",
@@ -60,8 +85,12 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
     const values = {
       client_name: selectedClient?.label || p.client_name || "",
       client_id: selectedClient?.id || p.client_id || "",
-      address: p.address || selectedClient?.address || "",
-      operator: p.operator || selectedClient?.operator || "",
+      client_site_id: site?.id || "",
+      address: p.address || site?.address || selectedClient?.address || "",
+      operator: p.operator || site?.operator || selectedClient?.operator || "",
+      pod: p.pod || site?.pod || selectedClient?.pod || "",
+      cf_nr: site?.cf_nr || selectedClient?.cf_nr || "", cadastral_nr: site?.cadastral_nr || selectedClient?.cadastral_nr || "",
+      locality: site?.locality || selectedClient?.locality || "", county: site?.county || selectedClient?.county || "",
       power: p.inverter_kw || p.power || p.cef?.total_kw || "",
       atr: p.atr || "",
       type: hasBattery ? "Sistem fotovoltaic hibrid" : "Sistem fotovoltaic on-grid",
@@ -72,11 +101,14 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
   };
   const chooseClient = (label) => {
     const client = clients.find((c) => c.label === label);
+    const site = siteFor(client);
     setVal("client_name", label);
     setVal("client_id", client?.id || "");
+    setVal("client_site_id", site?.id || "");
     setVal("pros_id", "");
-    setVal("address", client?.address || "");
-    setVal("operator", client?.operator || "");
+    for (const field of SITE_FIELDS) setVal(field, site?.[field] || client?.[field] || "");
+    setVal("address", site?.address || client?.address || "");
+    setVal("operator", site?.operator || client?.operator || "");
     setVal("status", form.status || "În lucru");
     const matches = pros.filter((p) => client && (p.client_id ? p.client_id === client.id : norm(p.client_name) === norm(label)));
     if (matches.length === 1) {
@@ -85,8 +117,11 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
         || p.cef?.inverters?.some((x) => x.battery_mode === "own" ? Boolean(x.battery?.model) : x.battery_mode === "shared" && Boolean(x.shared_battery_id)));
       setVal("pros_id", p.id);
       setVal("client_id", client.id);
+      const matchedSite = siteFor(client, p.pod);
+      setVal("client_site_id", matchedSite?.id || "");
+      for (const field of SITE_FIELDS) setVal(field, matchedSite?.[field] || client[field] || "");
       for (const [key, value] of Object.entries({
-        address: p.address || client.address || "", operator: p.operator || client.operator || "",
+        address: p.address || matchedSite?.address || client.address || "", operator: p.operator || matchedSite?.operator || client.operator || "",
         power: p.inverter_kw || p.power || p.cef?.total_kw || "", atr: p.atr || "",
         type: hasBattery ? "Sistem fotovoltaic hibrid" : "Sistem fotovoltaic on-grid",
         supply: p.supply || "", status: form.status || "În lucru",
@@ -105,6 +140,18 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
         <label className="den-field sm:col-span-2"><span>Beneficiar / client *</span><select className="den-input" value={form.client_name || ""} onChange={(e) => chooseClient(e.target.value)} data-testid="diu-client-select">
           <option value="">Selectează clientul...</option>{clients.map((c) => <option key={c.id} value={c.label}>{c.label}</option>)}
         </select></label>
+        {selectedClient && clientSites(selectedClient).length > 0 && <label className="den-field sm:col-span-2" data-testid="diu-consumption-site-selector"><span>Loc de consum al clientului</span>
+          <select className="den-input" value={form.client_site_id || siteFor(selectedClient, chosenPros?.pod)?.id || ""} onChange={(event) => {
+            const site = clientSites(selectedClient).find((item) => String(item.id) === String(event.target.value));
+            if (!site) return;
+            const currentPros = linked.find((item) => item.id === form.pros_id);
+            if (currentPros && site.pod && norm(currentPros.pod) !== norm(site.pod)) setVal("pros_id", "");
+            setVal("client_site_id", site.id);
+            for (const field of SITE_FIELDS) setVal(field, site[field] || "");
+          }} data-testid="diu-consumption-site-select">
+            {clientSites(selectedClient).map((site, index) => <option key={site.id} value={site.id}>{siteLabel(site, index)}</option>)}
+          </select>
+        </label>}
         {selectedClient && linked.length > 1 && <label className="den-field sm:col-span-2"><span>Dosar prosumator asociat</span><select className="den-input" value={form.pros_id || ""} onChange={(e) => choosePros(e.target.value)} data-testid="diu-pros-select">
           <option value="">Selectează locul de consum...</option>{linked.map((p) => <option key={p.id} value={p.id}>{p.number || "Dosar"} · POD {p.pod || "—"} · {p.address || p.client_name}</option>)}
         </select></label>}
