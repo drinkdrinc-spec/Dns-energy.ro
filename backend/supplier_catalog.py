@@ -228,29 +228,42 @@ async def _get(client: httpx.AsyncClient, url: str, host: str):
 
 
 def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
-    """Return the current listing URL and its bounded, same-page `?p=N` links."""
+    """Return a bounded set of same-query listing pages across common shop pagination styles."""
     base = urlparse(page_url)
+    base_query = parse_qs(base.query, keep_blank_values=True)
+    page_keys = ("p", "page", "paged", "product-page")
     urls = [page_url]
     seen = {page_url}
     pages = []
+    path_prefix = base.path.rstrip("/")
+    path_pattern = re.compile(rf"^{re.escape(path_prefix)}/page/(\d+)/?$") if path_prefix else re.compile(r"^/page/(\d+)/?$")
+
+    def without_page(query):
+        return {key: value for key, value in query.items() if key not in page_keys}
+
     for anchor in doc.xpath("//a[@href]"):
         url = urljoin(page_url, anchor.get("href", "").strip())
         parsed = urlparse(url)
-        if (not _safe_page(url, host) or parsed.path.rstrip("/") != base.path.rstrip("/")
-                or parsed.fragment):
+        if not _safe_page(url, host) or parsed.fragment:
             continue
-        values = parse_qs(parsed.query).get("p", [])
-        if len(values) != 1 or not values[0].isdigit():
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if without_page(query) != without_page(base_query):
             continue
-        page_number = int(values[0])
-        if not 1 <= page_number < MAX_LISTING_PAGES:
+        page_number = None
+        if parsed.path.rstrip("/") == base.path.rstrip("/"):
+            found = [(key, values) for key, values in query.items() if key in page_keys]
+            if len(found) == 1 and len(found[0][1]) == 1 and found[0][1][0].isdigit():
+                page_number = int(found[0][1][0])
+        else:
+            match = path_pattern.fullmatch(parsed.path)
+            if match:
+                page_number = int(match.group(1))
+        if page_number is None or not 1 <= page_number < MAX_LISTING_PAGES or url in seen:
             continue
-        if url not in seen:
-            pages.append((page_number, url))
-            seen.add(url)
+        pages.append((page_number, url))
+        seen.add(url)
     urls.extend(url for _, url in sorted(pages)[:MAX_LISTING_PAGES - 1])
     return urls
-
 
 async def search_supplier_products(query: str, category: str) -> dict:
     query = re.sub(r"\s+", " ", (query or "").strip())[:100]
@@ -272,13 +285,11 @@ async def search_supplier_products(query: str, category: str) -> dict:
                 doc = html.fromstring(response.content)
             except (ValueError, TypeError):
                 continue
-            listing_responses = [response]
-            if not source.get("search"):
-                page_urls = _listing_page_urls(doc, str(response.url), source["host"])
-                extra_responses = await asyncio.gather(*[
-                    _get(client, page_url, source["host"]) for page_url in page_urls[1:]
-                ])
-                listing_responses.extend(page for page in extra_responses if page)
+            page_urls = _listing_page_urls(doc, str(response.url), source["host"])
+            extra_responses = await asyncio.gather(*[
+                _get(client, page_url, source["host"]) for page_url in page_urls[1:]
+            ])
+            listing_responses = [response, *[page for page in extra_responses if page]]
             seen = set()
             for listing_response in listing_responses:
                 try:

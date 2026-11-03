@@ -28,6 +28,41 @@ def test_listing_pages_are_bounded_and_stay_on_the_same_category():
     ]
 
 
+
+def test_listing_pages_support_solarhev_query_parameter_pagination():
+    page = html.fromstring("""
+        <nav>
+          <a href="/?s=deye&post_type=product&page=2">2</a>
+          <a href="/?s=other&post_type=product&page=3">unrelated query</a>
+          <a href="https://attacker.example/?s=deye&post_type=product&page=4">external</a>
+          <a href="/?s=deye&post_type=product&page=99">out of bounds</a>
+        </nav>
+    """)
+    current = "https://solarhev.ro/?s=deye&post_type=product"
+
+    assert supplier_catalog._listing_page_urls(page, current, "solarhev.ro") == [
+        current,
+        "https://solarhev.ro/?s=deye&post_type=product&page=2",
+    ]
+
+
+def test_listing_pages_support_solartech_path_pagination():
+    page = html.fromstring("""
+        <nav>
+          <a href="/invertoare-fotovoltaice/page/2/">2</a>
+          <a href="/panouri-fotovoltaice/page/3/">other category</a>
+          <a href="https://attacker.example/invertoare-fotovoltaice/page/4/">external</a>
+          <a href="/invertoare-fotovoltaice/page/99/">out of bounds</a>
+        </nav>
+    """)
+    current = "https://solartech.ro/invertoare-fotovoltaice/"
+
+    assert supplier_catalog._listing_page_urls(page, current, "solartech.ro") == [
+        current,
+        "https://solartech.ro/invertoare-fotovoltaice/page/2/",
+    ]
+
+
 def test_supplier_search_finds_model_on_later_depozit_solar_page(monkeypatch):
     category_url = "https://depozitsolar.ro/invertoare"
     page_two_url = category_url + "?p=1"
