@@ -18,6 +18,7 @@ import re
 import bcrypt
 import jwt
 import requests
+from client_search import build_client_search_query, NUMERIC_CLIENT_SEARCH_FIELDS
 import io
 import zipfile
 from datetime import datetime, timezone, timedelta
@@ -481,16 +482,7 @@ async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), 
     if len(term) < 2:
         return {"results": [], "unavailable": []}
     guard("clients", user)
-    if term.isdigit():
-        # Prefix regexes on numeric identifiers are case-sensitive and can use
-        # owner+field indexes, avoiding a scan of every tenant record for CNP/POD/phone.
-        pattern = re.compile("^" + re.escape(term))
-        fields = ("idcode", "cnp", "id_number", "phone", "pod")
-    else:
-        pattern = re.compile(re.escape(term), re.IGNORECASE)
-        fields = ("name", "email", "phone", "pod", "address", "locality", "county")
-    field_query = {"$or": [{field: pattern} for field in fields]}
-    query = {"$and": [scope_q(user, "clients"), field_query, {"is_test": {"$ne": True}}, {"name": {"$not": re.compile(r"\bTEST\b", re.I)}}]}
+    query = build_client_search_query(scope_q(user, "clients"), term)
     projection = {"_id": 0, "id": 1, "name": 1, "pod": 1, "phone": 1, "email": 1,
                   "address": 1, "locality": 1, "county": 1, "is_test": 1}
     rows = await db.clients.find(query, projection).sort("updated_at", -1).limit(8).to_list(8)
@@ -2954,7 +2946,7 @@ async def startup():
         # Keep tenant-scoped list and quick-search sorts efficient as collections grow.
         await db[m].create_index([("owner", 1), ("created_at", -1)], name="owner_created_at")
         await db[m].create_index([("owner", 1), ("updated_at", -1)], name="owner_updated_at")
-    for field in ("idcode", "cnp", "id_number", "phone", "pod"):
+    for field in NUMERIC_CLIENT_SEARCH_FIELDS:
         await db.clients.create_index([("owner", 1), (field, 1)], name=f"owner_{field}")
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
