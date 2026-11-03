@@ -289,7 +289,6 @@ async def ai_od_check(module: str, item_id: str, user: dict = Depends(get_curren
 
 @api.post("/ai/catalog/{item_id}/extract")
 async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user)):
-    ai_need(user)
     S.guard("catalog", user, write=True)
     item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
     if not item:
@@ -348,6 +347,7 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
     )
     engine = "openai"
     try:
+        ai_need(user)
         async def extract_with_ai():
             chat = new_chat("Ești extractor literal de date tehnice. Nu inventa și nu deduce.", [])
             message = UserMessage(text=prompt, file_contents=visual_pages) if visual_pages else UserMessage(text=prompt)
@@ -360,12 +360,19 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
             return _parse(raw)
         extracted = await asyncio.wait_for(extract_with_ai(), timeout=25)
     except HTTPException as exc:
-        if exc.status_code != 503:
+        if exc.status_code == 403:
+            # Catalog text extraction is a local feature; AI entitlement is needed only for the model-assisted path.
+            extracted = extract_equipment_specs(category, source_text)
+            if not extracted:
+                raise HTTPException(status_code=403, detail="Pentru această fișă nu am găsit valori etichetate lizibile. Extragerea imaginilor scanate necesită funcția AI.")
+            engine = "local_text"
+        elif exc.status_code == 503:
+            extracted = extract_equipment_specs(category, source_text)
+            if not extracted:
+                raise HTTPException(status_code=503, detail="AI-ul nu este configurat. Pentru acest PDF nu am găsit suficiente valori etichetate pentru extragere locală; configurează OPENAI_API_KEY sau completează modelul manual.")
+            engine = "local_text"
+        else:
             raise
-        extracted = extract_equipment_specs(category, source_text)
-        if not extracted:
-            raise HTTPException(status_code=503, detail="AI-ul nu este configurat. Pentru acest PDF nu am găsit suficiente valori etichetate pentru extragere locală; configurează OPENAI_API_KEY sau completează modelul manual.")
-        engine = "local_text"
     except Exception:
         logger.exception("Equipment datasheet extraction failed")
         extracted = extract_equipment_specs(category, source_text)
