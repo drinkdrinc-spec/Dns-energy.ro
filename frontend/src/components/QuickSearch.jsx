@@ -94,7 +94,7 @@ export function QuickSearch() {
           <Search size={19} style={{ color: "var(--blue)" }} />
           <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => { if (event.key === "Enter" && results[0]) { navigate(results[0].href); close(); } }}
-            className="h-14 min-w-0 flex-1 bg-transparent text-sm outline-none" placeholder="Nume, telefon, email, CNP, POD sau număr…"
+            className="h-14 min-w-0 flex-1 bg-transparent text-sm outline-none" placeholder="Nume, CI/CUI, telefon, email, POD sau număr de dosar…"
             aria-label="Caută în clienți și dosare" data-testid="quick-search-input" autoComplete="off" />
           {loading && <Loader2 size={17} className="animate-spin" aria-label="Se caută" />}
           <button type="button" onClick={close} aria-label="Închide căutarea" className="rounded-md p-2 hover:bg-slate-100"><X size={17} /></button>
