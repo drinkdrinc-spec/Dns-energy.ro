@@ -716,11 +716,23 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                     except (httpx.HTTPError, ValueError) as exc:
                         note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
                 if op_key == "rer" and ATR.storage_details(pros, rec):
-                    note.append(
-                        "Instalația de stocare declarată și datele tehnice disponibile apar în fișa de precompletare. "
-                        "Anexa tehnică separată pentru stocare nu se adaugă automat; confirmați cu operatorul dacă este "
-                        f"necesară pentru categoria și invertorul concret: {RER_STORAGE_FORM_URL}"
-                    )
+                    storage_form = {
+                        "title": "Anexa oficială Rețele Electrice pentru instalațiile de stocare (referință normativă)",
+                        "url": RER_STORAGE_FORM_URL,
+                    }
+                    try:
+                        storage_pdf, storage_name = await _fetch_registry_annex(storage_form, op_key)
+                        storage_folder = "Documente informative/Referință normativă pentru stocare"
+                        archive.writestr(f"{storage_folder}/{storage_name}", storage_pdf)
+                        completed_storage, storage_fields = _prefill_official_pdf(storage_pdf, rec, client, pros)
+                        if storage_fields:
+                            storage_stem = re.sub(r"[^A-Za-z0-9_-]+", "_", storage_name.rsplit(".", 1)[0]).strip("_")
+                            archive.writestr(f"{storage_folder}/{storage_stem}_completata.pdf", completed_storage)
+                            note.append(f"Anexa normativă oficială pentru stocare a fost inclusă ca referință, cu {storage_fields} câmpuri etichetate precompletate; originalul este păstrat.")
+                        else:
+                            note.append("Anexa normativă oficială pentru stocare a fost inclusă separat și necompletată ca referință. Nu confirmă că este obligatorie pentru categoria instalației sau solicitarea selectată; verificați aplicabilitatea la operator.")
+                    except (httpx.HTTPError, ValueError) as exc:
+                        note.append(f"Anexa oficială de stocare nu a putut fi preluată acum; verificați aplicabilitatea și descărcați-o de aici: {RER_STORAGE_FORM_URL} ({exc})")
             elif annex_no:
                 note.append(f"Nu există în registru un formular oficial Anexa {annex_no} verificabil pentru operatorul și tipul cererii selectate.")
                 official_pages = {
