@@ -684,7 +684,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     mono = await db.mono.count_documents(scope_q(user, "mono"))
     pending = await db.diu.count_documents({**owner, "status": {"$in": ["În lucru", "Documente de completat", "În verificare"]}})
     test_dossier_filter = {"$nor": [
-        {"client_name": {"$regex": r"^\\s*TEST\\s*[—-]", "$options": "i"}},
+        {"client_name": {"$regex": r"^TEST", "$options": "i"}},
         {"number": {"$regex": r"^TEST[-_]", "$options": "i"}},
     ]}
     recent = await db.diu.find({**owner, **test_dossier_filter}).sort("created_at", -1).to_list(5)
