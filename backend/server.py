@@ -732,8 +732,36 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
             })
     inbox.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
 
+    # Full workload summaries for the dashboard; unlike the inbox, these are
+    # aggregate counts over every non-test record in the user's own scope.
+    stage_counts = {}
+    operator_counts = {}
+    stage_expr = {"$let": {"vars": {"value": {"$ifNull": ["$status", "$operator_stage"]}},
+                           "in": {"$cond": [{"$or": [{"$eq": ["$$value", None]}, {"$eq": ["$$value", ""]}]}, "În lucru", "$$value"]}}}
+    operator_expr = {"$let": {"vars": {"value": {"$ifNull": ["$operator", {"$ifNull": ["$operator_name", "$distributor"]}]}},
+                              "in": {"$cond": [{"$or": [{"$eq": ["$$value", None]}, {"$eq": ["$$value", ""]}]}, "Operator necompletat", "$$value"]}}}
+    for module, _label in inbox_modules:
+        match = {**scope_q(user, module), **test_dossier_filter}
+        for row in await db[module].aggregate([
+            {"$match": match},
+            {"$project": {"group": stage_expr}},
+            {"$group": {"_id": "$group", "count": {"$sum": 1}}},
+        ]).to_list(length=None):
+            stage = str(row.get("_id") or "În lucru")
+            stage_counts[stage] = stage_counts.get(stage, 0) + int(row.get("count") or 0)
+        for row in await db[module].aggregate([
+            {"$match": match},
+            {"$project": {"group": operator_expr}},
+            {"$group": {"_id": "$group", "count": {"$sum": 1}}},
+        ]).to_list(length=None):
+            operator = str(row.get("_id") or "Operator necompletat")
+            operator_counts[operator] = operator_counts.get(operator, 0) + int(row.get("count") or 0)
+
     return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
-            "recent": [clean(r) for r in recent], "inbox": inbox[:12]}
+            "recent": [clean(r) for r in recent], "inbox": inbox[:12],
+            "total_dossiers": sum(stage_counts.values()),
+            "stage_counts": dict(sorted(stage_counts.items(), key=lambda item: (-item[1], item[0]))),
+            "operator_counts": dict(sorted(operator_counts.items(), key=lambda item: (-item[1], item[0])))}
 
 # ---------------- Settings (singleton per owner) ----------------
 PRIVATE = ("staff", "instruments")
@@ -3292,3 +3320,4 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
+

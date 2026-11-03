@@ -183,10 +183,41 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Stat label="Clienți înregistrați" value={s.clients} foot="În baza de date" icon={Users} />
-        <Stat label="Dosare DI-U" value={s.diu} foot="Dosare de lucru" icon={FolderOpen} />
+        <Stat label="Dosare active" value={s.total_dossiers ?? (s.diu + s.mono)} foot="Prosumator, ATR, spor, DI-U și scheme" icon={FolderOpen} />
         <Stat label="Scheme monofilare" value={s.mono} foot="Înregistrări" icon={GitBranch} />
         <Stat label="De verificat" value={s.pending} foot="Documente incomplete" color="var(--amber)" icon={AlertTriangle} />
       </div>
+
+      <section className="den-panel mb-6" aria-labelledby="dashboard-workload-title" data-testid="dashboard-workload">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--blue)" }}>VIZIBILITATE OPERAȚIONALĂ</div>
+            <h2 id="dashboard-workload-title" className="text-lg font-bold">Dosare pe stadiu și operator</h2>
+            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>Numără toate dosarele din cont; în lista de mai jos apar cele actualizate cel mai recent.</p>
+          </div>
+          <span className="shrink-0 text-xs font-semibold" style={{ color: "var(--muted)" }}>{s.total_dossiers ?? 0} total</span>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: "var(--muted)" }}>Stadiu dosar</h3>
+            {Object.entries(s.stage_counts || {}).length ? <div className="space-y-3">
+              {Object.entries(s.stage_counts || {}).map(([label, count]) => {
+                const max = Math.max(...Object.values(s.stage_counts || {}).map(Number), 1);
+                return <div key={label}>
+                  <div className="flex justify-between gap-3 text-xs mb-1"><span className="truncate">{label}</span><b>{count}</b></div>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg)" }}><div className="h-full rounded-full" style={{ width: `${Math.max(4, Number(count) / max * 100)}%`, background: "var(--blue)" }} /></div>
+                </div>;
+              })}
+            </div> : <p className="text-sm" style={{ color: "var(--muted)" }}>Nu există încă dosare în lucru.</p>}
+          </div>
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: "var(--muted)" }}>Operator de distribuție</h3>
+            {Object.entries(s.operator_counts || {}).length ? <div className="divide-y" style={{ borderColor: "var(--line)" }}>
+              {Object.entries(s.operator_counts || {}).map(([label, count]) => <div key={label} className="flex items-center justify-between gap-3 py-2 text-sm"><span className="truncate">{label}</span><b className="shrink-0">{count}</b></div>)}
+            </div> : <p className="text-sm" style={{ color: "var(--muted)" }}>Operatorii apar aici după adăugarea dosarelor.</p>}
+          </div>
+        </div>
+      </section>
 
       <AtrDeadlines />
 
@@ -348,3 +379,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
