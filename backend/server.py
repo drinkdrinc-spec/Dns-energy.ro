@@ -679,14 +679,20 @@ async def delete_item(module: str, item_id: str, user: dict = Depends(get_curren
 @api_router.get("/stats/dashboard")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
     owner = scope_q(user, "diu")
-    test_dossier_filter = {"$nor": [
-        {"client_name": {"$regex": r"^TEST", "$options": "i"}},
-        {"number": {"$regex": r"^TEST[-_]", "$options": "i"}},
+    test_dossier_filter = {"$and": [
+        {"is_test": {"$ne": True}},
+        {"$nor": [
+            {"client_name": {"$regex": r"^TEST", "$options": "i"}},
+            {"number": {"$regex": r"^TEST[-_]", "$options": "i"}},
+        ]},
     ]}
-    client_test_filter = {"$nor": [
-        {"name": {"$regex": r"^TEST", "$options": "i"}},
-        {"client_name": {"$regex": r"^TEST", "$options": "i"}},
-        {"company_name": {"$regex": r"^TEST", "$options": "i"}},
+    client_test_filter = {"$and": [
+        {"is_test": {"$ne": True}},
+        {"$nor": [
+            {"name": {"$regex": r"^TEST", "$options": "i"}},
+            {"client_name": {"$regex": r"^TEST", "$options": "i"}},
+            {"company_name": {"$regex": r"^TEST", "$options": "i"}},
+        ]},
     ]}
     clients = await db.clients.count_documents({**scope_q(user, "clients"), **client_test_filter})
     diu = await db.diu.count_documents({**owner, **test_dossier_filter})
