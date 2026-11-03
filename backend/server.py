@@ -485,10 +485,23 @@ async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), 
     queries = build_client_search_queries(scope_q(user, "clients"), term)
     projection = {"_id": 0, "id": 1, "name": 1, "pod": 1, "phone": 1, "email": 1,
                   "address": 1, "locality": 1, "county": 1, "is_test": 1, "updated_at": 1}
-    query_rows = await asyncio.gather(*(
-        db.clients.find(query, projection).sort("updated_at", -1).limit(8).to_list(8)
-        for query in queries
-    ))
+
+    async def fetch_matches(query: dict, indexed_field: str | None = None):
+        cursor = db.clients.find(query, projection)
+        if indexed_field:
+            # Keep prefix searches on owner+field indexes. Without the hint,
+            # the planner may choose owner+updated_at and scan every client
+            # belonging to this tenant before applying the identifier filter.
+            cursor = cursor.hint(f"owner_{indexed_field}")
+        return await cursor.sort("updated_at", -1).limit(8).to_list(8)
+
+    if term.isdigit():
+        query_rows = await asyncio.gather(*(
+            fetch_matches(query, field)
+            for query, field in zip(queries, NUMERIC_CLIENT_SEARCH_FIELDS)
+        ))
+    else:
+        query_rows = await asyncio.gather(*(fetch_matches(query) for query in queries))
     by_id = {}
     for rows in query_rows:
         for row in rows:
