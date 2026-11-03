@@ -121,8 +121,18 @@ KEYS = ("client_name", "address", "county", "pod", "operator", "power", "apparen
         "panels", "panel_count", "panel_w", "battery", "grounding_ohm", "grounding_limit", "atr", "afm", "pif_date", "receptie_date", "doc_date", "status")
 
 
-async def dossier_summary(user: dict, item_id: str) -> dict:
+async def dossier_summary(user: dict, item_id: str, draft: dict = None) -> dict:
     rec, client, settings, info = await S.dossier_ctx(user, item_id)
+    # The precheck may include unsaved form changes. Merge only known dossier fields
+    # into this in-memory copy; the AI review must never write technical values.
+    if isinstance(draft, dict):
+        for key in KEYS:
+            if key in draft:
+                rec[key] = draft[key]
+        if isinstance(draft.get("cef"), dict):
+            rec["cef"] = draft["cef"]
+        if isinstance(draft.get("pif"), dict):
+            rec["pif"] = draft["pif"]
     chk = CEF.check(rec.get("cef") or {})
     return {"date_dosar": {k: rec.get(k) for k in KEYS if rec.get(k) not in (None, "")},
             "client": {k: client.get(k) for k in ("name", "kind", "address", "county", "phone", "email") if client.get(k)},
@@ -517,10 +527,15 @@ async def save_ack(user, module, item_id, request):
 
 
 @api.post("/ai/dossier/{item_id}/precheck")
-async def ai_precheck(item_id: str, user: dict = Depends(get_current_user)):
+async def ai_precheck(item_id: str, request: Request, user: dict = Depends(get_current_user)):
     ai_need(user)
     S.guard("prosumator", user, write=True)
-    items = await run_precheck(await dossier_summary(user, item_id), "dosarul de prosumator înainte de FINALIZARE")
+    try:
+        body = await request.json()
+        draft = body.get("form") if isinstance(body, dict) else None
+    except Exception:
+        draft = None
+    items = await run_precheck(await dossier_summary(user, item_id, draft), "dosarul de prosumator înainte de FINALIZARE")
     pc = {"at": now(), "by": user.get("email"), "items": items, "checked": []}
     await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {"ai_precheck": pc}})
     return pc
