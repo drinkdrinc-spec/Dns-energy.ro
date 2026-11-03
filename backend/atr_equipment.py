@@ -21,7 +21,11 @@ def from_request(rec: dict | None) -> dict:
         return {}
     inverters = [item for item in (cef.get("inverters") or []) if isinstance(item, dict)]
     batteries = [item for item in (cef.get("shared_batteries") or []) if isinstance(item, dict)]
-    if not inverters and not batteries:
+    own_battery = any(
+        inv.get("battery_mode") == "own" and isinstance(inv.get("battery"), dict) and inv["battery"].get("model")
+        for inv in inverters
+    )
+    if not inverters and not batteries and not own_battery:
         return {}
     total_panels = 0
     total_kwp = 0.0
@@ -33,9 +37,6 @@ def from_request(rec: dict | None) -> dict:
         total_panels += int(panels * count)
         total_kwp += panels * max(0.0, _number(inverter.get("panel_w"))) * count / 1000
         total_inverter_kw += max(0.0, _number(inverter.get("p_nom_kw"))) * count
-        battery = inverter.get("battery") or {}
-        if inverter.get("battery_mode") == "own" and isinstance(battery, dict) and battery.get("model"):
-            batteries.append(battery)
     snapshot = {
         "cef": cef,
         "operator": rec.get("operator") or "",
@@ -50,6 +51,4 @@ def from_request(rec: dict | None) -> dict:
         "panel_kwp": round(total_kwp, 4) if total_kwp > 0 else "",
         "inverter_kw": round(total_inverter_kw, 4) if total_inverter_kw > 0 else "",
     }
-    if batteries:
-        snapshot["cef"] = {**cef, "shared_batteries": batteries}
     return snapshot
