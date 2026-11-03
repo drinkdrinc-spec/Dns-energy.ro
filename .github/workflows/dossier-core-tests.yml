@@ -6,6 +6,8 @@ on:
     paths:
       - "backend/atr_doc.py"
       - "backend/atr_routes.py"
+      - "backend/atr_equipment.py"
+      - "backend/tests/test_atr_equipment_direct_catalog.py"
       - "backend/cef.py"
       - "backend/docgen.py"
       - "backend/diu_doc.py"
@@ -68,6 +70,7 @@ jobs:
           tests/test_deer_annex2_battery.py
           tests/test_pram_document_truthfulness.py
           tests/test_supplier_catalog.py
+          tests/test_atr_equipment_direct_catalog.py
   frontend-build:
     runs-on: ubuntu-latest
     defaults:
