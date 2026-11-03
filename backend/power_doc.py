@@ -82,7 +82,7 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, o
     T = lambda rows, w: D.pdf_table(rows, w, True, 7.6, 178)
     story = [P(f"Anexa 1 — procedură de racordare a prosumatorilor (Ordinul ANRE nr. 19/2022, cu modificările ulterioare) — model automat pentru <b>{escape(OP_NAMES.get(op, 'operator de distribuție neselectat'))}</b>" + (" (model Delgaz Grid — cerere de racordare prosumator)" if op == "delgaz" else ""), "small"), P("Nr. înregistrare ____________ / Data ____________", "small"),
              P("CERERE DE RACORDARE", "h"),
-             P("pentru un loc de consum şi de producere care deţine instalaţii de producere a energiei electrice din surse regenerabile cu puteri electrice instalate de cel mult 27 kW pe loc de consum", "sub"),
+             P("pentru un loc de consum şi de producere care deţine instalaţii de producere a energiei electrice din surse regenerabile cu puteri electrice instalate de cel mult 400 kW pe loc de consum", "sub"),
              P(f"{box(new)} Loc de consum şi de producere nou<br/>{box(not new)} Loc de consum existent cu modificarea unor elemente de natură tehnică cu depăşirea puterii absorbite aprobate anterior"),
              P(f"Utilizatorul <b>{g(c, 'name')}</b>, cu domiciliul/sediul în judeţul {g(c, 'county')}, localitatea {g(c, 'locality')}, adresa {g(c, 'address')}, "
                f"codul poştal {g(c, 'postal_code')}, telefon {g(c, 'phone')}, cod fiscal/CNP {g(c, 'idcode')}, nr. registrul comerţului {g(c, 'regcom') if c.get('regcom') else '—'}, "
