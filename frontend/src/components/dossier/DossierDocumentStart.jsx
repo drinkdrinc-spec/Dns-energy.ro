@@ -13,6 +13,62 @@ const TYPES = [
 ];
 
 const EMPTY = { client_name: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", request_type: "Racordare prosumator — fără spor de putere" };
+const COUNTY_OPERATOR = {
+  bihor: "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
+  "bistrita nasaud": "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
+  cluj: "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
+  maramures: "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
+  "satu mare": "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
+  salaj: "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
+  alba: "Distribuție Energie Electrică Romania Sucursala Transilvania Sud",
+  brasov: "Distribuție Energie Electrică Romania Sucursala Transilvania Sud",
+  covasna: "Distribuție Energie Electrică Romania Sucursala Transilvania Sud",
+  harghita: "Distribuție Energie Electrică Romania Sucursala Transilvania Sud",
+  mures: "Distribuție Energie Electrică Romania Sucursala Transilvania Sud",
+  sibiu: "Distribuție Energie Electrică Romania Sucursala Transilvania Sud",
+  braila: "Distribuție Energie Electrică Romania Sucursala Muntenia Nord",
+  buzau: "Distribuție Energie Electrică Romania Sucursala Muntenia Nord",
+  dambovita: "Distribuție Energie Electrică Romania Sucursala Muntenia Nord",
+  galati: "Distribuție Energie Electrică Romania Sucursala Muntenia Nord",
+  prahova: "Distribuție Energie Electrică Romania Sucursala Muntenia Nord",
+  vrancea: "Distribuție Energie Electrică Romania Sucursala Muntenia Nord",
+  bacau: "Delgaz Grid S.A.",
+  botosani: "Delgaz Grid S.A.",
+  iasi: "Delgaz Grid S.A.",
+  neamt: "Delgaz Grid S.A.",
+  suceava: "Delgaz Grid S.A.",
+  vaslui: "Delgaz Grid S.A.",
+  arges: "Distribuție Energie Oltenia S.A.",
+  dolj: "Distribuție Energie Oltenia S.A.",
+  gorj: "Distribuție Energie Oltenia S.A.",
+  mehedinti: "Distribuție Energie Oltenia S.A.",
+  olt: "Distribuție Energie Oltenia S.A.",
+  teleorman: "Distribuție Energie Oltenia S.A.",
+  valcea: "Distribuție Energie Oltenia S.A.",
+  arad: "Rețele Electrice Banat S.A.",
+  "caras severin": "Rețele Electrice Banat S.A.",
+  hunedoara: "Rețele Electrice Banat S.A.",
+  timis: "Rețele Electrice Banat S.A.",
+  calarasi: "Rețele Electrice Dobrogea S.A.",
+  constanta: "Rețele Electrice Dobrogea S.A.",
+  ialomita: "Rețele Electrice Dobrogea S.A.",
+  tulcea: "Rețele Electrice Dobrogea S.A.",
+  giurgiu: "Rețele Electrice Muntenia S.A.",
+  ilfov: "Rețele Electrice Muntenia S.A.",
+  bucuresti: "Rețele Electrice Muntenia S.A.",
+};
+const normalizeLocation = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim().replace(/^(jud(?:etul)?|municipiul|mun) /, "");
+function distributorSuggestion(pod, county) {
+  const code = String(pod || "").replace(/\s+/g, "").toUpperCase();
+  if (code.startsWith("RO001E")) return "Rețele Electrice Muntenia S.A.";
+  if (code.startsWith("RO002E")) return "Rețele Electrice Dobrogea S.A.";
+  if (code.startsWith("RO005E")) return "Rețele Electrice Banat S.A.";
+  if (code.startsWith("EMO3")) return "Delgaz Grid S.A.";
+  if (/^\d{26}$/.test(code)) return "Distribuție Energie Oltenia S.A.";
+  const countyOperator = COUNTY_OPERATOR[normalizeLocation(county)] || "";
+  if (/^5940\d{14}$/.test(code)) return countyOperator.startsWith("Distribuție Energie Electrică Romania") ? countyOperator : "DEER — sucursală de confirmat";
+  return countyOperator;
+}
 
 // Some mobile document pickers report a blank or generic MIME type even when the
 // filename is a supported PDF/image. Use the extension as a safe fallback.
@@ -34,6 +90,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [clientSearch, setClientSearch] = useState("");
   const [clientMatches, setClientMatches] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
+  const [operatorManuallySet, setOperatorManuallySet] = useState(false);
   const inputs = useRef({});
 
   useEffect(() => { if (autoOpen) setOpen(true); }, [autoOpen]);
@@ -44,7 +101,8 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       const { data: client } = await api.get(`/data/clients/${encodeURIComponent(result.id)}`);
       const selected = { ...client, title: client.name || result.title, detail: result.detail };
       setSelectedClient(selected); setClientSearch(""); setClientMatches([]);
-      setValues((prev) => ({ ...EMPTY, ...prev, client_id: selected.id, client_name: selected.title || "", cnp: selected.idcode || selected.cui || "", id_series: selected.id_series || "", id_number: selected.id_number || "", phone: selected.phone || "", email: selected.email || "", hq_address: selected.hq_address || "", address: selected.address || "", county: selected.county || "", locality: selected.locality || "", pod: selected.pod || "", cf_nr: selected.cf_nr || "", cadastral_nr: selected.cadastral_nr || "" }));
+      setValues((prev) => ({ ...EMPTY, ...prev, client_id: selected.id, client_name: selected.title || "", cnp: selected.idcode || selected.cui || "", id_series: selected.id_series || "", id_number: selected.id_number || "", phone: selected.phone || "", email: selected.email || "", hq_address: selected.hq_address || "", address: selected.address || "", county: selected.county || "", locality: selected.locality || "", pod: selected.pod || "", operator: selected.operator || distributorSuggestion(selected.pod, selected.county), cf_nr: selected.cf_nr || "", cadastral_nr: selected.cadastral_nr || "" }));
+      setOperatorManuallySet(Boolean(selected.operator));
     } catch (error) {
       toast.error(error.response?.data?.detail || "Nu am putut încărca datele clientului selectat.");
     } finally { setBusy(""); }
@@ -110,6 +168,10 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         if (kind === "factura") mergedValues = putNonempty(mergedValues, { client_name: mergedValues.client_name || x.client_name, cnp: mergedValues.cnp || x.cnp,
           address: mergedValues.address_same_as_ci ? mergedValues.hq_address : x.consumption_address || x.address, pod: x.pod, operator: x.operator, supplier: x.supplier,
           county: mergedValues.county || x.county, locality: mergedValues.locality || x.locality, phone: mergedValues.phone || x.phone, email: mergedValues.email || x.email });
+        if (kind === "factura" && !operatorManuallySet) {
+          const suggestion = distributorSuggestion(mergedValues.pod, mergedValues.county);
+          if (suggestion) mergedValues = { ...mergedValues, operator: suggestion };
+        }
         if (kind === "cf") mergedValues = putNonempty(mergedValues, { cf_nr: x.cf_nr, cadastral_nr: x.cadastral_nr,
           client_name: mergedValues.client_name || x.owner_name });
         if (kind === "altele" && x.summary) summaries.push(`${file.name}: ${x.doc_type || "document"} — ${x.summary}`);
@@ -129,6 +191,10 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           }
         }
       }
+    }
+    if (!operatorManuallySet) {
+      const suggestion = distributorSuggestion(mergedValues.pod, mergedValues.county);
+      if (suggestion) mergedValues = { ...mergedValues, operator: suggestion };
     }
     setFiles((prev) => ({ ...prev, [kind]: mergedFiles }));
     setValues(mergedValues);
@@ -158,23 +224,24 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       toast.success("Clientul și dosarul au fost create cu documentele în opis.");
       setOpen(false); setStep(0); onCreated(data);
       setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
-      setSelectedClient(null); setClientSearch("");
+      setSelectedClient(null); setClientSearch(""); setOperatorManuallySet(false);
     } catch (e) { toast.error(e.response?.data?.detail || "Nu am putut crea dosarul"); }
     finally { setBusy(""); }
   };
 
   const field = (key, label) => <label className="den-field" key={key}><span>{label}</span>
-    <input className="den-input" value={values[key] || ""} onChange={(e) => setValues((prev) => {
-      const next = { ...prev, [key]: e.target.value };
-      if (key === "hq_address" && prev.address_same_as_ci) next.address = e.target.value;
-      if (key === "pod" && !String(prev.operator || "").trim()) {
-        const pod = e.target.value.trim().toUpperCase();
-        if (pod.startsWith("RO001")) next.operator = "Rețele Electrice Muntenia S.A.";
-        else if (pod.startsWith("RO002")) next.operator = "Rețele Electrice Dobrogea S.A.";
-        else if (pod.startsWith("RO005")) next.operator = "Rețele Electrice Banat S.A.";
+    <input className="den-input" value={values[key] || ""} onChange={(e) => {
+      const value = e.target.value;
+      if (key === "operator") setOperatorManuallySet(Boolean(value.trim()));
+      setValues((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "hq_address" && prev.address_same_as_ci) next.address = value;
+      if ((key === "pod" || key === "county") && !operatorManuallySet) {
+        next.operator = distributorSuggestion(next.pod, next.county);
       }
       return next;
-    })} data-testid={`intake-${key}`} /></label>;
+    });
+    }} data-testid={`intake-${key}`} /></label>;
 
   return <>
     <Btn variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Începe dosarul din documente</Btn>
@@ -239,6 +306,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
               {field("address", "Adresa locului de consum")}{field("pod", "POD")}
               {field("operator", "Operator de distribuție")}{field("county", "Județ")}{field("locality", "Localitate")}
             </div>
+            <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Operatorul se propune după prefixul POD-ului sau județul din factură. Verifică propunerea; pentru rețele locale sau industriale selectează operatorul indicat în actele locului de consum.</p>
             <label className="mt-3 inline-flex items-center gap-2 text-xs font-medium" data-testid="intake-address-same-as-ci">
               <input type="checkbox" checked={values.address_same_as_ci === true} onChange={(e) => setValues((prev) => ({
                 ...prev, address_same_as_ci: e.target.checked,
@@ -272,4 +340,5 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     </Dialog>
   </>;
 }
+
 
