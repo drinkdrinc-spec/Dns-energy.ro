@@ -3235,3 +3235,253 @@ def evidence_page(r: dict, sig_png: bytes, meta: dict, declared: str, signed_at:
     for k, v in rows:
         c.setFont("LSB", 8.5); c.drawString(50, y, k)
         c.setFont("LS", 8.5)
+        txt = str(v)
+        while txt:
+            part = txt[:85]; txt = txt[85:]
+            c.drawString(230, y, part); y -= 12
+        y -= 4
+    y -= 10; c.setFont("LSB", 9); c.drawString(50, y, "Semnătura olografă trasată pe ecran:")
+    img = ImageReader(io.BytesIO(sig_png))
+    iw, ih = img.getSize(); s = min(260 / iw, 110 / ih)
+    c.drawImage(img, 50, y - 10 - ih * s, iw * s, ih * s, mask="auto")
+    c.rect(48, y - 12 - ih * s, iw * s + 4, ih * s + 4)
+    c.setFont("LS", 7); c.drawString(50, 40, "Istoricul complet al acțiunilor (deschideri, coduri trimise, semnare) este păstrat în aplicația emitentului.")
+    c.save()
+    return buf.getvalue()
+
+def stamp_pages(pdf: bytes, text: str) -> bytes:
+    w = PdfWriter()
+    for page in PdfReader(io.BytesIO(pdf)).pages:
+        pw, ph = float(page.mediabox.width), float(page.mediabox.height)
+        b = io.BytesIO(); c = rlc.Canvas(b, pagesize=(pw, ph)); c.setFont("LS", 6.5); c.setFillGray(0.35)
+        c.drawString(20, 10, text[:180]); c.save()
+        page.merge_page(PdfReader(io.BytesIO(b.getvalue())).pages[0]); w.add_page(page)
+    o = io.BytesIO(); w.write(o); return o.getvalue()
+
+async def rebuild_group(owner: str, gid: str):
+    reqs = await db.sign_requests.find({"owner": owner, "group_id": gid}, {"_id": 0}).sort("created_at", 1).to_list(50)
+    signed = [x for x in reqs if x["status"] == "Semnat" and x.get("evidence_path")]
+    base, _ = get_object(reqs[0]["doc_path"])
+    w = PdfWriter()
+    for pg in PdfReader(io.BytesIO(stamp_pages(base, ("[TEST — NU ESTE SEMNĂTURĂ OFICIALĂ] " if reqs[0].get("is_test") else "") + "Semnat electronic (semnătură simplă) de: " + ", ".join(f"{x['signer_name']} {x['signed_at'][:16]} UTC" for x in signed) + f" · SHA-256 original {reqs[0]['doc_sha256'][:16]}…"))).pages:
+        w.add_page(pg)
+    for x in signed:
+        ev, _ = get_object(x["evidence_path"])
+        for pg in PdfReader(io.BytesIO(ev)).pages:
+            w.add_page(pg)
+    o = io.BytesIO(); w.write(o); final = o.getvalue()
+    st = put_object(f"{APP_NAME}/sign/{owner}/{gid}/signed_{len(signed)}.pdf", final, "application/pdf")
+    f = {"storage_path": st["path"], "original_filename": f"{reqs[0]['pos_key']}_semnat.pdf", "content_type": "application/pdf", "size": len(final)}
+    if reqs[0].get("sld_hash"):
+        f["sld_hash"] = reqs[0]["sld_hash"]
+    if reqs[0].get("pif_hash"):
+        f["pif_hash"] = reqs[0]["pif_hash"]
+    await db.sign_requests.update_many({"owner": owner, "group_id": gid}, {"$set": {"signed_file": f, "signed_sha256": sha(final)}})
+    if len(signed) == len(reqs):
+        did, mod = reqs[0]["dossier_id"], reqs[0].get("module") or "prosumator"
+        if mod == "diu":
+            await db.diu.update_one({"id": did, "owner": owner}, {"$set": {f"signed.{reqs[0]['pos_key']}": {**f, "signed_at": signed[-1]["signed_at"]}}})
+        elif mod == "contracts":
+            await db.contracts.update_one({"id": did, "owner": owner}, {"$set": {"signed": {**f, "signed_at": signed[-1]["signed_at"]}, "status": "Semnat"},
+                                                                        "$push": {"history": {"at": now_iso(), "by": "semnătură electronică client", "event": "contract semnat de beneficiar"}}})
+        else:
+            await db.prosumator.update_one({"id": did, "owner": owner},
+                                           {"$set": {f"opis.{reqs[0]['pos_key']}.upload": f, f"opis.{reqs[0]['pos_key']}.status": "atașat"}})
+        prec = await db[mod].find_one({"id": did, "owner": owner}, {"_id": 0}) or {}
+        cl = await get_client(owner, prec)
+        await db.documents.insert_one({"id": str(uuid.uuid4()), "owner": owner, "created_at": now_iso(), "updated_at": now_iso(), "client_id": cl.get("id"),
+                                       "dossier_id": reqs[0]["dossier_id"], "client_name": reqs[0].get("client_name"), "kind": "Semnat electronic",
+                                       "doc_type": f"{reqs[0]['doc_title']} — semnat", **f})
+        if cl.get("id"):
+            await db.clients.update_one({"id": cl["id"], "owner": owner}, {"$push": {"docs.semnate": {**f, "original_filename": f"{reqs[0]['doc_title']} — semnat.pdf",
+                                                                                                    "signed_at": signed[-1]["signed_at"]}}})
+
+@api_router.post("/public/sign/{token}/sign")
+async def pub_sign(token: str, request: Request):
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    b = await request.json()
+    declared = (b.get("declared_name") or "").strip()
+    if not b.get("intent") or not declared:
+        raise HTTPException(status_code=400, detail="Confirmă intenția de semnare și scrie numele complet")
+    if not r.get("otp_hash") or (r.get("otp_exp") or "") < now_iso():
+        raise HTTPException(status_code=400, detail="Cere un cod de verificare pe e-mail")
+    if r.get("otp_attempts", 0) >= 5:
+        raise HTTPException(status_code=429, detail="Prea multe încercări. Cere un cod nou.")
+    if sha(f"{r['id']}:{str(b.get('otp') or '').strip()}".encode()) != r["otp_hash"]:
+        await db.sign_requests.update_one({"id": r["id"]}, {"$inc": {"otp_attempts": 1}, "$push": {"history": hist("Cod greșit", client_meta(request))}})
+        raise HTTPException(status_code=400, detail="Cod incorect")
+    m = re.match(r"^data:image/png;base64,(.+)$", b.get("signature") or "")
+    if not m:
+        raise HTTPException(status_code=400, detail="Desenează semnătura")
+    png = base64.b64decode(m.group(1))
+    if len(png) < 800 or len(png) > 2_000_000:
+        raise HTTPException(status_code=400, detail="Semnătura nu este validă")
+    meta, at = client_meta(request), now_iso()
+    claim = await db.sign_requests.update_one({"id": r["id"], "token_hash": r["token_hash"], "status": {"$in": list(SIGN_ACTIVE)}, "otp_hash": r["otp_hash"]},
+                                              {"$set": {"status": "Semnat", "signed_at": at, "otp_hash": None}})
+    if claim.modified_count == 0:
+        raise HTTPException(status_code=409, detail="Documentul a fost deja semnat")
+    s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
+    ev = evidence_page(r, png, meta, declared, at, s.get("company") or "DNS HOSTESS SRL")
+    evp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/evidence_{r['id']}.pdf", ev, "application/pdf")
+    sigp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/signature_{r['id']}.png", png, "image/png")
+    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"declared_name": declared,
+        "evidence_path": evp["path"], "signature_path": sigp["path"], "sign_meta": meta, "otp_hash": None},
+        "$push": {"history": hist("Semnat", meta, f"identitate declarată: {declared}; cod e-mail verificat; intenție confirmată")}})
+    await rebuild_group(r["owner"], r["group_id"])
+    return {"ok": True, "signed_at": at}
+
+@api_router.post("/public/sign/{token}/refuse")
+async def pub_refuse(token: str, request: Request):
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    reason = ((await request.json()).get("reason") or "").strip()[:500]
+    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Refuzat", "refused_reason": reason},
+                                                        "$push": {"history": hist("Refuzat", client_meta(request), reason)}})
+    return {"ok": True}
+
+# ---------------- Dosar de test ----------------
+import test_data as TD
+
+@api_router.post("/test-dossier")
+async def test_dossier_create(user: dict = Depends(get_current_user)):
+    require(user, "admin")
+    existing = await db.prosumator.find_one(
+        {"owner": user["id"], "is_test": True},
+        {"_id": 0, "id": 1, "number": 1, "client_name": 1},
+    )
+    if existing:
+        return {
+            "prosumator_id": existing["id"],
+            "number": existing.get("number"),
+            "client": existing.get("client_name"),
+            "already_exists": True,
+        }
+    st = await db.settings.find_one({"owner": user["id"]}, {"_id": 0, "test_email": 1}) or {}
+    stamp = datetime.now(timezone.utc).strftime("%m%d%H%M%S")
+    files = {}
+    for k, title in [("auth", "Autorizație personal (TEST)"), ("cert", "Certificat etalonare aparat (TEST)"), ("datasheet", "Fișă tehnică echipament (TEST)"),
+                     ("conformity", "Declarație de conformitate echipament (TEST)"), ("clientdoc", "Document client (TEST)")]:
+        data = TD.placeholder_pdf(title)
+        stored = put_object(f"{APP_NAME}/uploads/{user['id']}/test_{stamp}_{k}.pdf", data, "application/pdf")
+        files[k] = {"storage_path": stored["path"], "original_filename": f"TEST_{k}.pdf", "content_type": "application/pdf", "size": len(data)}
+    D = TD.build(stamp, (st.get("test_email") or "").strip() or None, files)
+    mk = lambda d: _new(user, {**d, "is_test": True})
+    staff = {}
+    for p in D["staff"]:
+        doc = mk({k: v for k, v in p.items() if k != "key"}); await db.staff.insert_one(dict(doc)); staff[p["key"]] = doc["id"]
+    inst = mk(D["instrument"]); await db.instruments.insert_one(dict(inst))
+    cat = {}
+    for c in D["catalog"]:
+        doc = mk(c); await db.catalog.insert_one(dict(doc)); cat[c["category"]] = doc["id"]
+    client_doc = mk(D["client"]); await db.clients.insert_one(dict(client_doc))
+    pros = D["prosumator"]
+    inv = pros["cef"]["inverters"][0]
+    inv["catalog_id"], inv["panel_catalog_id"] = cat["Invertor"], cat["Panou"]
+    inv["battery"]["catalog_id"] = cat["Baterie"]
+    pros["cef"]["grid"]["meter_catalog_id"] = cat["Smart meter"]
+    pros.update({"client_id": client_doc["id"], "instrument_id": inst["id"], "signers": {"designer": staff["designer"], "verifier": staff["verifier"]}})
+    pros = derive_cef(pros)
+    pdoc = mk(pros); await db.prosumator.insert_one(dict(pdoc))
+    diu = mk(D["diu"]); await db.diu.insert_one(dict(diu))
+    await db.pram.insert_one(dict(mk({**D["pram"], "diu_ref": diu["number"]})))
+    await audit(user, "creare dosar de test", "prosumator", pdoc["id"], [])
+    return {"prosumator_id": pdoc["id"], "number": pdoc["number"], "client": client_doc["name"], "test_email": st.get("test_email") or None}
+
+@api_router.delete("/test-dossier")
+async def test_dossier_delete(user: dict = Depends(get_current_user)):
+    require(user, "admin")
+    q = {"owner": user["id"], "is_test": True}
+    ids = [x["id"] for x in await db.prosumator.find(q, {"id": 1}).to_list(1000)]
+    n = (await db.sign_requests.delete_many({"owner": user["id"], "$or": [{"is_test": True}, {"dossier_id": {"$in": ids}}]})).deleted_count
+    for c in TD.TEST_COLLECTIONS:
+        n += (await db[c].delete_many(q)).deleted_count
+    n += (await db.documents.delete_many({"owner": user["id"], "client_name": {"$regex": "^TEST — "}})).deleted_count
+    await audit(user, "ștergere date de test", "prosumator", "", [str(n)])
+    return {"deleted": n}
+
+# ---------------- Startup ----------------
+@app.on_event("startup")
+async def startup():
+    await db.users.create_index("email", unique=True)
+    for m in MODULES:
+        await db[m].create_index("owner")
+        # Keep tenant-scoped list and quick-search sorts efficient as collections grow.
+        await db[m].create_index([("owner", 1), ("created_at", -1)], name="owner_created_at")
+        await db[m].create_index([("owner", 1), ("updated_at", -1)], name="owner_updated_at")
+    for field in NUMERIC_CLIENT_SEARCH_FIELDS:
+        await db.clients.create_index([("owner", 1), (field, 1)], name=f"owner_{field}")
+    await db.prosumator.create_index([("owner", 1), ("client_id", 1), ("updated_at", -1)], name="owner_client_id_updated_at")
+    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    jwt_secret = os.environ.get("JWT_SECRET", "")
+    if PRIVATE_MODE:
+        # Never boot a private staging service with fallback/default credentials.
+        if not admin_email or not admin_password:
+            raise RuntimeError("Private mode requires ADMIN_EMAIL and ADMIN_PASSWORD environment secrets")
+        if len(admin_password) < 16:
+            raise RuntimeError("Private mode requires ADMIN_PASSWORD with at least 16 characters")
+        if len(jwt_secret) < 32:
+            raise RuntimeError("Private mode requires JWT_SECRET with at least 32 characters")
+    else:
+        # Local development still needs explicit credentials; do not silently create admin123.
+        if not admin_email or not admin_password or not jwt_secret:
+            raise RuntimeError("Set ADMIN_EMAIL, ADMIN_PASSWORD and JWT_SECRET in backend/.env before startup")
+    existing = await db.users.find_one({"email": admin_email})
+    if not existing:
+        await db.users.insert_one({"id": str(uuid.uuid4()), "email": admin_email,
+            "password_hash": hash_password(admin_password), "name": "Administrator",
+            "role": "admin", "created_at": datetime.now(timezone.utc).isoformat()})
+        logger.info("Admin seeded")
+    elif not existing.get("password_hash"):
+        # Seed a missing credential once; do not overwrite an existing password on every deploy.
+        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+    PLATFORM["id"] = (await db.users.find_one({"email": admin_email}))["id"]
+    await db.users.update_one({"id": PLATFORM["id"]}, {"$set": {"role": "admin", "status": "active", "tenant": None}})
+    for pl in DEFAULT_PLANS:
+        await db.plans.update_one({"code": pl["code"]}, {"$setOnInsert": pl}, upsert=True)
+    await db.billing_config.update_one({"id": "main"}, {"$setOnInsert": {"id": "main", "vat_rate": 21.0, "expired_policy": "read_only", "currency": "RON"}}, upsert=True)
+    docgen.IMG_LOADER = lambda p: get_object(p)[0]
+    await forms_routes.seed()
+    # Fail fast: do not report a healthy API when private file storage is unavailable.
+    init_storage()
+    logger.info("MongoDB GridFS object storage initialized")
+
+@app.on_event("shutdown")
+async def shutdown():
+    client.close()
+
+import billing_routes  # noqa: E402
+import forms_routes  # noqa: E402
+import atr_routes  # noqa: E402
+import sld_edit_routes  # noqa: E402
+import modules_routes  # noqa: E402
+import ai_routes  # noqa: E402
+import diu_routes  # noqa: E402
+import offers_routes  # noqa: E402
+import operator_routes  # noqa: E402
+import anre_routes  # noqa: E402
+import anre_templates  # noqa: E402
+app.include_router(api_router)
+# Restrict browser access to explicitly configured frontend origins.
+# Preserve deployment-specific origins and always allow the configured staging and DNS Energy web origins.
+_cors_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+_cors_origins = [origin.strip().rstrip("/") for origin in _cors_raw.split(",") if origin.strip()]
+for _required_origin in (
+    "https://dns-energy-web.onrender.com",
+    "https://dns-energy.ro",
+    "https://www.dns-energy.ro",
+):
+    if _required_origin not in _cors_origins:
+        _cors_origins.append(_required_origin)
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=False,
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+)
+
