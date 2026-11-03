@@ -865,7 +865,7 @@ export default function ModulePage({ moduleKey }) {
         <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
           <h2 className="text-lg font-bold">Înregistrări salvate <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({filtered.length})</span></h2>
           {hiddenTestCount > 0 && <button type="button" className="text-xs underline" onClick={() => setShowTestRecords((value) => !value)}>{showTestRecords === true ? "Ascunde" : "Arată"} înregistrările TEST ({hiddenTestCount})</button>}
-          {key === "prosumator" && <div className="inline-flex rounded-lg border p-1" style={{ borderColor: "var(--line)" }} role="group" aria-label="Mod vizualizare dosare">
+          {["prosumator", "atr"].includes(key) && <div className="inline-flex rounded-lg border p-1" style={{ borderColor: "var(--line)" }} role="group" aria-label="Mod vizualizare dosare">
             <button type="button" onClick={() => setRecordsView("board")} aria-pressed={recordsView === "board"} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ background: recordsView === "board" ? "#eaf1ff" : "transparent", color: recordsView === "board" ? "var(--blue)" : "var(--muted)" }}>Kanban</button>
             <button type="button" onClick={() => setRecordsView("list")} aria-pressed={recordsView === "list"} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ background: recordsView === "list" ? "#eaf1ff" : "transparent", color: recordsView === "list" ? "var(--blue)" : "var(--muted)" }}>Listă</button>
           </div>}
@@ -896,6 +896,22 @@ export default function ModulePage({ moduleKey }) {
           <div className="text-sm py-8 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>Nu există înregistrări încă.</div>
         ) : (
           <>
+          {key === "atr" && recordsView === "board" && <div className="mb-4 overflow-x-auto" data-testid="atr-kanban">
+            <div className="grid min-w-[780px] gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {["În lucru", "Generată", "Depusă", "Completări cerute", "ATR emis", ...new Set(filtered.map((item) => String(item.workflow_status || item.status || "").trim()).filter((status) => status && !["În lucru", "Generată", "Depusă", "Completări cerute", "ATR emis"].includes(status)))].map((status) => {
+                const group = filtered.filter((item) => String(item.workflow_status || item.status || "În lucru").trim() === status);
+                return <section key={status} className="rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }} aria-label={`Stadiu ${status}`} data-testid={`atr-stage-${status.toLocaleLowerCase("ro-RO").replace(/[^a-z0-9]+/g, "-")}`}>
+                  <div className="mb-3 flex items-center justify-between gap-2 text-sm font-bold"><span>{status}</span><span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{group.length}</span></div>
+                  <div className="grid gap-2">{group.map((item) => <button key={item.id} type="button" className="rounded-lg border bg-white p-3 text-left shadow-sm hover:border-blue-300" style={{ borderColor: "var(--line)" }} onClick={() => openEdit(item)} data-testid={`atr-card-${item.id}`}>
+                    <span className="block truncate text-xs font-bold">{item.number || "Cerere ATR"}</span>
+                    <span className="mt-1 block truncate text-sm">{item.client_name || "Client necompletat"}</span>
+                    <span className="mt-1 block text-xs" style={{ color: "var(--muted)" }}>{[item.operator, item.address, item.pod && `POD ${item.pod}`].filter(Boolean).join(" · ") || "Operator și loc de consum necompletate"}</span>
+                    <span className="mt-2 block text-xs font-semibold" style={{ color: "var(--blue)" }}>{[item.request_type || item.deer_case, item.p_abs_kw && `${item.p_abs_kw} kW absorbit`, item.p_evac_kw && `${item.p_evac_kw} kW evacuat`].filter(Boolean).join(" · ") || "Deschide cererea pentru detalii"}</span>
+                  </button>)}</div>
+                </section>;
+              })}
+            </div>
+          </div>}
           {key === "prosumator" && recordsView === "board" && <div className="mb-4 overflow-x-auto" data-testid="prosumator-kanban">
             <div className="grid min-w-[280px] gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[...new Set(filtered.map((item) => String(item.workflow_status || item.status || item.operator_stage || "Dosar în pregătire").trim()))].map((status) => {
@@ -1075,7 +1091,7 @@ export default function ModulePage({ moduleKey }) {
               </article>;
             })}
           </div>}
-          <div className={key === "prosumator" && recordsView === "board" ? "hidden" : (["clients", "prosumator", "atr"].includes(key) ? "hidden overflow-x-auto sm:block" : "overflow-x-auto")}>
+          <div className={["prosumator", "atr"].includes(key) && recordsView === "board" ? "hidden" : (["clients", "prosumator", "atr"].includes(key) ? "hidden overflow-x-auto sm:block" : "overflow-x-auto")}>
             <table className="w-full text-sm" data-testid="items-table">
               <thead>
                 <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
