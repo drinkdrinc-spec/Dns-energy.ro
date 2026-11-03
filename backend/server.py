@@ -1219,17 +1219,35 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
             raise HTTPException(status_code=503, detail="PDF-ul pare scanat sau nu are etichete text recunoscute. Pentru citirea AI a scanurilor trebuie configurată cheia OPENAI_API_KEY în serviciul API.")
         raise HTTPException(status_code=502, detail=str(e) if isinstance(e, ValueError) else "Nu am putut citi documentul. Încearcă din nou.")
     expected = {
-        "ci": ("client_name", "cnp", "hq_address", "id_series", "id_number"),
-        "factura": ("client_name", "cnp", "consumption_address", "address", "pod", "operator", "supplier", "bransament_kw", "power"),
-        "cf": ("owner_name", "client_name", "cf_nr", "cadastral_nr"),
+        "ci": [
+            (("client_name",), "numele titularului"),
+            (("cnp",), "CNP/CUI"),
+            (("hq_address", "address"), "domiciliul"),
+            (("id_series",), "seria CI"),
+            (("id_number",), "numărul CI"),
+        ],
+        "factura": [
+            (("pod",), "codul POD"),
+            (("consumption_address", "address"), "adresa locului de consum"),
+            (("operator",), "operatorul de distribuție"),
+        ],
+        "cf": [
+            (("owner_name", "client_name"), "proprietarul"),
+            (("cf_nr",), "numărul cărții funciare"),
+        ],
     }
     selected_type = doc_type if doc_type in expected else str(fields.get("doc_type") or "").casefold()
+    missing_fields = []
+    if selected_type in expected:
+        for aliases, label in expected[selected_type]:
+            if not any(fields.get(key) not in (None, "", "null") for key in aliases):
+                missing_fields.append(label)
     warning = None
-    if selected_type in expected and not any(fields.get(key) not in (None, "", "null") for key in expected[selected_type]):
-        warning = "Fișierul a fost atașat, dar nu s-au putut extrage câmpurile așteptate. Verifică imaginea și completează datele manual."
+    if missing_fields:
+        warning = "Lipsesc date care trebuie verificate sau completate: " + ", ".join(missing_fields) + "."
     stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
     engine = fields.pop("_engine", "OpenAI (GPT-4.1 mini)")
-    return {"data": fields, "engine": engine, "warning": warning,
+    return {"data": fields, "engine": engine, "warning": warning, "missing_fields": missing_fields,
             "file": {"storage_path": stored["path"], "original_filename": file.filename,
                      "content_type": ct, "size": len(data)}}
 
