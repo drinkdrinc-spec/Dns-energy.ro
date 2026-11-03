@@ -2125,6 +2125,16 @@ async def atr_pack(user: dict, rec: dict, full: int):
         # A linked prosumer dossier is authoritative evidence that this ATR covers production.
         if "producere" not in str(rec.get("kind") or "").casefold():
             rec["kind"] = "loc de consum și de producere"
+    else:
+        from atr_equipment import from_request
+        pros = from_request(rec) or None
+    atr_catalog_files = []
+    direct_catalog_complete = False
+    if pros and info is None and ATR.is_prod(rec):
+        from atr_equipment import catalog_documents_complete as atr_catalog_documents_complete
+        await auto_import_selected_catalog_documents(user, pros)
+        atr_catalog_files = await catalog_files(user["id"], pros)
+        direct_catalog_complete = atr_catalog_documents_complete(pros.get("cef"), atr_catalog_files)
     att = rec.get("attachments") or {}
     client_documents, client_document_issues = atr_client_documents(user, client)
     auto = {}
@@ -2147,11 +2157,12 @@ async def atr_pack(user: dict, rec: dict, full: int):
     schema_position = (auto.get("schema") or [None])[0]
     if schema_position and schema_position.get("auto_status") in ("generat", "atașat"):
         attached.add("schema")
-    if pros and ATR.is_prod(rec) and auto.get("fise") and catalog_documents_complete(pros, (info or {}).get("positions", [])):
+    linked_catalog_complete = bool(info and auto.get("fise") and catalog_documents_complete(pros or {}, (info or {}).get("positions", [])))
+    catalog_complete = linked_catalog_complete if info else direct_catalog_complete
+    if pros and ATR.is_prod(rec) and catalog_complete:
         attached.add("fise")
-    if pros and ATR.is_prod(rec) and "fise" in ATR.required(rec):
-        if not catalog_documents_complete(pros, (info or {}).get("positions", [])):
-            attached.discard("fise")
+    if pros and ATR.is_prod(rec) and "fise" in ATR.required(rec) and not catalog_complete:
+        attached.discard("fise")
     parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
     annex_registry_issue = ""
     if full:
@@ -2221,6 +2232,13 @@ async def atr_pack(user: dict, rec: dict, full: int):
             except Exception as exc:
                 logger.warning("ATR client document could not be merged (%s): %s", document["name"], exc)
                 unavailable.append(f"{document['label']} — {document['name']}")
+        for document in atr_catalog_files:
+            try:
+                data, content_type = get_object(document["storage_path"])
+                parts.append(OPIS.file_pdf(data, content_type or document.get("content_type") or "application/pdf"))
+            except Exception as exc:
+                logger.warning("ATR catalog document could not be merged (%s): %s", document.get("catalog_id"), exc)
+                unavailable.append(f"{document.get('kind') or 'Document catalog'} — {document.get('model') or 'echipament'}")
     miss = [k for k in ATR.required(rec) if k not in attached]
     request_type_missing = not ATR.rtype(rec)
     doc_titles = {k: title for k, title, _ in ATR.DOCS}
