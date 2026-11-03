@@ -17,6 +17,7 @@ from pypdf import PdfReader, PdfWriter
 
 import server as S
 import atr_doc as ATR
+from atr_equipment import from_request as atr_equipment_from_request
 from mailer import send_email
 
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
@@ -598,6 +599,8 @@ async def atr_official_docx(item_id: str, user: dict = Depends(get_current_user)
         rec = {**rec, "pros_id": linked_pros["id"]}
         if "producere" not in str(rec.get("kind") or "").casefold():
             rec["kind"] = "loc de consum și de producere"
+    else:
+        pros = atr_equipment_from_request(rec)
 
     if ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) != "deer":
         raise HTTPException(status_code=400, detail="Precompletarea anexei oficiale este disponibilă pentru cererile DEER.")
@@ -629,6 +632,8 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
         rec = {**rec, "pros_id": linked_pros["id"]}
         if "producere" not in str(rec.get("kind") or "").casefold():
             rec["kind"] = "loc de consum și de producere"
+    else:
+        pros = atr_equipment_from_request(rec)
 
     pdf, pdf_name = await S.atr_pack(user, rec, 1)
     bundle = io.BytesIO()

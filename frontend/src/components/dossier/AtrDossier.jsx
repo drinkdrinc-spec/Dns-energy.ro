@@ -5,6 +5,7 @@ import { Slot } from "@/components/dossier/PowerDossier";
 import { Plus, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { FormAlert } from "@/components/dossier/FormAlert";
 import { AtrTracking } from "@/components/dossier/AtrTracking";
+import { CefEditor } from "@/components/cef/CefEditor";
 
 function installedPanelKwp(pros) {
   if (!pros) return "";
@@ -113,7 +114,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     if (selectedDeerForm.value.includes("≤10,8")) {
       const invs = selectedPros?.cef?.inverters || [];
       const stringsPower = invs.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, st) => n + (Number(st.panels) || 0), 0) * (Number(inv.panel_w) || 0) / 1000 * (Number(inv.count) || 1), 0);
-      const power = installedPanelKwp(selectedPros) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower;
+      const power = installedPanelKwp(selectedPros || { cef: form.atr_cef }) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower;
       if (!power) issues.push("Completează puterea instalată de producere pentru verificarea Anexei 5.");
       else if (power > 10.8) issues.push("Anexa 5 este pentru putere instalată de maximum 10,8 kW.");
       const supply = String(form.supply || selectedPros?.supply || selectedPros?.cef?.grid?.supply || "").toLowerCase();
@@ -121,7 +122,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
       else if (supply.includes("trifaz") || supply.includes("400")) issues.push("Anexa 5 selectată cere conexiune diferită de trifazic.");
     }
     if (selectedDeerForm.key === "large") {
-      const power = installedPanelKwp(selectedPros) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp);
+      const power = installedPanelKwp(selectedPros || { cef: form.atr_cef }) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp);
       if (!power) issues.push("Completează puterea instalată de producere pentru procedura dedicată.");
       else if (power <= 400) issues.push("Procedura dedicată DEER selectată este pentru putere instalată mai mare de 400 kW.");
     }
@@ -140,7 +141,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     return () => { active = false; };
   }, [form.pros_id]);
   const catalogRequirements = (() => {
-    const cef = selectedPros?.cef || {};
+    const cef = selectedPros?.cef || form.atr_cef || {};
     const requirements = [];
     const add = (kind, model, catalogId) => {
       const name = String(model || "").trim();
@@ -161,17 +162,17 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
       return true;
     });
   })();
-  const catalogEvidenceMissing = catalogRequirements.flatMap((item) =>
+  const catalogEvidenceMissing = selectedPros ? catalogRequirements.flatMap((item) =>
     ["Fișă tehnică", "Declarație de conformitate"].filter((documentKind) =>
       !catalogFiles.some((file) => file.kind === documentKind && (
         item.catalogId ? file.catalog_id === item.catalogId
           : String(file.model || "").trim().toLocaleLowerCase("ro-RO") === item.model.toLocaleLowerCase("ro-RO")
       ))
     ).map((documentKind) => `${documentKind} — ${item.model || item.kind}`)
-  );
-  const catalogEquipmentComplete = catalogRequirements.length > 0 && catalogEvidenceMissing.length === 0;
+  ) : [];
+  const catalogEquipmentComplete = Boolean(selectedPros && catalogRequirements.length > 0 && catalogEvidenceMissing.length === 0);
   const equipmentSummary = (() => {
-    const cef = selectedPros?.cef || {};
+    const cef = selectedPros?.cef || form.atr_cef || {};
     const items = [];
     const inverters = cef.inverters || [];
     const addBattery = (key, battery, multiplier = 1) => {
@@ -280,7 +281,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
         </div>}
         {selectedPros && <div className="mt-3 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-equipment-summary">
           <div className="text-xs font-bold">Echipamente preluate în cerere și anexe</div>
-          {equipmentSummary.length ? <ul className="mt-1 grid gap-1 text-xs sm:grid-cols-2">{equipmentSummary.map((item) => <li key={item.key}>{item.label}</li>)}</ul> : <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Nu există echipamente salvate în dosarul de prosumator selectat.</p>}
+          {equipmentSummary.length ? <ul className="mt-1 grid gap-1 text-xs sm:grid-cols-2">{equipmentSummary.map((item) => <li key={item.key}>{item.label}</li>)}</ul> : <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Echipamentele ATR configurate direct vor fi verificate la generare.</p>}
           {selectedPros.cef?.inverters?.some((inv) => inv.battery_mode === "own" && inv.battery && !inv.battery.model) && <p className="mt-1 text-xs text-amber-700">Completați modelul bateriei în dosarul de prosumator pentru a-l include în anexă.</p>}
         </div>}
         {!selectedDeerForm && <a href={operatorSource.docs} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-sm font-semibold underline">Alege formularul pe pagina oficială DEER ↗</a>}
@@ -329,7 +330,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
               ? <label className="den-field"><span>Alege locul de consum pentru acest client</span><select className="den-input" value={form.pros_id || ""} onChange={(e) => selectPros(e.target.value)}><option value="">Alege dosarul prosumator...</option>{clientPros.map((p) => <option key={p.id} value={p.id}>{p.number} · POD {p.pod || "necompletat"} · {p.address || p.client_name}</option>)}</select></label>
               : selectedPros
                 ? <>Dosar prosumator asociat automat după client: <strong style={{ color: "var(--ink)" }}>{selectedPros.number} · {selectedPros.client_name}</strong></>
-                : <>Nu există dosar de prosumator asociat pentru acest client. Creează întâi dosarul prosumator pentru preluarea automată a schemei și echipamentelor.</>}
+                : <>Nu există dosar de prosumator asociat. Poți configura echipamentele direct în această cerere sau poți asocia un dosar existent.</>}
           </div>
           {selectedPros && <div className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="atr-linked-equipment">
             <strong className="text-sm" style={{ color: "var(--ink)" }}>Date tehnice preluate din dosarul prosumator</strong>
@@ -351,6 +352,11 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
         <button type="button" onClick={() => setVal("receptors", recs.filter((_, j) => j !== i))}><Trash2 size={13} style={{ color: "#b33333" }} /></button></div>)}
       <button type="button" className="text-xs font-bold mt-2 inline-flex items-center gap-1" style={{ color: "var(--blue)" }} onClick={() => setVal("receptors", [...recs, {}])} data-testid="atr-add-rec"><Plus size={12} />Adaugă receptor</button>
         </div>
+        {prod && !selectedPros && <details className="mt-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-equipment-config">
+          <summary className="cursor-pointer text-sm font-semibold">Echipamente pentru această cerere ATR</summary>
+          <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Selectează din catalog invertorul, panourile și bateria. Datele modelului se preiau din fișele salvate în catalog și se păstrează în cererea ATR.</p>
+          <CefEditor value={form.atr_cef || { grid: { supply: form.supply || "" }, inverters: [], shared_batteries: [] }} onChange={(value) => setVal("atr_cef", value)} />
+        </details>}
       </details>
       <div className="mt-4 flex items-center gap-2 text-xs font-bold" data-testid="atr-checklist-status">
         {missing.length ? <><AlertTriangle size={14} style={{ color: "#8a5a00" }} />Lipsesc {missing.length} documente obligatorii</> : <><CheckCircle2 size={14} style={{ color: "#166534" }} />Toate documentele obligatorii sunt atașate</>}</div>
@@ -359,6 +365,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
         {operatorSource?.id === "deer" && <p className="text-xs mb-2"><a href={AUTH_DECLARATION_URL} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Descarcă declarația oficială de autenticitate DEER ↗</a></p>}
         {Object.values(clientAuto).some(Boolean) && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }} data-testid="atr-client-docs-autofill">Actele încărcate în fișa clientului (CI, CF și constatator) se includ automat în PDF și ZIP. Factura și celelalte documente ale clientului se păstrează în ZIP.</p>}
         {need.includes("fise") && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Fișele tehnice sunt marcate automat complete numai când fiecare echipament selectat are în catalog atât fișa tehnică, cât și declarația de conformitate. Fișierele adăugate manual rămân incluse în PDF, dar trebuie verificate pentru fiecare model.</p>}
+        {need.includes("fise") && !selectedPros && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Pentru echipamentele selectate direct în ATR, aplicația preia documentele din catalog la generare și marchează dosarul incomplet dacă lipsește fișa sau declarația de conformitate.</p>}
         {need.includes("fise") && catalogEvidenceMissing.length > 0 && <ul className="mb-2 list-disc pl-5 text-xs text-amber-800" data-testid="atr-catalog-evidence-missing">{catalogEvidenceMissing.map((item) => <li key={item}>{item}</li>)}</ul>}
         <div className="mt-3">{DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={autoAvailable(k)} autoLabel={autoLabel(k)} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}</div>
       </details>
