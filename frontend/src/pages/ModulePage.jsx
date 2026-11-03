@@ -230,6 +230,7 @@ export default function ModulePage({ moduleKey }) {
   const [recordsView, setRecordsView] = useState("list");
   const [savedAt, setSavedAt] = useState(0);
   const [diuPre, setDiuPre] = useState(false);
+  const [prosPre, setProsPre] = useState(false);
   const [catalogImportsBusy, setCatalogImportsBusy] = useState(false);
   const [statusSavingId, setStatusSavingId] = useState("");
 
@@ -772,6 +773,7 @@ export default function ModulePage({ moduleKey }) {
               <span className="text-xs font-semibold" style={{ color: "var(--blue)" }}>Acțiuni rapide dosar</span>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => setProsPre(true)} data-testid="quick-prosumer-ai-precheck">Verifică dosarul cu AI</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "var(--blue)" }} onClick={() => openAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`)} data-testid="quick-prosumer-pdf">Dosar complet PDF</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf?download=1`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema">Schema monofilară</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${encodeURIComponent(editId)}`, `buletin_pram_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-pram">Buletin PRAM</button>
@@ -863,6 +865,8 @@ export default function ModulePage({ moduleKey }) {
           {key === "diu" && editId && <SignRequests dossierId={editId} module="diu" />}
           {key === "diu" && editId && <AiPrecheck id={editId} base="diu" open={diuPre} onClose={() => setDiuPre(false)} onFinalize={doSave} form={form}
             title="Verificare AI înainte de predarea către beneficiar" action="Salvează ca „Predat beneficiarului”" />}
+          {key === "prosumator" && editId && <AiPrecheck id={editId} base="dossier" open={prosPre} onClose={() => setProsPre(false)} onFinalize={doSave} form={form}
+            title="Verificare AI a dosarului prosumator" action="Salvează datele verificate" />}
           {(key === "power" || key === "atr") && editId && <AiRacordCheck id={editId} module={key} />}
           {["prosumator", "diu", "power", "atr"].includes(key) && editId && <AiOdReview id={editId} module={key} />}
           {key === "clients" && <ClientDocs client={form} onChange={(docs, fields = {}) => { setVal("docs", docs); if (Object.keys(fields).length) setForm((current) => ({ ...current, ...fields, docs })); }} />}
