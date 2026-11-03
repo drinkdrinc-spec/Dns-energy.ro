@@ -14,7 +14,7 @@ const FLOW = [
     number: "01",
     title: "Client și loc de consum",
     desc: "Încarcă CI, factura și cartea funciară. Verifică datele citite și POD-ul înainte de salvare.",
-    to: "/prosumator",
+    to: "/prosumator?start=documents",
     action: "Începe din documente",
     icon: Upload,
     tone: "amber",
