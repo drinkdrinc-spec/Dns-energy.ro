@@ -683,7 +683,11 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     diu = await db.diu.count_documents(owner)
     mono = await db.mono.count_documents(scope_q(user, "mono"))
     pending = await db.diu.count_documents({**owner, "status": {"$in": ["În lucru", "Documente de completat", "În verificare"]}})
-    recent = await db.diu.find(owner).sort("created_at", -1).to_list(5)
+    test_dossier_filter = {"$nor": [
+        {"client_name": {"$regex": r"^\\s*TEST\\s*[—-]", "$options": "i"}},
+        {"number": {"$regex": r"^TEST[-_]", "$options": "i"}},
+    ]}
+    recent = await db.diu.find({**owner, **test_dossier_filter}).sort("created_at", -1).to_list(5)
 
     # A compact, actionable work inbox inspired by the reference app's dossier list.
     # Every query stays inside the signed-in user's existing module scope.
@@ -698,7 +702,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     projection = {"_id": 0, "id": 1, "client_name": 1, "number": 1,
                   "status": 1, "operator_stage": 1, "updated_at": 1, "created_at": 1}
     for module, label in inbox_modules:
-        rows = await db[module].find(scope_q(user, module), projection).sort("updated_at", -1).limit(5).to_list(5)
+        rows = await db[module].find({**scope_q(user, module), **test_dossier_filter}, projection).sort("updated_at", -1).limit(5).to_list(5)
         for row in rows:
             inbox.append({
                 "id": row.get("id"),
