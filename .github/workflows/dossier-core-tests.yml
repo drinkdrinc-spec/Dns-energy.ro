@@ -6,6 +6,9 @@ on:
     paths:
       - "backend/atr_doc.py"
       - "backend/atr_routes.py"
+      - "backend/anre_routes.py"
+      - "backend/anre_rules.py"
+      - "backend/tests/test_anre_attestation_type_matching.py"
       - "backend/atr_equipment.py"
       - "backend/tests/test_atr_equipment_direct_catalog.py"
       - "backend/tests/test_schema_battery_protection.py"
@@ -29,6 +32,9 @@ on:
     paths:
       - "backend/atr_doc.py"
       - "backend/atr_routes.py"
+      - "backend/anre_routes.py"
+      - "backend/anre_rules.py"
+      - "backend/tests/test_anre_attestation_type_matching.py"
       - "backend/cef.py"
       - "backend/docgen.py"
       - "backend/diu_doc.py"
@@ -67,6 +73,7 @@ jobs:
         run: >-
           python -m pytest -c /dev/null -q
           tests/test_technical_parameter_safety.py
+          tests/test_anre_attestation_type_matching.py
           tests/test_cef_unknown_phases.py
           tests/test_deer_annex2_battery.py
           tests/test_pram_document_truthfulness.py
