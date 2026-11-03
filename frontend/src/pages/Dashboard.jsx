@@ -37,7 +37,7 @@ const FLOW = [
     icon: FileCheck2,
     tone: "blue",
   },
-];;
+];
 
 const TILES = [
   { to: "/clienti", icon: Users, title: "Clienți și documente", desc: "Încarcă actele clientului și verifică datele extrase." },
