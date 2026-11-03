@@ -52,7 +52,6 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
     if (!selectedClient || linked.length !== 1 || form.pros_id) return;
     const p = linked[0];
     const site = siteFor(selectedClient, p.pod);
-    const site = siteFor(selectedClient, p.pod);
     const hasBattery = hasConfiguredStorage(p);
     const values = {
       client_site_id: site?.id || "",
@@ -81,6 +80,7 @@ export function DiuQuickForm({ cfg, form, setVal, refOptions }) {
     setVal("pros_id", id);
     const p = linked.find((item) => item.id === id);
     if (!p) return;
+    const site = siteFor(selectedClient, p.pod);
     const hasBattery = hasConfiguredStorage(p);
     const values = {
       client_name: selectedClient?.label || p.client_name || "",
