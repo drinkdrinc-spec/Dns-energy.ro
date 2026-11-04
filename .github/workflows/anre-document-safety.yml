@@ -24,6 +24,7 @@ on:
       - "backend/tests/test_pram_document_truthfulness.py"
       - "backend/tests/test_supplier_catalog.py"
       - "backend/tests/test_technical_parameter_safety.py"
+      - "backend/tests/test_atr_prefill_sheet.py"
       - ".github/workflows/anre-document-safety.yml"
   pull_request:
     paths:
@@ -47,6 +48,7 @@ on:
       - "backend/tests/test_pram_document_truthfulness.py"
       - "backend/tests/test_supplier_catalog.py"
       - "backend/tests/test_technical_parameter_safety.py"
+      - "backend/tests/test_atr_prefill_sheet.py"
       - ".github/workflows/anre-document-safety.yml"
   workflow_dispatch:
 
@@ -77,3 +79,5 @@ jobs:
           tests/test_pram_document_truthfulness.py
           tests/test_supplier_catalog.py
           tests/test_technical_parameter_safety.py
+          tests/test_atr_prefill_sheet.py
+
