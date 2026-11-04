@@ -66,7 +66,7 @@ BROWSE_SEARCH_TERMS = {
     "Gateway": "gateway",
     "Optimizator": "optimizator",
 }
-MAX_LISTING_PAGES = 6
+MAX_LISTING_PAGES = 24
 DOCUMENT_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
     "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "certificat de conformitate", "certificat conformitate"),
@@ -333,6 +333,46 @@ def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
     urls.extend(url for _, url in sorted(pages)[:MAX_LISTING_PAGES - 1])
     return urls
 
+
+async def _collect_listing_pages(client: httpx.AsyncClient, initial_response, host: str,
+                                 semaphore: asyncio.Semaphore) -> list:
+    """Follow same-query pagination links, with a global concurrency and page bound."""
+    try:
+        initial_doc = html.fromstring(initial_response.content)
+    except (ValueError, TypeError):
+        return [initial_response]
+
+    first_url = str(initial_response.url)
+    responses = [initial_response]
+    discovered = _listing_page_urls(initial_doc, first_url, host)
+    queue = discovered[1:]
+    seen = set(discovered)
+    while queue and len(responses) < MAX_LISTING_PAGES:
+        batch = queue[:MAX_LISTING_PAGES - len(responses)]
+        queue = queue[len(batch):]
+
+        async def fetch_page(url):
+            async with semaphore:
+                return await _get(client, url, host)
+
+        pages = await asyncio.gather(*(fetch_page(url) for url in batch))
+        for response in pages:
+            if not response:
+                continue
+            responses.append(response)
+            try:
+                page_doc = html.fromstring(response.content)
+            except (ValueError, TypeError):
+                continue
+            for url in _listing_page_urls(page_doc, str(response.url), host):
+                if url not in seen and len(seen) < MAX_LISTING_PAGES:
+                    seen.add(url)
+                    queue.append(url)
+            if len(responses) >= MAX_LISTING_PAGES:
+                break
+    return responses
+
+
 async def search_supplier_products(query: str, category: str, offset: int = 0, limit: int = 24) -> dict:
     query = re.sub(r"\s+", " ", (query or "").strip())[:100]
     browse_all = query == "__browse_catalog__"
@@ -364,19 +404,13 @@ async def search_supplier_products(query: str, category: str, offset: int = 0, l
             _get(client, url, source["host"])
             for (_, source), url in zip(active_sources, listing_urls)
         ])
+        listing_sem = asyncio.Semaphore(8)
+        listing_batches = await asyncio.gather(*[
+            _collect_listing_pages(client, response, source["host"], listing_sem) if response else asyncio.sleep(0, result=[])
+            for (_, source), response in zip(active_sources, responses)
+        ])
         candidates = []
-        for (name, source), response in zip(active_sources, responses):
-            if not response:
-                continue
-            try:
-                doc = html.fromstring(response.content)
-            except (ValueError, TypeError):
-                continue
-            page_urls = _listing_page_urls(doc, str(response.url), source["host"])
-            extra_responses = await asyncio.gather(*[
-                _get(client, page_url, source["host"]) for page_url in page_urls[1:]
-            ])
-            listing_responses = [response, *[page for page in extra_responses if page]]
+        for (name, source), listing_responses in zip(active_sources, listing_batches):
             seen = set()
             for listing_response in listing_responses:
                 try:
