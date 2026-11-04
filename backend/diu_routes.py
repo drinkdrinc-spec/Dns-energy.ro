@@ -183,6 +183,17 @@ async def diu_sign(item_id: str, request: Request, user: dict = Depends(get_curr
     keys, sg = b.get("pos_keys") or [], b.get("signer") or {}
     if not keys or any(k not in {key for key, _ in DD.applicable_docs(r)} for k in keys):
         raise HTTPException(status_code=400, detail="Alege documentele DI-U de semnat")
+    positions = {position["key"]: position for position in DD.positions(r, s)}
+    incomplete = [positions[key] for key in keys if positions.get(key, {}).get("missing")]
+    if incomplete:
+        details = "; ".join(
+            f"{position['title']}: {', '.join(position['missing'])}"
+            for position in incomplete
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=("Nu pot trimite la semnare documente DI-U incomplete. Completează și verifică datele reale: " + details)[:2000],
+        )
     if not (sg.get("name") or "").strip() or "@" not in (sg.get("email") or ""):
         raise HTTPException(status_code=400, detail="Clientul are nevoie de nume și e-mail valid (pentru codul de verificare)")
     days = S.parse_days(b.get("expires_days"))
