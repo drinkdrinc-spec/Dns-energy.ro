@@ -187,7 +187,7 @@ export default function Dashboard() {
         eyebrow="DNS ENERGY · SPAȚIU DE LUCRU"
         title="Panou principal"
         sub="Un singur flux pentru dosarul clientului, de la documentele inițiale până la pregătirea depunerii."
-        action={<Link to="/prosumator"><Btn data-testid="new-diu-btn"><SunMedium size={15} /> Dosar nou</Btn></Link>}
+        action={<Link to="/prosumator?start=documents"><Btn data-testid="new-diu-btn"><SunMedium size={15} /> Dosar nou</Btn></Link>}
       />
 
       <details className="den-panel mb-4 group" data-testid="dashboard-quick-guide">
