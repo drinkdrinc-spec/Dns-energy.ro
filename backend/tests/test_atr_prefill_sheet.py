@@ -26,9 +26,9 @@ def test_prefill_sheet_accepts_a_named_procedure_without_claiming_to_be_official
 
 def test_prefill_sheet_includes_selected_smart_meter_without_inventing_presence():
     content = ATR.render_operator_annex_prep(
-        {"smart_meter_present": True},
         {},
-        {"cef": {"grid": {"meter": "Meter X"}}},
+        {},
+        {"cef": {"grid": {"meter_enabled": True, "meter": "Meter X", "meter_serial": "SM-100", "meter_specs": "3x230/400 V, 100 A"}}},
         "rer",
         1,
     )
@@ -37,6 +37,8 @@ def test_prefill_sheet_includes_selected_smart_meter_without_inventing_presence(
     assert "Smart meter prezent" in rendered
     assert "DA" in rendered
     assert "Meter X" in rendered
+    assert "SM-100" in rendered
+    assert "100 A" in rendered
 
 
 def test_prefill_sheet_marks_smart_meter_presence_unspecified_when_unconfirmed():
@@ -46,3 +48,17 @@ def test_prefill_sheet_marks_smart_meter_presence_unspecified_when_unconfirmed()
     assert "nespecificat" in rendered
     assert "Smart meter prezent" in rendered
 
+
+
+def test_prefill_sheet_marks_explicitly_disabled_smart_meter_as_absent():
+    content = ATR.render_operator_annex_prep(
+        {},
+        {},
+        {"cef": {"grid": {"meter_enabled": False, "meter": ""}}},
+        "rer",
+        1,
+    )
+
+    rendered = "\\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(content)).pages)
+    assert "Smart meter prezent" in rendered
+    assert "NU" in rendered
