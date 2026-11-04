@@ -147,6 +147,7 @@ export default function EquipmentCatalog() {
   const [supplierLoading, setSupplierLoading] = useState(false);
   const [supplierNextOffset, setSupplierNextOffset] = useState(0);
   const [supplierHasMore, setSupplierHasMore] = useState(false);
+  const [supplierBrowseAll, setSupplierBrowseAll] = useState(false);
   const [supplierImporting, setSupplierImporting] = useState("");
   const [feedbacks, setFeedbacks] = useState([]);
   const [feedbackUpdating, setFeedbackUpdating] = useState("");
@@ -207,13 +208,15 @@ export default function EquipmentCatalog() {
   };
   const remove = async (id) => { if (!window.confirm("Ștergi modelul din catalog?")) return; await api.delete(`/data/catalog/${id}`); load(); };
 
-  const searchSuppliers = async (append = false) => {
-    if (q.trim().length < 2) return toast.info("Scrie cel puțin două caractere pentru căutarea la furnizori.");
+  const searchSuppliers = async (append = false, browseAll = false) => {
+    const browse = append ? supplierBrowseAll : browseAll;
+    if (!browse && q.trim().length < 2) return toast.info("Scrie cel puțin două caractere pentru căutarea la furnizori.");
     const offset = append ? supplierNextOffset : 0;
+    if (!append) setSupplierBrowseAll(browse);
     setSupplierLoading(true);
     try {
       const { data } = await api.get("/catalog/supplier-search", {
-        params: { q: q.trim(), category: cat, offset, limit: 24 }, timeout: 60000,
+        params: { q: browse ? "__browse_catalog__" : q.trim(), category: cat, offset, limit: 24 }, timeout: 60000,
       });
       const products = Array.isArray(data.products) ? data.products : [];
       setSupplierResults((previous) => {
@@ -333,7 +336,10 @@ export default function EquipmentCatalog() {
       <div className="den-panel mb-3 flex flex-col gap-3 p-3 sm:flex-row sm:items-center" data-testid="catalog-unified-search">
         <input className="den-input min-w-0 flex-1" placeholder={`Caută ${cat.toLocaleLowerCase("ro-RO")} după marcă sau model…`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Caută în catalog și la furnizori" data-testid="catalog-db-search" />
         <Btn onClick={() => searchSuppliers()} disabled={supplierLoading || q.trim().length < 2} data-testid="supplier-search-btn">
-          {supplierLoading ? "Se caută…" : "Caută la furnizori"}
+          {supplierLoading && !supplierBrowseAll ? "Se caută…" : "Caută la furnizori"}
+        </Btn>
+        <Btn variant="secondary" onClick={() => searchSuppliers(false, true)} disabled={supplierLoading} data-testid="supplier-browse-btn">
+          {supplierLoading && supplierBrowseAll ? "Se încarcă…" : "Răsfoiește modelele"}
         </Btn>
         <span className="text-[11px] sm:max-w-48" style={{ color: "var(--muted)" }}>{rows.length} în catalog · {completeDocsCount} cu ambele PDF-uri</span>
       </div>
