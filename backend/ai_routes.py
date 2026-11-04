@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from ai_provider import LlmChat, UserMessage, TextDelta, StreamDone, ImageContent
 
 import server as S
+from ai_context import redact_dossier_context
 from ai_extract import _parse
 from equipment_extract import extract_equipment_specs
 import cef as CEF
@@ -149,7 +150,8 @@ async def dossier_summary(user: dict, item_id: str, draft: dict = None) -> dict:
 async def ai_dossier_check(item_id: str, user: dict = Depends(get_current_user)):
     ai_need(user)
     S.guard("prosumator", user)
-    ctx = await dossier_summary(user, item_id)
+    # AI needs document status and technical data, not the client's direct identifiers.
+    ctx = redact_dossier_context(await dossier_summary(user, item_id))
     prompt = ("Verifică dosarul de prosumator de mai jos înainte de trimiterea către operatorul de distribuție. Structurează răspunsul în: "
               "1) Verdict scurt (Gata de trimis / Necesită completări / Probleme tehnice); 2) Date și documente lipsă (concret, pe poziții din opis); "
               "3) Neconcordanțe tehnice (puteri invertor vs. putere evacuată vs. kVA, monofazat/trifazat, priză de pământ vs. valoare admisă, compatibilități CEF); "
@@ -191,16 +193,6 @@ def _operator_key(value: str) -> str:
     if "rețele electrice" in value or "retele electrice" in value or "e-distribu" in value: return "rer"
     if "deer" in value or "distribuție energie electrică" in value or "distributie energie electrica" in value: return "deer"
     return ""
-
-
-def _redact_od_context(value):
-    private = {"name", "client_name", "beneficiary_name", "cnp", "cui", "phone", "email", "address", "hq_address",
-               "pod", "id_number", "id_series", "series", "iban", "token", "owner", "password", "secret"}
-    if isinstance(value, dict):
-        return {k: _redact_od_context(v) for k, v in value.items() if str(k).casefold() not in private}
-    if isinstance(value, list):
-        return [_redact_od_context(v) for v in value]
-    return value
 
 
 async def od_review_context(module: str, item_id: str, user: dict):
@@ -246,7 +238,7 @@ async def od_review_context(module: str, item_id: str, user: dict):
         title_kind = f"{form.get('title', '')} {form.get('kind', '')}".casefold()
         if key and _operator_key(form.get("operator")) == key and any(w in title_kind for w in ("prosum", "racord", "spor", "atr", "instalație", "instalatie")):
             relevant.append({k: form.get(k) for k in ("operator", "title", "kind", "url", "version", "status") if form.get(k)})
-    return {"dosar": _redact_od_context(summary), "operator_selectat": operator or "[operator necompletat]",
+    return {"dosar": redact_dossier_context(summary), "operator_selectat": operator or "[operator necompletat]",
             "formulare_oficiale_din_registrul_aplicatiei": relevant[:20]}, key
 
 
@@ -266,7 +258,7 @@ async def ai_racord_check(module: str, item_id: str, user: dict = Depends(get_cu
     summary = {"cerere": {k: v for k, v in rec.items() if k not in ("owner", "_id", "token", "snapshot")},
                "client": {"kind": client.get("kind"), "county": client.get("county"), "operator": client.get("operator")},
                "verificari_locale": evidence}
-    summary = _redact_od_context(summary)
+    summary = redact_dossier_context(summary)
     prompt = (f"Verifică cererea de {('spor de putere' if module == 'power' else 'ATR')} și dosarul aferent. "
               "Identifică lipsuri, neconcordanțe și diferențe între date și calcule. Bazează-te doar pe JSON-ul oferit; "
               "nu inventa puteri, receptoare, documente, numere ATR, rezultate sau măsurători. Separă propunerile de valorile confirmate. "
