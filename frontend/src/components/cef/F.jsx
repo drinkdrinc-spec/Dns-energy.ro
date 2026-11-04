@@ -36,6 +36,20 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
       (foldedName.startsWith("aiko neostar ") && foldedName.endsWith(" w")) ||
       (foldedName.startsWith("jinkosolar tiger neo ") && foldedName.endsWith(" w"));
     if (isGenericModel) absent.push("codul exact al modelului");
+    if (category === "Invertor") {
+      const isBundle = /\\b(?:kit|bundle|pachet)\\b|\\bcu\\s+(?:baterie|acumulator)\\b|\\bwith\\s+(?:battery|accumulator)\\b|\\b(?:baterie|acumulator)\\s+inclus/.test(foldedName)
+        || /\\b(?:invertor|inverter)\\b.*(?:\\+|&|\\band\\b|\\bcu\\b).*\\b(?:baterie|acumulator|battery)\\b/.test(foldedName)
+        || /\\b(?:baterie|acumulator|battery)\\b.*(?:\\+|&|\\band\\b|\\bcu\\b).*\\b(?:invertor|inverter)\\b/.test(foldedName);
+      if (isBundle) absent.push("model individual (listarea include și o baterie)");
+      const titlePower = foldedName.match(/\\b(\\d+(?:[.,]\\d+)?)\\s*kw\\b/);
+      const catalogPower = Number(item.p_nom_kw);
+      if (!isBundle && titlePower && positive(catalogPower)) {
+        const namedPower = Number(titlePower[1].replace(",", "."));
+        if (Math.abs(namedPower - catalogPower) > Math.max(0.1, namedPower * 0.03)) {
+          absent.push(`puterea nominală confirmată (titlu ${namedPower} kW, catalog ${catalogPower} kW)`);
+        }
+      }
+    }
     if (!(item.datasheet?.storage_path || item.datasheet_url)) absent.push("fișa tehnică oficială");
     if (!(item.conformity?.storage_path || item.conformity_url)) absent.push("documentul de conformitate");
     const required = category === "Invertor" ? [
@@ -104,7 +118,7 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
                   : category === "Baterie" ? [item.kwh && `${item.kwh} kWh`, item.ah && `${item.ah} Ah`, item.voltage && `${item.voltage} V`].filter(Boolean).join(" · ")
                   : [item.phases].filter(Boolean).join(" · ")}
               </span>
-              {missing(item).length > 0 && <span className="mt-1 block text-[11px] font-medium text-amber-700">Indisponibil pentru proiectare · lipsesc: {missing(item).join(", ")}</span>}
+              {missing(item).length > 0 && <span className="mt-1 block text-[11px] font-medium text-amber-700">Indisponibil pentru proiectare · verifică: {missing(item).join(", ")}</span>}
             </button>
           ))}
           {!filtered.length && <p className="px-3 py-2 text-xs" style={{ color: "var(--muted)" }}>Modelul nu este în catalog. Îl poți scrie în câmpul de model de mai jos.</p>}
