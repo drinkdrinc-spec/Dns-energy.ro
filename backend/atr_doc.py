@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 13531)
+Total output lines: 870
+
 import io
 from html import escape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -438,119 +441,7 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         raw = b64decode(template_path.read_text(encoding="ascii"), validate=True)
         doc = Document(io.BytesIO(raw))
     except Exception as exc:
-        raise RuntimeError(f"Șablonul oficial DEER nu a putut fi încărcat: {exc}") from exc
-
-    c = client or {}
-    rec = rec or {}
-    pros = pros or {}
-    cef = pros.get("cef") or {}
-    inverters = cef.get("inverters") or []
-    batteries = storage_details(pros, rec)
-    case = str(rec.get("deer_case") or "").lower().replace("ț", "t").replace("ș", "s")
-    is_new = "loc nou" in case or "program de finantare" in case
-    # Applicant details are substituted only where the official form has an unambiguous field.
-    import re
-    applicant = next((p for p in doc.paragraphs if "Utilizatorul" in p.text), None)
-    if applicant:
-        fields = {
-            0: c.get("name"),
-            1: c.get("county"),
-            2: c.get("locality"),
-            10: c.get("phone"),
-            13: c.get("email"),
-            14: c.get("cui") or (c.get("idcode") if str(rec.get("applicant_type") or "").lower() in ("pj", "persoană juridică", "persoana juridica") else None),
-            15: c.get("idcode") if str(rec.get("applicant_type") or "").lower() not in ("pj", "persoană juridică", "persoana juridica") else None,
-            16: c.get("registration_no"),
-            17: c.get("rep_name"),
-            18: c.get("rep_role"),
-        }
-        counter = 0
-        def replace_field(match):
-            nonlocal counter
-            value = fields.get(counter)
-            counter += 1
-            return _deer_value(value) or match.group(0)
-        original = applicant.text
-        applicant.clear()
-        applicant.add_run(re.sub(r"\.{4,}", replace_field, original))
-
-    # Select the request type without touching unrelated declaration checkboxes.
-    for paragraph in doc.paragraphs:
-        if "Loc de consum şi de producere nou" in paragraph.text and "existent" not in paragraph.text.lower():
-            paragraph.text = paragraph.text.replace("[]", "[X]" if is_new else "[]", 1)
-        elif "Loc de consum existent/Loc de consum şi de producere existent" in paragraph.text:
-            paragraph.text = paragraph.text.replace("[]", "[X]" if not is_new else "[]", 1)
-
-    # Official DEER Anexa 1 and 4/5 technical tables share this ordering; Anexa 2 has fewer tables.
-    tables = doc.tables
-    is_annex2 = filename == "anexa2_existing.docx.b64"
-    if is_annex2:
-        _set_deer_storage_choice(doc, batteries, inverters, cef)
-    power_table = 0
-    if not is_annex2 and filename != "anexa3_update.docx.b64" and len(tables) > power_table:
-        _deer_cell(tables[power_table].cell(0, 1), rec.get("p_abs_kw") or pros.get("bransament_kw"))
-        _deer_cell(tables[power_table].cell(1, 1), rec.get("p_abs_kva"))
-
-    if is_annex2:
-        export_table, panel_table, inverter_table, detail_table = 0, 2, 3, 5
-    elif filename == "anexa3_update.docx.b64":
-        export_table, panel_table, inverter_table, detail_table = 2, 5, 6, 0
-    else:
-        export_table, panel_table, inverter_table, detail_table = 2, 5, 6, 8
-    if len(tables) > export_table and not is_annex2 and filename != "anexa3_update.docx.b64":
-        _deer_cell(tables[export_table].cell(0, 1), first_present(rec.get("p_evac_kw"), pros.get("power")))
-        _deer_cell(tables[export_table].cell(1, 1), rec.get("p_evac_kva"))
-    elif is_annex2 and len(tables) > 0:
-        # Anexa 2 does not have an export power table; its power is printed in the request sentence.
-        pass
-
-    if len(tables) > panel_table:
-        table = tables[panel_table]
-        row = 2
-        for idx, inv in enumerate(inverters, 1):
-            strings = inv.get("strings") or []
-            try:
-                panels = sum(int(D.num(x.get("panels"))) for x in strings) * max(1, int(D.num(inv.get("count")) or 1))
-            except (TypeError, ValueError):
-                panels = 0
-            if not panels and idx == 1:
-                panels = int(D.num(rec.get("panel_count") or pros.get("panel_count") or CEF.flatten(pros).get("panel_count")) or 0)
-            watts = D.num(inv.get("panel_w"))
-            model = inv.get("panel_model")
-            total_kw = panels * watts / 1000 if panels and watts else None
-            _deer_table_row(table, row, [str(idx), panels or "", model,
-                (f"{watts / 1000:g}" if watts else ""), (f"{total_kw:g}" if total_kw else ""),
-                "", (f"{total_kw:g}" if total_kw else ""), ""])
-            row += 1
-
-    if len(tables) > inverter_table:
-        table = tables[inverter_table]
-        row = 2
-        for idx, inv in enumerate(inverters, 1):
-            model = inv.get("brand_model")
-            rated = D.num(inv.get("p_nom_kw"))
-            unit_limit = D.num(inv.get("p_limit_kw"))
-            count = max(1, int(D.num(inv.get("count")) or 1))
-            limit = f"{unit_limit:g}" if unit_limit is not None and unit_limit > 0 else ""
-            plant_max = rated * count if rated is not None and rated > 0 else ""
-            note = f"Limitare evacuare configurată: {unit_limit:g} kW/invertor" if unit_limit is not None and unit_limit > 0 else ""
-            battery_descriptions = []
-
-            def battery_description(battery, module_multiplier=1):
-                if not battery.get("model"):
-                    return ""
-                module_count = max(1, int(D.num(battery.get("modules")) or 1)) * max(1, int(module_multiplier or 1))
-                details = []
-                capacity = D.num(battery.get("kwh"))
-                if capacity is not None and capacity > 0:
-                    details.append(f"{capacity * module_count:g} kWh total ({module_count} × {capacity:g} kWh/modul)")
-                for key, label in (("voltage", "V DC"), ("ah", "Ah/modul"), ("i_max", "I max/modul")):
-                    value = D.num(battery.get(key))
-                    if value is not None and value > 0:
-                        details.append(f"{label} {value:g} A" if key == "i_max" else f"{value:g} {label}")
-                if battery.get("coupling"):
-                    details.append("cuplare " + str(battery["coupling"]))
-                description = f"Baterie/BESS: {battery['model']} × {module_count} modul(e)"
+        raise RuntimeError(f"Șablonul oficial DEE…1531 tokens truncated…ery['model']} × {module_count} modul(e)"
                 return description + (" (" + ", ".join(details) + ")" if details else "")
 
             if inv.get("battery_mode") == "own":
@@ -845,8 +736,26 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
     story.append(P("Stocare: " + ("DA" if batteries else ("NU" if inverters else "nespecificat")), "small"))
     if batteries:
         story.append(T([["Model baterie", "Module", "Capacitate", "Ah", "V", "I max (A)", "Cuplare"]] + [storage_row(x) for x in batteries], [42, 12, 38, 15, 15, 20, 26]))
-    story += [Spacer(1, 4), P("5. Verificare înainte de depunere", "b"),
+    grid = cef.get("grid") or {}
+    meter_model = grid.get("meter") or rec.get("smart_meter_type") or rec.get("meter")
+    meter_present = rec.get("smart_meter_present")
+    if meter_present is True or str(meter_present or "").strip().casefold() in ("da", "yes", "true"):
+        meter_state = "DA"
+    elif meter_present is False or str(meter_present or "").strip().casefold() in ("nu", "no", "false"):
+        meter_state = "NU"
+    else:
+        meter_state = "nespecificat"
+    if meter_model and meter_state == "nespecificat":
+        meter_state = "DA — model selectat în configurație"
+    story += [Spacer(1, 4), P("5. Echipamente de măsurare", "b"),
+              T([["Câmp", "Date disponibile"],
+                ["Smart meter prezent", meter_state],
+                ["Model smart meter", v(meter_model)],
+                ["Serie contor (dacă este introdusă)", v(rec.get("meter_serial"))],
+                ["Date tehnice contor (dacă sunt introduse)", v(rec.get("meter_specs"))]], [58, 120]),
+              Spacer(1, 4), P("6. Verificare înainte de depunere", "b"),
               P("Comparați această fișă cu formularul oficial atașat. Confirmați datele de identificare, POD, tipul cererii, puterile aprobate/solicitate și cerințele specifice operatorului. Fișa nu înlocuiește semnătura solicitantului, documentele justificative sau verificarea proiectantului.", "small")]
     doc.build(story)
     return buf.getvalue()
+
 
