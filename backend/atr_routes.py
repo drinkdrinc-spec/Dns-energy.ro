@@ -279,6 +279,12 @@ async def operator_form_links(operator: str = "", scope: str = "atr", user: dict
 
 
 # ---------------- official operator form retrieval ----------------
+def _form_is_usable(form: dict) -> bool:
+    """Reject entries explicitly marked withdrawn or unusable before packaging them."""
+    status = str((form or {}).get("status") or "").strip().casefold()
+    unavailable = ("link invalid", "formular retras", "retras", "expirat", "withdrawn", "superseded", "replaced")
+    return not any(marker in status for marker in unavailable)
+
 async def _registry_annex1(operator_key: str) -> dict | None:
     """Select an official prosumer Annex 1 from the operator registry, never an arbitrary user URL."""
     if operator_key not in OP_DOMAINS:
@@ -292,7 +298,7 @@ async def _registry_annex1(operator_key: str) -> dict | None:
             continue
         if "prosumator" not in kind or "anexa 1" not in title:
             continue
-        if form.get("status") == "link invalid":
+        if not _form_is_usable(form):
             continue
         parsed = urlparse(str(form.get("url") or ""))
         host = (parsed.hostname or "").lower().rstrip(".")
@@ -438,7 +444,7 @@ async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict |
             continue
         if not annex_pattern.search(title) and not annex_pattern.search(kind):
             continue
-        if form.get("status") == "link invalid":
+        if not _form_is_usable(form):
             continue
         parsed = urlparse(str(form.get("url") or ""))
         host = (parsed.hostname or "").lower().rstrip(".")
