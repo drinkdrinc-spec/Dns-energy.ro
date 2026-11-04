@@ -3329,8 +3329,30 @@ async def sign_by_token(token: str) -> dict:
     return r
 
 def public_dossier_messages(messages) -> list[dict]:
-    return [{k: item.get(k) for k in ("id", "sender", "sender_name", "text", "created_at")}
+    return [{k: item.get(k) for k in ("id", "sender", "sender_name", "text", "created_at", "attachments")}
             for item in (messages or []) if isinstance(item, dict) and item.get("audience") == "client"]
+
+def clean_message_attachments(value, owner: str) -> list[dict]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > 5:
+        raise HTTPException(status_code=400, detail="Poți atașa cel mult 5 fișiere la un mesaj")
+    prefix = f"{APP_NAME}/uploads/{owner}/"
+    files = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail="Atașament invalid")
+        path = str(item.get("storage_path") or "")
+        if not path.startswith(prefix) or ".." in path:
+            raise HTTPException(status_code=403, detail="Atașamentul nu aparține acestui cont")
+        try:
+            size = int(item.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        files.append({"storage_path": path, "original_filename": str(item.get("original_filename") or "document")[:255],
+                      "content_type": str(item.get("content_type") or "application/octet-stream")[:120],
+                      "size": max(0, min(size, MAX_UPLOAD_BYTES))})
+    return files
 
 def clean_message_text(value) -> str:
     text = str(value or "").strip()
@@ -3352,8 +3374,13 @@ async def dossier_add_client_message(did: str, request: Request, user: dict = De
     audience = body.get("audience") or "client"
     if audience not in ("client", "internal"):
         raise HTTPException(status_code=400, detail="Destinație mesaj invalidă")
+    attachments = clean_message_attachments(body.get("attachments"), str(user["id"])) if audience == "client" else []
+    raw_text = str(body.get("text") or "").strip()
+    message_text = clean_message_text(raw_text) if raw_text else ""
+    if not message_text and not attachments:
+        raise HTTPException(status_code=400, detail="Adaugă un mesaj sau un atașament")
     message = {"id": str(uuid.uuid4()), "sender": "team", "sender_name": str(user.get("name") or user.get("email") or "Echipa DNS")[:120],
-               "audience": audience, "text": clean_message_text(body.get("text")), "created_at": now_iso()}
+               "audience": audience, "text": message_text, "attachments": attachments, "created_at": now_iso()}
     await db.prosumator.update_one({"id": did, "owner": rec.get("owner")}, {"$push": {"client_messages": {"$each": [message], "$slice": -300}}})
     await audit(user, "mesaj în dosar", "prosumator", did, ["client_messages"])
     return {"message": message}
@@ -3365,6 +3392,22 @@ async def public_sign_messages(token: str):
         raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
     rec = await db.prosumator.find_one({"id": r.get("dossier_id"), "owner": r.get("owner")}, {"_id": 0, "client_messages": 1})
     return {"messages": public_dossier_messages((rec or {}).get("client_messages"))}
+
+@api_router.get("/public/sign/{token}/message-files/{message_id}/{file_index}")
+async def public_sign_message_file(token: str, message_id: str, file_index: int):
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE or (r.get("module") or "prosumator") != "prosumator":
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    rec = await db.prosumator.find_one({"id": r.get("dossier_id"), "owner": r.get("owner")}, {"_id": 0, "client_messages": 1})
+    message = next((item for item in (rec or {}).get("client_messages", []) if isinstance(item, dict) and item.get("id") == message_id and item.get("audience") == "client"), None)
+    files = (message or {}).get("attachments") or []
+    if file_index < 0 or file_index >= len(files):
+        raise HTTPException(status_code=404, detail="Atașamentul nu există")
+    item = files[file_index]
+    data, content_type = get_object(item["storage_path"])
+    return Response(content=data, media_type=content_type or "application/octet-stream",
+                    headers={"Content-Disposition": disp("attachment", item.get("original_filename") or "document")})
+
 
 @api_router.post("/public/sign/{token}/messages")
 async def public_sign_add_message(token: str, request: Request):
