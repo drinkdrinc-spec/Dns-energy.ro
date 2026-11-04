@@ -708,7 +708,26 @@ export default function ModulePage({ moduleKey }) {
       * Math.max(1, metricNumber(inverter.count || inverter.quantity) || 1);
   }, 0) + (form?.cef?.shared_batteries || []).reduce((sum, battery) =>
     sum + metricNumber(battery.capacity_kwh || battery.kwh) * Math.max(1, metricNumber(battery.modules || battery.count) || 1), 0);
-  const dossierSummary = [
+  const monoBatterySummary = form?.battery_type && form.battery_type !== "Fără baterie"
+    ? [
+      form.battery_type,
+      metricNumber(form.bess_kwh) > 0 ? `${Number(metricNumber(form.bess_kwh).toFixed(2))} kWh` : "capacitate necompletată",
+      metricNumber(form.battery_ah) > 0 ? `${metricNumber(form.battery_ah)} Ah` : "",
+    ].filter(Boolean).join(" · ")
+    : "Fără baterie";
+  const monoProtectionSummary = [
+    form?.fuses,
+    form?.relay,
+    form?.breaker,
+  ].filter((value) => String(value || "").trim()).join(" · ") || "De completat";
+  const dossierSummary = key === "mono" ? [
+    ["Tip schemă", form?.type || "Nespecificată"],
+    ["Tensiune AC", form?.voltage || "Nespecificată"],
+    ["Stocare", monoBatterySummary],
+    ["Tensiune DC", form?.dc_voltage || "De completat"],
+    ["Cablu baterie", form?.dc_section || "De calculat / confirmat"],
+    ["Protecții", monoProtectionSummary],
+  ] : [
     ["Panouri", installedPanelCount ? `${installedPanelCount} · ${installedPanelKwp(form) || "—"} kWp` : "Neconfigurat"],
     ["Invertoare", dossierInverters.length ? `${dossierInverters.length} · ${Number(inverterCapacityKw.toFixed(2))} kW` : "Neconfigurat"],
     ["Stocare", storageCapacityKwh ? `${Number(storageCapacityKwh.toFixed(2))} kWh` : "Fără baterie"],
