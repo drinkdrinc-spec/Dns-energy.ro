@@ -58,9 +58,10 @@ BROWSE_SEARCH_TERMS = {
     "Gateway": "gateway",
     "Optimizator": "optimizator",
 }
-# Public supplier pages are crawled only within their own category/search URL,
-# with a hard per-supplier cap so a malformed pagination loop cannot fan out.
-MAX_LISTING_PAGES = 24
+# Keep the first result page responsive across all suppliers. The UI can ask for
+# subsequent result batches, so a single search should not crawl 24 pages from
+# every shop before it can display anything.
+MAX_LISTING_PAGES = 4
 DOCUMENT_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
     "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "certificat de conformitate", "certificat conformitate"),
