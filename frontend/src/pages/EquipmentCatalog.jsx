@@ -161,6 +161,7 @@ export default function EquipmentCatalog() {
   const [form, setForm] = useState(null);
   const [supplierResults, setSupplierResults] = useState([]);
   const [supplierLoading, setSupplierLoading] = useState(false);
+  const [supplierSearchMessage, setSupplierSearchMessage] = useState("");
   const [supplierNextOffset, setSupplierNextOffset] = useState(0);
   const [supplierHasMore, setSupplierHasMore] = useState(false);
   const [supplierBrowseAll, setSupplierBrowseAll] = useState(false);
@@ -240,6 +241,7 @@ export default function EquipmentCatalog() {
     const offset = append ? supplierNextOffset : 0;
     if (!append) setSupplierBrowseAll(browse);
     setSupplierLoading(true);
+    if (!append) setSupplierSearchMessage("Caut pe site-urile furnizorilor…");
     try {
       const { data } = await api.get("/catalog/supplier-search", {
         params: { q: browse ? "__browse_catalog__" : q.trim(), category: cat, offset, limit: 24 }, timeout: 90000,
@@ -252,9 +254,14 @@ export default function EquipmentCatalog() {
       });
       setSupplierNextOffset(Number(data.next_offset) || offset);
       setSupplierHasMore(Boolean(data.has_more));
+      setSupplierSearchMessage(products.length
+        ? `${products.length} rezultate găsite${data.has_more ? " · există și următorul lot" : ""}. Datele se importă numai după ce verifici modelul și documentele.`
+        : (data.message || "Nu am găsit produse pentru categoria și căutarea alese."));
       if (!products.length && !append && !data.has_more) toast.info(data.message || "Nu s-au găsit produse.");
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Căutarea la furnizori nu este disponibilă acum.");
+      const message = e.response?.data?.detail || "Căutarea la furnizori nu este disponibilă acum. Încearcă din nou sau folosește catalogul deja salvat.";
+      setSupplierSearchMessage(message);
+      toast.error(message);
     } finally { setSupplierLoading(false); }
   };
 
@@ -501,6 +508,7 @@ export default function EquipmentCatalog() {
           </div>
           {supplierResults.length > 0 && <span className="text-[11px]" style={{ color: "var(--muted)" }}>{supplierResults.length} rezultate încărcate</span>}
         </div>
+        {supplierSearchMessage && <p className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: supplierResults.length ? "var(--muted)" : "var(--amber, #8a5a00)" }} role="status" data-testid="supplier-search-status">{supplierLoading ? "Caut pe site-urile furnizorilor…" : supplierSearchMessage}</p>}
         {supplierResults.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="supplier-bulk-import">
           <button type="button" onClick={selectSupplierProductsWithDocuments} disabled={supplierBulkBusy} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }} data-testid="supplier-select-complete">Selectează modelele cu ambele PDF-uri</button>
           <button type="button" onClick={() => setSupplierSelected(new Set())} disabled={supplierBulkBusy || supplierSelected.size === 0} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }}>Șterge selecția</button>
@@ -594,4 +602,5 @@ export default function EquipmentCatalog() {
     </div>
   );
 }
+
 
