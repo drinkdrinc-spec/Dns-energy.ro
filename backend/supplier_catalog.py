@@ -53,6 +53,11 @@ DOCUMENT_HOSTS = {
     "reteleelectrice.ro", "distributieoltenia.ro",
 }
 CATEGORIES = {"Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"}
+BROWSE_SEARCH_TERMS = {
+    "Smart meter": "smart meter",
+    "Gateway": "gateway",
+    "Optimizator": "optimizator",
+}
 MAX_LISTING_PAGES = 6
 DOCUMENT_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
@@ -326,20 +331,30 @@ async def search_supplier_products(query: str, category: str, offset: int = 0, l
     if (len(query) < 2 and not browse_all) or category not in CATEGORIES:
         return {"products": [], "sources": list(SOURCES), "message": "Introdu cel puțin două caractere sau răsfoiește categoria selectată."}
     if browse_all:
-        # Browse only curated category pages. Free-text search remains available
-        # for categories that do not have a dedicated supplier listing.
-        active_sources = [(name, source) for name, source in SOURCES.items()
-                          if category in source.get("categories", {})]
+        # Prefer curated supplier category pages. For the remaining catalog
+        # categories, use a narrow product search and keep only exact category
+        # matches through _correct_category below.
+        active_sources = [
+            (name, source) for name, source in SOURCES.items()
+            if category in source.get("categories", {})
+            or (category in BROWSE_SEARCH_TERMS and source.get("search"))
+        ]
     else:
         active_sources = [(name, source) for name, source in SOURCES.items()
                           if category in source.get("categories", {}) or source.get("search")]
     qtokens = [] if browse_all else [part for part in _norm(query).split() if len(part) > 1]
     async with httpx.AsyncClient(timeout=12, headers={"User-Agent": "DNS-Energy-Catalog/1.0 (+https://dns-energy.ro)", "Accept": "text/html,application/xhtml+xml"}) as client:
+        listing_urls = []
+        for _, source in active_sources:
+            category_url = source.get("categories", {}).get(category)
+            if browse_all:
+                listing_url = category_url or source["search"].format(query=quote(BROWSE_SEARCH_TERMS[category]))
+            else:
+                listing_url = source.get("search", "").format(query=quote(query)) if source.get("search") else category_url
+            listing_urls.append(listing_url)
         responses = await asyncio.gather(*[
-            _get(client, source["categories"][category] if browse_all else
-                 (source.get("search", "").format(query=quote(query)) if source.get("search") else source["categories"][category]),
-                 source["host"])
-            for _, source in active_sources
+            _get(client, url, source["host"])
+            for (_, source), url in zip(active_sources, listing_urls)
         ])
         candidates = []
         for (name, source), response in zip(active_sources, responses):
