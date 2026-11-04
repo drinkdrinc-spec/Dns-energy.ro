@@ -168,6 +168,33 @@ export default function Dashboard() {
         action={<Link to="/prosumator"><Btn data-testid="new-diu-btn"><SunMedium size={15} /> Dosar nou</Btn></Link>}
       />
 
+      <details className="den-panel mb-4 group" data-testid="dashboard-quick-guide">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+          <span className="min-w-0">
+            <span className="block text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)" }}>REPERE RAPIDE</span>
+            <span className="mt-1 block text-sm font-bold">Găsește imediat următorul pas</span>
+          </span>
+          <span className="shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }}>Deschide ghidul</span>
+        </summary>
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Link to="/prosumator?start=documents" className="rounded-xl border p-3 transition hover:shadow-sm" style={{ borderColor: "var(--line)" }}>
+            <b className="block text-sm">Începe cu actele clientului</b>
+            <span className="mt-1 block text-xs leading-relaxed" style={{ color: "var(--muted)" }}>Încarcă documentele și verifică datele extrase înainte să le folosești în dosar.</span>
+            <span className="mt-2 inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }}>Deschide fluxul <ArrowRight size={13} /></span>
+          </Link>
+          <Link to="/catalog-echipamente" className="rounded-xl border p-3 transition hover:shadow-sm" style={{ borderColor: "var(--line)" }}>
+            <b className="block text-sm">Alege echipamentele din catalog</b>
+            <span className="mt-1 block text-xs leading-relaxed" style={{ color: "var(--muted)" }}>Caută modele și verifică fișele tehnice și documentele de conformitate disponibile.</span>
+            <span className="mt-2 inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }}>Deschide catalogul <ArrowRight size={13} /></span>
+          </Link>
+          <Link to="/mono" className="rounded-xl border p-3 transition hover:shadow-sm" style={{ borderColor: "var(--line)" }}>
+            <b className="block text-sm">Pregătește schema și documentele</b>
+            <span className="mt-1 block text-xs leading-relaxed" style={{ color: "var(--muted)" }}>Revizuiește schema monofilară și descarcă separat documentele tehnice disponibile.</span>
+            <span className="mt-2 inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }}>Deschide schemele <ArrowRight size={13} /></span>
+          </Link>
+        </div>
+      </details>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Stat label="Clienți înregistrați" value={s.clients} foot="În baza de date" icon={Users} />
         <Stat label="Dosare active" value={s.total_dossiers ?? (s.diu + s.mono)} foot="Prosumator, ATR, spor, DI-U, scheme și ANRE" icon={FolderOpen} />
