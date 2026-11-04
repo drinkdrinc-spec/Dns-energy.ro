@@ -61,7 +61,7 @@ const DEER_FORMS = [
   { value: "Loc existent ≤10,8 kW — notificare simplificată — Anexa 5", title: "Notificare prosumator / proiect demonstrativ ≤10,8 kW — Anexa 5", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Loc-consum-si_sau-producere-existent-prevazut_cu_instalatii_de_producere_Anexa-nr-5.docx", key: "existing" },
   { value: "Producere >400 kW — procedură dedicată", title: "Cerere pentru instalații de producere >400 kW — procedură dedicată", url: "https://www.distributie-energie.ro/wp-content/uploads/2024/04/Persoane-fizice-si-juridice-care-au-puterea-instalata-pe-producere-mai-mare-de-400kW.doc", key: "large" },
 ];
-const AUTH_DECLARATION_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/";
+const AUTH_DECLARATION_URL = "https://www.distributie-energie.ro/wp-content/uploads/2024/02/Declaratie-autenticitate-date-racordare.doc";
 const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
 const pdf = (id, full) => `/atr/${id}/pdf?full=${full}`
 
