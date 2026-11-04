@@ -140,7 +140,7 @@ def test_supplier_search_follows_sequential_pagination_links(monkeypatch):
         if url == product_url:
             content = b"<html><h1>Invertor Solis X20 Patru 10 kW</h1></html>"
         elif url == category_url:
-            content = b'<a href="/invertoare?p=1">Următoarea pagină</a>'
+            content = b'<a href="/invertoare?p=1">next page</a>'
         elif url.startswith(category_url + "?p="):
             page_number = int(url.rsplit("=", 1)[1])
             if page_number < 4:
