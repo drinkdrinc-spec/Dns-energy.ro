@@ -75,7 +75,7 @@ export function DossierExtras({ form, setVal, compact = false }) {
       </div>}
       {!compact && <div className="rounded-xl border p-4 bg-white lg:col-span-2" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2"><h4 className="font-bold text-sm">Teste și verificări PIF (Ord. ANRE 228/2018) — rezultate</h4>
-          <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("tests", Object.fromEntries(TESTS.map((k) => [k, { ...(ts[k] || {}), ok: ts[k]?.ok || "DA" }])))} data-testid="tests-all-da">Marchează DA pe rândurile necompletate (doar dacă e confirmat de certificatul de tip)</button></div>
+          <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("tests", { ...ts, ...Object.fromEntries(TESTS.map((k) => [k, { ...(ts[k] || {}), ok: ts[k]?.ok || "DA" }])) })} data-testid="tests-all-da">Marchează DA pe rândurile necompletate (doar dacă e confirmat de certificatul de tip)</button></div>
         <div className="grid sm:grid-cols-3 gap-2">
           {TESTS.map((k) => (
             <div key={k} className="flex items-center gap-2 text-xs"><span className="w-28 shrink-0">{TLABEL[k[0]]} {Number(k.slice(1)) + 1}</span>
@@ -83,6 +83,17 @@ export function DossierExtras({ form, setVal, compact = false }) {
               <input className="den-input py-1" placeholder="observații / valori" value={ts[k]?.obs || ""} onChange={(e) => setT(k, "obs", e.target.value)} data-testid={`test-${k}-obs`} /></div>
           ))}
         </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-[220px_1fr]">
+          <label className="den-field"><span>Verdict operator</span>
+            <select className="den-input" value={ts.verdict || ""} onChange={(e) => setVal("tests", { ...ts, verdict: e.target.value })} data-testid="tests-verdict">
+              <option value="">— necompletat —</option><option value="Admis">Admis</option><option value="Respins">Respins</option>
+            </select>
+          </label>
+          <label className="den-field"><span>Observații operator</span>
+            <textarea className="den-input" rows={2} maxLength={1000} value={ts.od_observations || ""} onChange={(e) => setVal("tests", { ...ts, od_observations: e.target.value })} data-testid="tests-od-observations" />
+          </label>
+        </div>
+        <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Verdictul și observațiile se completează numai după comunicarea operatorului; nu sunt completate automat.</p>
       </div>}
     </div>
   );
