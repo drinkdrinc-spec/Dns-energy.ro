@@ -634,7 +634,7 @@ async def list_items(module: str, q: Optional[str] = None, include_archived: boo
         "diu": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "pros_id"),
         "atr": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
         "power": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
-        "documents": ("client_name", "title", "name", "filename", "original_filename", "doc_type", "kind", "type", "pod"),
+        "documents": ("client_name", "dossier_id", "title", "name", "filename", "original_filename", "doc_type", "kind", "type", "pod"),
         "catalog": ("brand_model", "category", "supplier", "manufacturer", "model"),
         "projects": ("name", "number", "client_name", "address", "locality", "county", "status"),
         "works": ("name", "number", "client_name", "address", "locality", "county", "status"),
