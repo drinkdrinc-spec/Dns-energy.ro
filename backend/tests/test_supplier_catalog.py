@@ -19,6 +19,18 @@ def test_depozit_solar_download_route_accepts_only_keyed_pdf_files():
     assert not supplier_catalog._safe_document(valid.replace("depozitsolar.ro/", "depozitsolar.ro:444/"), "depozitsolar.ro")
 
 
+def test_official_victron_and_eastron_document_hosts_are_allowed_but_untrusted_hosts_are_not():
+    assert supplier_catalog._safe_document(
+        "https://www.victronenergy.com/upload/documents/Datasheet-MultiPlus-II-inverter-charger-EN.pdf",
+        "victronenergy.com",
+    )
+    assert supplier_catalog._safe_document(
+        "https://www.eastrongroup.com/eastrongroup/2024/08/10/eastronsdm630seriesdinrailmounted%3Bthreephase%3B100adatasheet.pdf",
+        "eastrongroup.com",
+    )
+    assert not supplier_catalog._safe_document("https://attacker.example/model.pdf", "victronenergy.com")
+
+
 def test_product_document_links_classify_depozit_download_query_urls():
     page_url = "https://depozitsolar.ro/invertoare/model.html"
     doc = html.fromstring("""
