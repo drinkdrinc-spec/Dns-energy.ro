@@ -12,7 +12,7 @@ const TYPES = [
   ["altele", "4. Alte documente", "PDF, imagini, DOCX și XLSX pot fi citite și rezumate; DOC/XLS și alte formate se atașează pentru verificare manuală."],
 ];
 
-const EMPTY = { client_name: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", request_type: "Racordare prosumator — fără spor de putere" };
+const EMPTY = { client_name: "", kind: "", bank: "", iban: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", request_type: "Racordare prosumator — fără spor de putere" };
 const COUNTY_OPERATOR = {
   bihor: "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
   "bistrita nasaud": "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
@@ -117,7 +117,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       const firstSite = sites[0] || null;
       const selected = { ...client, title: client.name || result.title, detail: result.detail, consumption_sites: sites };
       setSelectedClient(selected); setSelectedSiteId(firstSite?.id || "new"); setClientSearch(""); setClientMatches([]);
-      setValues((prev) => ({ ...EMPTY, ...prev, client_id: selected.id, client_name: selected.title || "", cnp: selected.idcode || selected.cui || "", id_series: selected.id_series || "", id_number: selected.id_number || "", phone: selected.phone || "", email: selected.email || "", hq_address: selected.hq_address || "", ...Object.fromEntries(LOCATION_FIELDS.map((key) => [key, firstSite?.[key] || selected[key] || ""])), operator: firstSite?.operator || selected.operator || distributorSuggestion(firstSite?.pod || selected.pod, firstSite?.county || selected.county), address_same_as_ci: false }));
+      setValues((prev) => ({ ...EMPTY, ...prev, client_id: selected.id, client_name: selected.title || "", kind: selected.kind || "", bank: selected.bank || "", iban: selected.iban || "", cnp: selected.idcode || selected.cui || "", id_series: selected.id_series || "", id_number: selected.id_number || "", phone: selected.phone || "", email: selected.email || "", hq_address: selected.hq_address || "", ...Object.fromEntries(LOCATION_FIELDS.map((key) => [key, firstSite?.[key] || selected[key] || ""])), operator: firstSite?.operator || selected.operator || distributorSuggestion(firstSite?.pod || selected.pod, firstSite?.county || selected.county), address_same_as_ci: false }));
       setOperatorManuallySet(Boolean(selected.operator));
     } catch (error) {
       toast.error(error.response?.data?.detail || "Nu am putut încărca datele clientului selectat.");
@@ -326,6 +326,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Date client din acte</div>
             <div className="grid sm:grid-cols-2 gap-3">
+              <label className="den-field"><span>Tip client</span><select className="den-input" value={values.kind || ""} onChange={(e) => setValues((prev) => ({ ...prev, kind: e.target.value }))} data-testid="intake-client-kind"><option value="">Alege...</option><option value="Persoană fizică">Persoană fizică</option><option value="Persoană juridică">Persoană juridică</option></select></label>
               {field("client_name", "Nume client *")}{field("cnp", "CNP / CUI")}
               {field("id_series", "Serie CI")}{field("id_number", "Număr CI")}
               {field("hq_address", "Domiciliu din CI")}
@@ -339,6 +340,12 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             <summary className="cursor-pointer text-xs font-semibold">Alte date client (opțional)</summary>
             <div className="grid sm:grid-cols-2 gap-3 mt-3">
               {field("phone", "Telefon")}{field("email", "E-mail")}
+            </div>
+          </details>
+          <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
+            <summary className="cursor-pointer text-xs font-semibold">Date pentru regularizarea prosumatorului (opțional)</summary>
+            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+              {field("bank", "Bancă")}{field("iban", "IBAN")}
             </div>
           </details>
         </div>
