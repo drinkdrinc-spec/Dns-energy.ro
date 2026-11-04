@@ -7,7 +7,7 @@ import { Plus, Pencil, Trash2, Upload, FileText, X, Sparkles } from "lucide-reac
 import { toast } from "sonner";
 
 const CATS = ["Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"];
-const hasStoredDocument = (item, kind) => Boolean(item?.[kind]?.storage_path);
+const hasStoredDocument = (item, kind) => Boolean(item?.[kind]?.storage_path) && item?.[kind]?.available !== false;
 const FIELDS = {
   Invertor: [["type", "Tip", ["Hibrid", "On-grid", "Invertor de baterie (AC)"]], ["phases", "Faze", ["Trifazat", "Monofazat"]], ["p_nom_kw", "Pn (kW)"], ["p_max_kw", "Pmax (kW)"], ["red_limit_mode", "Limitare putere în RED", ["Nu este declarată", "Limitare putere evacuată", "Zero export"]],
     ["vdc_max", "Udc max (V)"], ["mppt_min", "MPPT min (V)"], ["mppt_max", "MPPT max (V)"], ["mppt_count", "Nr. MPPT"], ["imax_mppt", "Imax / MPPT (A)"], ["isc_max_mppt", "Isc max admisibil / MPPT (A)"], ["battery_voltage", "Tensiune baterie compatibilă", null, "text"], ["bat_i_max", "Curent max baterie (A)"]],
@@ -108,7 +108,7 @@ function DocSlot({ item, k, label, onUploaded }) {
       <span className="flex w-full min-w-0 flex-wrap items-center gap-2">
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={up} data-testid={`upload-${k}-${item.id}`} />
       {hasStoredDocument(item, k) ? <button type="button" onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)} className="inline-flex items-center gap-1 text-[12px] font-bold text-left" style={{ color: "var(--blue)" }} data-testid={`open-${k}-${item.id}`} title={f.source_url || "Document încărcat"}><FileText size={13} /> {label} atașată</button>
-        : <span className="text-[12px]" style={{ color: "#b9770e" }}>{f ? `${label} nepreluată` : `${label} lipsă`}</span>}
+        : <span className="text-[12px]" style={{ color: "#b9770e" }}>{f?.available === false ? `${label} indisponibilă — reîncarcă PDF-ul` : f ? `${label} nepreluată` : `${label} lipsă`}</span>}
       {officialUrl && <a href={officialUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] underline" title="Deschide documentul de la producător">Sursă oficială ↗</a>}
       <button onClick={() => ref.current.click()} className="p-1 rounded hover:bg-[#eef4ff]" title={`Încarcă ${label}`} data-testid={`btn-upload-${k}-${item.id}`}><Upload size={13} style={{ color: "var(--blue)" }} /></button>
       <input className="den-input text-[11px] py-1 w-full sm:w-[220px] min-w-0" type="url" placeholder="Link PDF oficial HTTPS" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} aria-label={`Link oficial ${label}`} />
