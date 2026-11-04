@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { BrandMark } from "@/components/BrandMark";
+import { FileText } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api/public/sign`;
 
@@ -79,7 +80,8 @@ export default function SignPage() {
           {!clientMessages.length && <p className="text-xs" style={{ color: "#5a6b85" }}>Nu există mesaje în acest dosar.</p>}
           {clientMessages.map((item) => <article key={item.id} className="rounded-lg border p-3" style={{ borderColor: "#dbe3ee", background: "#f8fafd" }}>
             <div className="flex justify-between gap-2 text-[11px] font-semibold"><span>{item.sender === "client" ? "Tu" : item.sender_name || "Echipa DNS"}</span><time style={{ color: "#5a6b85" }}>{item.created_at ? new Date(item.created_at).toLocaleString("ro-RO") : ""}</time></div>
-            <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5">{item.text}</p>
+            {item.text && <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5">{item.text}</p>}
+            {!!item.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{item.attachments.map((file, index) => <a key={`${item.id}-${index}`} href={`${API}/${token}/message-files/${encodeURIComponent(item.id)}/${index}`} className="inline-flex items-center gap-1 text-xs underline" style={{ color: "#2878f0" }}><FileText size={12} />{file.original_filename || "Atașament"}</a>)}</div>}
           </article>)}
         </div>
         <form className="mt-3 space-y-2" onSubmit={sendClientReply}>
