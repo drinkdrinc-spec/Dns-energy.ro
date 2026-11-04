@@ -3,11 +3,11 @@ import { BrandMark } from "@/components/BrandMark";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, Archive,
-  FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt, Sparkles,
+  FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt, Sparkles, Mail,
 } from "lucide-react";
 import { can, isOff, ROUTE_FEATURE } from "@/lib/plan";
 
-const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles, Archive };
+const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles, Archive, Mail };
 
 const NAV = [
   { label: "Flux dosare", items: [
@@ -41,6 +41,7 @@ const NAV = [
     { to: "/simulare", icon: "SunMedium", text: "Proiectare fotovoltaică", testid: "nav-project" },
     { to: "/distribuitori", icon: "Network", text: "Distribuitori România", testid: "nav-operators" },
     { to: "/portaluri-distribuitori", icon: "Network", text: "Portal depunere după POD", testid: "nav-distribution-portals" },
+    { to: "/mesaje-od", icon: "Mail", text: "Corespondență OD", testid: "nav-operator-messages" },
   ]},
   { label: "Administrare", items: [
     { to: "/documente", icon: "Files", text: "Documente", testid: "nav-documents" },

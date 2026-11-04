@@ -109,7 +109,7 @@ ALL_FEATURES = {"prosumator": "Dosare de prosumator", "diu": "Dosar instalație 
                 "panels": "Tablouri electrice", "anti": "Antiinsularizare", "pram": "Buletine PRAM", "equipment": "Echipamente",
                 "power": "Spor de putere / BMP", "atr": "Cerere ATR (aviz tehnic de racordare)", "works": "Gestionarea lucrărilor", "projects": "Simulare proiect", "sign_remote": "Semnare la distanță",
                 "ai_extract": "Import automat din documente (AI)", "ai_gpt": "Asistent AI ChatGPT (chat, verificare dosar, redactare, import)", "oferte": "Oferte de preț și contracte"}
-MODULE_FEATURE = {"clients": "prosumator", "prosumator": "prosumator", "documents": "prosumator", "archived_dossiers": "prosumator", "catalog": "prosumator", "staff": "prosumator",
+MODULE_FEATURE = {"clients": "prosumator", "prosumator": "prosumator", "documents": "prosumator", "archived_dossiers": "prosumator", "catalog": "prosumator", "operator_messages": "prosumator", "staff": "prosumator",
                   "instruments": "prosumator", "diu": "diu", "mono": "mono", "panels": "panels", "anti": "anti", "pram": "pram",
                   "equipment": "equipment", "power": "power", "atr": "atr", "works": "works", "projects": "projects"}
 DEFAULT_PLANS = [
@@ -371,7 +371,7 @@ def require(user: dict, *roles):
 def is_admin(user: dict) -> bool:
     return user.get("role", "admin") == "admin"
 
-SCOPED = ("clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents")
+SCOPED = ("clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents", "operator_messages")
 
 def scope_q(user: dict, module: str) -> dict:
     q = {"owner": user["id"]}
@@ -424,7 +424,7 @@ async def logout(user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 # ---------------- Generic module CRUD ----------------
-MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents", "archived_dossiers", "catalog", "staff", "instruments"]
+MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents", "archived_dossiers", "catalog", "operator_messages", "staff", "instruments"]
 
 def clean(doc: dict) -> dict:
     doc.pop("_id", None)
@@ -635,6 +635,7 @@ async def list_items(module: str, q: Optional[str] = None, include_archived: boo
         "atr": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
         "power": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
         "documents": ("client_name", "dossier_id", "title", "name", "filename", "original_filename", "doc_type", "kind", "type", "pod"),
+        "operator_messages": ("client_name", "operator", "subject", "reference", "message_type", "status", "next_action"),
         "catalog": ("brand_model", "category", "supplier", "manufacturer", "model"),
         "projects": ("name", "number", "client_name", "address", "locality", "county", "status"),
         "works": ("name", "number", "client_name", "address", "locality", "county", "status"),

@@ -4,12 +4,12 @@ import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
 import { QuickSearch } from "@/components/QuickSearch";
-import { Menu, Home, Users, FolderOpen, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity, Download } from "lucide-react";
+import { Menu, Home, Users, FolderOpen, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity, Download, Mail } from "lucide-react";
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const workflowPaths = ["/clienti", "/prosumator", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/dosare-anre", "/mono", "/pram", "/portaluri-distribuitori"];
+  const workflowPaths = ["/clienti", "/prosumator", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/dosare-anre", "/mono", "/pram", "/portaluri-distribuitori", "/mesaje-od"];
   const showWorkflow = workflowPaths.some((path) => location.pathname.startsWith(path));
   return (
     <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
@@ -100,6 +100,7 @@ const DOSSIER_STEPS = [
   { to: "/dosare-anre", label: "Dosar ANRE", icon: FileCheck2, matches: ["/dosare-anre"] },
   { to: "/catalog-echipamente", label: "Echipamente", icon: Cpu, matches: ["/catalog-echipamente"] },
   { to: "/portaluri-distribuitori", label: "Portal OD", icon: Globe, matches: ["/portaluri-distribuitori"] },
+  { to: "/mesaje-od", label: "Mesaje OD", icon: Mail, matches: ["/mesaje-od"] },
 ];
 
 function DossierWorkflow({ pathname }) {

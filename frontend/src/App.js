@@ -28,6 +28,7 @@ const AdminOperators = lazy(() => import("@/pages/AdminOperators"));
 const AnreDossiers = lazy(() => import("@/pages/AnreDossiers"));
 const SchemaTehnica = lazy(() => import("@/pages/SchemaTehnica"));
 const DistributionPortals = lazy(() => import("@/pages/DistributionPortals"));
+const OperatorMessages = lazy(() => import("@/pages/OperatorMessages"));
 const ArchivedDossiers = lazy(() => import("@/pages/ArchivedDossiers"));
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
@@ -70,6 +71,7 @@ function AppRoutes() {
         <Route path="/cerere-atr" element={<Gate feat="atr"><ModulePage moduleKey="atr" /></Gate>} />
         <Route path="/formulare-oficiale" element={<FormsRegistry />} />
         <Route path="/portaluri-distribuitori" element={<DistributionPortals />} />
+        <Route path="/mesaje-od" element={<Gate feat="prosumator"><OperatorMessages /></Gate>} />
         <Route path="/catalog" element={<Gate feat={ROUTE_FEATURE["/catalog"]}><Catalog /></Gate>} />
         <Route path="/catalog-echipamente" element={<Gate feat={ROUTE_FEATURE["/catalog-echipamente"]}><EquipmentCatalog /></Gate>} />
         <Route path="/setari-baza" element={<Gate feat={ROUTE_FEATURE["/setari-baza"]}><BaseSettings /></Gate>} />

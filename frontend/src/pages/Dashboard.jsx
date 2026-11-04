@@ -50,6 +50,7 @@ const TILES = [
   { to: "/dosare-anre", icon: ShieldAlert, title: "Dosare ANRE", desc: "Dosare și documente pentru depunere ANRE." },
   { to: "/catalog-echipamente", icon: Cpu, title: "Catalog echipamente", desc: "Panouri, invertoare, baterii și fișe." },
   { to: "/portaluri-distribuitori", icon: ExternalLink, title: "Portaluri operatori", desc: "Acces rapid la portalurile oficiale de depunere." },
+  { to: "/mesaje-od", icon: FileText, title: "Corespondență OD", desc: "Înregistrează solicitările și răspunsurile lângă dosarul clientului." },
   { to: "/oferte", icon: Receipt, title: "Oferte și contracte", desc: "Documentele comerciale ale firmei." },
   { to: "/dosare-arhivate", icon: Archive, title: "Arhivă", desc: "Dosare și documente generate anterior." },
 ];
