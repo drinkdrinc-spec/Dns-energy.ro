@@ -221,6 +221,10 @@ async def diu_import(item_id: str, request: Request, user: dict = Depends(get_cu
     S.guard("diu", user, write=True)
     rec = await S.check_access(user, "diu", item_id)
     pid = (await request.json()).get("pros_id")
+    return await import_prosumer_into_diu(user, item_id, rec, pid)
+
+
+async def import_prosumer_into_diu(user: dict, item_id: str, rec: dict, pid: str):
     p = await db.prosumator.find_one({**S.scope_q(user, "prosumator"), "id": pid}, {"_id": 0}) if pid else None
     if not p:
         raise HTTPException(status_code=404, detail="Dosar de prosumator inexistent")
@@ -287,3 +291,98 @@ async def diu_import(item_id: str, request: Request, user: dict = Depends(get_cu
     await db.diu.update_one({"id": item_id, "owner": user["id"]}, {"$set": upd})
     await S.audit(user, "preluare din prosumator", "diu", item_id, list(upd.keys()))
     return await db.diu.find_one({"id": item_id}, {"_id": 0})
+
+
+@api.post("/power/{item_id}/ensure-diu")
+async def power_ensure_diu(item_id: str, user: dict = Depends(get_current_user)):
+    """Create or refresh the linked DI-U when a power-increase dossier is saved."""
+    S.guard("power", user)
+    S.guard("diu", user, write=True)
+    power = await S.check_access(user, "power", item_id)
+    owner = user["id"]
+    pros_id = str(power.get("pros_id") or "").strip()
+    pros = None
+    if pros_id:
+        pros = await db.prosumator.find_one({**S.scope_q(user, "prosumator"), "id": pros_id}, {"_id": 0})
+        if not pros:
+            raise HTTPException(status_code=404, detail="Dosarul de prosumator asociat nu mai există")
+        power_client_id = power.get("client_id")
+        pros_client_id = pros.get("client_id")
+        if power_client_id and pros_client_id:
+            same_client = power_client_id == pros_client_id
+        else:
+            def name_key(value):
+                value = unicodedata.normalize("NFD", str(value or ""))
+                value = "".join(ch for ch in value if unicodedata.category(ch) != "Mn")
+                return " ".join(value.casefold().split())
+            power_name = power.get("client_name") or ""
+            pros_name = pros.get("client_name") or pros.get("name") or ""
+            same_client = bool(power_name and pros_name and name_key(power_name) == name_key(pros_name))
+        if not same_client:
+            raise HTTPException(status_code=409, detail="Dosarul prosumator selectat aparține altui client decât cererea de spor.")
+    rec = await db.diu.find_one({"owner": owner, "power_id": item_id}, {"_id": 0})
+    created = rec is None
+    if rec is None and power.get("diu_id"):
+        rec = await db.diu.find_one({**S.scope_q(user, "diu"), "id": power["diu_id"]}, {"_id": 0})
+        created = False
+
+    if rec is None:
+        client = await S.get_client(owner, power) or {}
+        now = datetime.now(timezone.utc).isoformat()
+        number = str(power.get("number") or "").strip()
+        rec = {
+            "id": str(uuid.uuid4()),
+            "owner": owner,
+            "created_at": now,
+            "updated_at": now,
+            "created_by": user.get("uid"),
+            "created_by_email": user.get("email"),
+            "client_id": power.get("client_id") or client.get("id"),
+            "client_name": power.get("client_name") or client.get("name") or "",
+            "address": power.get("address") or client.get("consumption_address") or client.get("address") or "",
+            "locality": power.get("locality") or client.get("locality") or "",
+            "county": power.get("county") or client.get("county") or "",
+            "pod": power.get("pod") or client.get("pod") or "",
+            "operator": power.get("operator") or client.get("operator") or "",
+            "supply": power.get("new_supply") or power.get("current_supply") or power.get("supply") or "",
+            "atr": power.get("atr") or "",
+            "type": "Sistem fotovoltaic",
+            "status": "Documente de completat",
+            "workflow_status": "În pregătire",
+            "power_id": item_id,
+            "power_request_number": number,
+            "requested_power_kw": power.get("requested") or power.get("requested_power") or "",
+            "approved_power_kw": power.get("approved") or power.get("approved_power") or "",
+            "request_type": "spor de putere",
+            "is_test": bool(power.get("is_test")),
+        }
+        await db.diu.insert_one(dict(rec))
+    else:
+        # Existing user-entered DI-U values remain authoritative. Power-request
+        # references are safe to refresh and let retries remain idempotent.
+        await db.diu.update_one(
+            {"id": rec["id"], "owner": owner},
+            {"$set": {
+                "power_id": item_id,
+                "power_request_number": str(power.get("number") or "").strip(),
+                "requested_power_kw": power.get("requested") or power.get("requested_power") or "",
+                "approved_power_kw": power.get("approved") or power.get("approved_power") or "",
+                "request_type": "spor de putere",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        rec = await db.diu.find_one({"id": rec["id"], "owner": owner}, {"_id": 0}) or rec
+
+    if pros_id:
+        # Reuse the same ownership and same-client validation as the manual DI-U
+        # import action. It copies only values present in the source dossier.
+        rec = await import_prosumer_into_diu(user, rec["id"], rec, pros_id)
+    await db.power.update_one(
+        {"id": item_id, "owner": owner},
+        {"$set": {"diu_id": rec["id"]}},
+    )
+    if created:
+        await S.audit(user, "creare automată DI-U din spor de putere", "diu", rec["id"], ["power_id", "pros_id", "client_id"])
+    await S.audit(user, "legare DI-U la spor de putere", "power", item_id, ["diu_id"])
+    return {"id": rec["id"], "diu_id": rec["id"], "created": created, "number": rec.get("number") or "", "status": rec.get("status") or "Documente de completat"}
+
