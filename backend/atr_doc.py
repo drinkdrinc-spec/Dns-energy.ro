@@ -760,7 +760,7 @@ def render_atr(rec: dict, client: dict, s: dict, pros: dict, attached: set) -> b
 
 
 
-def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key: str, annex_no: int, form_title: str = "") -> bytes:
+def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key: str, annex_no: int | str, form_title: str = "") -> bytes:
     """Render a data worksheet to help complete the selected operator's official annex.
 
     This is explicitly a work sheet, never represented as the operator's official form.
@@ -785,15 +785,16 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
     is_company = "jurid" in applicant_type or applicant_type == "pj"
     applicant_identifier = (client.get("cui") or client.get("idcode")) if is_company else client.get("idcode")
     applicant_address = (client.get("hq_address") or client.get("address")) if is_company else (client.get("address") or client.get("hq_address"))
+    annex_label = f"Anexa {annex_no}" if isinstance(annex_no, int) or str(annex_no).strip().isdigit() else str(annex_no).strip()
     v = lambda value: escape(str(value)) if value not in (None, "") else M
     P = lambda text, style="p": Paragraph(text, D.S[style])
     T = lambda rows, widths: D.pdf_table(rows, widths, True, 7.6, 178)
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
-                            title=f"Fișă precompletare Anexa {annex_no}")
+                            title=f"Fișă precompletare {annex_label}")
     operator = OP_NAMES.get(operator_key, rec.get("operator") or "Operatorul de distribuție")
     story = [
-        P(f"FIȘĂ DE PRECOMPLETARE — ANEXA {int(annex_no)}", "h"),
+        P(f"FIȘĂ DE PRECOMPLETARE — {escape(annex_label.upper())}", "h"),
         P(escape(operator), "sub"),
         P("DOCUMENT DE LUCRU — NU ESTE FORMULARUL OFICIAL AL OPERATORULUI. Folosiți datele pentru completarea formularului oficial atașat și verificați fiecare câmp înainte de depunere. Valorile lipsă nu sunt deduse sau inventate.", "small"),
         Spacer(1, 5),

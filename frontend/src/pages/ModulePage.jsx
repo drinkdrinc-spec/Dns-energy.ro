@@ -1246,7 +1246,12 @@ export default function ModulePage({ moduleKey }) {
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <button type="button" className="min-h-10 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openEdit(it)} data-testid={`edit-mobile-${it.id}`}>Editează cererea</button>
                   <button type="button" className="min-h-10 rounded-lg px-3 text-xs font-semibold text-white" style={{ background: "var(--blue)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/package.zip", "Pachet_ATR.zip")} data-testid={`atr-package-mobile-${it.id}`}>Descarcă dosarul ZIP</button>
-                  {isDeer && <button type="button" className="col-span-2 min-h-10 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/official-docx", "Anexa_DEER_completata_" + it.id.slice(0, 8) + ".docx")}>Descarcă Anexa DEER completată</button>}
+                  {isDeer && (() => {
+                    const largePower = /(?:>|peste\s*)\s*400\s*kw/i.test(String(it.deer_case || it.request_type || ""));
+                    const path = "/official-docx";
+                    const name = largePower ? "Fisa_precompletare_DEER_peste_400_kW.pdf" : "Anexa_DEER_completata_" + it.id.slice(0, 8) + ".docx";
+                    return <button type="button" className="col-span-2 min-h-10 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + path, name)}>{largePower ? "Descarcă fișa de precompletare DEER (>400 kW)" : "Descarcă Anexa DEER completată"}</button>;
+                  })()}
                 </div>
               </article>;
             })}
@@ -1331,7 +1336,11 @@ export default function ModulePage({ moduleKey }) {
                           </>}
                         </span>;
                       })()}
-                      {key === "atr" && <span className="inline-flex items-center flex-wrap gap-1 mr-1"><button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openAuthenticatedFile("/atr/" + it.id + "/pdf?full=0")} title="Descarcă separat cererea ATR în PDF">PDF cerere ATR</button><button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/package.zip", "Pachet_ATR.zip")} title="Pachet ZIP cu PDF-ul ATR și anexa oficială disponibilă pentru operatorul selectat">PDF + anexele disponibile (ZIP)</button>{/deer|distributie energie electrica romania/i.test(String(it.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")) && <button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/official-docx", "Anexa_DEER_completata_" + it.id.slice(0, 8) + ".docx")} title="Descarcă formularul oficial DEER precompletat cu datele cunoscute din dosar">Anexa DEER completată (DOCX)</button>}</span>}
+                      {key === "atr" && <span className="inline-flex items-center flex-wrap gap-1 mr-1"><button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openAuthenticatedFile("/atr/" + it.id + "/pdf?full=0")} title="Descarcă separat cererea ATR în PDF">PDF cerere ATR</button><button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/package.zip", "Pachet_ATR.zip")} title="Pachet ZIP cu PDF-ul ATR și anexa oficială disponibilă pentru operatorul selectat">PDF + anexele disponibile (ZIP)</button>{/deer|distributie energie electrica romania/i.test(String(it.operator || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")) && (() => {
+                        const largePower = /(?:>|peste\s*)\s*400\s*kw/i.test(String(it.deer_case || it.request_type || ""));
+                        const name = largePower ? "Fisa_precompletare_DEER_peste_400_kW.pdf" : "Anexa_DEER_completata_" + it.id.slice(0, 8) + ".docx";
+                        return <button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/official-docx", name)} title={largePower ? "Fișă de lucru precompletată; formularul oficial DEER original se află în pachetul ZIP" : "Descarcă formularul oficial DEER precompletat cu datele cunoscute din dosar"}>{largePower ? "Fișă DEER >400 kW (PDF)" : "Anexa DEER completată (DOCX)"}</button>;
+                      })()}</span>}
                       {key === "prosumator" && (() => {
                         const token = localStorage.getItem("den_token");
                         const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
