@@ -242,7 +242,7 @@ export default function EquipmentCatalog() {
     setSupplierLoading(true);
     try {
       const { data } = await api.get("/catalog/supplier-search", {
-        params: { q: browse ? "__browse_catalog__" : q.trim(), category: cat, offset, limit: 24 }, timeout: 60000,
+        params: { q: browse ? "__browse_catalog__" : q.trim(), category: cat, offset, limit: 24 }, timeout: 90000,
       });
       const products = Array.isArray(data.products) ? data.products : [];
       setSupplierResults((previous) => {
