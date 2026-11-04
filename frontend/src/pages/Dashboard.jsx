@@ -148,6 +148,7 @@ export default function Dashboard() {
           <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
           <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}{item.pod ? " · POD " + item.pod : ""}{item.operator ? " · " + item.operator : ""}</span>
           {item.next_action && <span className="mt-1 block truncate text-xs font-semibold" style={{ color: overdue ? "#b43b2f" : "var(--blue)" }} data-testid={`inbox-action-${itemKey}`}>Următorul pas: {item.next_action}{hasValidDueDate ? ` · ${dueDate.toLocaleDateString("ro-RO")}` : ""}{overdue ? " · depășit" : ""}</span>}
+          {item.workflow_blockers?.length > 0 && <span className="mt-1 block truncate text-xs font-semibold text-amber-800" title={item.workflow_blockers.join(" · ")} data-testid={`inbox-blockers-${itemKey}`}>Blocaje: {item.workflow_blockers.join(" · ")}</span>}
           <span className="block text-[10px] mt-1" style={{ color: "var(--muted)" }}>{item.updated_at ? new Date(item.updated_at).toLocaleDateString("ro-RO") : "—"}</span>
         </Link>
         {(item.locality || item.county) && <a
@@ -223,11 +224,12 @@ export default function Dashboard() {
         </div>
       </details>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <Stat label="Clienți înregistrați" value={s.clients} foot="În baza de date" icon={Users} />
         <Stat label="Dosare active" value={s.total_dossiers ?? (s.diu + s.mono)} foot="Prosumator, ATR, spor, DI-U, scheme și ANRE" icon={FolderOpen} />
         <Stat label="Scheme monofilare" value={s.mono} foot="Înregistrări" icon={GitBranch} />
         <Stat label="Necesită atenție" value={s.pending} foot="Dosare în lucru sau de verificat" color="var(--amber)" icon={AlertTriangle} />
+        <Stat label="Blocaje active" value={s.blocker_count || 0} foot={`${s.blocker_dossiers || 0} dosare cu blocaje notate`} color="var(--amber)" icon={AlertTriangle} />
       </div>
 
       <section className="den-panel mb-6" aria-labelledby="dashboard-workload-title" data-testid="dashboard-workload">
