@@ -159,7 +159,7 @@ def test_listing_page_crawler_follows_pages_beyond_visible_pagination(monkeypatc
         category_url,
         *(category_url + f"?p={page}" for page in range(1, 5)),
     ]
-    assert len(requested) == 4
+    assert len(requested) == 5
     assert all(host == "depozitsolar.ro" for _, host in requested)
 
 
