@@ -6,7 +6,7 @@ import { AtrDeadlines } from "@/components/AtrDeadlines";
 import {
   Users, FolderOpen, GitBranch, AlertTriangle, SquareStack, Zap, ExternalLink,
   ShieldAlert, FileText, SunMedium, Cpu, Archive, FileCheck2, Receipt,
-  ArrowRight, Upload, ClipboardCheck, PackageCheck, Search, List as ListIcon, LayoutGrid, MapPin,
+  ArrowRight, Upload, ClipboardCheck, PackageCheck, Search, List as ListIcon, LayoutGrid, MapPin, Ruler,
 } from "lucide-react";
 
 const FLOW = [
@@ -48,6 +48,7 @@ const TILES = [
   { to: "/pram", icon: FileCheck2, title: "Buletine PRAM", desc: "Documente PRAM separate de dosar." },
   { to: "/mono", icon: GitBranch, title: "Scheme monofilare", desc: "Scheme și protecțiile instalației." },
   { to: "/dosare-anre", icon: ShieldAlert, title: "Dosare ANRE", desc: "Dosare și documente pentru depunere ANRE." },
+  { to: "/simulare", icon: Ruler, title: "Proiectare fotovoltaică", desc: "Desenează proiectul și leagă-l de client, echipamente și dosar." },
   { to: "/catalog-echipamente", icon: Cpu, title: "Catalog echipamente", desc: "Panouri, invertoare, baterii și fișe." },
   { to: "/portaluri-distribuitori", icon: ExternalLink, title: "Portaluri operatori", desc: "Acces rapid la portalurile oficiale de depunere." },
   { to: "/mesaje-od", icon: FileText, title: "Corespondență OD", desc: "Înregistrează solicitările și răspunsurile lângă dosarul clientului." },
