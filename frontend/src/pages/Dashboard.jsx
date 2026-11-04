@@ -6,7 +6,7 @@ import { AtrDeadlines } from "@/components/AtrDeadlines";
 import {
   Users, FolderOpen, GitBranch, AlertTriangle, SquareStack, Zap, ExternalLink,
   ShieldAlert, FileText, SunMedium, Cpu, Archive, FileCheck2, Receipt,
-  ArrowRight, Upload, ClipboardCheck, PackageCheck, Search, List as ListIcon, LayoutGrid,
+  ArrowRight, Upload, ClipboardCheck, PackageCheck, Search, List as ListIcon, LayoutGrid, MapPin,
 } from "lucide-react";
 
 const FLOW = [
@@ -102,7 +102,7 @@ export default function Dashboard() {
     .sort((a, b) => a.localeCompare(b, "ro-RO"));
   const normalizedInboxQuery = inboxQuery.trim().toLocaleLowerCase("ro-RO");
   const visibleInboxItems = inboxItems.filter((item) => {
-    const searchText = [item.client_name, item.number, item.label, item.pod, item.operator, item.distributor]
+    const searchText = [item.client_name, item.number, item.label, item.pod, item.operator, item.distributor, item.locality, item.county]
       .filter(Boolean).join(" ").toLocaleLowerCase("ro-RO");
     return (!normalizedInboxQuery || searchText.includes(normalizedInboxQuery))
       && (inboxModule === "all" || item.module === inboxModule)
@@ -132,6 +132,16 @@ export default function Dashboard() {
           {item.next_action && <span className="mt-1 block truncate text-xs font-semibold" style={{ color: overdue ? "#b43b2f" : "var(--blue)" }} data-testid={`inbox-action-${itemKey}`}>Următorul pas: {item.next_action}{hasValidDueDate ? ` · ${dueDate.toLocaleDateString("ro-RO")}` : ""}{overdue ? " · depășit" : ""}</span>}
           <span className="block text-[10px] mt-1" style={{ color: "var(--muted)" }}>{item.updated_at ? new Date(item.updated_at).toLocaleDateString("ro-RO") : "—"}</span>
         </Link>
+        {(item.locality || item.county) && <a
+          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([item.locality, item.county].filter(Boolean).join(", "))}`}
+          target="_blank" rel="noopener noreferrer"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] font-semibold"
+          style={{ borderColor: "var(--line)", color: "var(--blue)" }}
+          aria-label={`Deschide localitatea ${[item.locality, item.county].filter(Boolean).join(", ")} în Google Maps`}
+          title="Caută doar localitatea și județul; adresa stradală și POD-ul nu sunt trimise"
+          data-testid={`inbox-map-${itemKey}`}>
+          <MapPin size={13} /> Hartă
+        </a>}
         {item.module === "anre_dossiers" ? <span className="shrink-0 rounded-full px-2 py-1 text-[11px] font-bold" style={{ background: "#eef4ff", color: "var(--blue)" }}>{currentStatus}</span> : <select
           className="den-input shrink-0 !w-auto max-w-[48%] !py-1 !px-2 !text-[11px] font-bold"
           aria-label={`Stadiul dosarului ${item.client_name || item.number || item.label}`}
