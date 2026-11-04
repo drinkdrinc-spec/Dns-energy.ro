@@ -858,6 +858,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     inbox = []
     projection = {"_id": 0, "id": 1, "client_name": 1, "number": 1,
                   "pod": 1, "operator": 1, "operator_name": 1, "distributor": 1,
+                  "locality": 1, "county": 1,
                   "company.name": 1,
                   "kwp": 1, "inverter_kw": 1, "status": 1, "workflow_status": 1, "operator_stage": 1,
                   "next_action": 1, "next_action_due": 1,
@@ -878,6 +879,10 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                 "number": row.get("number") or "",
                 "pod": row.get("pod") or row.get("pod_number") or "",
                 "operator": row.get("operator") or row.get("operator_name") or row.get("distributor") or "",
+                # The dashboard map shortcut uses municipality/county only;
+                # never send the customer's street address or POD to Maps.
+                "locality": row.get("locality") or "",
+                "county": row.get("county") or "",
                 "kwp": row.get("kwp") or row.get("panel_kwp") or "",
                 "inverter_kw": row.get("inverter_kw") or row.get("power_kw") or "",
                 "status": row.get("workflow_status") or row.get("status") or row.get("operator_stage") or "În lucru",
