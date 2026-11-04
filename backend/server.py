@@ -3404,9 +3404,13 @@ async def public_sign_message_file(token: str, message_id: str, file_index: int)
     if file_index < 0 or file_index >= len(files):
         raise HTTPException(status_code=404, detail="Atașamentul nu există")
     item = files[file_index]
-    data, content_type = get_object(item["storage_path"])
+    storage_path = str(item.get("storage_path") or "")
+    if not storage_path.startswith(f"{APP_NAME}/uploads/{r.get('owner')}/") or ".." in storage_path:
+        raise HTTPException(status_code=404, detail="Atașamentul nu există")
+    data, content_type = get_object(storage_path)
     return Response(content=data, media_type=content_type or "application/octet-stream",
-                    headers={"Content-Disposition": disp("attachment", item.get("original_filename") or "document")})
+                    headers={"Content-Disposition": disp("attachment", item.get("original_filename") or "document"),
+                             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @api_router.post("/public/sign/{token}/messages")
