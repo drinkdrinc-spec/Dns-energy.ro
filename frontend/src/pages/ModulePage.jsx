@@ -1248,7 +1248,7 @@ export default function ModulePage({ moduleKey }) {
                   <button type="button" className="min-h-10 rounded-lg px-3 text-xs font-semibold text-white" style={{ background: "var(--blue)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/package.zip", "Pachet_ATR.zip")} data-testid={`atr-package-mobile-${it.id}`}>Descarcă dosarul ZIP</button>
                   {isDeer && (() => {
                     const largePower = /(?:>|peste\s*)\s*400\s*kw/i.test(String(it.deer_case || it.request_type || ""));
-                    const path = largePower ? "/official-docx" : "/official-docx";
+                    const path = "/official-docx";
                     const name = largePower ? "Fisa_precompletare_DEER_peste_400_kW.pdf" : "Anexa_DEER_completata_" + it.id.slice(0, 8) + ".docx";
                     return <button type="button" className="col-span-2 min-h-10 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + path, name)}>{largePower ? "Descarcă fișa de precompletare DEER (>400 kW)" : "Descarcă Anexa DEER completată"}</button>;
                   })()}
