@@ -210,6 +210,16 @@ class CefDrawing(Flowable):
                     yy = 70 * mm - j * 2.2 * mm
                     self.line(cx[u], 72 * mm, cx[u], yy, dc=True)
                     self.line(cx[u], yy, bx + 3 * mm, yy, dc=True)
+                    # Every battery-to-inverter DC connection must show its
+                    # isolation point. The documented voltage/current remain
+                    # in the battery callout above; missing ratings stay
+                    # explicitly marked for confirmation by the designer.
+                    switch_x = (cx[u] + bx + 3 * mm) / 2
+                    c.setStrokeColor(RED); c.setLineWidth(0.8)
+                    c.rect(switch_x - 3.5 * mm, yy - 2 * mm, 7 * mm, 4 * mm, stroke=1, fill=0)
+                    c.line(switch_x - 2 * mm, yy - 1.5 * mm, switch_x + 2 * mm, yy + 1.5 * mm)
+                    c.setFont("LSB", 4.8); c.setFillColor(RED)
+                    c.drawCentredString(switch_x, yy + 3 * mm, "QBAT DC")
         # legend
         c = self.canv
         c.setFont("LS", 6); c.setFillColor(colors.black)
