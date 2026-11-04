@@ -42,21 +42,13 @@ SOURCES = {
             "Baterie": "https://solartech.ro/acumulatori-solari-fotovoltaice/",
         },
     },
-    "Optim Solar": {
-        "host": "optimsolar.ro",
-        "categories": {
-            "Invertor": "https://optimsolar.ro/product-category/invertoare/",
-            "Panou": "https://optimsolar.ro/product-category/panouri-fotovoltaice/",
-            "Baterie": "https://optimsolar.ro/product-category/acumulatori/",
-        },
-    },
 }
 DOCUMENT_HOSTS = {
     "depozitsolar.ro", "solarhev.ro", "solartech.ro", "deyeinverter.com", "deyeess.com", "huawei.com", "goodwe.com",
     "sungrowpower.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de", "sma-solar.com",
     "jinkosolar.com", "jinkosolar.eu", "longi.com", "aikosolar.com", "aiko.com", "trinasolar.com", "canadiansolar.com",
     "qcells.com", "ja-solar.com", "jasolar.com", "pylontech.com", "pylontech.com.cn", "pylontech.us", "bydbatterybox.com", "fox-ess.com", "foxess.com",
-    "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com", "risenenergy.com", "victronenergy.com", "eastrongroup.com",
+    "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com", "risenenergy.com",
     "solarshop.baywa-re.lv", "hqsmartcloud.com", "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro",
     "reteleelectrice.ro", "distributieoltenia.ro",
 }
@@ -66,6 +58,8 @@ BROWSE_SEARCH_TERMS = {
     "Gateway": "gateway",
     "Optimizator": "optimizator",
 }
+# Public supplier pages are crawled only within their own category/search URL,
+# with a hard per-supplier cap so a malformed pagination loop cannot fan out.
 MAX_LISTING_PAGES = 24
 DOCUMENT_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
@@ -334,44 +328,45 @@ def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
     return urls
 
 
-async def _collect_listing_pages(client: httpx.AsyncClient, initial_response, host: str,
-                                 semaphore: asyncio.Semaphore) -> list:
-    """Follow same-query pagination links, with a global concurrency and page bound."""
-    try:
-        initial_doc = html.fromstring(initial_response.content)
-    except (ValueError, TypeError):
-        return [initial_response]
+async def _collect_listing_candidates(client: httpx.AsyncClient, listing_url: str, host: str,
+                                      semaphore: asyncio.Semaphore) -> list[tuple[str, str]]:
+    """Crawl bounded, same-category pagination and return product links only."""
+    pending = [listing_url]
+    seen_pages = {listing_url}
+    seen_products = set()
+    candidates = []
 
-    first_url = str(initial_response.url)
-    responses = [initial_response]
-    discovered = _listing_page_urls(initial_doc, first_url, host)
-    queue = discovered[1:]
-    seen = set(discovered)
-    while queue and len(responses) < MAX_LISTING_PAGES:
-        batch = queue[:MAX_LISTING_PAGES - len(responses)]
-        queue = queue[len(batch):]
+    async def fetch(url: str):
+        async with semaphore:
+            return await _get(client, url, host)
 
-        async def fetch_page(url):
-            async with semaphore:
-                return await _get(client, url, host)
-
-        pages = await asyncio.gather(*(fetch_page(url) for url in batch))
-        for response in pages:
+    while pending and len(seen_pages) <= MAX_LISTING_PAGES:
+        batch = pending[:8]
+        del pending[:len(batch)]
+        responses = await asyncio.gather(*(fetch(url) for url in batch))
+        for response in responses:
             if not response:
                 continue
-            responses.append(response)
             try:
-                page_doc = html.fromstring(response.content)
+                doc = html.fromstring(response.content)
             except (ValueError, TypeError):
                 continue
-            for url in _listing_page_urls(page_doc, str(response.url), host):
-                if url not in seen and len(seen) < MAX_LISTING_PAGES:
-                    seen.add(url)
-                    queue.append(url)
-            if len(responses) >= MAX_LISTING_PAGES:
-                break
-    return responses
 
+            # Parse pagination against the original listing URL. This lets
+            # pages that expose only a next link reveal later pages while the
+            # existing host, path, and search-query checks remain in force.
+            for page_url in _listing_page_urls(doc, listing_url, host):
+                if page_url not in seen_pages and len(seen_pages) < MAX_LISTING_PAGES:
+                    seen_pages.add(page_url)
+                    pending.append(page_url)
+
+            for anchor in doc.xpath("//a[@href]"):
+                title = " ".join(" ".join(anchor.itertext()).split())
+                url = urljoin(str(response.url), anchor.get("href", "").strip())
+                if title and _safe_page(url, host) and url not in seen_products:
+                    seen_products.add(url)
+                    candidates.append((url, title))
+    return candidates
 
 async def search_supplier_products(query: str, category: str, offset: int = 0, limit: int = 24) -> dict:
     query = re.sub(r"\s+", " ", (query or "").strip())[:100]
@@ -400,31 +395,18 @@ async def search_supplier_products(query: str, category: str, offset: int = 0, l
             else:
                 listing_url = source.get("search", "").format(query=quote(query)) if source.get("search") else category_url
             listing_urls.append(listing_url)
-        responses = await asyncio.gather(*[
-            _get(client, url, source["host"])
+        page_semaphore = asyncio.Semaphore(8)
+        listing_products = await asyncio.gather(*[
+            _collect_listing_candidates(client, url, source["host"], page_semaphore)
             for (_, source), url in zip(active_sources, listing_urls)
         ])
-        listing_sem = asyncio.Semaphore(8)
-        listing_batches = await asyncio.gather(*[
-            _collect_listing_pages(client, response, source["host"], listing_sem) if response else asyncio.sleep(0, result=[])
-            for (_, source), response in zip(active_sources, responses)
-        ])
         candidates = []
-        for (name, source), listing_responses in zip(active_sources, listing_batches):
-            seen = set()
-            for listing_response in listing_responses:
-                try:
-                    listing_doc = html.fromstring(listing_response.content)
-                except (ValueError, TypeError):
+        for (name, source), products in zip(active_sources, listing_products):
+            for url, title in products:
+                if (not _correct_category(title, category)
+                        or not all(token in _norm(title) for token in qtokens)):
                     continue
-                for anchor in listing_doc.xpath("//a[@href]"):
-                    title = " ".join(" ".join(anchor.itertext()).split())
-                    url = urljoin(str(listing_response.url), anchor.get("href", "").strip())
-                    if (not title or not _safe_page(url, source["host"]) or not _correct_category(title, category)
-                            or not all(token in _norm(title) for token in qtokens) or url in seen):
-                        continue
-                    seen.add(url)
-                    candidates.append((name, source, category, url, title))
+                candidates.append((name, source, category, url, title))
         # Keep all matching candidates from the bounded listing pages and interleave suppliers.
         by_supplier = {name: [row for row in candidates if row[0] == name] for name, _ in active_sources}
         balanced = []
@@ -530,5 +512,6 @@ async def fetch_public_pdf(url: str, supplier_host: str, max_bytes: int) -> tupl
     if not data.startswith(b"%PDF-"):
         return None
     return data, current_url
+
 
 
