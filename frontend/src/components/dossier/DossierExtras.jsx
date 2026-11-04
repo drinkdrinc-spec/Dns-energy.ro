@@ -83,7 +83,10 @@ export function DossierExtras({ form, setVal, compact = false }) {
               <input className="den-input py-1" placeholder="observații / valori" value={ts[k]?.obs || ""} onChange={(e) => setT(k, "obs", e.target.value)} data-testid={`test-${k}-obs`} /></div>
           ))}
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-[220px_1fr]">
+        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(160px,220px)_minmax(160px,220px)_1fr]">
+          <label className="den-field"><span>Nr. proces-verbal teste</span>
+            <input className="den-input" type="text" maxLength={100} value={form.pif_no || ""} onChange={(e) => setVal("pif_no", e.target.value)} data-testid="tests-pv-number" />
+          </label>
           <label className="den-field"><span>Verdict operator</span>
             <select className="den-input" value={ts.verdict || ""} onChange={(e) => setVal("tests", { ...ts, verdict: e.target.value })} data-testid="tests-verdict">
               <option value="">— necompletat —</option><option value="Admis">Admis</option><option value="Respins">Respins</option>
