@@ -26,6 +26,10 @@ export default function Simulare() {
   const [catalog, setCatalog] = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [form, setForm] = useState(null);
+  const [outline, setOutline] = useState([]);
+  const [equipmentMarks, setEquipmentMarks] = useState([]);
+  const [drawingMode, setDrawingMode] = useState("roof");
+  const [markType, setMarkType] = useState("Panou");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -51,8 +55,21 @@ export default function Simulare() {
       .some((v) => String(v || "").toLocaleLowerCase("ro-RO").includes(s));
   }), [projects, query]);
 
-  const startNew = () => { setSelectedId(""); setForm({ ...EMPTY }); };
-  const selectProject = (p) => { setSelectedId(p.id); setForm({ ...EMPTY, ...p }); };
+  const startNew = () => { setSelectedId(""); setForm({ ...EMPTY }); setOutline([]); setEquipmentMarks([]); setDrawingMode("roof"); };
+  const selectProject = (p) => {
+    setSelectedId(p.id); setForm({ ...EMPTY, ...p });
+    setOutline(Array.isArray(p.roof_outline) ? p.roof_outline : []);
+    setEquipmentMarks(Array.isArray(p.equipment_marks) ? p.equipment_marks : []);
+    setDrawingMode("roof");
+  };
+  const addPlanPoint = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(800, ((event.clientX - rect.left) / rect.width) * 800));
+    const y = Math.max(0, Math.min(420, ((event.clientY - rect.top) / rect.height) * 420));
+    const point = { x: Number(x.toFixed(1)), y: Number(y.toFixed(1)) };
+    if (drawingMode === "roof") setOutline((old) => [...old, point]);
+    else setEquipmentMarks((old) => [...old, { ...point, label: markType }]);
+  };
   const set = (key, value) => setForm((old) => ({ ...old, [key]: value }));
   const pickClient = (id) => {
     const c = clients.find((x) => x.id === id);
@@ -63,12 +80,14 @@ export default function Simulare() {
     if (!form?.name?.trim()) return toast.error("Dă un nume proiectului.");
     setSaving(true);
     try {
-      const payload = { ...form, name: form.name.trim(), updated_at: new Date().toISOString() };
+      const payload = { ...form, roof_outline: outline, equipment_marks: equipmentMarks, name: form.name.trim(), updated_at: new Date().toISOString() };
       const response = selectedId
         ? await api.put("/data/projects/" + selectedId, payload)
         : await api.post("/data/projects", payload);
       setSelectedId(response.data.id);
       setForm({ ...EMPTY, ...response.data });
+      setOutline(Array.isArray(response.data.roof_outline) ? response.data.roof_outline : outline);
+      setEquipmentMarks(Array.isArray(response.data.equipment_marks) ? response.data.equipment_marks : equipmentMarks);
       await load();
       toast.success("Proiect salvat.");
     } catch (e) {
@@ -167,6 +186,36 @@ export default function Simulare() {
                 <small className="mt-1 block text-xs" style={{ color: "var(--muted)" }}>Fișierul se atașează proiectului curent; cotele și orientarea trebuie verificate de proiectant.</small>
               </div>
               <Field label="Geometrie și cote măsurate"><textarea className="den-input min-h-24" value={text(form.roof_geometry)} onChange={(e) => set("roof_geometry", e.target.value)} placeholder="Notează separat fiecare versant/zonă și dimensiunile verificate." /></Field>
+            </div>
+            <div className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--line)" }} data-testid="project-plan-editor">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div><h3 className="text-sm font-bold">Schiță de amplasament</h3><p className="text-xs" style={{ color: "var(--muted)" }}>Adaugă puncte pentru contur, apoi marchează echipamentele. Schița nu este la scară și nu înlocuiește planul măsurat.</p></div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setDrawingMode("roof")} aria-pressed={drawingMode === "roof"} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: drawingMode === "roof" ? "var(--blue)" : "var(--line)", color: drawingMode === "roof" ? "var(--blue)" : "var(--ink)" }}>Desenează contur</button>
+                  <button type="button" onClick={() => setDrawingMode("equipment")} aria-pressed={drawingMode === "equipment"} className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: drawingMode === "equipment" ? "var(--blue)" : "var(--line)", color: drawingMode === "equipment" ? "var(--blue)" : "var(--ink)" }}>Marchează echipamente</button>
+                </div>
+              </div>
+              {drawingMode === "equipment" && <div className="mb-3 flex flex-wrap items-center gap-2">
+                <label htmlFor="project-mark-type" className="text-xs font-semibold">Marcaj:</label>
+                <select id="project-mark-type" className="den-input max-w-48" value={markType} onChange={(e) => setMarkType(e.target.value)}>
+                  {["Panou", "Invertor", "Baterie", "Tablou"].map((kind) => <option key={kind}>{kind}</option>)}
+                </select>
+                <span className="text-xs" style={{ color: "var(--muted)" }}>Apasă pe schiță pentru fiecare poziție.</span>
+              </div>}
+              <svg viewBox="0 0 800 420" role="img" aria-label="Schiță de amplasament editabilă, fără scară" onClick={addPlanPoint} className="block w-full cursor-crosshair rounded-lg border bg-white" style={{ borderColor: "var(--line)", touchAction: "none" }}>
+                <defs><pattern id="project-grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e8edf4" strokeWidth="1" /></pattern></defs>
+                <rect width="800" height="420" fill="url(#project-grid)" />
+                {outline.length > 2 && <polygon points={outline.map((p) => p.x + "," + p.y).join(" ")} fill="#dbeafe" fillOpacity="0.55" stroke="#2563eb" strokeWidth="3" />}
+                {outline.length > 0 && <polyline points={outline.map((p) => p.x + "," + p.y).join(" ")} fill="none" stroke="#2563eb" strokeWidth="3" strokeDasharray={outline.length > 2 ? undefined : "8 5"} />}
+                {outline.map((p, index) => <g key={"outline-" + index}><circle cx={p.x} cy={p.y} r="6" fill="#2563eb" /><text x={p.x + 9} y={p.y - 9} fontSize="12" fill="#1e3a8a">{index + 1}</text></g>)}
+                {equipmentMarks.map((p, index) => <g key={"mark-" + index}><circle cx={p.x} cy={p.y} r="9" fill={p.label === "Baterie" ? "#7c3aed" : p.label === "Invertor" ? "#ea580c" : p.label === "Tablou" ? "#334155" : "#16a34a"} stroke="white" strokeWidth="2" /><text x={p.x + 12} y={p.y + 4} fontSize="12" fontWeight="bold" fill="#172554">{p.label}</text></g>)}
+              </svg>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Btn type="button" variant="secondary" onClick={() => setOutline((old) => old.slice(0, -1))} disabled={!outline.length}>Undo contur</Btn>
+                <Btn type="button" variant="secondary" onClick={() => setEquipmentMarks((old) => old.slice(0, -1))} disabled={!equipmentMarks.length}>Undo marcaj</Btn>
+                <Btn type="button" variant="secondary" onClick={() => { setOutline([]); setEquipmentMarks([]); }}>Șterge schița</Btn>
+                <span className="text-xs" style={{ color: "var(--muted)" }}>{outline.length} puncte de contur · {equipmentMarks.length} marcaje</span>
+              </div>
             </div>
             <div className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--line)" }}>
               <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-bold">Poarta 1 · verificarea datelor de intrare</h3><span className="text-xs font-semibold">{gateCount}/{GATES.length}</span></div>
