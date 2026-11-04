@@ -322,14 +322,23 @@ def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
 
 async def search_supplier_products(query: str, category: str, offset: int = 0, limit: int = 24) -> dict:
     query = re.sub(r"\s+", " ", (query or "").strip())[:100]
-    if len(query) < 2 or category not in CATEGORIES:
-        return {"products": [], "sources": list(SOURCES), "message": "Introdu cel puțin două caractere și selectează invertor, panou, baterie sau smart meter."}
-    active_sources = [(name, source) for name, source in SOURCES.items()
-                      if category in source.get("categories", {}) or source.get("search")]
-    qtokens = [part for part in _norm(query).split() if len(part) > 1]
+    browse_all = query == "__browse_catalog__"
+    if (len(query) < 2 and not browse_all) or category not in CATEGORIES:
+        return {"products": [], "sources": list(SOURCES), "message": "Introdu cel puțin două caractere sau răsfoiește categoria selectată."}
+    if browse_all:
+        # Browse only curated category pages. Free-text search remains available
+        # for categories that do not have a dedicated supplier listing.
+        active_sources = [(name, source) for name, source in SOURCES.items()
+                          if category in source.get("categories", {})]
+    else:
+        active_sources = [(name, source) for name, source in SOURCES.items()
+                          if category in source.get("categories", {}) or source.get("search")]
+    qtokens = [] if browse_all else [part for part in _norm(query).split() if len(part) > 1]
     async with httpx.AsyncClient(timeout=12, headers={"User-Agent": "DNS-Energy-Catalog/1.0 (+https://dns-energy.ro)", "Accept": "text/html,application/xhtml+xml"}) as client:
         responses = await asyncio.gather(*[
-            _get(client, source.get("search", "").format(query=quote(query)) if source.get("search") else source["categories"][category], source["host"])
+            _get(client, source["categories"][category] if browse_all else
+                 (source.get("search", "").format(query=quote(query)) if source.get("search") else source["categories"][category]),
+                 source["host"])
             for _, source in active_sources
         ])
         candidates = []
