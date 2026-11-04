@@ -241,7 +241,9 @@ export default function EquipmentCatalog() {
     const offset = append ? supplierNextOffset : 0;
     if (!append) setSupplierBrowseAll(browse);
     setSupplierLoading(true);
-    if (!append) setSupplierSearchMessage("Caut pe site-urile furnizorilor…");
+    if (!append) setSupplierSearchMessage(browse
+      ? "Răsfoiesc catalogul public, până la 24 de pagini pentru fiecare furnizor…"
+      : "Caut pe site-urile furnizorilor…");
     try {
       const { data } = await api.get("/catalog/supplier-search", {
         params: { q: browse ? "__browse_catalog__" : q.trim(), category: cat, offset, limit: 24 }, timeout: 90000,
@@ -508,7 +510,7 @@ export default function EquipmentCatalog() {
           </div>
           {supplierResults.length > 0 && <span className="text-[11px]" style={{ color: "var(--muted)" }}>{supplierResults.length} rezultate încărcate</span>}
         </div>
-        {supplierSearchMessage && <p className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: supplierResults.length ? "var(--muted)" : "var(--amber, #8a5a00)" }} role="status" data-testid="supplier-search-status">{supplierLoading ? "Caut pe site-urile furnizorilor…" : supplierSearchMessage}</p>}
+        {supplierSearchMessage && <p className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: supplierResults.length ? "var(--muted)" : "var(--amber, #8a5a00)" }} role="status" data-testid="supplier-search-status">{supplierSearchMessage}</p>}
         {supplierResults.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="supplier-bulk-import">
           <button type="button" onClick={selectSupplierProductsWithDocuments} disabled={supplierBulkBusy} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }} data-testid="supplier-select-complete">Selectează modelele cu ambele PDF-uri</button>
           <button type="button" onClick={() => setSupplierSelected(new Set())} disabled={supplierBulkBusy || supplierSelected.size === 0} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }}>Șterge selecția</button>
