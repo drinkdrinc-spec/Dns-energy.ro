@@ -246,12 +246,17 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       ...f, kind,
       doc_type: ({ ci: "Carte de identitate", factura: "Factură energie", cf: "Carte funciară", altele: "Document suplimentar" })[kind],
     })));
+    const workflowBlockers = requiredDataMissing.map((field) => `Lipsește ${field}`);
     const payload = { ...values, client_name: values.client_name.trim(), files: filesForDossier,
+      workflow_status: requiredDataMissing.length ? "Date de completat" : "Dosar în pregătire",
+      workflow_blockers: workflowBlockers,
       notes: [...Object.values(notes).flat(), values.notes].filter(Boolean).join("\n") };
     try {
       setBusy("create");
       const { data } = await api.post("/import/prosumator", payload);
-      toast.success("Clientul și dosarul au fost create cu documentele în opis.");
+      toast.success(requiredDataMissing.length
+        ? `Ciornă creată. Completează: ${requiredDataMissing.join(", ")}.`
+        : "Clientul și dosarul au fost create cu documentele în opis.");
       setOpen(false); setStep(0); onCreated(data);
       setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
       setSelectedClient(null); setSelectedSiteId("new"); setClientSearch(""); setOperatorManuallySet(false);
@@ -272,6 +277,15 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       return next;
     });
     }} data-testid={`intake-${key}`} /></label>;
+
+  const requiredDataMissing = [
+    ["CNP / CUI", values.cnp],
+    ["adresa locului de consum", values.address],
+    ["POD", values.pod],
+    ["operatorul de distribuție", values.operator],
+    ["județul", values.county],
+    ["localitatea", values.locality],
+  ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
 
   return <>
     <Btn variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Începe dosarul din documente</Btn>
@@ -369,6 +383,13 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             <input type="radio" name="dossier-kind" value={value} checked={values.request_type === value} onChange={() => setValues((prev) => ({ ...prev, request_type: value }))} className="mt-1" data-testid={value.includes("spor") ? "intake-request-type-increase" : "intake-request-type-standard"} />
             <span><b className="block text-sm">{title}</b><span className="text-xs" style={{ color: "var(--muted)" }}>{description}</span></span>
           </label>)}
+          {requiredDataMissing.length > 0 ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900" role="status" data-testid="intake-missing-data">
+            <b>Ciornă — date de completat</b>
+            <p className="mt-1">Dosarul poate fi salvat acum și completat ulterior. Pentru pregătirea depunerii lipsesc: {requiredDataMissing.join(", ")}.</p>
+          </div> : <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900" role="status" data-testid="intake-data-ready">
+            <b>Datele de bază sunt prezente.</b>
+            <p className="mt-1">Verifică valorile extrase și documentele înainte de pregătirea pentru depunere.</p>
+          </div>}
           <div className="mt-3 rounded-lg p-3 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Documentele încărcate rămân atașate dosarului și apar în opis. Verifică datele extrase; formularele exacte depind de operator și se verifică înainte de depunere.</div>
         </section>}
         {notes.altele?.length > 0 && <div className="rounded-lg bg-slate-50 p-3 text-xs"><b>Documente suplimentare:</b><ul className="list-disc pl-5">{notes.altele.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
