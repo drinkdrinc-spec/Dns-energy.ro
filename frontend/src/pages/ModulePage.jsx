@@ -577,7 +577,17 @@ export default function ModulePage({ moduleKey }) {
         try { await api.post("/diu/" + encodeURIComponent(savedId) + "/import-pros", { pros_id: payload.pros_id }); }
         catch { importFailed = true; }
       }
+      let ensuredDiu = null;
+      let ensureDiuFailed = false;
+      if (key === "power" && savedId) {
+        try {
+          const { data } = await api.post("/power/" + encodeURIComponent(savedId) + "/ensure-diu");
+          ensuredDiu = data;
+        } catch { ensureDiuFailed = true; }
+      }
       if (importFailed) toast.warning("DI-U creat; nu s-au putut prelua automat toate datele din dosarul prosumator.");
+      else if (ensureDiuFailed) toast.warning("Cererea de spor a fost salvată, dar DI-U nu s-a putut asocia automat. Verifică accesul la modulul DI-U.");
+      else if (ensuredDiu) toast.success(`Spor salvat · DI-U ${ensuredDiu.created ? "creat" : "actualizat"} și asociat`);
       else toast.success("Salvat cu succes");
       if (key === "diu" && editId) { setSavedAt(Date.now()); load(); return; }
       setForm(null); setEditId(null); setChecks({}); load();
