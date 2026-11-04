@@ -335,12 +335,11 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.battery(cx, cy - 26)
             device_code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
             rating = gv(protection.get("rating"), " A")
-            details = f"{device_code}{i + 1}.B {rating + ' · ' if rating else ''}{protection['source']}"
             if protection["kind"] == "breaker":
-                if n(bt.get("breaker_poles")):
-                    details += f" · {int(n(bt.get('breaker_poles')))}P"
-                if n(bt.get("breaker_voltage_dc")):
-                    details += f" · {gv(n(bt.get('breaker_voltage_dc')), 'Vdc')}"
+                switch_voltage = n(bt.get("breaker_voltage_dc") or bt.get("dc_switch_voltage_v"))
+                details = f"{device_code}{i + 1}.B {rating or '[lipsă]'} DC · UdcQ {gv(switch_voltage, 'V') or '[lipsă]'}"
+            else:
+                details = f"{device_code}{i + 1}.B {rating + ' · ' if rating else ''}{protection['source']}"
             color = RED if protection["kind"] == "missing" else (PV_ORANGE if protection["kind"] == "proposal" else INK)
             S.text(cx + 6, cy - 17.2, details, 4.15, True, color, w=29)
             S.text(cx + 6, cy - 22.4, f"-G{i + 1} {bt.get('model') or '[model baterie lipsă]'}", 4.4, True, w=29)
@@ -400,14 +399,16 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.text(x + 6, y_shared + 11, f"-G{len(invs) + k + 1} baterie comună", 4.5, True, w=38)
         rating = gv(protection.get("rating"), " A")
         code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
-        status = f"{code}{k + 1}.B {rating + ' A DC · ' if rating else ''}{protection['source']} · Ubat {gv(n(b.get('voltage')), 'V') or '[lipsă]'}"
+        status = f"{code}{k + 1}.B {rating + ' A DC · ' if rating else ''}{protection['source']}"
         switch_voltage = n(b.get("breaker_voltage_dc") or b.get("dc_switch_voltage_v"))
-        if protection["kind"] == "breaker":
-            status += f" · UdcQ {gv(switch_voltage, 'V') if switch_voltage else '[lipsă]'}"
         S.text(x + 6, y_shared + 7, status, 4.0, True, RED if protection["kind"] == "missing" else (PV_ORANGE if protection["kind"] == "proposal" else INK), w=38)
-        S.text(x + 6, y_shared + 2.5, str(b.get("model") or "[model baterie lipsă]"), 4.2, w=38)
-        S.val(x + 6, y_shared - 2, "I max ", b.get("i_max"), " A", size=4.2, w=38)
-        S.val(x + 6, y_shared - 6.5, "Cablu ", b.get("cable_section") or b.get("section") or battery_cable_proposal(b).get("section"), " mm²", size=4.2, w=38)
+        voltage_line = f"Ubat {gv(n(b.get('voltage')), 'V') or '[lipsă]'}"
+        if protection["kind"] == "breaker":
+            voltage_line += f" · UdcQ {gv(switch_voltage, 'V') if switch_voltage else '[lipsă]'}"
+        S.text(x + 6, y_shared + 2.5, voltage_line, 4.0, True, RED if protection["kind"] == "breaker" and not switch_voltage else INK, w=38)
+        S.text(x + 6, y_shared - 2, str(b.get("model") or "[model baterie lipsă]"), 4.2, w=38)
+        S.val(x + 6, y_shared - 6.5, "I max ", b.get("i_max"), " A", size=4.2, w=38)
+        S.val(x + 6, y_shared - 11, "Cablu ", b.get("cable_section") or b.get("section") or battery_cable_proposal(b).get("section"), " mm²", size=4.2, w=38)
     # busbar + TG
     if cys:
         ytop, ybot = max(cys), min(cys)
