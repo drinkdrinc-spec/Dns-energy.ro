@@ -1420,7 +1420,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""), "email": d.get("email", ""),
                              "address": d.get("address", ""), "hq_address": d.get("hq_address", ""), "county": d.get("county", ""),
                              "locality": d.get("locality", ""), "pod": d.get("pod", ""), "operator": d.get("operator", ""), "cadastral_nr": d.get("cadastral_nr", ""),
-                             "cf_nr": d.get("cf_nr", ""), "supplier": d.get("supplier", ""), "rep_name": d.get("rep_name", ""),
+                             "cf_nr": d.get("cf_nr", ""), "supplier": d.get("supplier", ""), "bank": d.get("bank", ""), "iban": d.get("iban", ""), "rep_name": d.get("rep_name", ""),
                              "regcom": d.get("regcom", ""), "kind": d.get("kind", "")})
         client["docs"] = client.get("docs") or {}
         await db.clients.insert_one(dict(client))
@@ -1429,7 +1429,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
                      "phone": d.get("phone"), "email": d.get("email"),
                      "address": d.get("address"), "hq_address": d.get("hq_address"), "county": d.get("county"),
                      "locality": d.get("locality"), "pod": d.get("pod"), "operator": d.get("operator"), "cadastral_nr": d.get("cadastral_nr"),
-                     "cf_nr": d.get("cf_nr"), "supplier": d.get("supplier"), "rep_name": d.get("rep_name"),
+                     "cf_nr": d.get("cf_nr"), "supplier": d.get("supplier"), "bank": d.get("bank"), "iban": d.get("iban"), "rep_name": d.get("rep_name"),
                      "regcom": d.get("regcom"), "kind": d.get("kind")}
     client_updates = {}
     for key, value in client_values.items():
