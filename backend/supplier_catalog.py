@@ -149,6 +149,10 @@ def _product_title(doc) -> str:
 
 
 def _correct_category(title: str, category: str) -> bool:
+    # Keep bundle separators before normalizing punctuation out of the title.
+    # Otherwise "+" and "&" disappear and inverter+battery kits pass the
+    # individual-equipment category filter.
+    raw_title = unicodedata.normalize("NFKD", str(title or "")).encode("ascii", "ignore").decode().lower()
     value = _norm(title)
     padded = f" {value} "
     # Retailers often list a hybrid inverter bundled with a battery as an
@@ -161,9 +165,9 @@ def _correct_category(title: str, category: str) -> bool:
     )
     if any(marker in padded for marker in bundle_markers):
         return False
-    if re.search(r"\b(?:invertor|inverter)\b.*(?:\+|&|\band\b).*\b(?:baterie|acumulator|battery)\b", value):
+    if re.search(r"\b(?:invertor|inverter)\b.*(?:\+|&|\band\b).*\b(?:baterie|acumulator|battery)\b", raw_title):
         return False
-    if re.search(r"\b(?:baterie|acumulator|battery)\b.*(?:\+|&|\band\b).*\b(?:invertor|inverter)\b", value):
+    if re.search(r"\b(?:baterie|acumulator|battery)\b.*(?:\+|&|\band\b).*\b(?:invertor|inverter)\b", raw_title):
         return False
     if category == "Invertor":
         return value.startswith(("invertor ", "inverter "))
