@@ -112,7 +112,7 @@ export default function DistributionPortals() {
         attachments.push({ storage_path: data.storage_path, original_filename: data.original_filename, content_type: data.content_type, size: data.size });
       }
       const operatorName = selectedPros.operator || selectedPros.operator_name || selected?.name || "Operator neconfirmat";
-      const title = `[dosar:${selectedPros.id}] ${messageForm.direction} — ${messageForm.subject.trim()}`;
+      const title = `${messageForm.direction} — ${messageForm.subject.trim()}`;
       const { data: createdMessage } = await api.post("/data/documents", {
         kind: "operator_message",
         doc_type: "Corespondență operator",
