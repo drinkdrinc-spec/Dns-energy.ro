@@ -158,7 +158,7 @@ export function CefEditor({ value, onChange }) {
             {supplierBusy ? "Se caută / importă…" : "Caută la furnizori"}
           </button>
         </div>
-        <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Depozit Solar · SolarHev · SolarTech · Optim Solar. Importul salvează produsul și PDF-urile disponibile în catalogul firmei.</p>
+        <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Căutare la: Depozit Solar · SolarHev · SolarTech. Importul salvează produsul și PDF-urile disponibile în catalogul firmei.</p>
         {supplierMessage && <p className="mt-2 text-xs" role="status" aria-live="polite">{supplierMessage}</p>}
         {supplierResults.length > 0 && <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {supplierResults.map((product) => <article key={product.product_url} className="rounded-lg border p-2" style={{ borderColor: "var(--line)" }}>

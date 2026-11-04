@@ -497,7 +497,7 @@ export default function EquipmentCatalog() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-bold">Modele de la furnizori</h2>
-            <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Depozit Solar · SolarHev · SolarTech · Optim Solar. Prețul și stocul se verifică la comerciant.</p>
+            <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Căutare la: Depozit Solar · SolarHev · SolarTech. Prețul și stocul se verifică la comerciant.</p>
           </div>
           {supplierResults.length > 0 && <span className="text-[11px]" style={{ color: "var(--muted)" }}>{supplierResults.length} rezultate încărcate</span>}
         </div>

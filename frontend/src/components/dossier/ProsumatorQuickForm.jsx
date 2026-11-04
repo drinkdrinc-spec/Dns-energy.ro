@@ -393,7 +393,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
             disabled={supplierSearch.loading && supplierSearch.kind === kind}
             onClick={() => searchSupplierCatalog(kind)}
             data-testid={`supplier-search-${kind}`}>{supplierSearch.loading && supplierSearch.kind === kind ? "Se caută la furnizori…" : "Caută și în magazine"}</button>
-          <span className="text-xs" style={{ color: "var(--muted)" }}>Depozit Solar · SolarHev · SolarTech · Optim Solar</span>
+          <span className="text-xs" style={{ color: "var(--muted)" }}>Caută la: Depozit Solar · SolarHev · SolarTech</span>
         </div>
         {supplierSearch.kind === kind && (supplierSearch.products.length > 0 || supplierSearch.message) && <div className="mt-2 space-y-2 rounded-lg border p-2" style={{ borderColor: "var(--line)" }}>
           {supplierSearch.message && <p className="text-xs" role="status">{supplierSearch.message}</p>}
