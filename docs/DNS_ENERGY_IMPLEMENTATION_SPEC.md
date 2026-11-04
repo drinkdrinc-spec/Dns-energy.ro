@@ -35,7 +35,7 @@ Catalog selectabil și căutabil pentru:
 - Întrerupătoare, protecții, relee, CT-uri, separatoare, contactoare, bare, cleme, conductori și tablouri.
 - Producător, model/cod, valori nominale, fișă tehnică și certificat/document de conformitate UE, atunci când este disponibil oficial.
 
-Prioritate surselor oficiale ale producătorilor. Salvează sursa și versiunea/data documentului. Nu inventa fișe, coduri, certificări sau parametri. Dacă datele exacte nu sunt găsite, cere selecție manuală ori afișează avertizare și nu pretinde că dimensionarea este validată.
+Prioritate surselor oficiale ale producătorilor. Salvează sursa și versiunea/data documentului. Nu inventa fișe, coduri, certificări sau parametri. Dacă datele exacte nu sunt găsite, cere selecție manuală ori afișează avertizare și nu pretinde că dimensionarea este validată. PDF-urile se descarcă cu limită de dimensiune și redirecționări HTTPS validate; se păstrează sursa inițială și URL-ul final, iar documentele nevalide sau indisponibile nu se atașează dosarului.
 
 ## 4. Tablouri electrice interioare/casnice și industriale
 
