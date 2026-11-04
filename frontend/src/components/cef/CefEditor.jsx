@@ -50,6 +50,8 @@ function SharedBatteries({ list, set, catalog }) {
           <F label="Tensiune (V)" type="number" value={b.voltage} onChange={(v) => upd(i, { voltage: v })} testid={`shared-${i}-v`} />
           <F label="Curent max descărcare (A)" type="number" value={b.i_max} onChange={(v) => upd(i, { i_max: v })} testid={`shared-${i}-imax`} />
           <F label="Siguranță max. admisă (A), din fișă" type="number" value={b.max_fuse_a} onChange={(v) => upd(i, { max_fuse_a: v })} testid={`shared-${i}-max-fuse`} />
+          <F label="Separator DC: tensiune nominală (V)" type="number" value={b.dc_switch_voltage_v ?? b.breaker_voltage_dc} onChange={(v) => upd(i, { dc_switch_voltage_v: v })} testid={`shared-${i}-dc-switch-voltage`} />
+          <F label="Separator DC: curent nominal (A)" type="number" value={b.dc_switch_current_a ?? b.breaker_a} onChange={(v) => upd(i, { dc_switch_current_a: v })} testid={`shared-${i}-dc-switch-current`} />
           <F label="Arhitectură BESS față de sistemul PV" value={b.coupling || ""} onChange={(v) => upd(i, { coupling: v })} options={["DC", "AC"]} testid={`shared-${i}-coupling`} />
           {b.coupling === "AC" && <p className="sm:col-span-4 -mt-2 text-[11px] leading-4" style={{ color: "var(--muted)" }}>Pentru cuplare AC, adaugă un invertor separat de baterie/PCS și leagă această baterie la el. Schema și verificarea rămân incomplete până la selectarea PCS-ului și completarea datelor lui din fișa tehnică.</p>}
           <div className="flex items-end gap-3 pb-2">
