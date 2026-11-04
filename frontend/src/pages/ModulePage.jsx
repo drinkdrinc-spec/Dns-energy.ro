@@ -966,7 +966,7 @@ export default function ModulePage({ moduleKey }) {
                     }
                   }}>
                   <div className="mb-3 flex items-center justify-between gap-2 text-sm font-bold"><span>{status}</span><span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{group.length}</span></div>
-                  <div className="grid gap-2">{group.map((item) => <button key={item.id} type="button" draggable={statusSavingId !== item.id}
+                  <div className="grid gap-2">{group.map((item) => <div key={item.id} className="grid gap-2"><button type="button" draggable={statusSavingId !== item.id}
                     onDragStart={(event) => { ignoreAtrClickAfterDrop.current = false; event.dataTransfer.setData("text/plain", item.id); event.dataTransfer.effectAllowed = "move"; setDraggedItemId(item.id); }}
                     onDragEnd={() => { setDraggedItemId(""); setDropTargetStatus(""); }}
                     className={`rounded-lg border bg-white p-3 text-left shadow-sm hover:border-blue-300 ${draggedItemId === item.id ? "opacity-50" : ""}`}
@@ -978,7 +978,9 @@ export default function ModulePage({ moduleKey }) {
                     <span className="mt-1 block text-xs" style={{ color: "var(--muted)" }}>{[item.operator, item.address, item.pod && `POD ${item.pod}`].filter(Boolean).join(" · ") || "Operator și loc de consum necompletate"}</span>
                     <span className="mt-2 block text-xs font-semibold" style={{ color: "var(--blue)" }}>{[item.request_type || item.deer_case, item.p_abs_kw && `${item.p_abs_kw} kW absorbit`, item.p_evac_kw && `${item.p_evac_kw} kW evacuat`].filter(Boolean).join(" · ") || "Deschide cererea pentru detalii"}</span>
                     {atrEquipmentSummary(item, refOptions.prosumator).map((detail) => <span key={detail} className="mt-1 block text-[11px] leading-4" style={{ color: "var(--muted)" }}>{detail}</span>)}
-                  </button>)}</div>
+                  </button><select className="den-input min-h-9 w-full py-1 text-xs" value={atrBoardStatus(item)} disabled={statusSavingId === item.id} aria-label={`Schimbă stadiul ATR ${item.number || item.id}`} onChange={(event) => updateQuickStatus(item, event.target.value)}>
+                    {ATR_BOARD_STATUSES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+                  </select></div>)}</div>
                 </section>;
               })}
             </div>
@@ -1037,7 +1039,12 @@ export default function ModulePage({ moduleKey }) {
                       {(inverterModels.length > 0 || panelModels.length > 0) && <div className="mt-2 border-t pt-2 text-[11px] leading-4" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>
                         {[inverterModels.length > 0 ? "Invertor: " + inverterModels.join(", ") : "", panelModels.length > 0 ? "Panouri: " + panelModels.join(", ") : ""].filter(Boolean).join(" · ")}
                       </div>}
-                      <button type="button" className="mt-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => openEdit(item)}>Deschide</button>
+                      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[auto_minmax(0,1fr)]">
+                        <button type="button" className="min-h-9 rounded-md border px-2.5 py-1.5 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => openEdit(item)}>Deschide</button>
+                        <select className="den-input min-h-9 min-w-0 py-1 text-xs" value={prosumerBoardStatus(item)} disabled={statusSavingId === item.id} aria-label={`Schimbă stadiul dosarului ${item.number || item.client_name || item.id}`} onChange={(event) => updateQuickStatus(item, event.target.value)}>
+                          {[...PROSUMER_QUICK_STATUSES, ...(!PROSUMER_QUICK_STATUSES.includes(prosumerBoardStatus(item)) ? [prosumerBoardStatus(item)] : [])].map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+                        </select>
+                      </div>
                     </article>;
                   })}</div>
                 </section>;
