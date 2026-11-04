@@ -337,7 +337,7 @@ export default function EquipmentCatalog() {
         </Btn>
         <span className="text-[11px] sm:max-w-48" style={{ color: "var(--muted)" }}>{rows.length} în catalog · {completeDocsCount} cu ambele PDF-uri</span>
       </div>
-      {form && (      {form && (
+      {form ? (
         <div className="den-panel mb-6" data-testid="catalog-form">
           <h2 className="text-lg font-bold mb-4">{form.id ? "Editează modelul" : `Model nou — ${cat}`}</h2>
           <div className="grid sm:grid-cols-3 gap-3">
@@ -349,7 +349,7 @@ export default function EquipmentCatalog() {
           <div className="flex gap-2 mt-5"><Btn onClick={save} data-testid="catalog-save-btn">Salvează</Btn><Btn variant="secondary" onClick={() => setForm(null)}>Anulează</Btn></div>
           {!form.id && <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>După salvare poți încărca fișa tehnică și declarația de conformitate din listă.</p>}
         </div>
-      )}
+      ) : null}
       {feedbacks.length > 0 && <section className="den-panel mb-4" aria-label="Propuneri de documente pentru catalog" data-testid="catalog-feedback-queue">
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <div>
