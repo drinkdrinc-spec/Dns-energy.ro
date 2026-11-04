@@ -170,8 +170,11 @@ def pub(d):
 
 
 @api.get("/anre/dossiers")
-async def anre_list(user: dict = Depends(get_current_user)):
-    q = {} if is_pf(user) else {"owner": user["id"]}
+async def anre_list(include_archived: bool = False, user: dict = Depends(get_current_user)):
+    await S.archive_inactive_dossiers(user)
+    q = {"archived_at": {"$exists": bool(include_archived)}}
+    if not is_pf(user):
+        q["owner"] = user["id"]
     out = []
     profiles = {}
     for d in await db.anre_dossiers.find(q, {"_id": 0, "ai": 0}).sort("created_at", -1).to_list(1000):
@@ -185,10 +188,30 @@ async def anre_list(user: dict = Depends(get_current_user)):
             view = d
         p = pub(view)
         op = await db.operators.find_one({"tenant": d["owner"]}, {"status": 1}) or {}
-        out.append({k: p.get(k) for k in ("id", "owner", "kind", "status", "creation_mode", "payment_status", "progress", "created_at", "final_check")} | {
+        out.append({k: p.get(k) for k in ("id", "owner", "kind", "status", "creation_mode", "payment_status", "progress", "created_at", "final_check", "archived_at")} | {
             "company": (p.get("company") or {}).get("name"), "cui": (p.get("company") or {}).get("cui"), "owner_email": d.get("created_by"), "attest_status": op.get("status") or "netrimis",
             "missing": sum(1 for i in p["items"] if i["status"] != "verificat")})
     return out
+
+
+
+@api.post("/anre/dossiers/{did}/restore")
+async def anre_restore(did: str, user: dict = Depends(get_current_user)):
+    dossier = await get_d(user, did)
+    if not dossier.get("archived_at"):
+        return {"ok": True, "restored": False, "id": did}
+    restored_at = now()
+    query = {"id": did} if is_pf(user) else {"id": did, "owner": user["id"]}
+    result = await db.anre_dossiers.update_one(
+        {**query, "archived_at": {"$exists": True}},
+        {"$set": {"updated_at": restored_at, "updated_by": user.get("email")},
+         "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""},
+         "$push": {"history": {"at": restored_at, "by": user.get("email"), "event": "Dosar readus din arhivă"}}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dosarul arhivat nu mai există")
+    await S.audit(user, "restaurare din arhivă automată", "anre_dossiers", did, ["archived_at"])
+    return {"ok": True, "restored": True, "id": did, "updated_at": restored_at}
 
 
 @api.post("/anre/dossiers")
