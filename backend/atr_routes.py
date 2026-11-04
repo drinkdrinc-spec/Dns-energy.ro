@@ -27,6 +27,7 @@ OP_DOMAINS = {"deer": ("distributie-energie.ro",), "delgaz": ("delgaz-grid.ro", 
 DEFAULT_TERMS = {"check_days": 10, "issue_days": 30, "remind_days": 3}
 LINK_DAYS = 30
 DEER_GDPR_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf"
+DEER_AUTHENTICITY_URL = "https://www.distributie-energie.ro/wp-content/uploads/2024/02/Declaratie-autenticitate-date-racordare.doc"
 DEER_FORMS_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/"
 DEER_IMPUTERNICIRE_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/07/Model-de-imputernicire.pdf"
 
@@ -329,7 +330,9 @@ async def _fetch_registry_annex(form: dict, operator_key: str) -> tuple[bytes, s
         return data, f"{safe}.pdf"
     if data.startswith(b"PK"):
         return data, f"{safe}.docx"
-    raise ValueError("Linkul din registru nu a returnat un PDF sau un DOCX.")
+    if data.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):
+        return data, f"{safe}.doc"
+    raise ValueError("Linkul din registru nu a returnat un PDF, DOCX sau DOC oficial.")
 
 def _annex_for_request(operator_key: str, rec: dict, pros: dict | None = None) -> int | None:
     """Resolve one official annex from the selected request and verified case details."""
@@ -651,12 +654,19 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
 
             # Include the operator's blank source form beside the prefilled working copy.
             # The source file is retrieved only from the allow-listed DEER host and checked
-            # for a PDF/DOCX signature and a 20 MB size limit by _fetch_registry_annex.
+            # for an official document signature and a 20 MB size limit by _fetch_registry_annex.
             deer_notes = [
                 "Pachet DEER — formularul completat este o copie de lucru precompletată din datele salvate.",
                 "Verificați versiunea curentă, completați câmpurile rămase goale și semnați înainte de depunere.",
                 f"Sursa oficială cu formularele aplicabile: {DEER_FORMS_URL}",
             ]
+            try:
+                authenticity, authenticity_name = await _fetch_registry_annex(
+                    {"title": "Declarația oficială DEER de autenticitate a datelor", "url": DEER_AUTHENTICITY_URL}, "deer")
+                archive.writestr(f"Anexe oficiale/{authenticity_name}", authenticity)
+                deer_notes.append("Declarația oficială DEER privind autenticitatea datelor (obligatorie pentru toate cererile) a fost inclusă necompletată.")
+            except (httpx.HTTPError, ValueError) as exc:
+                deer_notes.append(f"Declarația oficială DEER de autenticitate nu a putut fi preluată acum; descărcați-o de aici: {DEER_AUTHENTICITY_URL} ({exc})")
             if annex_info and annex_info[2]:
                 try:
                     source, source_name = await _fetch_registry_annex(
