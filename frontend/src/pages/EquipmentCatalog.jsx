@@ -362,31 +362,56 @@ export default function EquipmentCatalog() {
   };
 
   const [importingOfficial, setImportingOfficial] = useState(false);
+  const [officialImportProgress, setOfficialImportProgress] = useState("");
   const importOfficialDocuments = async () => {
     const jobs = items.flatMap((item) => ["datasheet", "conformity"]
       .filter((kind) => !hasStoredDocument(item, kind) && (item[`${kind}_source_url`] || item[`${kind}_url`]))
       .map((kind) => ({ item, kind, url: item[`${kind}_source_url`] || item[`${kind}_url`] })));
     if (!jobs.length) return toast.info("Nu există PDF-uri oficiale noi de preluat; poți adăuga linkuri HTTPS în catalog.");
     setImportingOfficial(true);
+    setOfficialImportProgress(`0 / ${jobs.length} documente`);
     let imported = 0;
+    let extractedModels = 0;
+    let extractionFailed = 0;
+    let completed = 0;
+    let cursor = 0;
     const failed = [];
-    try {
-      for (const job of jobs) {
+    const worker = async () => {
+      while (cursor < jobs.length) {
+        const job = jobs[cursor++];
         try {
-          await api.post(`/catalog/${job.item.id}/import-document`, { kind: job.kind, url: job.url });
+          await api.post(`/catalog/${job.item.id}/import-document`, { kind: job.kind, url: job.url }, { timeout: 90000 });
           imported += 1;
+          if (job.kind === "datasheet") {
+            try {
+              const { data } = await api.post(`/ai/catalog/${job.item.id}/extract`, {}, { timeout: 90000 });
+              if (Object.keys(data?.filled || {}).length) extractedModels += 1;
+            } catch {
+              extractionFailed += 1;
+            }
+          }
         } catch (e) {
           failed.push(`${job.item.brand_model}: ${e.response?.data?.detail || "sursa nu a returnat un PDF valid"}`);
+        } finally {
+          completed += 1;
+          setOfficialImportProgress(`${completed} / ${jobs.length} documente`);
         }
       }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(3, jobs.length) }, () => worker()));
       await load();
-      if (failed.length) {
-        toast.warning(`Preluate ${imported} PDF-uri; ${failed.length} nu au putut fi importate. Verifică linkurile oficiale.`);
-        console.warn("Importuri oficiale nereușite:", failed);
+      const summary = `Preluate ${imported} PDF-uri oficiale${extractedModels ? `; extrase date din ${extractedModels} fișe tehnice` : ""}.`;
+      if (failed.length || extractionFailed) {
+        toast.warning(`${summary} ${failed.length ? `${failed.length} documente au eșuat.` : ""}${extractionFailed ? ` Extragerea nu a reușit pentru ${extractionFailed} fișe.` : ""}`);
+        if (failed.length) console.warn("Importuri oficiale nereușite:", failed);
       } else {
-        toast.success(`Preluate ${imported} PDF-uri oficiale în catalog`);
+        toast.success(summary);
       }
-    } finally { setImportingOfficial(false); }
+    } finally {
+      setImportingOfficial(false);
+      setOfficialImportProgress("");
+    }
   };
 
   return (
@@ -395,7 +420,7 @@ export default function EquipmentCatalog() {
         sub="Modele cu date electrice, fișe tehnice și declarații de conformitate, reutilizate în configurarea CEF și în dosarele clienților."
         action={<div className="flex flex-wrap gap-2">
           <Btn variant="secondary" onClick={importOfficialDocuments} disabled={importingOfficial} data-testid="catalog-import-official-btn">
-            <Upload size={14} /> {importingOfficial ? "Se preiau PDF-urile…" : "Preia PDF-urile oficiale"}
+            <Upload size={14} /> {importingOfficial ? (officialImportProgress || "Se preiau PDF-urile…") : "Preia PDF-urile și extrage datele"}
           </Btn>
           <a href="https://delgaz.ro/getattachment/f005023f-8d6f-4065-b6f5-cee47673593e/Lista-invertoare-conforme.xlsx" target="_blank" rel="noopener noreferrer" data-testid="catalog-delgaz-approved-inverters" className="inline-flex min-h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} title="Lista oficială Delgaz Grid cu invertoare conforme">Listă invertoare Delgaz ↗</a>
           <Btn onClick={() => setForm(form ? null : { category: cat })} data-testid="catalog-add-btn">{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> Model nou</>}</Btn>
