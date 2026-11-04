@@ -127,12 +127,31 @@ export default function Dashboard() {
       && (inboxLocality === "all" || item.locality === inboxLocality)
       && (!inboxDueOnly || (item.next_action_due && String(item.next_action_due).slice(0, 10) <= todayKey));
   });
+  const suggestedInboxAction = (item) => {
+    if (item.next_action || item.next_action_due) return "";
+    if (Array.isArray(item.workflow_blockers) && item.workflow_blockers.some((value) => String(value || "").trim())) {
+      return "Verifică lipsurile semnalate în dosar";
+    }
+    const stage = String(item.workflow_status || item.status || item.operator_stage || "")
+      .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLocaleLowerCase("ro-RO");
+    if (!stage || /(finalizat|prosumator activ)/.test(stage)) return "";
+    if (/(respins|neconform)/.test(stage)) return "Revizuiește observațiile și corectează dosarul";
+    if (/(asteapta|asteptare)/.test(stage)) return "Verifică răspunsul operatorului";
+    if (/(depus|transmis)/.test(stage)) return "Urmărește răspunsul operatorului";
+    if (/(aviz|atr emis|avizat)/.test(stage)) return "Verifică ATR-ul și pregătește etapa următoare";
+    if (/(montaj|instalat|probe|pif|teste)/.test(stage)) return "Programează sau finalizează probele și PIF";
+    if (/(gata de depunere|pregatit pentru depunere|generat)/.test(stage)) return "Verifică opisul și pregătește depunerea";
+    if (/(pregat|in lucru|ciorna|draft)/.test(stage)) return "Continuă completarea și verificarea dosarului";
+    return "";
+  };
   const renderInboxItem = (item) => {
     const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono", anre_dossiers: "/dosare-anre" };
     const path = paths[item.module] || "/prosumator";
     const openParam = item.module === "anre_dossiers" ? "open" : "edit";
     const itemKey = item.module + "-" + item.id;
     const currentStatus = item.workflow_status || item.status || "În lucru";
+    const suggestedAction = suggestedInboxAction(item);
+    const displayAction = item.next_action || suggestedAction;
     const dueDate = item.next_action_due ? new Date(`${item.next_action_due}T00:00:00`) : null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -147,7 +166,7 @@ export default function Dashboard() {
         <Link to={path + "?" + openParam + "=" + encodeURIComponent(item.id)} className="min-w-0 flex-1">
           <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
           <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}{item.pod ? " · POD " + item.pod : ""}{item.operator ? " · " + item.operator : ""}</span>
-          {item.next_action && <span className="mt-1 block truncate text-xs font-semibold" style={{ color: overdue ? "#b43b2f" : "var(--blue)" }} data-testid={`inbox-action-${itemKey}`}>Următorul pas: {item.next_action}{hasValidDueDate ? ` · ${dueDate.toLocaleDateString("ro-RO")}` : ""}{overdue ? " · depășit" : ""}</span>}
+          {displayAction && <span className="mt-1 block truncate text-xs font-semibold" style={{ color: overdue ? "#b43b2f" : "var(--blue)" }} data-testid={`inbox-action-${itemKey}`} title={suggestedAction ? "Sugestie din stadiul dosarului; fără termen automat" : undefined}>{suggestedAction ? "Sugestie: " : "Următorul pas: "}{displayAction}{hasValidDueDate ? ` · ${dueDate.toLocaleDateString("ro-RO")}` : ""}{overdue ? " · depășit" : ""}</span>}
           {item.workflow_blockers?.length > 0 && <span className="mt-1 block truncate text-xs font-semibold text-amber-800" title={item.workflow_blockers.join(" · ")} data-testid={`inbox-blockers-${itemKey}`}>Blocaje: {item.workflow_blockers.join(" · ")}</span>}
           <span className="block text-[10px] mt-1" style={{ color: "var(--muted)" }}>{item.updated_at ? new Date(item.updated_at).toLocaleDateString("ro-RO") : "—"}</span>
         </Link>
