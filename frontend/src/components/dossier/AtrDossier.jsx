@@ -35,6 +35,14 @@ function normalizeLocation(value) {
   return normalizeClientName(value).replace(/[^a-z0-9]/g, "");
 }
 
+function requestsAbove1Mw(form) {
+  return [form?.p_abs_kw, form?.p_evac_kw].some((value) => {
+    const normalized = String(value ?? "").replace(",", ".").trim();
+    const kw = Number(normalized);
+    return normalized !== "" && Number.isFinite(kw) && kw > 1000;
+  });
+}
+
 function belongsToClient(item, clientId, clientName) {
   if (item?.client_id && clientId) return item.client_id === clientId;
   return Boolean(normalizeClientName(item?.client_name) && normalizeClientName(item.client_name) === normalizeClientName(clientName));
@@ -355,6 +363,11 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
         </>}
         <div className="den-field"><label>Factor de putere mediu (cos φ)</label><input className="den-input" value={form.cos_phi || ""} onChange={(e) => setVal("cos_phi", e.target.value)} /></div>
         <div className="den-field"><label>Cel mai mare motor (kW)</label><input className="den-input" value={form.motor_kw || ""} onChange={(e) => setVal("motor_kw", e.target.value)} /></div>
+        {requestsAbove1Mw(form) && <div className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-950" role="status" data-testid="atr-1mw-guarantee-check">
+          <strong>Verificare suplimentară pentru putere solicitată peste 1 MW.</strong>
+          <p className="mt-1">Ordinul ANRE nr. 15/2026 a modificat regulile de racordare: în condițiile prevăzute la art. 31 din Regulamentul aprobat prin Ordinul nr. 59/2013, garanția financiară este de 20% din tariful de racordare fără TVA. Confirmă aplicabilitatea și suma în ATR / contractul transmis de operator; DNS nu estimează valoarea fără tariful real.</p>
+          <a className="mt-1 inline-flex font-semibold underline" href="https://www.distributie-energie.ro/racordare-la-retea-2/" target="_blank" rel="noopener noreferrer">Sursa oficială DEER și Ordinul ANRE 15/2026 ↗</a>
+        </div>}
       </div>
       <div className="mt-4 text-xs font-bold">Lista receptoarelor</div>
       {recs.map((r, i) => <div key={i} className="grid grid-cols-[1fr_90px_1fr_24px] gap-2 mt-1" data-testid={`atr-rec-${i}`}>
