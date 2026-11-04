@@ -159,7 +159,8 @@ export default function WorkMap() {
             bounds.push(point);
             const statuses = [...new Set(group.items.map((item) => item.stage))];
             const color = statuses.length === 1 ? colorFor(statuses[0]) : "#177955";
-            const icon = L.divIcon({ className: "dns-map-marker-wrap", html: `<span class="dns-map-marker" style="--marker-color:${color}">${group.items.length > 1 ? group.items.length : ""}</span>`, iconSize: [group.items.length > 1 ? 38 : 18, group.items.length > 1 ? 38 : 18], iconAnchor: [19, 19] });
+            const isCluster = group.items.length > 1;
+            const icon = L.divIcon({ className: "dns-map-marker-wrap", html: `<span class="dns-map-marker${isCluster ? " dns-map-marker--cluster" : ""}" style="--marker-color:${color}">${isCluster ? group.items.length : ""}</span>`, iconSize: [isCluster ? 38 : 18, isCluster ? 38 : 18], iconAnchor: [19, 19] });
             const marker = L.marker(point, { icon }).addTo(markers);
             const entries = group.items.map((item) => `<li><b>${safeText(item.number || item.moduleLabel)}</b><br><span>${safeText(item.moduleLabel)} · ${safeText(item.stage || "În lucru")}${item.operator ? ` · ${safeText(item.operator)}` : ""}</span><br><a href="${safeText(item.href)}?edit=${encodeURIComponent(item.id)}">Deschide dosarul</a></li>`).join("");
             marker.bindPopup(`<strong>${safeText(group.place)}</strong><ul class="dns-map-popup-list">${entries}</ul>`, { maxWidth: 330 });
