@@ -165,9 +165,9 @@ def _correct_category(title: str, category: str) -> bool:
     )
     if any(marker in padded for marker in bundle_markers):
         return False
-    if re.search(r"\b(?:invertor|inverter)\b.*(?:\+|&|\band\b).*\b(?:baterie|acumulator|battery)\b", raw_title):
+    if re.search(r"\b(?:invertor|inverter)\b.*(?:\+|&|\band\b|\bcu\b).*\b(?:baterie|acumulator|battery)\b", raw_title):
         return False
-    if re.search(r"\b(?:baterie|acumulator|battery)\b.*(?:\+|&|\band\b).*\b(?:invertor|inverter)\b", raw_title):
+    if re.search(r"\b(?:baterie|acumulator|battery)\b.*(?:\+|&|\band\b|\bcu\b).*\b(?:invertor|inverter)\b", raw_title):
         return False
     if category == "Invertor":
         return value.startswith(("invertor ", "inverter "))
