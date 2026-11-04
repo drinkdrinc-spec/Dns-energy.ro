@@ -568,6 +568,22 @@ _ARCHIVE_SWEEP_INTERVAL = timedelta(hours=1)
 _ARCHIVE_INACTIVE_AFTER = timedelta(days=183)
 
 
+def dossier_archive_filter(include_archived: bool = False) -> dict:
+    """Treat any newer saved activity as an automatic return to the active workflow."""
+    changed_after_archive = {"$expr": {"$gt": ["$updated_at", "$archived_at"]}}
+    if include_archived:
+        return {"$and": [
+            {"archived_at": {"$exists": True, "$nin": [None, ""]}},
+            {"$nor": [changed_after_archive]},
+        ]}
+    return {"$or": [
+        {"archived_at": {"$exists": False}},
+        {"archived_at": None},
+        {"archived_at": ""},
+        changed_after_archive,
+    ]}
+
+
 async def archive_inactive_dossiers(user: dict):
     """Soft-archive dossier workflows with no saved activity for about six months."""
     user_id = str(user.get("id") or "")
@@ -583,7 +599,10 @@ async def archive_inactive_dossiers(user: dict):
         base_scope = scope_q(user, collection)
         stale = {"$and": [
             base_scope,
-            {"archived_at": {"$exists": False}},
+            {"$or": [
+                {"archived_at": {"$exists": False}},
+                {"$expr": {"$gt": ["$updated_at", "$archived_at"]}},
+            ]},
             {"$or": [
                 {"updated_at": {"$lt": cutoff}},
                 {"updated_at": {"$exists": False}, "created_at": {"$lt": cutoff}},
@@ -606,7 +625,7 @@ async def list_items(module: str, q: Optional[str] = None, include_archived: boo
     query = scope_q(user, module)
     if module in AUTO_ARCHIVE_MODULES:
         await archive_inactive_dossiers(user)
-        query = {"$and": [query, {"archived_at": {"$exists": bool(include_archived)}}]}
+        query = {"$and": [query, dossier_archive_filter(include_archived)]}
     if module == "catalog":
         await seed_catalog(user["id"])
     search_fields = {
@@ -805,7 +824,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     await archive_inactive_dossiers(user)
     owner = scope_q(user, "diu")
     test_dossier_filter = {"$and": [
-        {"archived_at": {"$exists": False}},
+        dossier_archive_filter(False),
         {"is_test": {"$ne": True}},
         {"$nor": [
             {"client_name": {"$regex": r"^TEST", "$options": "i"}},
