@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Upload, FileText, ClipboardCheck, UserRoundCog, Trash2, Download, RefreshCw } from "lucide-react";
 
 const TYPES = [["prosumator","Dosar de prosumator"],["diu","Dosar de utilizare (DIU)"],["atr","Dosar ATR / spor de putere"],["pram","Buletin PRAM"],["anre","Dosar ANRE"],["electric","Dosar instalație electrică"],["other","Alt tip de dosar"]];
+const AUTO_ARCHIVE_MODULES = [["prosumator","Dosar prosumator"],["atr","Cerere ATR"],["power","Spor de putere"],["diu","Dosar DI-U"],["mono","Schemă monofilară"]];
 const LABELS = {cerere:"Cerere / formular",atr:"ATR / certificat de racordare",schema:"Schemă monofilară",pram:"Buletin PRAM",ci:"Act identitate / CUI",cf:"Carte funciară / act proprietate",fisa:"Fișe tehnice / certificate",diu:"Dosar de utilizare (DIU)"};
 const STATUS = {complete:"Finalizat (confirmat manual)",incomplete:"Incomplet",manual_review:"Necesită verificare manuală",needs_review:"Necesită revizuire"};
 function reviewFiles(files, kind) {
@@ -15,11 +16,17 @@ function reviewFiles(files, kind) {
  return {checks,missing,status:!(files||[]).length?"needs_review":missing.length?"incomplete":"manual_review",reviewed_at:new Date().toISOString(),note:"Verificare preliminară numai după denumirea fișierelor. Conținutul, valabilitatea, semnăturile și conformitatea trebuie verificate manual."};
 }
 export default function ArchivedDossiers(){
- const [items,setItems]=useState([]),[clients,setClients]=useState([]),[files,setFiles]=useState([]),[busy,setBusy]=useState(false);
+ const [items,setItems]=useState([]),[clients,setClients]=useState([]),[files,setFiles]=useState([]),[inactive,setInactive]=useState([]),[busy,setBusy]=useState(false);
  const [form,setForm]=useState({title:"",client_id:"",kind:"prosumator",reference:"",delegated_to:"",due_date:"",notes:""});
  const inputRef=useRef(null); const set=(k,v)=>setForm(p=>({...p,[k]:v}));
- const load=()=>Promise.all([api.get("/data/archived_dossiers").then(r=>setItems(r.data||[])).catch(()=>{}),api.get("/data/clients").then(r=>setClients(r.data||[])).catch(()=>{})]);
+ const load=async()=>{const result=await Promise.all([
+  api.get("/data/archived_dossiers").then(r=>r.data||[]).catch(()=>[]),
+  api.get("/data/clients").then(r=>r.data||[]).catch(()=>[]),
+  ...AUTO_ARCHIVE_MODULES.map(([module])=>api.get("/data/"+module+"?include_archived=true").then(r=>(r.data||[]).map(item=>({...item,module}))).catch(()=>[])),
+  api.get("/anre/dossiers?include_archived=true").then(r=>(r.data||[]).map(item=>({...item,module:"anre_dossiers"}))).catch(()=>[]),
+ ]);setItems(result[0]);setClients(result[1]);setInactive(result.slice(2).flat());};
  useEffect(()=>{load()},[]);
+ const restoreInactive=async(item)=>{try{const path=item.module==="anre_dossiers"?"/anre/dossiers/"+encodeURIComponent(item.id)+"/restore":"/data/"+encodeURIComponent(item.module)+"/"+encodeURIComponent(item.id)+"/restore";await api.post(path);toast.success("Dosarul a fost readus în lucru.");await load();}catch(e){toast.error(e.response?.data?.detail||"Dosarul nu a putut fi restaurat.");}};
  const upload=async()=>{if(!form.title.trim())return toast.error("Completează denumirea dosarului.");if(!files.length)return toast.error("Selectează fișierele dosarului.");setBusy(true);try{
   const saved=[];for(const file of files){const fd=new FormData();fd.append("file",file);const {data}=await api.post("/upload",fd,{headers:{"Content-Type":"multipart/form-data"}});saved.push({storage_path:data.storage_path,original_filename:data.original_filename,content_type:data.content_type,size:data.size});}
   const client=clients.find(c=>c.id===form.client_id),review=reviewFiles(saved,form.kind);
@@ -32,6 +39,14 @@ export default function ArchivedDossiers(){
  const complete=item=>{if(window.confirm("Confirmi că ai verificat manual documentele și dosarul este complet?"))update(item,{status:"complete",completed_at:new Date().toISOString()},"Finalizat după verificare manuală")};
  const remove=async item=>{if(!window.confirm("Ștergi înregistrarea? Fișierele din stocare nu sunt șterse automat."))return;try{await api.delete("/data/archived_dossiers/"+item.id);await load()}catch(e){toast.error("Nu am putut șterge înregistrarea.")}};
  return <div data-testid="archived-dossiers-page"><PageHeader eyebrow="Registru și delegare" title="Dosare vechi — arhivă și revizuire" sub="Încarcă dosare existente, verifică preliminar lipsurile și deleagă responsabilitatea. Finalizarea se confirmă manual."/>
+ <div className="den-panel mb-6" data-testid="inactive-dossier-archive">
+  <h2 className="text-lg font-bold">Arhivă automată — fără activitate aproximativ 6 luni</h2>
+  <p className="text-sm mt-1 mb-4" style={{color:"var(--muted)"}}>Dosarele sunt păstrate integral. O modificare nouă sau butonul de mai jos le readuce în fluxul activ.</p>
+  {!inactive.length?<div className="py-5 text-center text-sm" style={{color:"var(--muted)"}}>Nu există dosare inactive arhivate automat.</div>:<div className="space-y-2">{inactive.map(item=><div key={item.module+"-"+item.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3" style={{borderColor:"var(--line)"}}>
+   <div className="flex-1 min-w-[220px]"><div className="font-semibold">{item.client_name||item.company?.name||item.title||"Dosar fără nume"}</div><div className="text-xs mt-1" style={{color:"var(--muted)"}}>{AUTO_ARCHIVE_MODULES.find(([module])=>module===item.module)?.[1]||item.module} · {item.number||item.pod||item.address||"Fără referință"} · ultima activitate {item.updated_at?new Date(item.updated_at).toLocaleDateString("ro-RO"):"necunoscută"}</div></div>
+   <Btn onClick={()=>restoreInactive(item)}><RefreshCw size={14}/>Readuce în lucru</Btn>
+  </div>)}</div>}
+ </div>
  <div className="den-panel mb-6"><h2 className="text-lg font-bold mb-4">Încarcă dosar vechi</h2><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
  <div className="den-field"><label>Denumire dosar *</label><input className="den-input" value={form.title} onChange={e=>set("title",e.target.value)} placeholder="Ex. Dosar prosumator Popescu"/></div>
  <div className="den-field"><label>Tip dosar</label><select className="den-input" value={form.kind} onChange={e=>set("kind",e.target.value)}>{TYPES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
