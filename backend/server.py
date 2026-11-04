@@ -935,7 +935,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     attention_stages = {
         "În lucru", "Documente de completat", "În verificare", "Documente lipsă",
         "În completare", "Ciornă", "Așteaptă depunere", "Pregătit pentru depunere",
-        "Pregătit pentru semnare", "PV Teste / PIF",
+        "Pregătit pentru semnare", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF",
     }
     pending = sum(count for stage, count in stage_counts.items() if stage in attention_stages)
 
