@@ -1439,7 +1439,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
 
     # Keep consumption locations reusable on the client. A distinct POD is a
     # distinct service point even when the street address is shared.
-    site_fields = ("address", "county", "locality", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc")
+    site_fields = ("address", "county", "locality", "postal_code", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc")
     site_values = {key: str(d.get(key) or "").strip() for key in site_fields}
     if any(site_values.values()):
         sites = client.get("consumption_sites")
