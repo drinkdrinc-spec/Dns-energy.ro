@@ -38,10 +38,24 @@ export default function SignPage() {
   const [done, setDone] = useState(null);
   const [refusing, setRefusing] = useState(false);
   const [reason, setReason] = useState("");
-  useEffect(() => { axios.get(`${API}/${token}`).then((r) => setInfo(r.data)).catch((e) => setErr(e.response?.data?.detail || "Link invalid")); }, [token]);
+  const [clientMessages, setClientMessages] = useState([]);
+  const [clientReply, setClientReply] = useState("");
+  const [replyBusy, setReplyBusy] = useState(false);
+  useEffect(() => { axios.get(`${API}/${token}`).then((r) => { setInfo(r.data); setClientMessages(r.data.client_messages || []); }).catch((e) => setErr(e.response?.data?.detail || "Link invalid")); }, [token]);
   const call = async (path, body, ok) => {
     setBusy(true); setMsg("");
     try { const r = await axios.post(`${API}/${token}/${path}`, body); ok(r.data); } catch (e) { setMsg(e.response?.data?.detail || "Eroare"); } finally { setBusy(false); }
+  };
+  const sendClientReply = async (event) => {
+    event.preventDefault();
+    if (!clientReply.trim() || replyBusy) return;
+    setReplyBusy(true); setMsg("");
+    try {
+      await axios.post(`${API}/${token}/messages`, { text: clientReply.trim() });
+      const { data } = await axios.get(`${API}/${token}/messages`);
+      setClientMessages(data.messages || []); setClientReply(""); setMsg("Mesajul a fost adăugat la dosar.");
+    } catch (e) { setMsg(e.response?.data?.detail || "Mesajul nu a putut fi trimis."); }
+    finally { setReplyBusy(false); }
   };
   if (err) return <Shell><p className="text-center font-bold" data-testid="sign-error">{err}</p></Shell>;
   if (!info) return <Shell><p className="text-center">Se încarcă…</p></Shell>;
@@ -59,6 +73,20 @@ export default function SignPage() {
         {[...Array(info.pages).keys()].map((i) => <a key={i} href={`${API}/${token}/page/${i}`} target="_blank" rel="noopener noreferrer"><img src={`${API}/${token}/page/${i}`} alt={`Pagina ${i + 1}`} className="w-full bg-white shadow-sm" style={{ aspectRatio: "210 / 297" }} loading="lazy" /></a>)}
       </div>
       <a href={`${API}/${token}/document`} target="_blank" rel="noopener noreferrer" className="text-xs underline mt-1 inline-block" style={{ color: "#2878f0" }} data-testid="sign-download-original">Descarcă documentul (PDF)</a>
+      <section className="mt-5 rounded-xl border bg-white p-4" style={{ borderColor: "#dbe3ee" }} data-testid="sign-client-messages">
+        <h2 className="text-sm font-bold">Mesaje despre dosar</h2>
+        <div className="mt-3 max-h-56 space-y-2 overflow-y-auto" data-testid="sign-client-message-list">
+          {!clientMessages.length && <p className="text-xs" style={{ color: "#5a6b85" }}>Nu există mesaje în acest dosar.</p>}
+          {clientMessages.map((item) => <article key={item.id} className="rounded-lg border p-3" style={{ borderColor: "#dbe3ee", background: "#f8fafd" }}>
+            <div className="flex justify-between gap-2 text-[11px] font-semibold"><span>{item.sender === "client" ? "Tu" : item.sender_name || "Echipa DNS"}</span><time style={{ color: "#5a6b85" }}>{item.created_at ? new Date(item.created_at).toLocaleString("ro-RO") : ""}</time></div>
+            <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5">{item.text}</p>
+          </article>)}
+        </div>
+        <form className="mt-3 space-y-2" onSubmit={sendClientReply}>
+          <textarea className="den-input" rows={2} maxLength={2000} value={clientReply} onChange={(e) => setClientReply(e.target.value)} placeholder="Scrie un mesaj către echipa DNS…" data-testid="sign-client-message-input" />
+          <button className="rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: "#2878f0" }} disabled={replyBusy || !clientReply.trim()} data-testid="sign-client-message-send">{replyBusy ? "Se trimite…" : "Trimite mesajul"}</button>
+        </form>
+      </section>
       <div className="mt-6 rounded-xl border bg-white p-4 space-y-4" style={{ borderColor: "#dbe3ee" }}>
         <div className="den-field"><label>Numele complet al semnatarului</label><input className="den-input" value={f.declared_name} onChange={(e) => setF({ ...f, declared_name: e.target.value })} data-testid="sign-name" /></div>
         <div>
