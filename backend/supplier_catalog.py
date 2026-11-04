@@ -362,6 +362,13 @@ async def _collect_listing_candidates(client: httpx.AsyncClient, listing_url: st
 
             for anchor in doc.xpath("//a[@href]"):
                 title = " ".join(" ".join(anchor.itertext()).split())
+                if not title:
+                    # Some supplier themes render product cards as image-only
+                    # links. Preserve their model label from accessible markup.
+                    title = " ".join((anchor.get("aria-label") or anchor.get("title") or "").split())
+                if not title:
+                    image_labels = anchor.xpath(".//img/@alt | .//img/@title")
+                    title = " ".join(" ".join(image_labels).split())
                 url = urljoin(str(response.url), anchor.get("href", "").strip())
                 if title and _safe_page(url, host) and url not in seen_products:
                     seen_products.add(url)
