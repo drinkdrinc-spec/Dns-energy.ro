@@ -9,7 +9,7 @@ const EMPTY = {
   site: "Acoperiș înclinat", status: "În lucru", drawing_source: "", roof_geometry: "",
   roof_scale_verified: false, roof_geometry_verified: false, obstacles_checked: false,
   north_verified: false, equipment_positions_verified: false, panel_id: "", inverter_id: "",
-  battery_id: "", engineer_notes: "",
+  battery_id: "", dossier_id: "", dossier_number: "", engineer_notes: "",
 };
 const GATES = [
   ["roof_scale_verified", "Planul este calibrat după o dimensiune măsurată"],
@@ -24,6 +24,7 @@ export default function Simulare() {
   const [projects, setProjects] = useState([]);
   const [clients, setClients] = useState([]);
   const [catalog, setCatalog] = useState([]);
+  const [dossiers, setDossiers] = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [form, setForm] = useState(null);
   const [outline, setOutline] = useState([]);
@@ -43,6 +44,8 @@ export default function Simulare() {
       setProjects(Array.isArray(responses[0].data) ? responses[0].data : []);
       setClients(Array.isArray(responses[1].data) ? responses[1].data.filter((x) => !x.is_test && !/\bTEST\b/i.test(String(x.name || ""))) : []);
       setCatalog(Array.isArray(responses[2].data) ? responses[2].data.filter((x) => !/\bTEST\b/i.test(String(x.brand_model || ""))) : []);
+      const dossierResponse = await api.get("/data/prosumator").catch(() => ({ data: [] }));
+      setDossiers(Array.isArray(dossierResponse.data) ? dossierResponse.data.filter((x) => !x.is_test && !/\bTEST\b/i.test(String(x.client_name || x.number || ""))) : []);
     } catch (e) {
       setError(e.response?.data?.detail || "Proiectele nu s-au putut încărca. Verifică accesul și încearcă din nou.");
     } finally { setLoading(false); }
@@ -71,6 +74,10 @@ export default function Simulare() {
     else setEquipmentMarks((old) => [...old, { ...point, label: markType }]);
   };
   const set = (key, value) => setForm((old) => ({ ...old, [key]: value }));
+  const pickDossier = (id) => {
+    const dossier = dossiers.find((x) => x.id === id);
+    setForm((old) => ({ ...old, dossier_id: id, dossier_number: dossier?.number || "" }));
+  };
   const pickClient = (id) => {
     const c = clients.find((x) => x.id === id);
     setForm((old) => ({ ...old, client_id: id, client_name: c?.name || "",
@@ -160,6 +167,9 @@ export default function Simulare() {
               <Field label="Stare"><select className="den-input" value={form.status || "În lucru"} onChange={(e) => set("status", e.target.value)}>
                 {["În lucru", "Date în așteptare", "În verificare inginerească", "Verificat", "Arhivat"].map((s) => <option key={s}>{s}</option>)}
               </select></Field>
+              <Field label="Dosar prosumator asociat"><select className="den-input" value={form.dossier_id || ""} onChange={(e) => pickDossier(e.target.value)}>
+                <option value="">Fără dosar asociat</option>{dossiers.map((d) => <option key={d.id} value={d.id}>{[d.client_name || "Client fără nume", d.number].filter(Boolean).join(" · ")}</option>)}
+              </select></Field>
               <Field label="Adresă obiectiv"><input className="den-input" value={text(form.address)} onChange={(e) => set("address", e.target.value)} /></Field>
               <Field label="Localitate"><input className="den-input" value={text(form.locality)} onChange={(e) => set("locality", e.target.value)} /></Field>
               <Field label="Județ"><input className="den-input" value={text(form.county)} onChange={(e) => set("county", e.target.value)} /></Field>
@@ -243,7 +253,7 @@ export default function Simulare() {
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <Btn onClick={save} disabled={saving}><Save size={15} /> {saving ? "Se salvează…" : "Salvează proiectul"}</Btn>
               <a href="/catalog-echipamente" className="inline-flex items-center gap-1 text-sm font-semibold underline">Deschide catalogul DNS <ExternalLink size={13} /></a>
-              <a href="/prosumator" className="inline-flex items-center gap-1 text-sm font-semibold underline">Dosare prosumator <ExternalLink size={13} /></a>
+              {form.dossier_id ? <a href={`/prosumator?edit=${encodeURIComponent(form.dossier_id)}`} className="inline-flex items-center gap-1 text-sm font-semibold underline">Deschide dosarul asociat <ExternalLink size={13} /></a> : <a href="/prosumator" className="inline-flex items-center gap-1 text-sm font-semibold underline">Dosare prosumator <ExternalLink size={13} /></a>}
             </div>
           </div>
           <p className="flex items-start gap-2 px-1 text-xs" style={{ color: "var(--muted)" }}><Ruler size={15} className="shrink-0" />Nu se generează dimensionări, estimări de producție sau confirmări de conformitate aici. Acestea necesită geometrie măsurată și verificarea proiectantului.</p>
