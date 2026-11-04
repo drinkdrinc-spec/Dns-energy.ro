@@ -688,6 +688,32 @@ export default function ModulePage({ moduleKey }) {
   const formClientSites = clientConsumptionSites(formClient);
   const formClientSite = formClientSites.find((site) => String(site.id) === String(form?.client_site_id || ""))
     || clientSiteFor(formClient, form?.pod);
+  const dossierInverters = form?.cef?.inverters || [];
+  const metricNumber = (value) => {
+    const parsed = Number(String(value ?? "").replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const inverterCapacityKw = dossierInverters.reduce((sum, inverter) =>
+    sum + metricNumber(inverter.p_nom_kw || inverter.p_max_kw) * Math.max(1, metricNumber(inverter.count || inverter.quantity) || 1), 0);
+  const installedPanelCount = dossierInverters.reduce((sum, inverter) =>
+    sum + (inverter.strings || []).reduce((count, string) => count + metricNumber(string.panels), 0)
+      * Math.max(1, metricNumber(inverter.count || inverter.quantity) || 1), 0);
+  const storageCapacityKwh = dossierInverters.reduce((sum, inverter) => {
+    if (inverter.battery_mode !== "own") return sum;
+    const battery = inverter.battery || {};
+    return sum + metricNumber(battery.capacity_kwh || battery.kwh)
+      * Math.max(1, metricNumber(battery.modules || battery.count) || 1)
+      * Math.max(1, metricNumber(inverter.count || inverter.quantity) || 1);
+  }, 0) + (form?.cef?.shared_batteries || []).reduce((sum, battery) =>
+    sum + metricNumber(battery.capacity_kwh || battery.kwh) * Math.max(1, metricNumber(battery.modules || battery.count) || 1), 0);
+  const dossierSummary = [
+    ["Panouri", installedPanelCount ? `${installedPanelCount} · ${installedPanelKwp(form) || "—"} kWp` : "Neconfigurat"],
+    ["Invertoare", dossierInverters.length ? `${dossierInverters.length} · ${Number(inverterCapacityKw.toFixed(2))} kW` : "Neconfigurat"],
+    ["Stocare", storageCapacityKwh ? `${Number(storageCapacityKwh.toFixed(2))} kWh` : "Fără baterie"],
+    ["Topologie", storageCapacityKwh ? "Hibrid cu baterie" : (form?.system_type || "Nespecificată")],
+    ["POD", form?.pod || "Necompletat"],
+    ["Operator", form?.operator || "Neales"],
+  ];
 
   return (
     <div>
@@ -782,6 +808,13 @@ export default function ModulePage({ moduleKey }) {
       {form && (
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" data-testid="prosumer-dossier-summary">
+              {dossierSummary.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }}>
+                <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{label}</div>
+                <div className="mt-1 truncate text-xs font-bold" title={String(value)} style={{ color: "#24364f" }}>{value}</div>
+              </div>)}
+            </div>
+
           {key === "prosumator" && editId && <section className="mb-5 rounded-xl border p-3 sm:p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="prosumer-quick-actions">
           {key === "prosumator" && editId && <section className="mb-5 rounded-xl border p-3 sm:p-4" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid="prosumer-operator-progress">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
