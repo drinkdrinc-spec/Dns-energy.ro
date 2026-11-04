@@ -667,6 +667,45 @@ async def list_items(module: str, q: Optional[str] = None, include_archived: boo
         items = [i for i in items if ql in str(i).lower()]
     return items
 
+
+@api_router.get("/work-map")
+async def list_work_map(include_archived: bool = False, user: dict = Depends(get_current_user)):
+    """Return only the fields needed for the work map; never expose dossier contents there."""
+    modules = [
+        ("prosumator", "Dosar prosumator"),
+        ("atr", "Cerere ATR"),
+        ("power", "Spor de putere"),
+        ("diu", "Dosar DI-U"),
+    ]
+    await archive_inactive_dossiers(user)
+    result = []
+    projection = {
+        "id": 1, "number": 1, "locality": 1, "county": 1, "operator": 1,
+        "workflow_status": 1, "status": 1, "operator_stage": 1, "archived_at": 1,
+    }
+    for module, label in modules:
+        try:
+            guard(module, user)
+        except HTTPException as exc:
+            if exc.status_code in (402, 403, 404):
+                continue
+            raise
+        query = {"$and": [scope_q(user, module), dossier_archive_filter(include_archived)]}
+        records = await db[module].find(query, projection).sort("updated_at", -1).limit(2000).to_list(2000)
+        for record in records:
+            result.append({
+                "id": str(record.get("id") or ""),
+                "module": module,
+                "module_label": label,
+                "number": str(record.get("number") or ""),
+                "locality": str(record.get("locality") or ""),
+                "county": str(record.get("county") or ""),
+                "operator": str(record.get("operator") or ""),
+                "stage": str(record.get("workflow_status") or record.get("status") or record.get("operator_stage") or "În lucru"),
+                "archived": bool(record.get("archived_at")),
+            })
+    return result
+
 @api_router.post("/data/{module}")
 async def create_item(module: str, request: Request, user: dict = Depends(get_current_user)):
     if module not in MODULES:

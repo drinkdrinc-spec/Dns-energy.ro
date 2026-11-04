@@ -2,12 +2,12 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { BrandMark } from "@/components/BrandMark";
 import { useAuth } from "@/context/AuthContext";
 import {
-  LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, Archive,
+  LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, Archive, Map,
   FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt, Sparkles, Mail,
 } from "lucide-react";
 import { can, isOff, ROUTE_FEATURE } from "@/lib/plan";
 
-const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles, Archive, Mail };
+const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles, Archive, Mail, Map };
 
 const NAV = [
   { label: "Flux dosare", items: [
@@ -29,6 +29,7 @@ const NAV = [
   ]},
   { label: "Tehnic", items: [
     { to: "/lucrari", icon: "Briefcase", text: "Gestionarea lucrărilor", testid: "nav-works" },
+    { to: "/harta-lucrari", icon: "Map", text: "Hartă lucrări", testid: "nav-work-map" },
     { to: "/tablouri", icon: "LayoutGrid", text: "Tablouri electrice", testid: "nav-panels" },
     { to: "/antiinsularizare", icon: "ShieldAlert", text: "Antiinsularizare", testid: "nav-anti" },
     { to: "/echipamente", icon: "Cpu", text: "Echipamente", testid: "nav-equipment" },

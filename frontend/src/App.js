@@ -30,6 +30,7 @@ const SchemaTehnica = lazy(() => import("@/pages/SchemaTehnica"));
 const DistributionPortals = lazy(() => import("@/pages/DistributionPortals"));
 const OperatorMessages = lazy(() => import("@/pages/OperatorMessages"));
 const ArchivedDossiers = lazy(() => import("@/pages/ArchivedDossiers"));
+const WorkMap = lazy(() => import("@/pages/WorkMap"));
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -79,6 +80,7 @@ function AppRoutes() {
         <Route path="/distribuitori" element={<Gate feat={ROUTE_FEATURE["/distribuitori"]}><Operators /></Gate>} />
         <Route path="/documente" element={<Gate feat={ROUTE_FEATURE["/documente"]}><Documents /></Gate>} />
         <Route path="/dosare-arhivate" element={<Gate feat="prosumator"><ArchivedDossiers /></Gate>} />
+        <Route path="/harta-lucrari" element={<Gate feat="prosumator"><WorkMap /></Gate>} />
         <Route path="/setari" element={<Settings />} />
         <Route path="/utilizatori" element={<Users />} />
         <Route path="/abonament" element={<Subscription />} />
