@@ -3328,6 +3328,71 @@ async def sign_by_token(token: str) -> dict:
         raise HTTPException(status_code=404, detail="Link invalid sau revocat")
     return r
 
+def public_dossier_messages(messages) -> list[dict]:
+    return [{k: item.get(k) for k in ("id", "sender", "sender_name", "text", "created_at")}
+            for item in (messages or []) if isinstance(item, dict) and item.get("audience") == "client"]
+
+def clean_message_text(value) -> str:
+    text = str(value or "").strip()
+    if not text or len(text) > 2000:
+        raise HTTPException(status_code=400, detail="Mesajul trebuie să aibă între 1 și 2.000 de caractere")
+    return text
+
+@api_router.get("/dossier/{did}/client-messages")
+async def dossier_client_messages(did: str, user: dict = Depends(get_current_user)):
+    guard("prosumator", user)
+    rec = await check_access(user, "prosumator", did)
+    return {"messages": rec.get("client_messages") or []}
+
+@api_router.post("/dossier/{did}/client-messages")
+async def dossier_add_client_message(did: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    rec = await check_access(user, "prosumator", did)
+    body = await request.json()
+    audience = body.get("audience") or "client"
+    if audience not in ("client", "internal"):
+        raise HTTPException(status_code=400, detail="Destinație mesaj invalidă")
+    message = {"id": str(uuid.uuid4()), "sender": "team", "sender_name": str(user.get("name") or user.get("email") or "Echipa DNS")[:120],
+               "audience": audience, "text": clean_message_text(body.get("text")), "created_at": now_iso()}
+    await db.prosumator.update_one({"id": did, "owner": rec.get("owner")}, {"$push": {"client_messages": {"$each": [message], "$slice": -300}}})
+    await audit(user, "mesaj în dosar", "prosumator", did, ["client_messages"])
+    return {"message": message}
+
+@api_router.get("/public/sign/{token}/messages")
+async def public_sign_messages(token: str):
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE or (r.get("module") or "prosumator") != "prosumator":
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    rec = await db.prosumator.find_one({"id": r.get("dossier_id"), "owner": r.get("owner")}, {"_id": 0, "client_messages": 1})
+    return {"messages": public_dossier_messages((rec or {}).get("client_messages"))}
+
+@api_router.post("/public/sign/{token}/messages")
+async def public_sign_add_message(token: str, request: Request):
+    r = await sign_by_token(token)
+    if sign_status(r) not in SIGN_ACTIVE or (r.get("module") or "prosumator") != "prosumator":
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    did, owner = r.get("dossier_id"), r.get("owner")
+    rec = await db.prosumator.find_one({"id": did, "owner": owner}, {"_id": 0, "client_messages": 1})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosarul nu mai este disponibil")
+    messages = rec.get("client_messages") or []
+    if len(messages) >= 300 or sum(1 for item in messages if isinstance(item, dict) and item.get("sender") == "client") >= 100:
+        raise HTTPException(status_code=429, detail="A fost atinsă limita de mesaje pentru acest dosar")
+    last = next((item for item in reversed(messages) if isinstance(item, dict) and item.get("sender") == "client"), None)
+    if last and last.get("created_at"):
+        try:
+            last_at = datetime.fromisoformat(last["created_at"].replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) - last_at < timedelta(seconds=10):
+                raise HTTPException(status_code=429, detail="Așteaptă câteva secunde înainte de a trimite alt mesaj")
+        except ValueError:
+            pass
+    body = await request.json()
+    message = {"id": str(uuid.uuid4()), "sender": "client", "sender_name": str(r.get("signer_name") or "Client")[:120],
+               "audience": "client", "text": clean_message_text(body.get("text")), "created_at": now_iso()}
+    await db.prosumator.update_one({"id": did, "owner": owner}, {"$push": {"client_messages": {"$each": [message], "$slice": -300}}})
+    await db.sign_requests.update_one({"id": r["id"]}, {"$push": {"history": hist("Mesaj de la client", client_meta(request))}})
+    return {"message": message}
+
 def mask(e: str) -> str:
     u, _, d = e.partition("@")
     return (u[:2] + "***@" + d) if d else "***"
@@ -3350,9 +3415,13 @@ async def pub_sign_info(token: str, request: Request):
         import pymupdf
         data, _ = get_object(r["doc_path"])
         pages = pymupdf.open(stream=data, filetype="pdf").page_count
+    dossier_messages = []
+    if st in SIGN_ACTIVE and (r.get("module") or "prosumator") == "prosumator":
+        dossier = await db.prosumator.find_one({"id": r.get("dossier_id"), "owner": r.get("owner")}, {"_id": 0, "client_messages": 1})
+        dossier_messages = public_dossier_messages((dossier or {}).get("client_messages"))
     return {"status": st, "pages": pages, "doc_title": r["doc_title"], "signer_name": r["signer_name"], "role": r["role"], "client_name": r["client_name"],
             "company": s.get("company") or "DNS HOSTESS SRL", "email_masked": mask(r["signer_email"]), "expires_at": r["expires_at"],
-            "doc_sha256": r["doc_sha256"], "signed_at": r.get("signed_at")}
+            "doc_sha256": r["doc_sha256"], "signed_at": r.get("signed_at"), "client_messages": dossier_messages}
 
 @api_router.get("/public/sign/{token}/document")
 async def pub_sign_doc(token: str):
