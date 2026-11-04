@@ -128,6 +128,41 @@ def test_listing_pages_support_solartech_path_pagination():
     ]
 
 
+def test_listing_page_crawler_follows_pages_beyond_visible_pagination(monkeypatch):
+    category_url = "https://depozitsolar.ro/invertoare"
+    pages = {
+        category_url + "?p=1": b'<a href="/invertoare?p=2">3</a>',
+        category_url + "?p=2": b'<a href="/invertoare?p=3">4</a>',
+        category_url + "?p=3": b'<a href="/invertoare?p=4">5</a>',
+        category_url + "?p=4": b'<a href="/invertoare?p=5">6</a>',
+    }
+    requested = []
+
+    async def fake_get(_client, url, host):
+        requested.append((url, host))
+        content = pages.get(url)
+        if content is None:
+            return None
+        return httpx.Response(200, content=content, request=httpx.Request("GET", url))
+
+    initial = httpx.Response(
+        200,
+        content=b'<a href="/invertoare?p=1">2</a>',
+        request=httpx.Request("GET", category_url),
+    )
+    monkeypatch.setattr(supplier_catalog, "_get", fake_get)
+    responses = asyncio.run(supplier_catalog._collect_listing_pages(
+        object(), initial, "depozitsolar.ro", asyncio.Semaphore(8)
+    ))
+
+    assert [str(response.url) for response in responses] == [
+        category_url,
+        *(category_url + f"?p={page}" for page in range(1, 5)),
+    ]
+    assert len(requested) == 4
+    assert all(host == "depozitsolar.ro" for _, host in requested)
+
+
 def test_supplier_search_finds_model_on_later_depozit_solar_page(monkeypatch):
     category_url = "https://depozitsolar.ro/invertoare"
     page_two_url = category_url + "?p=1"
