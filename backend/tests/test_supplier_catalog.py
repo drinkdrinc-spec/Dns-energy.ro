@@ -6,6 +6,33 @@ from lxml import html
 import supplier_catalog
 
 
+def test_depozit_solar_download_route_accepts_only_keyed_pdf_files():
+    valid = "https://depozitsolar.ro/utility/file/download?file=download_files%2Ffisa-tehnica-deye.pdf&hash=" + "a" * 32
+
+    assert supplier_catalog._safe_document(valid, "depozitsolar.ro")
+    assert supplier_catalog._safe_document("https://depozitsolar.ro/files/model.pdf", "depozitsolar.ro")
+    assert supplier_catalog._safe_document("https://files.deyeinverter.com/docs/model.pdf", "depozitsolar.ro")
+    assert not supplier_catalog._safe_document(valid.replace("depozitsolar.ro", "attacker.example"), "depozitsolar.ro")
+    assert not supplier_catalog._safe_document(valid.replace("download_files%2Ffisa-tehnica-deye.pdf", "..%2Fsecret.pdf"), "depozitsolar.ro")
+    assert not supplier_catalog._safe_document(valid.replace("&hash=" + "a" * 32, "&hash=bad"), "depozitsolar.ro")
+    assert not supplier_catalog._safe_document(valid + "&redirect=https://attacker.example", "depozitsolar.ro")
+    assert not supplier_catalog._safe_document(valid.replace("depozitsolar.ro/", "depozitsolar.ro:444/"), "depozitsolar.ro")
+
+
+def test_product_document_links_classify_depozit_download_query_urls():
+    page_url = "https://depozitsolar.ro/invertoare/model.html"
+    doc = html.fromstring("""
+        <div>
+          <a href="/utility/file/download?file=download_files%2Ffisa-tehnica-deye.pdf&amp;hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">Descarca</a>
+          <a href="/utility/file/download?file=download_files%2Fdeclaratie-de-conformitate-deye.pdf&amp;hash=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb">Descarca</a>
+        </div>
+    """)
+    assert supplier_catalog._documents(doc, page_url) == {
+        "datasheet_url": "https://depozitsolar.ro/utility/file/download?file=download_files%2Ffisa-tehnica-deye.pdf&hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "conformity_url": "https://depozitsolar.ro/utility/file/download?file=download_files%2Fdeclaratie-de-conformitate-deye.pdf&hash=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    }
+
+
 def test_category_filter_excludes_inverter_and_battery_bundles():
     assert supplier_catalog._correct_category("Invertor Deye 10 kW + Acumulator V-TAC 10 kWh", "Invertor") is False
     assert supplier_catalog._correct_category("Invertor hibrid 10 kW cu baterie 10 kWh", "Invertor") is False

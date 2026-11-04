@@ -113,7 +113,32 @@ def _safe_document_host(url: str, supplier_host: str) -> bool:
 
 def _safe_document(url: str, supplier_host: str) -> bool:
     parsed = urlparse(url)
-    return _safe_document_host(url, supplier_host) and parsed.path.lower().endswith(".pdf")
+    if not _safe_document_host(url, supplier_host):
+        return False
+    if parsed.path.lower().endswith(".pdf"):
+        return True
+
+    # Depozit Solar serves product PDFs through this same-origin route, with
+    # the PDF filename and a keyed hash in the query. Keep this exception
+    # narrow and never follow redirects when downloading the returned URL.
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if supplier_host != "depozitsolar.ro" or host not in {"depozitsolar.ro", "www.depozitsolar.ro"}:
+        return False
+    if parsed.path != "/utility/file/download":
+        return False
+    query = parse_qs(parsed.query, keep_blank_values=False)
+    files, hashes = query.get("file", []), query.get("hash", [])
+    if set(query) != {"file", "hash"} or len(files) != 1 or len(hashes) != 1:
+        return False
+    filename = files[0]
+    parts = filename.split("/")
+    return bool(
+        filename.startswith("download_files/")
+        and len(parts) >= 2
+        and all(part not in ("", ".", "..") and re.fullmatch(r"[A-Za-z0-9._-]+", part) for part in parts)
+        and filename.lower().endswith(".pdf")
+        and re.fullmatch(r"[A-Fa-f0-9]{32}", hashes[0])
+    )
 
 
 def _product_title(doc) -> str:
