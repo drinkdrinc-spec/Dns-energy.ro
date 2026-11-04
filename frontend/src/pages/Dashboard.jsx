@@ -110,7 +110,7 @@ export default function Dashboard() {
   const now = new Date();
   const todayKey = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
   const dueByTodayCount = inboxItems.filter((item) => item.next_action_due && String(item.next_action_due).slice(0, 10) <= todayKey).length;
-  const moduleLabels = { prosumator: "Prosumator", atr: "Cerere ATR", power: "Spor de putere", diu: "DI-U", mono: "Schemă monofilară", anre_dossiers: "Dosar ANRE" };
+  const moduleLabels = { prosumator: "Prosumator", atr: "Cerere ATR", power: "Spor de putere", diu: "DI-U", mono: "Schemă monofilară", anre_dossiers: "Dosar ANRE", operator_messages: "Corespondență OD" };
   const inboxStatuses = [...new Set(inboxItems.map((item) => item.workflow_status || item.status || "În lucru"))];
   const inboxOperators = [...new Set(inboxItems.map((item) => item.operator || item.distributor).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, "ro-RO"));
@@ -172,11 +172,14 @@ export default function Dashboard() {
     }
   };
   const renderInboxItem = (item) => {
-    const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono", anre_dossiers: "/dosare-anre" };
+    const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono", anre_dossiers: "/dosare-anre", operator_messages: "/mesaje-od" };
     const path = paths[item.module] || "/prosumator";
     const openParam = item.module === "anre_dossiers" ? "open" : "edit";
     const itemKey = item.module + "-" + item.id;
-    const currentStatus = item.workflow_status || item.status || "În lucru";
+    const currentStatus = item.workflow_status || item.status || (item.module === "operator_messages" ? "Nou" : "În lucru");
+    const statusOptions = item.module === "operator_messages"
+      ? ["Nou", "În lucru", "Răspuns transmis", "Rezolvat"]
+      : ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru depunere", "Depus la operator", "În așteptare la operator", "Avizat", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Prosumator activ", "Respins", "Finalizat"];
     const suggestedAction = suggestedInboxAction(item);
     const displayAction = item.next_action || suggestedAction;
     const dueDate = item.next_action_due ? new Date(`${item.next_action_due}T00:00:00`) : null;
@@ -187,9 +190,9 @@ export default function Dashboard() {
     const stages = ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru depunere", "Depus la operator", "În așteptare la operator", "Avizat", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Prosumator activ", "Respins", "Finalizat"];
     return (
       <article key={itemKey}
-        draggable={inboxView === "kanban" && item.module !== "anre_dossiers" && workflowStatusBusy !== itemKey}
+        draggable={inboxView === "kanban" && !["anre_dossiers", "operator_messages"].includes(item.module) && workflowStatusBusy !== itemKey}
         onDragStart={(event) => {
-          if (inboxView !== "kanban" || item.module === "anre_dossiers") { event.preventDefault(); return; }
+          if (inboxView !== "kanban" || ["anre_dossiers", "operator_messages"].includes(item.module)) { event.preventDefault(); return; }
           event.dataTransfer.effectAllowed = "move";
           event.dataTransfer.setData("text/plain", itemKey);
           setDraggedInboxItem(itemKey);
@@ -198,7 +201,7 @@ export default function Dashboard() {
         data-testid={"inbox-item-" + item.module + "-" + item.id}
         className={`flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:shadow-sm ${inboxView === "kanban" ? "mb-2 cursor-grab active:cursor-grabbing" : ""} ${draggedInboxItem === itemKey ? "opacity-50" : ""}`}
         style={{ borderColor: "var(--line)", background: "var(--surface, white)" }}>
-        <Link to={path + "?" + openParam + "=" + encodeURIComponent(item.id)} className="min-w-0 flex-1">
+        <Link to={item.module === "operator_messages" ? path : path + "?" + openParam + "=" + encodeURIComponent(item.id)} className="min-w-0 flex-1">
           <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
           <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{item.label}{item.number ? " · " + item.number : ""}{item.pod ? " · POD " + item.pod : ""}{item.operator ? " · " + item.operator : ""}</span>
           {displayAction && <span className="mt-1 block truncate text-xs font-semibold" style={{ color: overdue ? "#b43b2f" : "var(--blue)" }} data-testid={`inbox-action-${itemKey}`} title={suggestedAction ? "Sugestie din stadiul dosarului; fără termen automat" : undefined}>{suggestedAction ? "Sugestie: " : "Următorul pas: "}{displayAction}{hasValidDueDate ? ` · ${dueDate.toLocaleDateString("ro-RO")}` : ""}{overdue ? " · depășit" : ""}</span>}
@@ -223,7 +226,7 @@ export default function Dashboard() {
           disabled={workflowStatusBusy === itemKey}
           onChange={(event) => { void saveInboxStatus(item, event.target.value); }}>
           {!stages.includes(currentStatus) && <option value={currentStatus}>{currentStatus}</option>}
-          {stages.map((status) => <option key={status} value={status}>{status}</option>)}
+          {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>}
       </article>
     );
