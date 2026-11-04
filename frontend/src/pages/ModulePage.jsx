@@ -436,6 +436,11 @@ export default function ModulePage({ moduleKey }) {
     }
   };
   const setVal = (name, value) => {
+    if (key === "pram" && name === "client_name") {
+      const client = (refOptions.clients || []).find((item) => item.label === value);
+      setForm((prev) => ({ ...prev, client_name: value, address: client?.address || prev.address || "" }));
+      return;
+    }
     if (key === "atr" && name === "client_name") {
       const client = (refOptions.clients || []).find((c) => c.label === value);
       if (!client) {
