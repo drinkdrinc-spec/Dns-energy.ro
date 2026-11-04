@@ -139,13 +139,13 @@ SEED = [
        "notes": "Fișă și declarație UE Huawei pentru familia L1. Verificați separat certificatele de racordare cerute de operatorul local."}
       for kw in [2, 3, 3.68, 4, 4.6, 5, 6]),
     # GoodWe ET PLUS+ models from the official 5–10 kW datasheet and family EU DoC.
-    *({"category": "Invertor", "brand_model": f"GoodWe GW{model}-ET", "type": "Hibrid", "phases": "Trifazat",
+    *({"category": "Invertor", "brand_model": f"GoodWe GW{kw:g}K-ET", "type": "Hibrid", "phases": "Trifazat",
        "p_nom_kw": kw, "p_max_kw": kw, "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850,
        "mppt_count": 2, "imax_mppt": 12.5, "battery_voltage": "HV 180–600 V",
        "datasheet_url": "https://en.goodwe.com/Ftp/EN/Downloads/Datasheet/GW_ET%20PLUS%2B_Datasheet-EN.pdf",
        "conformity_url": "https://en.goodwe.com/Ftp/EN/Downloads/Certificate/GW_ET%2CET%20PLUS%2B_EU%20Declaration%20of%20Conformity_MULTI.pdf",
        "notes": "Datele sunt din fișa oficială ET PLUS+; Pmax este păstrată la puterea activă nominală. Verificați separat certificatele de racordare cerute de operatorul local."}
-      for model, kw in [("5K", 5), ("6.5K", 6.5), ("8K", 8), ("10K", 10)]),
+      for kw in [5, 6.5, 8, 10]),
     # Deye SG04LP3 exact variants; shared EU datasheet and EU Declaration embedded in official manual.
     *({"category": "Invertor", "brand_model": f"Deye SUN-{kw}K-SG04LP3-EU", "type": "Hibrid", "phases": "Trifazat",
        "p_nom_kw": kw, "p_max_kw": pmax, "vdc_max": 800, "mppt_min": 200, "mppt_max": 650,
