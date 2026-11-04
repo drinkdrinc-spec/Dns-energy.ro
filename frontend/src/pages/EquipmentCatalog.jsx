@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 const CATS = ["Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"];
 const hasStoredDocument = (item, kind) => Boolean(item?.[kind]?.storage_path) && item?.[kind]?.available !== false;
+const isCompositeEquipmentName = (name) => /\b(?:kit|bundle|pachet)\b/i.test(String(name || "")) || (/(?:invertor|inverter)/i.test(String(name || "")) && /(?:baterie|battery|\b\d+(?:[.,]\d+)?\s*kwh\b)/i.test(String(name || "")));
 const FIELDS = {
   Invertor: [["type", "Tip", ["Hibrid", "On-grid", "Invertor de baterie (AC)"]], ["phases", "Faze", ["Trifazat", "Monofazat"]], ["p_nom_kw", "Pn (kW)"], ["p_max_kw", "Pmax (kW)"], ["red_limit_mode", "Limitare putere în RED", ["Nu este declarată", "Limitare putere evacuată", "Zero export"]],
     ["vdc_max", "Udc max (V)"], ["mppt_min", "MPPT min (V)"], ["mppt_max", "MPPT max (V)"], ["mppt_count", "Nr. MPPT"], ["imax_mppt", "Imax / MPPT (A)"], ["isc_max_mppt", "Isc max admisibil / MPPT (A)"], ["battery_voltage", "Tensiune baterie compatibilă", null, "text"], ["bat_i_max", "Curent max baterie (A)"]],
@@ -186,6 +187,7 @@ export default function EquipmentCatalog() {
   }, [cat]);
   const rows = useMemo(() => items.filter((i) => {
     if (i.category !== cat || /\bTEST\b/i.test(String(i.brand_model || ""))) return false;
+    if (!showCompositeProducts && isCompositeEquipmentName(i.brand_model)) return false;
     if (q && !String(i.brand_model || "").toLocaleLowerCase("ro-RO").includes(q.toLocaleLowerCase("ro-RO"))) return false;
     if (phaseFilter && String(i.phases || "").toLocaleLowerCase("ro-RO") !== phaseFilter.toLocaleLowerCase("ro-RO")) return false;
     if (typeFilter && String(i.type || "").toLocaleLowerCase("ro-RO") !== typeFilter.toLocaleLowerCase("ro-RO")) return false;
@@ -197,6 +199,7 @@ export default function EquipmentCatalog() {
     if (completeDocsOnly && !(hasDatasheet && hasConformity)) return false;
     return true;
   }), [items, cat, q, phaseFilter, typeFilter, minValue, maxValue, completeDocsOnly, showCompositeProducts]);
+  const compositeCount = items.filter((i) => i.category === cat && isCompositeEquipmentName(i.brand_model)).length;
   const completeDocsCount = items.filter((i) => i.category === cat
     && !/\bTEST\b/i.test(String(i.brand_model || ""))
     && hasStoredDocument(i, "datasheet")
