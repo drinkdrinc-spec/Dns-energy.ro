@@ -4,6 +4,7 @@ import json
 import re
 import uuid
 import tempfile
+import unicodedata
 from ai_provider import LlmChat, UserMessage, FileContentWithMimeType, ImageContent, TextDelta, StreamDone
 
 OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER — Muntenia Nord", "Delgaz Grid",
@@ -237,6 +238,25 @@ def _labeled_value(text: str, labels: str) -> str | None:
     value = re.split(r"\s{3,}|\s+(?:POD|CNP|CUI|Furnizor|Operator|Telefon|E-mail|Email|Adresă|Adresa)\s*[:：-]", match.group(1), maxsplit=1, flags=re.I)[0]
     value = re.sub(r"\s+", " ", value).strip(" .,:;-")
     return value[:160] or None
+
+
+def canonical_document_type(value: str) -> str:
+    """Map explicit Romanian labels and internal codes to a stable document type."""
+    text = str(value or "").strip().casefold()
+    folded = "".join(ch for ch in unicodedata.normalize("NFD", text) if unicodedata.category(ch) != "Mn")
+    normalized = re.sub(r"[^a-z0-9]+", " ", folded).strip()
+    aliases = {
+        "ci": {"ci", "carte de identitate", "carte identitate", "buletin", "buletin de identitate", "document identitate"},
+        "factura": {"factura", "factura energie", "factura de energie", "factura energie electrica", "factura de energie electrica", "factura electricitate"},
+        "cf": {"cf", "carte funciara", "extras cf", "extras de carte funciara"},
+        "other": {"other", "altele", "document suplimentar", "document pdf"},
+    }
+    for kind, labels in aliases.items():
+        if normalized in labels:
+            return kind
+    if normalized.startswith("extras de carte funciara "):
+        return "cf"
+    return ""
 
 
 def _infer_document_type(text: str, selected: str) -> str:
