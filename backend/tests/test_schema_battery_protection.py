@@ -158,3 +158,19 @@ def test_shared_battery_total_capacity_multiplies_module_count():
     text = _schema_text(cef)
 
     assert "3 × 4.8 kWh · total 14.4 kWh" in text
+
+
+def test_battery_cable_ampacity_must_cover_selected_fuse():
+    proposal = CEF.battery_cable_proposal({
+        "i_max": 33,
+        "voltage": 48,
+        "max_fuse_a": 63,
+        "cable_ampacities": [
+            {"section": 6, "ampacity_a": 42},
+            {"section": 10, "ampacity_a": 57},
+        ],
+    })
+
+    assert proposal["fuse_a"] == 50
+    assert proposal["section"] == 10
+    assert proposal["iz"] >= proposal["fuse_a"]
