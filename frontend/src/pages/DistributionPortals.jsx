@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, ShieldCheck, Search, AlertTriangle, CheckCircle2, Archive, MessageSquare, Paperclip, Send, Clock3 } from "lucide-react";
+import { ExternalLink, ShieldCheck, AlertTriangle, CheckCircle2, Archive, MessageSquare, Paperclip, Send, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Btn } from "@/components/Layout";
 import { api, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
@@ -60,6 +60,12 @@ export default function DistributionPortals() {
   const [messageSaving, setMessageSaving] = useState(false);
   const [messageForm, setMessageForm] = useState(EMPTY_MESSAGE);
   const [messageFiles, setMessageFiles] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
+  const [submissionTargetId, setSubmissionTargetId] = useState("");
+  const [submissionNumber, setSubmissionNumber] = useState("");
+  const [submissionDate, setSubmissionDate] = useState(new Date().toISOString().slice(0, 10));
+  const [submissionFiles, setSubmissionFiles] = useState([]);
+  const [submissionSaving, setSubmissionSaving] = useState(false);
   useEffect(() => {
     Promise.allSettled([api.get("/data/prosumator"), api.get("/data/atr"), api.get("/data/power")]).then((results) => {
       const [prosResult, atrResult, powerResult] = results;
@@ -71,15 +77,17 @@ export default function DistributionPortals() {
   }, []);
   const selectedPros = pros.find((item) => item.id === prosId) || null;
   useEffect(() => {
-    if (!selectedPros?.id) { setMessages([]); return undefined; }
+    if (!selectedPros?.id) { setMessages([]); setSubmissions([]); return undefined; }
     let active = true;
     setMessagesLoading(true);
     api.get("/data/documents?q=" + encodeURIComponent(selectedPros.id)).then(({ data }) => {
       if (!active) return;
       const rows = (Array.isArray(data) ? data : []).filter((item) => item.kind === "operator_message" && item.dossier_id === selectedPros.id);
+      setSubmissions((Array.isArray(data) ? data : []).filter((item) => item.kind === "operator_submission" && item.dossier_id === selectedPros.id)
+        .sort((a, b) => String(b.submission_date || b.created_at || "").localeCompare(String(a.submission_date || a.created_at || ""))));
       rows.sort((a, b) => String(b.message_date || b.created_at || "").localeCompare(String(a.message_date || a.created_at || "")));
       setMessages(rows);
-    }).catch(() => { if (active) setMessages([]); })
+    }).catch(() => { if (active) { setMessages([]); setSubmissions([]); } })
       .finally(() => { if (active) setMessagesLoading(false); });
     return () => { active = false; };
   }, [selectedPros?.id]);
@@ -89,6 +97,10 @@ export default function DistributionPortals() {
   // Only explicitly linked records are offered for download; never infer a dossier from a shared name.
   const linkedAtr = atrCases.filter((item) => selectedPros && item.pros_id === selectedPros.id);
   const linkedPower = powerCases.filter((item) => selectedPros && item.pros_id === selectedPros.id);
+  const submissionTargets = [
+    ...linkedAtr.map((item) => ({ ...item, module: "atr", label: `Cerere ATR${item.number ? ` ${item.number}` : ""}` })),
+    ...linkedPower.map((item) => ({ ...item, module: "power", label: `Spor de putere${item.number ? ` ${item.number}` : ""}` })),
+  ];
   // DEER routes all new applications through the unified dedicated portal.
   // Legacy regional portals remain useful only for historical records.
   const historicalPortalUrl = selectedId === "deer" ? deerRegionalPortal(selectedPros?.county) : null;
@@ -154,8 +166,61 @@ export default function DistributionPortals() {
     }
   };
 
+  const savePortalSubmission = async (event) => {
+    event.preventDefault();
+    const target = submissionTargets.find((item) => item.id === submissionTargetId);
+    if (!selectedPros || !target) return toast.error("Alege cererea ATR sau de spor depusă în portal.");
+    if (!submissionNumber.trim() || !submissionDate) return toast.error("Introdu numărul de înregistrare și data confirmării din portal.");
+    setSubmissionSaving(true);
+    try {
+      const attachments = [];
+      for (const file of submissionFiles) {
+        const form = new FormData();
+        form.append("file", file);
+        const { data } = await api.post("/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
+        attachments.push({ storage_path: data.storage_path, original_filename: data.original_filename, content_type: data.content_type, size: data.size });
+      }
+      const { data } = await api.post("/data/documents", {
+        kind: "operator_submission",
+        doc_type: "Confirmare depunere portal OD",
+        title: `${target.label} · ${submissionNumber.trim()}`,
+        client_name: selectedPros.client_name || "",
+        client_id: selectedPros.client_id || "",
+        dossier_id: selectedPros.id,
+        request_id: target.id,
+        request_module: target.module,
+        request_number: target.number || "",
+        operator: selectedPros.operator || selected?.name || "Operator neconfirmat",
+        pod: selectedPros.pod || pod || "",
+        registration_number: submissionNumber.trim(),
+        submission_date: submissionDate,
+        status: "Depus — înregistrat manual",
+        source: "Număr și dată introduse de utilizator după depunerea pe portalul oficial",
+        attachments,
+      });
+      setSubmissions((current) => [data, ...current].sort((a, b) => String(b.submission_date || b.created_at || "").localeCompare(String(a.submission_date || a.created_at || ""))));
+      setSubmissionNumber(""); setSubmissionDate(new Date().toISOString().slice(0, 10)); setSubmissionFiles([]);
+      const input = document.getElementById("portal-submission-files");
+      if (input) input.value = "";
+      toast.success("Depunerea a fost înregistrată în dosar.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Depunerea nu a putut fi înregistrată.");
+    } finally { setSubmissionSaving(false); }
+  };
+
+  const updateSubmissionStatus = async (item, status) => {
+    try {
+      const { data } = await api.put("/data/documents/" + encodeURIComponent(item.id), { ...item, status });
+      setSubmissions((current) => current.map((row) => row.id === item.id ? data : row));
+      toast.success("Starea introdusă manual a fost salvată în dosar.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Starea depunerii nu a putut fi actualizată.");
+    }
+  };
+
   const selectPros = (id) => {
     setProsId(id);
+    setSubmissionTargetId("");
     const item = pros.find((entry) => entry.id === id);
     if (!item) {
       setPod("");
@@ -228,6 +293,30 @@ export default function DistributionPortals() {
           </div>
         )}
       </section>
+      {selectedPros && <section className="den-panel mt-5" data-testid="operator-submission-log">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h3 className="font-bold text-sm"><ClipboardCheck size={15} className="inline mr-2" />Depuneri în portalul OD</h3>
+            <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Înregistrează numărul și data afișate de portal și atașează recipisa. Înregistrarea este manuală; DNS Energy nu transmite cererea și nu verifică răspunsul OD.</p>
+          </div>
+          <span className="text-xs font-semibold rounded-full px-2 py-1" style={{ background: "var(--bg)" }}>{submissions.length} depuneri</span>
+        </div>
+        {!submissionTargets.length ? <p className="mt-3 rounded-lg p-3 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Creează mai întâi cererea ATR sau sporul de putere din dosarul selectat; apoi o poți lega de numărul de înregistrare din portal.</p> : <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={savePortalSubmission}>
+          <label className="den-field sm:col-span-2"><span>Cerere depusă *</span><select className="den-input" value={submissionTargetId} onChange={(event) => setSubmissionTargetId(event.target.value)} required data-testid="portal-submission-target"><option value="">Alege ATR sau spor de putere...</option>{submissionTargets.map((item) => <option key={item.module + item.id} value={item.id}>{item.label} · POD {item.pod || selectedPros.pod || "necompletat"}</option>)}</select></label>
+          <label className="den-field"><span>Număr de înregistrare OD *</span><input className="den-input" value={submissionNumber} onChange={(event) => setSubmissionNumber(event.target.value)} maxLength={120} required data-testid="portal-submission-number" /></label>
+          <label className="den-field"><span>Data depunerii *</span><input className="den-input" type="date" value={submissionDate} onChange={(event) => setSubmissionDate(event.target.value)} required data-testid="portal-submission-date" /></label>
+          <label className="den-field sm:col-span-2"><span><Paperclip size={13} className="inline mr-1" />Recipisă / confirmare (opțional)</span><input id="portal-submission-files" className="den-input" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" multiple onChange={(event) => setSubmissionFiles(Array.from(event.target.files || []).slice(0, 4))} /><small>Poți atașa până la 4 fișiere salvate în dosar.</small></label>
+          <div className="sm:col-span-2"><Btn type="submit" disabled={submissionSaving} data-testid="portal-submission-save"><ClipboardCheck size={14} />{submissionSaving ? "Se înregistrează…" : "Înregistrează depunerea"}</Btn></div>
+        </form>}
+        <div className="mt-4 space-y-2">
+          {!submissions.length && <p className="rounded-lg p-3 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Nu există depuneri înregistrate pentru dosarul selectat.</p>}
+          {submissions.map((item) => <article key={item.id} className="rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid={`operator-submission-${item.id}`}>
+            <div className="flex flex-wrap items-start gap-2"><div className="min-w-[180px] flex-1"><b className="text-sm">{item.title}</b><div className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>{item.operator} · POD {item.pod || "—"} · depusă {item.submission_date || "—"}</div><div className="mt-1 text-xs">Referință OD: <b>{item.registration_number}</b></div></div>
+              <select className="den-input !py-1 !text-xs" value={item.status || "Depus — înregistrat manual"} onChange={(event) => updateSubmissionStatus(item, event.target.value)} aria-label={`Stare depunere ${item.registration_number}`} data-testid={`portal-submission-status-${item.id}`}>{["Depus — înregistrat manual", "Completări OD — introduse manual", "Avizat OD — introdus manual", "Respins OD — introdus manual", "Închis manual"].map((status) => <option key={status}>{status}</option>)}</select>
+            </div>
+            {!!item.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{item.attachments.map((file, index) => <button type="button" key={file.storage_path || index} className="text-xs underline" onClick={() => openAuthenticatedFile("/files/" + file.storage_path)}>{file.original_filename || "Recipisă OD"}</button>)}</div>}
+          </article>)}
+        </div>
+      </section>}
       {selectedPros && <section className="den-panel mt-5" style={{ borderColor: "var(--line)" }} data-testid="operator-message-log">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div><h3 className="font-bold text-sm"><MessageSquare size={15} className="inline mr-2" />Corespondență cu operatorul</h3>
@@ -274,3 +363,4 @@ export default function DistributionPortals() {
     </div>
   );
 }
+
