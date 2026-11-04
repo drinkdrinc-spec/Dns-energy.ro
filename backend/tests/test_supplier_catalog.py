@@ -44,6 +44,21 @@ def test_category_filter_keeps_individual_equipment_models():
     assert supplier_catalog._correct_category("Acumulator V-TAC 10 kWh", "Baterie") is True
 
 
+
+def test_optim_solar_has_individual_equipment_category_sources():
+    source = supplier_catalog.SOURCES["Optim Solar"]
+    assert source["host"] == "optimsolar.ro"
+    assert source["categories"] == {
+        "Invertor": "https://optimsolar.ro/product-category/invertoare/",
+        "Panou": "https://optimsolar.ro/product-category/panouri-fotovoltaice/",
+        "Baterie": "https://optimsolar.ro/product-category/acumulatori/",
+    }
+    assert supplier_catalog._correct_category("INVERTOR GROWATT WIT 12K-HU", "Invertor")
+    assert supplier_catalog._correct_category("Panou Fotovoltaic Astronergy 460W", "Panou")
+    assert supplier_catalog._correct_category("Acumulator Growatt HOPE 16 kWh", "Baterie")
+    assert not supplier_catalog._correct_category("Kit invertor + baterie Growatt", "Invertor")
+
+
 def test_listing_pages_are_bounded_and_stay_on_the_same_category():
     page = html.fromstring("""
         <nav>

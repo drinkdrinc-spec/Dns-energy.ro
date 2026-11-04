@@ -42,6 +42,14 @@ SOURCES = {
             "Baterie": "https://solartech.ro/acumulatori-solari-fotovoltaice/",
         },
     },
+    "Optim Solar": {
+        "host": "optimsolar.ro",
+        "categories": {
+            "Invertor": "https://optimsolar.ro/product-category/invertoare/",
+            "Panou": "https://optimsolar.ro/product-category/panouri-fotovoltaice/",
+            "Baterie": "https://optimsolar.ro/product-category/acumulatori/",
+        },
+    },
 }
 DOCUMENT_HOSTS = {
     "depozitsolar.ro", "solarhev.ro", "solartech.ro", "deyeinverter.com", "deyeess.com", "huawei.com", "goodwe.com",
