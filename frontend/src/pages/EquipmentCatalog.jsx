@@ -142,7 +142,8 @@ export default function EquipmentCatalog() {
   const [typeFilter, setTypeFilter] = useState("");
   const [minValue, setMinValue] = useState("");
   const [maxValue, setMaxValue] = useState("");
-  const [completeDocsOnly, setCompleteDocsOnly] = useState(false);\n  const [showCompositeProducts, setShowCompositeProducts] = useState(false);
+  const [completeDocsOnly, setCompleteDocsOnly] = useState(false);
+  const [showCompositeProducts, setShowCompositeProducts] = useState(false);
   const [form, setForm] = useState(null);
   const [supplierResults, setSupplierResults] = useState([]);
   const [supplierLoading, setSupplierLoading] = useState(false);
