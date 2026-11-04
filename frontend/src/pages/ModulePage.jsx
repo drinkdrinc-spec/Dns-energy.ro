@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { GeneratedDocs } from "@/components/ProsumatorTools";
 import { DossierDocumentStart } from "@/components/dossier/DossierDocumentStart";
 import { ClientConversation } from "@/components/dossier/ClientConversation";
+import { DossierActivity } from "@/components/dossier/DossierActivity";
 import { CefEditor } from "@/components/cef/CefEditor";
 import { DossierOpis } from "@/components/dossier/DossierOpis";
 import { DossierExtras } from "@/components/dossier/DossierExtras";
@@ -877,6 +878,7 @@ export default function ModulePage({ moduleKey }) {
             </details>}
           </section>}
           {key === "prosumator" && editId && <ClientConversation dossierId={editId} />}
+          {key === "prosumator" && editId && <DossierActivity dossierId={editId} workflowHistory={form.workflow_history} />}
           {key === "prosumator" ? <ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} /> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
