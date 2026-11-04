@@ -12,7 +12,7 @@ const TYPES = [
   ["altele", "4. Alte documente", "PDF, imagini, DOCX și XLSX pot fi citite și rezumate; DOC/XLS și alte formate se atașează pentru verificare manuală."],
 ];
 
-const EMPTY = { client_name: "", kind: "", bank: "", iban: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", pod: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", request_type: "Racordare prosumator — fără spor de putere" };
+const EMPTY = { client_name: "", kind: "", bank: "", iban: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", postal_code: "", pod: "", nlc: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", request_type: "Racordare prosumator — fără spor de putere" };
 const COUNTY_OPERATOR = {
   bihor: "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
   "bistrita nasaud": "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
@@ -58,7 +58,7 @@ const COUNTY_OPERATOR = {
   bucuresti: "Rețele Electrice Muntenia S.A.",
 };
 
-const LOCATION_FIELDS = ["address", "county", "locality", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc"];
+const LOCATION_FIELDS = ["address", "county", "locality", "postal_code", "pod", "nlc", "operator", "supplier", "cf_nr", "cadastral_nr"];
 function clientConsumptionSites(client) {
   const saved = Array.isArray(client?.consumption_sites)
     ? client.consumption_sites.filter((site) => site && typeof site === "object").map((site, index) => ({ ...site, id: String(site.id || ("saved-" + index)) }))
@@ -196,7 +196,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             county: x.county, locality: x.locality, phone: x.phone, email: x.email, id_series: x.id_series, id_number: x.id_number });
         }
         if (kind === "factura") mergedValues = putNonempty(mergedValues, { client_name: mergedValues.client_name || x.client_name, cnp: mergedValues.cnp || x.cnp,
-          address: mergedValues.address_same_as_ci ? mergedValues.hq_address : x.consumption_address || x.address, pod: x.pod, operator: x.operator, supplier: x.supplier,
+          address: mergedValues.address_same_as_ci ? mergedValues.hq_address : x.consumption_address || x.address, postal_code: x.postal_code, pod: x.pod, nlc: x.nlc, operator: x.operator, supplier: x.supplier,
           county: mergedValues.county || x.county, locality: mergedValues.locality || x.locality, phone: mergedValues.phone || x.phone, email: mergedValues.email || x.email });
         if (kind === "factura" && !operatorManuallySet) {
           const suggestion = distributorSuggestion(mergedValues.pod, mergedValues.county);
@@ -204,6 +204,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         }
         if (kind === "cf") mergedValues = putNonempty(mergedValues, { cf_nr: x.cf_nr, cadastral_nr: x.cadastral_nr,
           client_name: mergedValues.client_name || x.owner_name });
+        if (kind === "altele") mergedValues = putNonempty(mergedValues, { postal_code: x.postal_code, nlc: x.nlc });
         if (kind === "altele" && x.summary) summaries.push(`${file.name}: ${x.doc_type || "document"} — ${x.summary}`);
       } catch (error) {
         failed += 1;
@@ -379,6 +380,13 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             <div className="grid sm:grid-cols-2 gap-3 mt-3">
               {field("supplier", "Furnizor energie")}
             </div>
+          </details>
+          <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
+            <summary className="cursor-pointer text-xs font-semibold">Coduri suplimentare din factură (opțional)</summary>
+            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+              {field("nlc", "Cod loc de consum / NLC")}{field("postal_code", "Cod poștal")}
+            </div>
+            <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>AI le completează numai dacă sunt vizibile în documentele încărcate; verifică valorile înainte de folosire.</p>
           </details>
         </div>}
         {step === 2 && <section className="rounded-lg border bg-white p-4" style={{ borderColor: "var(--line)" }}>
