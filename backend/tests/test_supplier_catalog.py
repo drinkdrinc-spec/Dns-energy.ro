@@ -179,6 +179,24 @@ def test_supplier_search_reads_image_only_product_card_labels(monkeypatch):
     assert [item["product_url"] for item in result["products"]] == [product_url]
 
 
+def test_legacy_catalog_document_can_be_resolved_from_its_product_page(monkeypatch):
+    product_url = "https://depozitsolar.ro/invertor-goodwe-gw10"
+    document_url = "https://depozitsolar.ro/files/goodwe-gw10-datasheet.pdf"
+
+    async def fake_get(_client, url, host):
+        assert host == "depozitsolar.ro"
+        content = (f'<html><h1>Invertor GoodWe GW10 10 kW</h1>'
+                   f'<a href="{document_url}">Fișa tehnică</a></html>').encode()
+        return httpx.Response(200, content=content, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(supplier_catalog, "_get", fake_get)
+    result = asyncio.run(supplier_catalog.get_public_product_document(
+        "Depozit Solar", "Invertor", product_url, "datasheet"
+    ))
+
+    assert result == document_url
+
+
 def test_supplier_search_returns_all_discovered_matches_in_pages(monkeypatch):
     category_url = "https://depozitsolar.ro/invertoare"
     product_urls = [f"https://depozitsolar.ro/invertor-deye-model-{i}" for i in range(9)]

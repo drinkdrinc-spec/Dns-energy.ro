@@ -1327,6 +1327,30 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
     return {"ok": True, "kind": kind, "source_url": url, "size": len(data)}
 
 
+@api_router.post("/catalog/{item_id}/recover-document")
+async def catalog_recover_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Re-import a missing technical PDF by finding its link on the saved product page."""
+    guard("catalog", user, write=True)
+    body = await request.json()
+    kind = str(body.get("kind") or "").strip()
+    if kind not in ("datasheet", "conformity"):
+        raise HTTPException(status_code=400, detail="Alege fișa tehnică sau declarația de conformitate")
+    item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Modelul nu există în catalog")
+    supplier, product_url = catalog_product_source(item)
+    if not supplier or not product_url or item.get("category") not in SUPPLIER_CATALOG.CATEGORIES:
+        raise HTTPException(status_code=422, detail="Modelul nu are o pagină de produs verificabilă la un furnizor cunoscut")
+    document_url = await SUPPLIER_CATALOG.get_public_product_document(
+        supplier, item["category"], product_url, kind
+    )
+    if not document_url:
+        raise HTTPException(status_code=404, detail="Nu am găsit un PDF pentru acest tip în pagina publică a modelului")
+    return await catalog_import_document(
+        item_id, _TrustedCatalogImportRequest({"kind": kind, "url": document_url}), user
+    )
+
+
 @api_router.get("/files/{path:path}")
 async def download(path: str, authorization: str = Header(None), auth: str = Query(None),
                    module: str = Query("documents")):
@@ -2090,6 +2114,19 @@ def catalog_ids(rec: dict) -> list:
     ids.append(g.get("meter_catalog_id"))
     return list(dict.fromkeys(x for x in ids if x))
 
+
+def catalog_product_source(item: dict) -> tuple[str, str]:
+    """Return a configured supplier and its validated product-page URL, if available."""
+    product_url = str(item.get("source_url") or "").strip()
+    supplier = str(item.get("supplier") or "")
+    if supplier not in SUPPLIER_CATALOG.SOURCES and product_url:
+        from urllib.parse import urlparse
+        product_host = (urlparse(product_url).hostname or "").lower().removeprefix("www.")
+        supplier = next((name for name, source in SUPPLIER_CATALOG.SOURCES.items()
+                         if product_host == source["host"]), "")
+    return (supplier, product_url) if supplier else ("", "")
+
+
 async def catalog_files(owner: str, rec: dict) -> list:
     out = []
     for cid in catalog_ids(rec):
@@ -2147,21 +2184,44 @@ async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
             if (isinstance(existing, dict) and existing.get("storage_path")
                     and has_gridfs_object(existing["storage_path"])):
                 continue
-            source_url = (item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
+            direct_url = (item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
                           or (existing.get("source_url") if isinstance(existing, dict) else ""))
-            if source_url:
-                candidates.append((catalog_id, kind, str(source_url)))
+            supplier, product_url = catalog_product_source(item)
+            if direct_url or (product_url and supplier):
+                candidates.append((catalog_id, kind, str(direct_url or ""), supplier,
+                                   str(item.get("category") or ""), product_url))
 
     semaphore = asyncio.Semaphore(3)
 
-    async def import_one(catalog_id: str, kind: str, source_url: str) -> None:
+    async def import_one(catalog_id: str, kind: str, direct_url: str, supplier: str,
+                         category: str, product_url: str) -> None:
         async with semaphore:
-            try:
-                await catalog_import_document(catalog_id, _TrustedCatalogImportRequest({"kind": kind, "url": source_url}), user)
-            except HTTPException as exc:
-                logger.info("Catalog PDF auto-import skipped for %s (%s): %s", catalog_id, kind, exc.detail)
-            except Exception:
-                logger.exception("Catalog PDF auto-import failed for %s (%s)", catalog_id, kind)
+            attempted = set()
+            if direct_url:
+                attempted.add(direct_url)
+                try:
+                    await catalog_import_document(catalog_id, _TrustedCatalogImportRequest({"kind": kind, "url": direct_url}), user)
+                    return
+                except Exception as exc:
+                    reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                    logger.info("Catalog PDF auto-import direct link failed for %s (%s): %s", catalog_id, kind, reason)
+            if supplier and category and product_url:
+                try:
+                    recovered_url = await SUPPLIER_CATALOG.get_public_product_document(
+                        supplier, category, product_url, kind
+                    )
+                    if recovered_url and recovered_url not in attempted:
+                        await catalog_import_document(
+                            catalog_id,
+                            _TrustedCatalogImportRequest({"kind": kind, "url": recovered_url}),
+                            user,
+                        )
+                        return
+                except Exception as exc:
+                    reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                    logger.info("Catalog PDF recovery from product page skipped for %s (%s): %s", catalog_id, kind, reason)
+            if direct_url or product_url:
+                logger.warning("Catalog PDF could not be recovered for %s (%s)", catalog_id, kind)
 
     if candidates:
         await asyncio.gather(*(import_one(*candidate) for candidate in candidates))

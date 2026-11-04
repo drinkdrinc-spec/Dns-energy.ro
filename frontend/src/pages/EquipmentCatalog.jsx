@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { api, openAuthenticatedFile } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { F, Check } from "@/components/cef/F";
-import { Plus, Pencil, Trash2, Upload, FileText, X, Sparkles } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, FileText, X, Sparkles, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const CATS = ["Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"];
@@ -60,6 +60,19 @@ function DocSlot({ item, k, label, onUploaded }) {
       setImporting(false);
     }
   };
+  const recoverFromProductPage = async () => {
+    setImporting(true);
+    try {
+      await api.post(`/catalog/${item.id}/recover-document`, { kind: k });
+      toast.success(`${label} recuperată din pagina publică a modelului`);
+      if (k === "datasheet") await runExtract({ silent: true });
+      else onUploaded();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || `Nu am putut recupera ${label.toLowerCase()}`);
+    } finally {
+      setImporting(false);
+    }
+  };
   const runExtract = async ({ silent = false } = {}) => {
     setExtracting(true);
     try {
@@ -110,6 +123,7 @@ function DocSlot({ item, k, label, onUploaded }) {
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={up} data-testid={`upload-${k}-${item.id}`} />
       {hasStoredDocument(item, k) ? <button type="button" onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)} className="inline-flex items-center gap-1 text-[12px] font-bold text-left" style={{ color: "var(--blue)" }} data-testid={`open-${k}-${item.id}`} title={f.source_url || "Document încărcat"}><FileText size={13} /> {label} atașată</button>
         : <span className="text-[12px]" style={{ color: "#b9770e" }}>{f?.available === false ? `${label} indisponibilă — reîncarcă PDF-ul` : f ? `${label} nepreluată` : `${label} lipsă`}</span>}
+      {f?.available === false && item.source_url && <button type="button" onClick={recoverFromProductPage} disabled={importing} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border disabled:opacity-50" title="Caută din nou PDF-ul în pagina publică a modelului" data-testid={`recover-${k}-${item.id}`}><RefreshCw size={12} />{importing ? "Se verifică…" : "Recuperează PDF"}</button>}
       {officialUrl && <a href={officialUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] underline" title="Deschide documentul de la producător">Sursă oficială ↗</a>}
       <button onClick={() => ref.current.click()} className="p-1 rounded hover:bg-[#eef4ff]" title={`Încarcă ${label}`} data-testid={`btn-upload-${k}-${item.id}`}><Upload size={13} style={{ color: "var(--blue)" }} /></button>
       <input className="den-input text-[11px] py-1 w-full sm:w-[220px] min-w-0" type="url" placeholder="Link PDF oficial HTTPS" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} aria-label={`Link oficial ${label}`} />

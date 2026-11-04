@@ -475,6 +475,18 @@ async def get_public_product(supplier: str, category: str, url: str) -> dict | N
                 "price_text": price, "availability": stock, **_properties(doc), **_documents(doc, url)}
 
 
+async def get_public_product_document(supplier: str, category: str, product_url: str, kind: str) -> str:
+    """Resolve a missing datasheet/conformity link from a validated supplier product page."""
+    if kind not in {"datasheet", "conformity"}:
+        return ""
+    source = SOURCES.get(supplier)
+    if not source:
+        return ""
+    product = await get_public_product(supplier, category, product_url)
+    url = str((product or {}).get(kind + "_url") or "")
+    return url if url and _safe_document(url, source["host"]) else ""
+
+
 async def fetch_public_pdf(url: str, supplier_host: str, max_bytes: int) -> tuple[bytes, str] | None:
     """Fetch a linked PDF while validating each bounded HTTPS redirect."""
     if not _safe_document(url, supplier_host):
