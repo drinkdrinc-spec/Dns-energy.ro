@@ -141,7 +141,7 @@ export default function EquipmentCatalog() {
   const [typeFilter, setTypeFilter] = useState("");
   const [minValue, setMinValue] = useState("");
   const [maxValue, setMaxValue] = useState("");
-  const [completeDocsOnly, setCompleteDocsOnly] = useState(false);
+  const [completeDocsOnly, setCompleteDocsOnly] = useState(false);\n  const [showCompositeProducts, setShowCompositeProducts] = useState(false);
   const [form, setForm] = useState(null);
   const [supplierResults, setSupplierResults] = useState([]);
   const [supplierLoading, setSupplierLoading] = useState(false);
@@ -196,7 +196,7 @@ export default function EquipmentCatalog() {
     const hasConformity = hasStoredDocument(i, "conformity");
     if (completeDocsOnly && !(hasDatasheet && hasConformity)) return false;
     return true;
-  }), [items, cat, q, phaseFilter, typeFilter, minValue, maxValue, completeDocsOnly]);
+  }), [items, cat, q, phaseFilter, typeFilter, minValue, maxValue, completeDocsOnly, showCompositeProducts]);
   const completeDocsCount = items.filter((i) => i.category === cat
     && !/\bTEST\b/i.test(String(i.brand_model || ""))
     && hasStoredDocument(i, "datasheet")
@@ -401,7 +401,7 @@ export default function EquipmentCatalog() {
           role="tab" aria-selected={c === cat} className="shrink-0 rounded-full border px-3 py-2 text-xs font-bold transition-colors" style={c === cat ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>
           {c}<span className="ml-2 text-[10px] font-medium opacity-75">{categoryCounts[c]?.total || 0}</span></button>)}
       </div>
-      <div className="den-panel mb-3 flex flex-col gap-3 p-3 sm:flex-row sm:items-center" data-testid="catalog-unified-search">
+      {compositeCount > 0 && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm" data-testid="catalog-composite-notice"><span>{compositeCount} listări par a combina invertorul și bateria într-un singur pachet. Dosarele folosesc echipamente individuale din fișe tehnice.</span><button type="button" className="font-semibold underline" onClick={() => setShowCompositeProducts((value) => !value)} data-testid="catalog-toggle-composite">{showCompositeProducts ? "Ascunde pachetele" : "Arată pachetele pentru corectare"}</button></div>}\n      <div className="den-panel mb-3 flex flex-col gap-3 p-3 sm:flex-row sm:items-center" data-testid="catalog-unified-search">
         <input className="den-input min-w-0 flex-1" placeholder={`Caută ${cat.toLocaleLowerCase("ro-RO")} după marcă sau model…`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Caută în catalog și la furnizori" data-testid="catalog-db-search" />
         <Btn onClick={() => searchSuppliers()} disabled={supplierLoading || q.trim().length < 2} data-testid="supplier-search-btn">
           {supplierLoading && !supplierBrowseAll ? "Se caută…" : "Caută la furnizori"}
