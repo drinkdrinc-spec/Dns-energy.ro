@@ -377,8 +377,15 @@ def _annex_for_request(operator_key: str, rec: dict, pros: dict | None = None) -
         except (TypeError, ValueError):
             kwp = None
         supply = str(rec.get("supply") or pros.get("supply") or (cef.get("grid") or {}).get("supply") or "").casefold()
-        single_phase = bool(supply) and not any(mark in supply for mark in ("trifaz", "400", "three-phase", "3 phase"))
-        return 5 if kwp is not None and kwp <= 10.8 and single_phase else 2
+        three_phase = any(mark in supply for mark in ("trifaz", "400", "three-phase", "3 phase"))
+        single_phase = any(mark in supply for mark in ("monofaz", "230", "single-phase", "1 phase", "1 faz"))
+        if three_phase:
+            return 2
+        if not single_phase or kwp is None:
+            # Do not silently treat an unknown connection or missing installed
+            # PV capacity as the default annex; the applicant must supply data.
+            return None
+        return 5 if kwp <= 10.8 else 2
     return None
 
 
@@ -701,6 +708,18 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                 worksheet = ATR.render_operator_annex_prep(rec, client, pros, op_key, annex_no, forms[0].get("title", "") if forms else "")
                 archive.writestr(f"Anexe oficiale/Fisa_precompletare_Anexa_{annex_no}.pdf", worksheet)
             note = [
+            if annex_no is None and ATR.rtype(rec) == "mod_fara":
+                cef = (pros or {}).get("cef") or {}
+                supply = str(rec.get("supply") or (pros or {}).get("supply") or (cef.get("grid") or {}).get("supply") or "").casefold()
+                phase_known = any(mark in supply for mark in ("trifaz", "400", "three-phase", "3 phase", "monofaz", "230", "single-phase", "1 phase", "1 faz"))
+                missing = []
+                if not phase_known:
+                    missing.append("tipul branșamentului")
+                single_phase = any(mark in supply for mark in ("monofaz", "230", "single-phase", "1 phase", "1 faz"))
+                if single_phase and ATR.installed_pv_kwp_for_record(rec, pros) is None:
+                    missing.append("puterea instalată fotovoltaică (Pi) confirmată")
+                if missing:
+                    note.append("Anexa nu a fost aleasă automat; lipsesc date dovedite: " + ", ".join(missing) + ". Completați dosarul și generați din nou pachetul.")
                 "Pachet ATR — formular oficial pentru operator",
                 f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
                 f"Tip solicitare: {ATR.rtype(rec) or 'neselectat'}",
