@@ -755,28 +755,36 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
 @api_router.patch("/data/{module}/{item_id}/status")
 async def update_dossier_workflow_status(module: str, item_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Update a dashboard workflow label without overwriting the dossier's technical/operator status."""
-    if module not in ("prosumator", "atr", "power", "diu", "mono"):
+    if module not in ("prosumator", "atr", "power", "diu", "mono", "operator_messages"):
         raise HTTPException(status_code=404, detail="Modulul nu acceptă stadii de lucru rapide")
     guard(module, user, write=True)
     rec = await check_access(user, module, item_id)
     body = await request.json()
     status = str(body.get("status") or "").strip()
-    if not status or len(status) > 80:
-        raise HTTPException(status_code=400, detail="Stadiul trebuie să conțină între 1 și 80 de caractere.")
-    previous = str(rec.get("workflow_status") or rec.get("status") or rec.get("operator_stage") or "În lucru").strip()
+    if module == "operator_messages":
+        allowed_statuses = {"Nou", "În lucru", "Răspuns transmis", "Rezolvat"}
+        if status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail="Statusul mesajului OD nu este valid.")
+        previous = str(rec.get("status") or "Nou").strip()
+        status_field = "status"
+    else:
+        if not status or len(status) > 80:
+            raise HTTPException(status_code=400, detail="Stadiul trebuie să conțină între 1 și 80 de caractere.")
+        previous = str(rec.get("workflow_status") or rec.get("status") or rec.get("operator_stage") or "În lucru").strip()
+        status_field = "workflow_status"
     if status == previous:
         return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": rec.get("updated_at"), "history_entry": None}
     updated_at = datetime.now(timezone.utc).isoformat()
     history_entry = {"from": previous, "to": status, "at": updated_at, "by": user.get("email") or user.get("id")}
     result = await db[module].update_one(
         {**scope_q(user, module), "id": item_id},
-        {"$set": {"workflow_status": status, "updated_at": updated_at, "updated_by": user.get("email")},
+        {"$set": {status_field: status, "updated_at": updated_at, "updated_by": user.get("email")},
          "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""},
          "$push": {"workflow_history": {"$each": [history_entry], "$slice": -500}}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
-    await audit(user, "actualizare stadiu flux", module, item_id, ["workflow_status"])
+    await audit(user, "actualizare stadiu flux", module, item_id, [status_field])
     return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at, "history_entry": history_entry}
 
 
