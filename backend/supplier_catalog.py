@@ -56,7 +56,7 @@ DOCUMENT_HOSTS = {
     "sungrowpower.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de", "sma-solar.com",
     "jinkosolar.com", "jinkosolar.eu", "longi.com", "aikosolar.com", "aiko.com", "trinasolar.com", "canadiansolar.com",
     "qcells.com", "ja-solar.com", "jasolar.com", "pylontech.com", "pylontech.com.cn", "pylontech.us", "bydbatterybox.com", "fox-ess.com", "foxess.com",
-    "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com", "risenenergy.com",
+    "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com", "risenenergy.com", "victronenergy.com", "eastrongroup.com",
     "solarshop.baywa-re.lv", "hqsmartcloud.com", "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro",
     "reteleelectrice.ro", "distributieoltenia.ro",
 }
