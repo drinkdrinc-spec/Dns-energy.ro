@@ -572,7 +572,9 @@ def doc_pv_teste(ctx):
     invs = inverters(ctx)
     st = storage(ctx)
     t = ctx.r.get("tests") or {}
-    out = [B("p", f"Nr. înregistrare OD …………………………………<br/>Nr. cerere punere sub tensiune …………………………………<br/>POD <b>{ctx.v('pod')}</b>"),
+    verdict = str(t.get("verdict") or "").strip()
+    od_observations = str(t.get("od_observations") or "").strip()
+    out = [B("p", f"Nr. proces-verbal: <b>{ctx.v('pif_no')}</b><br/>POD <b>{ctx.v('pod')}</b>"),
            B("title", "PROCES-VERBAL — TESTE ȘI VERIFICĂRI PIF"),
            B("sub", f"aferente instalației de utilizare și producere situată în {ctx.loc}"),
            B("small", "Fișă de lucru precompletată cu datele dosarului. Numărul se completează de operator; data de începere nu se precompletează. Nu sunt generate rezultate sau măsurători. Completați DA/NU și observațiile numai pe baza probelor efectuate."),
@@ -594,11 +596,10 @@ def doc_pv_teste(ctx):
              + [[x, escape(str((t.get(f"c{i}") or {}).get("ok") or "")), escape(str((t.get(f"c{i}") or {}).get("obs") or ""))]
                 for i, x in enumerate(CHECKS)], [90, 30, 54], True),
            B("small", "Nu se bifează automat «DA» și nu se inventează valori. Dacă rezultatul sau observația lipsesc, câmpul rămâne necompletat."),
-           B("p", f"Nr. proces-verbal: {ctx.v('pif_no')}"),
+           B("table", [["Verdict operator", escape(verdict) if verdict else "— necompletat —"],
+                       ["Observații operator", escape(od_observations) if od_observations else "—"]], [42, 132], True),
            B("p", "Concluzia și declarația reprezentantului executantului se completează și se semnează numai după confirmarea rezultatelor de mai sus."),
-           sign(ex_sig(ctx, "Reprezentantul firmei executante,"), []),
-           B("p", "Observații OD: ________________________________________________________________"),
-           B("p", "Data OD: ________________________ · Reprezentant OD: ________________________")]
+           sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
     return out
 
 
