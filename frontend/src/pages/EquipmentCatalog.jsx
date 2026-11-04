@@ -428,6 +428,9 @@ export default function EquipmentCatalog() {
                   <h3 className="font-bold break-words">{i.brand_model}</h3>
                   {i.notes && <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{i.notes}</p>}
                   <p className="mt-2 text-sm font-medium">{spec(i)}</p>
+                  {FIELDS[i.category]?.length > 0 && <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }} data-testid={`catalog-spec-coverage-${i.id}`}>
+                    Date tehnice introduse: {FIELDS[i.category].filter(([key]) => i[key] !== null && i[key] !== undefined && String(i[key]).trim() !== "").length}/{FIELDS[i.category].length} câmpuri din catalog
+                  </p>}
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button onClick={() => setForm({ ...i })} className="rounded-lg border p-2 hover:bg-[#eef4ff]" aria-label={`Editează ${i.brand_model}`} data-testid={`catalog-edit-${i.id}`}><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
