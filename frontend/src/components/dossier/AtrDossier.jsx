@@ -69,7 +69,9 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
   const [pros, setPros] = useState([]);
   const [officialForms, setOfficialForms] = useState([]);
   const [catalogFiles, setCatalogFiles] = useState([]);
+  const [catalogItems, setCatalogItems] = useState([]);
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
+  useEffect(() => { api.get("/data/catalog").then((r) => setCatalogItems(Array.isArray(r.data) ? r.data : [])).catch(() => setCatalogItems([])); }, []);
   useEffect(() => {
     if (!form.client_name || !pros.length) return;
     const current = pros.find((p) => p.id === form.pros_id);
@@ -140,8 +142,9 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
       .catch(() => { if (active) setCatalogFiles([]); });
     return () => { active = false; };
   }, [form.pros_id]);
+  const selectedCef = selectedPros?.cef || form.atr_cef || {};
   const catalogRequirements = (() => {
-    const cef = selectedPros?.cef || form.atr_cef || {};
+    const cef = selectedCef;
     const requirements = [];
     const add = (kind, model, catalogId) => {
       const name = String(model || "").trim();
@@ -162,17 +165,26 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
       return true;
     });
   })();
-  const catalogEvidenceMissing = selectedPros ? catalogRequirements.flatMap((item) =>
+  const directCatalogFiles = catalogItems.flatMap((item) => [
+    ["datasheet", "Fișă tehnică"], ["conformity", "Declarație de conformitate"],
+  ].flatMap(([key, kind]) => {
+    const document = item[key];
+    return document?.storage_path && document.available !== false
+      ? [{ catalog_id: item.id, model: item.brand_model, kind }]
+      : [];
+  }));
+  const catalogEvidence = selectedPros ? catalogFiles : directCatalogFiles;
+  const catalogEvidenceMissing = catalogRequirements.flatMap((item) =>
     ["Fișă tehnică", "Declarație de conformitate"].filter((documentKind) =>
-      !catalogFiles.some((file) => file.kind === documentKind && (
+      !catalogEvidence.some((file) => file.kind === documentKind && (
         item.catalogId ? file.catalog_id === item.catalogId
           : String(file.model || "").trim().toLocaleLowerCase("ro-RO") === item.model.toLocaleLowerCase("ro-RO")
       ))
     ).map((documentKind) => `${documentKind} — ${item.model || item.kind}`)
-  ) : [];
-  const catalogEquipmentComplete = Boolean(selectedPros && catalogRequirements.length > 0 && catalogEvidenceMissing.length === 0);
+  );
+  const catalogEquipmentComplete = Boolean(catalogRequirements.length > 0 && catalogEvidenceMissing.length === 0);
   const equipmentSummary = (() => {
-    const cef = selectedPros?.cef || form.atr_cef || {};
+    const cef = selectedCef;
     const items = [];
     const inverters = cef.inverters || [];
     const addBattery = (key, battery, multiplier = 1) => {
@@ -223,8 +235,8 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
         ...(caseKey === "existing" && prod ? ["schema", "fise"] : []), ...(caseKey === "large" ? ["memoriu", "schema", "fise"] : []),
         ...(form.applicant_type === "Persoană juridică" && prod ? ["constatator"] : [])])]
     : DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && caseKey === "spor")).map(([k]) => k);
-  const autoAvailable = (k) => Boolean(clientAuto[k]) || (!!form.pros_id && prod && (k === "schema"
-    ? Boolean(selectedPros?.cef?.inverters?.length)
+  const autoAvailable = (k) => Boolean(clientAuto[k]) || (Boolean(form.pros_id || form.atr_cef) && prod && (k === "schema"
+    ? Boolean(selectedCef.inverters?.length)
     : k === "fise" ? catalogEquipmentComplete : false));
   const autoLabel = (k) => clientAuto[k]
     ? `preluat automat din fișa clientului (${(clientDocs[k === "id" ? "ci" : k] || []).length} fișier/e)`
@@ -279,10 +291,10 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
           <span className="rounded-full border bg-white px-3 py-1">Evacuare: {selectedPros.power || selectedPros.cef?.total_export_kw || "—"} kW</span>
           <span className="rounded-full border bg-white px-3 py-1">Echipamente: {catalogRequirements.length}</span>
         </div>}
-        {selectedPros && <div className="mt-3 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-equipment-summary">
+        {(selectedPros || form.atr_cef?.inverters?.length) && <div className="mt-3 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-equipment-summary">
           <div className="text-xs font-bold">Echipamente preluate în cerere și anexe</div>
           {equipmentSummary.length ? <ul className="mt-1 grid gap-1 text-xs sm:grid-cols-2">{equipmentSummary.map((item) => <li key={item.key}>{item.label}</li>)}</ul> : <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Echipamentele ATR configurate direct vor fi verificate la generare.</p>}
-          {selectedPros.cef?.inverters?.some((inv) => inv.battery_mode === "own" && inv.battery && !inv.battery.model) && <p className="mt-1 text-xs text-amber-700">Completați modelul bateriei în dosarul de prosumator pentru a-l include în anexă.</p>}
+          {selectedCef.inverters?.some((inv) => inv.battery_mode === "own" && inv.battery && !inv.battery.model) && <p className="mt-1 text-xs text-amber-700">Completați modelul bateriei pentru a-l include în anexă.</p>}
         </div>}
         {!selectedDeerForm && <a href={operatorSource.docs} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-sm font-semibold underline">Alege formularul pe pagina oficială DEER ↗</a>}
       </section>}
