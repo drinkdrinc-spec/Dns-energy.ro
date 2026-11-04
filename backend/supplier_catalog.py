@@ -9,7 +9,9 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 import unicodedata
+from collections import OrderedDict
 from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import httpx
@@ -58,10 +60,13 @@ BROWSE_SEARCH_TERMS = {
     "Gateway": "gateway",
     "Optimizator": "optimizator",
 }
-# Keep the first result page responsive across all suppliers. The UI can ask for
-# subsequent result batches, so a single search should not crawl 24 pages from
-# every shop before it can display anything.
-MAX_LISTING_PAGES = 4
+# Public supplier pages are crawled only within their own category/search URL,
+# with separate bounds for a quick model search and a full category browse.
+FAST_SEARCH_LISTING_PAGES = 4
+MAX_LISTING_PAGES = 24
+SEARCH_CACHE_TTL_SECONDS = 300
+SEARCH_CACHE_MAX_ENTRIES = 64
+_SEARCH_CACHE: OrderedDict[tuple[str, str], tuple[float, list[tuple[str, dict, str, str, str]]]] = OrderedDict()
 DOCUMENT_LABELS = {
     "datasheet": ("datasheet", "technical data", "technical sheet", "fisa tehnica", "fișa tehnică", "fisa"),
     "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "certificat de conformitate", "certificat conformitate"),
@@ -290,7 +295,7 @@ async def _get(client: httpx.AsyncClient, url: str, host: str):
     return None
 
 
-def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
+def _listing_page_urls(doc, page_url: str, host: str, max_pages: int = FAST_SEARCH_LISTING_PAGES) -> list[str]:
     """Return a bounded set of same-query listing pages across common shop pagination styles."""
     base = urlparse(page_url)
     base_query = parse_qs(base.query, keep_blank_values=True)
@@ -321,16 +326,17 @@ def _listing_page_urls(doc, page_url: str, host: str) -> list[str]:
             match = path_pattern.fullmatch(parsed.path)
             if match:
                 page_number = int(match.group(1))
-        if page_number is None or not 1 <= page_number < MAX_LISTING_PAGES or url in seen:
+        if page_number is None or not 1 <= page_number < max_pages or url in seen:
             continue
         pages.append((page_number, url))
         seen.add(url)
-    urls.extend(url for _, url in sorted(pages)[:MAX_LISTING_PAGES - 1])
+    urls.extend(url for _, url in sorted(pages)[:max_pages - 1])
     return urls
 
 
 async def _collect_listing_candidates(client: httpx.AsyncClient, listing_url: str, host: str,
-                                      semaphore: asyncio.Semaphore) -> list[tuple[str, str]]:
+                                      semaphore: asyncio.Semaphore,
+                                      max_pages: int = FAST_SEARCH_LISTING_PAGES) -> list[tuple[str, str]]:
     """Crawl bounded, same-category pagination and return product links only."""
     pending = [listing_url]
     seen_pages = {listing_url}
@@ -341,7 +347,7 @@ async def _collect_listing_candidates(client: httpx.AsyncClient, listing_url: st
         async with semaphore:
             return await _get(client, url, host)
 
-    while pending and len(seen_pages) <= MAX_LISTING_PAGES:
+    while pending and len(seen_pages) <= max_pages:
         batch = pending[:8]
         del pending[:len(batch)]
         responses = await asyncio.gather(*(fetch(url) for url in batch))
@@ -356,8 +362,8 @@ async def _collect_listing_candidates(client: httpx.AsyncClient, listing_url: st
             # Parse pagination against the original listing URL. This lets
             # pages that expose only a next link reveal later pages while the
             # existing host, path, and search-query checks remain in force.
-            for page_url in _listing_page_urls(doc, listing_url, host):
-                if page_url not in seen_pages and len(seen_pages) < MAX_LISTING_PAGES:
+            for page_url in _listing_page_urls(doc, listing_url, host, max_pages):
+                if page_url not in seen_pages and len(seen_pages) < max_pages:
                     seen_pages.add(page_url)
                     pending.append(page_url)
 
@@ -394,34 +400,51 @@ async def search_supplier_products(query: str, category: str, offset: int = 0, l
         active_sources = [(name, source) for name, source in SOURCES.items()
                           if category in source.get("categories", {}) or source.get("search")]
     qtokens = [] if browse_all else [part for part in _norm(query).split() if len(part) > 1]
+    cache_key = (category, "__browse_catalog__" if browse_all else _norm(query))
+    max_pages = MAX_LISTING_PAGES if browse_all else FAST_SEARCH_LISTING_PAGES
     async with httpx.AsyncClient(timeout=12, headers={"User-Agent": "DNS-Energy-Catalog/1.0 (+https://dns-energy.ro)", "Accept": "text/html,application/xhtml+xml"}) as client:
-        listing_urls = []
-        for _, source in active_sources:
-            category_url = source.get("categories", {}).get(category)
-            if browse_all:
-                listing_url = category_url or source["search"].format(query=quote(BROWSE_SEARCH_TERMS[category]))
-            else:
-                listing_url = source.get("search", "").format(query=quote(query)) if source.get("search") else category_url
-            listing_urls.append(listing_url)
-        page_semaphore = asyncio.Semaphore(8)
-        listing_products = await asyncio.gather(*[
-            _collect_listing_candidates(client, url, source["host"], page_semaphore)
-            for (_, source), url in zip(active_sources, listing_urls)
-        ])
-        candidates = []
-        for (name, source), products in zip(active_sources, listing_products):
-            for url, title in products:
-                if (not _correct_category(title, category)
-                        or not all(token in _norm(title) for token in qtokens)):
-                    continue
-                candidates.append((name, source, category, url, title))
-        # Keep all matching candidates from the bounded listing pages and interleave suppliers.
-        by_supplier = {name: [row for row in candidates if row[0] == name] for name, _ in active_sources}
-        balanced = []
-        for index in range(max((len(rows) for rows in by_supplier.values()), default=0)):
-            for name, _ in active_sources:
-                if index < len(by_supplier[name]):
-                    balanced.append(by_supplier[name][index])
+        now = time.monotonic()
+        cached = _SEARCH_CACHE.get(cache_key)
+        balanced = None
+        if cached and cached[0] > now:
+            _SEARCH_CACHE.move_to_end(cache_key)
+            balanced = cached[1]
+        elif cached:
+            del _SEARCH_CACHE[cache_key]
+
+        if balanced is None:
+            listing_urls = []
+            for _, source in active_sources:
+                category_url = source.get("categories", {}).get(category)
+                if browse_all:
+                    listing_url = category_url or source["search"].format(query=quote(BROWSE_SEARCH_TERMS[category]))
+                else:
+                    listing_url = source.get("search", "").format(query=quote(query)) if source.get("search") else category_url
+                listing_urls.append(listing_url)
+            page_semaphore = asyncio.Semaphore(8)
+            listing_products = await asyncio.gather(*[
+                _collect_listing_candidates(client, url, source["host"], page_semaphore, max_pages)
+                for (_, source), url in zip(active_sources, listing_urls)
+            ])
+            candidates = []
+            for (name, source), products in zip(active_sources, listing_products):
+                for url, title in products:
+                    if (not _correct_category(title, category)
+                            or not all(token in _norm(title) for token in qtokens)):
+                        continue
+                    candidates.append((name, source, category, url, title))
+            # Keep supplier results interleaved so one vendor cannot fill a batch.
+            by_supplier = {name: [row for row in candidates if row[0] == name] for name, _ in active_sources}
+            balanced = []
+            for index in range(max((len(rows) for rows in by_supplier.values()), default=0)):
+                for name, _ in active_sources:
+                    if index < len(by_supplier[name]):
+                        balanced.append(by_supplier[name][index])
+            if balanced:
+                _SEARCH_CACHE[cache_key] = (time.monotonic() + SEARCH_CACHE_TTL_SECONDS, balanced)
+                _SEARCH_CACHE.move_to_end(cache_key)
+                while len(_SEARCH_CACHE) > SEARCH_CACHE_MAX_ENTRIES:
+                    _SEARCH_CACHE.popitem(last=False)
         offset = max(0, int(offset))
         limit = max(1, min(48, int(limit)))
         page_rows = balanced[offset:offset + limit]
@@ -532,6 +555,7 @@ async def fetch_public_pdf(url: str, supplier_host: str, max_bytes: int) -> tupl
     if not data.startswith(b"%PDF-"):
         return None
     return data, current_url
+
 
 
 
