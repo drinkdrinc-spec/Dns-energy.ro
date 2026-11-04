@@ -108,6 +108,21 @@ const PROSUMER_QUICK_STATUSES = [
   "Prosumator activ",
 ];
 
+const PROSUMER_STAGE_ACTIONS = {
+  "Dosar în pregătire": "Completează documentele și verifică dosarul înainte de depunere",
+  "Gata de depunere": "Depune dosarul la operatorul de distribuție",
+  "Depus la operatorul de distribuție": "Urmărește cererea și eventualele solicitări de completare",
+  "Aviz tehnic emis": "Verifică ATR-ul și pregătește contractul de racordare",
+  "Programat pentru montaj": "Confirmă programarea instalării",
+  "Montaj efectuat": "Programează verificările și probele PIF",
+  "Probe și punere în funcțiune": "Finalizează documentele PIF și transmite ce solicită operatorul",
+};
+
+function prosumerRecommendedAction(item) {
+  const status = prosumerBoardStatus(item);
+  return PROSUMER_STAGE_ACTIONS[status] || "";
+}
+
 function atrEquipmentSummary(item, prosumers) {
   const pros = resolveLinkedProsumer(item, prosumers || []).linked;
   if (!pros) return [];
@@ -649,7 +664,17 @@ export default function ModulePage({ moduleKey }) {
   const inboxItems = useMemo(() => {
     if (key !== "prosumator") return [];
     return visibleItems
-      .filter((item) => String(item.next_action || "").trim())
+      .map((record) => {
+        const savedAction = String(record.next_action || "").trim();
+        const recommendedAction = prosumerRecommendedAction(record);
+        return {
+          record,
+          inbox_action: savedAction || recommendedAction,
+          inbox_is_recommended: !savedAction && Boolean(recommendedAction),
+          next_action_due: record.next_action_due,
+        };
+      })
+      .filter((item) => item.inbox_action)
       .sort((a, b) => String(a.next_action_due || "9999-12-31").localeCompare(String(b.next_action_due || "9999-12-31")));
   }, [key, visibleItems]);
 
@@ -910,8 +935,8 @@ export default function ModulePage({ moduleKey }) {
                     : new Intl.DateTimeFormat("ro-RO", { day: "2-digit", month: "short" }).format(dueDate);
               const overdue = dueLabel === "Întârziată";
               return <article key={item.id} className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: "var(--line)", background: "#fbfcfe" }}>
-                <div className="min-w-0"><div className="truncate text-xs font-bold">{item.client_name || item.number || "Dosar prosumator"}</div><div className="mt-1 text-xs">{item.next_action}</div></div>
-                <button type="button" className="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold" style={{ background: overdue ? "#fff0ed" : "#eaf1ff", color: overdue ? "#b43b2f" : "var(--blue)" }} onClick={() => openEdit(item)} aria-label={`Deschide acțiunea ${item.next_action} pentru ${item.client_name || item.number || "dosar"}`}>{dueLabel}</button>
+                <div className="min-w-0"><div className="truncate text-xs font-bold">{item.record.client_name || item.record.number || "Dosar prosumator"}</div><div className="mt-1 text-xs">{item.inbox_action}</div>{item.inbox_is_recommended && <span className="mt-1 inline-block text-[10px]" style={{ color: "var(--muted)" }}>Recomandare după stadiu · nu este salvată ca termen</span>}</div>
+                <button type="button" className="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold" style={{ background: overdue ? "#fff0ed" : "#eaf1ff", color: overdue ? "#b43b2f" : "var(--blue)" }} onClick={() => openEdit(item.record)} aria-label={`Deschide acțiunea ${item.inbox_action} pentru ${item.record.client_name || item.record.number || "dosar"}`}>{dueLabel}</button>
               </article>;
             })}
           </div> : <p className="mt-3 rounded-lg px-3 py-3 text-xs" style={{ color: "var(--muted)", background: "#f8fafd" }}>Nu ai acțiuni planificate. Deschide un dosar și completează „Următoarea acțiune” și, opțional, termenul.</p>}
