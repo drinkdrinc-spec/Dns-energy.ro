@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, ShieldCheck, Search, AlertTriangle, CheckCircle2, Archive } from "lucide-react";
+import { ExternalLink, ShieldCheck, Search, AlertTriangle, CheckCircle2, Archive, MessageSquare, Paperclip, Send, Clock3 } from "lucide-react";
+import { toast } from "sonner";
 import { PageHeader, Btn } from "@/components/Layout";
 import { api, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
+
+const MESSAGE_STATUSES = ["Nou", "În lucru", "Răspuns OD primit", "Închis"];
+const EMPTY_MESSAGE = { direction: "Primit", subject: "", message: "", message_date: new Date().toISOString().slice(0, 10), response_due: "", status: "Nou" };
 
 const PORTALS = [
   { id: "deer", name: "DEER", detail: "Distribuție Energie Electrică România", url: "https://avize.distributie-energie.ro/", hints: ["5940"] },
@@ -51,6 +55,11 @@ export default function DistributionPortals() {
   const [pod, setPod] = useState("");
   const [manual, setManual] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messageSaving, setMessageSaving] = useState(false);
+  const [messageForm, setMessageForm] = useState(EMPTY_MESSAGE);
+  const [messageFiles, setMessageFiles] = useState([]);
   useEffect(() => {
     Promise.allSettled([api.get("/data/prosumator"), api.get("/data/atr"), api.get("/data/power")]).then((results) => {
       const [prosResult, atrResult, powerResult] = results;
@@ -61,6 +70,19 @@ export default function DistributionPortals() {
     });
   }, []);
   const selectedPros = pros.find((item) => item.id === prosId) || null;
+  useEffect(() => {
+    if (!selectedPros?.id) { setMessages([]); return undefined; }
+    let active = true;
+    setMessagesLoading(true);
+    api.get("/data/documents?q=" + encodeURIComponent(selectedPros.id)).then(({ data }) => {
+      if (!active) return;
+      const rows = (Array.isArray(data) ? data : []).filter((item) => item.kind === "operator_message" && item.dossier_id === selectedPros.id);
+      rows.sort((a, b) => String(b.message_date || b.created_at || "").localeCompare(String(a.message_date || a.created_at || "")));
+      setMessages(rows);
+    }).catch(() => { if (active) setMessages([]); })
+      .finally(() => { if (active) setMessagesLoading(false); });
+    return () => { active = false; };
+  }, [selectedPros?.id]);
   const result = useMemo(() => detectOperator(pod), [pod]);
   const selectedId = manual || result.match || operatorId(selectedPros?.operator);
   const selected = PORTALS.find((p) => p.id === selectedId);
@@ -75,6 +97,62 @@ export default function DistributionPortals() {
   const atrCreateUrl = selectedPros?.client_id
     ? `/cerere-atr?new=atr&clientId=${encodeURIComponent(selectedPros.client_id)}&prosId=${encodeURIComponent(selectedPros.id)}${powerIncrease ? "&case=power-increase" : ""}`
     : "";
+
+  const saveOperatorMessage = async (event) => {
+    event.preventDefault();
+    if (!selectedPros) return toast.error("Selectează dosarul pentru care notezi corespondența.");
+    if (!messageForm.subject.trim() || !messageForm.message.trim()) return toast.error("Completează subiectul și mesajul.");
+    setMessageSaving(true);
+    try {
+      const attachments = [];
+      for (const file of messageFiles) {
+        const form = new FormData();
+        form.append("file", file);
+        const { data } = await api.post("/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
+        attachments.push({ storage_path: data.storage_path, original_filename: data.original_filename, content_type: data.content_type, size: data.size });
+      }
+      const operatorName = selectedPros.operator || selectedPros.operator_name || selected?.name || "Operator neconfirmat";
+      const title = `[dosar:${selectedPros.id}] ${messageForm.direction} — ${messageForm.subject.trim()}`;
+      const { data: createdMessage } = await api.post("/data/documents", {
+        kind: "operator_message",
+        doc_type: "Corespondență operator",
+        title,
+        client_name: selectedPros.client_name || "",
+        client_id: selectedPros.client_id || "",
+        dossier_id: selectedPros.id,
+        operator: operatorName,
+        pod: selectedPros.pod || pod || "",
+        direction: messageForm.direction,
+        subject: messageForm.subject.trim(),
+        message: messageForm.message.trim(),
+        message_date: messageForm.message_date,
+        response_due: messageForm.response_due,
+        status: messageForm.status,
+        source: "Înregistrat manual din portalul operatorului",
+        attachments,
+      });
+      toast.success("Corespondența a fost salvată în dosar.");
+      setMessageForm({ ...EMPTY_MESSAGE, message_date: new Date().toISOString().slice(0, 10) });
+      setMessageFiles([]);
+      const input = document.getElementById("operator-message-files");
+      if (input) input.value = "";
+      setMessages((current) => [createdMessage, ...current].sort((a, b) => String(b.message_date || b.created_at || "").localeCompare(String(a.message_date || a.created_at || ""))));
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Corespondența nu a putut fi salvată.");
+    } finally {
+      setMessageSaving(false);
+    }
+  };
+
+  const updateMessageStatus = async (item, status) => {
+    try {
+      const { data } = await api.put("/data/documents/" + encodeURIComponent(item.id), { ...item, status });
+      setMessages((current) => current.map((row) => row.id === item.id ? data : row));
+      toast.success("Starea mesajului a fost actualizată.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Starea mesajului nu a putut fi actualizată.");
+    }
+  };
 
   const selectPros = (id) => {
     setProsId(id);
@@ -150,6 +228,35 @@ export default function DistributionPortals() {
           </div>
         )}
       </section>
+      {selectedPros && <section className="den-panel mt-5" style={{ borderColor: "var(--line)" }} data-testid="operator-message-log">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><h3 className="font-bold text-sm"><MessageSquare size={15} className="inline mr-2" />Corespondență cu operatorul</h3>
+                  <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Notează mesajele și răspunsurile consultate în portal. Înregistrarea este manuală; DNS Energy nu importă automat mesajele OD.</p>
+                </div>
+                <span className="text-xs font-semibold rounded-full px-2 py-1" style={{ background: "var(--bg)" }}>{messages.length} înregistrări</span>
+              </div>
+              <form className="mt-4 grid sm:grid-cols-2 gap-3" onSubmit={saveOperatorMessage}>
+                <div className="den-field"><label>Direcție</label><select className="den-input" value={messageForm.direction} onChange={(e) => setMessageForm((v) => ({ ...v, direction: e.target.value }))}><option>Primit</option><option>Trimis</option></select></div>
+                <div className="den-field"><label>Data mesajului</label><input className="den-input" type="date" value={messageForm.message_date} onChange={(e) => setMessageForm((v) => ({ ...v, message_date: e.target.value }))} /></div>
+                <div className="den-field sm:col-span-2"><label>Subiect *</label><input className="den-input" value={messageForm.subject} maxLength={180} onChange={(e) => setMessageForm((v) => ({ ...v, subject: e.target.value }))} placeholder="Ex.: Solicitare completare documente" required /></div>
+                <div className="den-field sm:col-span-2"><label>Mesaj / observații *</label><textarea className="den-input" rows={3} maxLength={8000} value={messageForm.message} onChange={(e) => setMessageForm((v) => ({ ...v, message: e.target.value }))} placeholder="Notează conținutul relevant și acțiunea cerută." required /></div>
+                <div className="den-field"><label>Termen de răspuns</label><input className="den-input" type="date" value={messageForm.response_due} onChange={(e) => setMessageForm((v) => ({ ...v, response_due: e.target.value }))} /></div>
+                <div className="den-field"><label>Stare</label><select className="den-input" value={messageForm.status} onChange={(e) => setMessageForm((v) => ({ ...v, status: e.target.value }))}>{MESSAGE_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></div>
+                <div className="den-field sm:col-span-2"><label><Paperclip size={13} className="inline mr-1" />Documente atașate</label><input id="operator-message-files" className="den-input" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" onChange={(e) => setMessageFiles(Array.from(e.target.files || []).slice(0, 8))} /><span className="text-[11px]" style={{ color: "var(--muted)" }}>Maximum 8 fișiere pentru fiecare mesaj.</span></div>
+                <div className="sm:col-span-2"><Btn type="submit" disabled={messageSaving || messagesLoading}><Send size={14} />{messageSaving ? "Se salvează..." : "Salvează în dosar"}</Btn></div>
+              </form>
+              <div className="mt-4 space-y-2">
+                {messagesLoading && <p className="text-xs" style={{ color: "var(--muted)" }}>Se încarcă istoricul...</p>}
+                {!messagesLoading && !messages.length && <p className="rounded-lg p-3 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Nu există încă mesaje înregistrate pentru acest dosar.</p>}
+                {messages.map((item) => <article key={item.id} className="rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid={"operator-message-"+item.id}>
+                  <div className="flex flex-wrap items-start gap-2"><div className="flex-1 min-w-[180px]"><b className="text-sm">{item.subject}</b><div className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>{item.direction} · {item.operator} · {item.message_date || "Dată neprecizată"}{item.response_due ? ` · termen ${item.response_due}` : ""}</div></div>
+                    <select className="den-input !py-1 !text-xs w-full sm:w-auto" value={item.status || "Nou"} onChange={(e) => updateMessageStatus(item, e.target.value)} aria-label={"Stare mesaj " + item.subject}>{MESSAGE_STATUSES.map((status) => <option key={status}>{status}</option>)}</select>
+                  </div>
+                  <p className="mt-2 text-sm whitespace-pre-wrap">{item.message}</p>
+                  {!!item.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{item.attachments.map((file, index) => <button type="button" key={file.storage_path || index} className="text-xs underline" onClick={() => openAuthenticatedFile("/files/" + file.storage_path)}>{file.original_filename || "Atașament"}</button>)}</div>}
+                </article>)}
+              </div>
+            </section>}
       <div className="flex items-start gap-3 text-sm p-4 rounded-xl" style={{ background: "#eef6ff", color: "#25456e" }}>
         <ShieldCheck size={20} className="shrink-0 mt-0.5" />
         <div><b>Protecția contului</b><p className="mt-1">Nu introduce parola distribuitorului în DNS Energy. Conectarea și depunerea au loc pe portalul oficial al operatorului.</p></div>
