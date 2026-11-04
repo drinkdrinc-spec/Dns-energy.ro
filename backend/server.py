@@ -2616,11 +2616,18 @@ async def atr_pack(user: dict, rec: dict, full: int):
         pros = from_request(rec) or None
     atr_catalog_files = []
     direct_catalog_complete = False
-    if pros and info is None:
+    if pros:
         from atr_equipment import catalog_documents_complete as atr_catalog_documents_complete
         await auto_import_selected_catalog_documents(user, pros)
         atr_catalog_files = await catalog_files(user["id"], pros)
-        direct_catalog_complete = atr_catalog_documents_complete(pros.get("cef"), atr_catalog_files)
+        if info is None:
+            direct_catalog_complete = atr_catalog_documents_complete(pros.get("cef"), atr_catalog_files)
+        else:
+            # Catalog recovery can replace a stale legacy file. Rebuild the opis
+            # only after that recovery so ATR uses the current file references.
+            pros_id = linked_pros["id"]
+            pros, pclient, base, info = await dossier_ctx(user, pros_id)
+            client = {**(pclient or {}), **(client or {})}
     att = rec.get("attachments") or {}
     client_documents, client_document_issues = atr_client_documents(user, client)
     auto = {}
@@ -2901,11 +2908,15 @@ async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(Non
     guard_power_prosumer_scope(rec, pros or {})
     power_catalog_files = []
     direct_catalog_complete = False
-    if pros and info is None:
+    if pros:
         from atr_equipment import catalog_documents_complete as direct_catalog_documents_complete
         await auto_import_selected_catalog_documents(user, pros)
         power_catalog_files = await catalog_files(user["id"], pros)
-        direct_catalog_complete = direct_catalog_documents_complete(pros.get("cef"), power_catalog_files)
+        if info is None:
+            direct_catalog_complete = direct_catalog_documents_complete(pros.get("cef"), power_catalog_files)
+        else:
+            pros, pclient, base, info = await dossier_ctx(user, rec["pros_id"])
+            client = client or pclient
     att = rec.get("attachments") or {}
     attached = {k for k, v in att.items() if v}
     if pros and info is None:
@@ -3652,4 +3663,5 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
+
 
