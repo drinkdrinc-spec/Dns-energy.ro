@@ -10,7 +10,7 @@ OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER �
              "Distribuție Energie Oltenia", "Rețele Electrice România", "Alt operator"]
 
 PROMPT = f"""Ești expert în dosare de racordare prosumatori din România. Extrage datele din documentul atașat și răspunde DOAR cu un obiect JSON valid, fără text suplimentar, cu cheile:
-client_name (nume beneficiar/titular), owner_name (proprietar CF), cnp (CNP sau CUI), address (adresa loc de consum), hq_address (domiciliu din CI), consumption_address (adresa de pe factură), id_series (serie CI), id_number (număr CI), cf_nr (număr carte funciară), cadastral_nr (număr cadastral), county (județ), locality (localitate/municipiu dacă apare explicit), pod (cod loc de consum / POD), supplier (furnizor energie), phone, email, doc_type (tip document), summary (rezumat scurt),
+client_name (nume beneficiar/titular), owner_name (proprietar CF), cnp (CNP sau CUI), address (adresa loc de consum), hq_address (domiciliu din CI), consumption_address (adresa de pe factură), id_series (serie CI), id_number (număr CI), cf_nr (număr carte funciară), cadastral_nr (număr cadastral), county (județ), locality (localitate/municipiu dacă apare explicit), pod (POD), nlc (numărul/codul locului de consum distinct de POD, numai dacă apare clar), postal_code (cod poștal, numai dacă apare clar), supplier (furnizor energie), phone, email, doc_type (tip document), summary (rezumat scurt),
 operator (alege EXACT una dintre: {OPERATORS}; Bihor/Cluj/Satu Mare/Sălaj/Maramureș/Bistrița => "DEER — Transilvania Nord"; Alba/Brașov/Covasna/Harghita/Mureș/Sibiu => "DEER — Transilvania Sud"; Prahova/Buzău/Brăila/Galați/Vrancea/Focșani => "DEER — Muntenia Nord"),
 power (puterea instalată a panourilor fotovoltaice în kWp, numai dacă apare explicit; nu o confunda cu puterea invertorului, puterea aprobată sau puterea evacuată), apparent_kva (putere aparentă în kVA, numai dacă apare explicit), supply ("Monofazat" sau "Trifazat", numai dacă apare explicit), bransament_kw (puterea aprobată a locului de consum în kW, numai dacă apare explicit),
 system_type ("On-grid", "Hibrid cu baterie" sau "Off-grid"), inverter (marcă și model), inverter_kw (număr), inverter_count (număr),
@@ -267,6 +267,8 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
         "consumption_address": r"(?:adresa\s+locului\s+de\s+consum|locul\s+de\s+consum|adresa\s+de\s+consum)",
         "hq_address": r"(?:domiciliu(?:l)?(?:\s+din\s+actul\s+de\s+identitate)?|adresa\s+de\s+domiciliu|domiciliat(?:ă)?\s+în)",
         "pod": r"(?:POD|CLC|codul?\s+punctului\s+de\s+consum)",
+        "nlc": r"(?:NLC|număr(?:ul)?\s+locului\s+de\s+consum)",
+        "postal_code": r"(?:cod\s+poștal|cod\s+postal)",
         "supplier": r"(?:furnizor(?:ul)?\s+(?:de\s+)?energie)",
         "operator": r"(?:operator(?:ul)?\s+de\s+distribuție|operator(?:ul)?\s+de\s+distributie)",
         "owner_name": r"(?:proprietar(?:ul)?(?:\s+tabular)?|titular(?:ul)?\s+dreptului\s+de\s+proprietate)",
