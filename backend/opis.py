@@ -132,7 +132,10 @@ async def build_positions(db, owner, rec, client, settings):
     async def cat(cid, kind):
         it = await db.catalog.find_one({"owner": owner, "id": cid}, {"_id": 0}) if cid else None
         f = (it or {}).get(kind)
-        return [f] if f and f.get("storage_path") else []
+        # catalog_files marks inaccessible legacy objects explicitly. Keep them
+        # visible as missing evidence in the opis, but do not retry a known-dead
+        # storage pointer while generating every dossier PDF.
+        return [f] if f and f.get("storage_path") and f.get("available") is not False else []
 
     groups = [("invertor", inv), ("panou", pan)]
     extra = [("baterie", bat), ("smart meter", met)]
@@ -305,3 +308,4 @@ def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int =
     watermark(w, text, size)
     o = io.BytesIO(); w.write(o)
     return o.getvalue()
+
