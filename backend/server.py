@@ -330,7 +330,10 @@ async def login(body: LoginReq, request: Request):
         raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(body.password, user["password_hash"]):
-        await db.login_attempts.update_one({"identifier": ident}, {"$inc": {"count": 1}, "$set": {"until": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()}}, upsert=True)
+        lock_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+        await db.login_attempts.update_one({"identifier": ident}, {
+            "$inc": {"count": 1}, "$set": {"until": lock_until.isoformat(), "expires_at": lock_until}
+        }, upsert=True)
         raise HTTPException(status_code=401, detail="Email sau parolă incorectă")
     await db.login_attempts.delete_many({"identifier": ident})
     if user.get("status", "active") != "active":
@@ -3831,6 +3834,10 @@ async def test_dossier_delete(user: dict = Depends(get_current_user)):
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
+    # Failed-login records are queried and upserted on every authentication attempt.
+    # Uniqueness avoids duplicate rows during concurrent failures; TTL bounds storage.
+    await db.login_attempts.create_index("identifier", unique=True, name="login_attempt_identifier_unique")
+    await db.login_attempts.create_index("expires_at", expireAfterSeconds=0, name="login_attempt_expires_at_ttl")
     for m in MODULES:
         await db[m].create_index("owner")
         # Keep tenant-scoped list and quick-search sorts efficient as collections grow.
