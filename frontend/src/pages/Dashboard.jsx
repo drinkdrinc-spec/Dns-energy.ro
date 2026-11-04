@@ -138,8 +138,11 @@ export default function Dashboard() {
     if (/(respins|neconform)/.test(stage)) return "Revizuiește observațiile și corectează dosarul";
     if (/(așteapt|asteapt)/.test(stage)) return "Verifică răspunsul operatorului";
     if (/(depus|transmis)/.test(stage)) return "Urmărește răspunsul operatorului";
+    if (/factur[aă].*atr|atr.*factur[aă]/.test(stage)) return "Verifică și înregistrează factura ATR";
+    if (/(așteaptă|asteapta).*instal/.test(stage)) return "Programează instalarea";
+    if (/(montaj|instalat)/.test(stage)) return "Încarcă verificările și programează PV Teste / PIF";
+    if (/(probe|pif|teste)/.test(stage)) return "Finalizează probele și procesul-verbal PIF";
     if (/(aviz|atr emis|avizat)/.test(stage)) return "Verifică ATR-ul și pregătește etapa următoare";
-    if (/(montaj|instalat|probe|pif|teste)/.test(stage)) return "Programează sau finalizează probele și PIF";
     if (/(gata de depunere|pregătit pentru depunere|pregatit pentru depunere|generat)/.test(stage)) return "Verifică opisul și pregătește depunerea";
     if (/(pregăt|pregat|în lucru|in lucru|ciornă|ciorna|draft)/.test(stage)) return "Continuă completarea și verificarea dosarului";
     return "";
@@ -157,7 +160,7 @@ export default function Dashboard() {
     today.setHours(0, 0, 0, 0);
     const hasValidDueDate = dueDate && !Number.isNaN(dueDate.getTime());
     const overdue = hasValidDueDate && dueDate < today;
-    const stages = ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru depunere", "Depus la operator", "În așteptare la operator", "Avizat", "Respins", "Finalizat"];
+    const stages = ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru depunere", "Depus la operator", "În așteptare la operator", "Avizat", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Prosumator activ", "Respins", "Finalizat"];
     return (
       <article key={itemKey}
         data-testid={"inbox-item-" + item.module + "-" + item.id}
