@@ -172,7 +172,7 @@ def pub(d):
 @api.get("/anre/dossiers")
 async def anre_list(include_archived: bool = False, user: dict = Depends(get_current_user)):
     await S.archive_inactive_dossiers(user)
-    q = {"archived_at": {"$exists": bool(include_archived)}}
+    q = S.dossier_archive_filter(include_archived)
     if not is_pf(user):
         q["owner"] = user["id"]
     out = []
