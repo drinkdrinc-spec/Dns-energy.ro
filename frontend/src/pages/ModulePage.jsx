@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { hasConfiguredStorage } from "@/lib/cefStorage";
@@ -78,6 +78,8 @@ const PROSUMER_OD_STAGE_GUIDANCE = [
 const ATR_BOARD_STATUSES = ["În lucru", "Generată", "Depusă", "Completări cerute", "ATR emis"];
 
 function atrBoardStatus(item) {
+  const saved = String(item?.workflow_status || "").trim();
+  if (ATR_BOARD_STATUSES.includes(saved)) return saved;
   const tracked = String(item?.atr_track?.status || "").trim().toLocaleLowerCase("ro-RO");
   const trackedStages = {
     "trimis": "Depusă",
@@ -87,8 +89,12 @@ function atrBoardStatus(item) {
     "aviz emis": "ATR emis",
   };
   if (trackedStages[tracked]) return trackedStages[tracked];
-  const saved = String(item?.workflow_status || item?.status || "").trim();
-  return ATR_BOARD_STATUSES.includes(saved) ? saved : "În lucru";
+  const legacy = String(item?.status || "").trim();
+  return ATR_BOARD_STATUSES.includes(legacy) ? legacy : "În lucru";
+}
+
+function prosumerBoardStatus(item) {
+  return String(item?.workflow_status || item?.status || item?.operator_stage || "Dosar în pregătire").trim();
 }
 
 const PROSUMER_QUICK_STATUSES = [
@@ -233,6 +239,9 @@ export default function ModulePage({ moduleKey }) {
   const [prosPre, setProsPre] = useState(false);
   const [catalogImportsBusy, setCatalogImportsBusy] = useState(false);
   const [statusSavingId, setStatusSavingId] = useState("");
+  const [draggedItemId, setDraggedItemId] = useState("");
+  const [dropTargetStatus, setDropTargetStatus] = useState("");
+  const ignoreAtrClickAfterDrop = useRef(false);
 
   const load = () => api.get(`/data/${key}`).then(async (r) => {
     const rows = Array.isArray(r.data) ? r.data : [];
@@ -942,9 +951,28 @@ export default function ModulePage({ moduleKey }) {
             <div className="grid min-w-[780px] gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {[...ATR_BOARD_STATUSES, ...new Set(filtered.map(atrBoardStatus).filter((status) => !ATR_BOARD_STATUSES.includes(status)))].map((status) => {
                 const group = filtered.filter((item) => atrBoardStatus(item) === status);
-                return <section key={status} className="rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }} aria-label={`Stadiu ${status}`} data-testid={`atr-stage-${status.toLocaleLowerCase("ro-RO").replace(/[^a-z0-9]+/g, "-")}`}>
+                return <section key={status} className="rounded-xl border p-3 transition-colors" style={{ borderColor: "var(--line)", background: dropTargetStatus === status ? "#eaf1ff" : "var(--bg)" }} aria-label={`Stadiu ${status}`} data-testid={`atr-stage-${status.toLocaleLowerCase("ro-RO").replace(/[^a-z0-9]+/g, "-")}`}
+                  onDragOver={(event) => { event.preventDefault(); if (draggedItemId) setDropTargetStatus(status); }}
+                  onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTargetStatus((current) => current === status ? "" : current); }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const id = event.dataTransfer?.getData("text/plain") || draggedItemId;
+                    const item = filtered.find((row) => row.id === id);
+                    setDraggedItemId("");
+                    setDropTargetStatus("");
+                    if (item) {
+                      ignoreAtrClickAfterDrop.current = true;
+                      updateQuickStatus(item, status);
+                    }
+                  }}>
                   <div className="mb-3 flex items-center justify-between gap-2 text-sm font-bold"><span>{status}</span><span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{group.length}</span></div>
-                  <div className="grid gap-2">{group.map((item) => <button key={item.id} type="button" className="rounded-lg border bg-white p-3 text-left shadow-sm hover:border-blue-300" style={{ borderColor: "var(--line)" }} onClick={() => openEdit(item)} data-testid={`atr-card-${item.id}`}>
+                  <div className="grid gap-2">{group.map((item) => <button key={item.id} type="button" draggable={statusSavingId !== item.id}
+                    onDragStart={(event) => { ignoreAtrClickAfterDrop.current = false; event.dataTransfer.setData("text/plain", item.id); event.dataTransfer.effectAllowed = "move"; setDraggedItemId(item.id); }}
+                    onDragEnd={() => { setDraggedItemId(""); setDropTargetStatus(""); }}
+                    className={`rounded-lg border bg-white p-3 text-left shadow-sm hover:border-blue-300 ${draggedItemId === item.id ? "opacity-50" : ""}`}
+                    style={{ borderColor: "var(--line)", cursor: "grab" }}
+                    onClick={() => { if (ignoreAtrClickAfterDrop.current) { ignoreAtrClickAfterDrop.current = false; return; } openEdit(item); }}
+                    data-testid={`atr-card-${item.id}`}>
                     <span className="block truncate text-xs font-bold">{item.number || "Cerere ATR"}</span>
                     <span className="mt-1 block truncate text-sm">{item.client_name || "Client necompletat"}</span>
                     <span className="mt-1 block text-xs" style={{ color: "var(--muted)" }}>{[item.operator, item.address, item.pod && `POD ${item.pod}`].filter(Boolean).join(" · ") || "Operator și loc de consum necompletate"}</span>
@@ -957,9 +985,19 @@ export default function ModulePage({ moduleKey }) {
           </div>}
           {key === "prosumator" && recordsView === "board" && <div className="mb-4 overflow-x-auto" data-testid="prosumator-kanban">
             <div className="grid min-w-[280px] gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[...new Set(filtered.map((item) => String(item.workflow_status || item.status || item.operator_stage || "Dosar în pregătire").trim()))].map((status) => {
-                const group = filtered.filter((item) => String(item.workflow_status || item.status || item.operator_stage || "Dosar în pregătire").trim() === status);
-                return <section key={status} className="rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }} aria-label={`Stadiu ${status}`}>
+              {[...PROSUMER_QUICK_STATUSES, ...new Set(filtered.map(prosumerBoardStatus).filter((status) => !PROSUMER_QUICK_STATUSES.includes(status)))].map((status) => {
+                const group = filtered.filter((item) => prosumerBoardStatus(item) === status);
+                return <section key={status} className="rounded-xl border p-3 transition-colors" style={{ borderColor: "var(--line)", background: dropTargetStatus === status ? "#eaf1ff" : "var(--bg)" }} aria-label={`Stadiu ${status}`}
+                  onDragOver={(event) => { event.preventDefault(); if (draggedItemId) setDropTargetStatus(status); }}
+                  onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTargetStatus((current) => current === status ? "" : current); }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const id = event.dataTransfer?.getData("text/plain") || draggedItemId;
+                    const item = filtered.find((row) => row.id === id);
+                    setDraggedItemId("");
+                    setDropTargetStatus("");
+                    if (item) updateQuickStatus(item, status);
+                  }}>
                   <div className="mb-3 flex items-center justify-between gap-2 text-sm font-bold"><span>{status}</span><span className="rounded-full px-2 py-0.5 text-xs" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{group.length}</span></div>
                   <div className="grid gap-2">{group.map((item) => {
                     const client = prosumerFilterRows.find((row) => row.item.id === item.id)?.client;
@@ -981,7 +1019,11 @@ export default function ModulePage({ moduleKey }) {
                     ].filter(Boolean))];
                     const pod = item.pod || client?.pod || "";
                     const pvKwp = installedPanelKwp(item);
-                    return <article key={item.id} className="rounded-lg border bg-white p-3 shadow-sm" style={{ borderColor: "var(--line)" }}>
+                    return <article key={item.id} draggable={statusSavingId !== item.id}
+                      onDragStart={(event) => { event.dataTransfer.setData("text/plain", item.id); event.dataTransfer.effectAllowed = "move"; setDraggedItemId(item.id); }}
+                      onDragEnd={() => { setDraggedItemId(""); setDropTargetStatus(""); }}
+                      className={`rounded-lg border bg-white p-3 shadow-sm ${draggedItemId === item.id ? "opacity-50" : ""}`}
+                      style={{ borderColor: "var(--line)", cursor: "grab" }}>
                       <div className="font-semibold leading-5">{item.client_name || item.number || "Dosar prosumator"}</div>
                       <div className="mt-1 text-xs leading-5" style={{ color: "var(--muted)" }}>{item.number || "Fără număr"} · {item.request_type || "Tip cerere neales"}</div>
                       <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] leading-4">
