@@ -138,12 +138,16 @@ def battery_cable_proposal(battery: dict) -> dict:
                    for index, section in enumerate(SECTIONS)]
         source = "IEC 60364-5-52 method C Cu/PVC, 3 loaded conductors (conservative proposal)"
 
+    # The conductor must be protected by its selected fuse: Iz >= In, and In >= Ib.
+    # If the battery data does not allow a fuse proposal, retain the design-current check
+    # and let the existing warning require confirmation of the protection.
+    required_ampacity = max(design_current, fuse or 0)
     chosen = None
     drop = None
     for option in sorted(options, key=lambda item: n(item.get("section"), 1e9)):
         section = n(option.get("section"))
         ampacity = n(option.get("ampacity_a"))
-        if section <= 0 or ampacity < design_current:
+        if section <= 0 or ampacity < required_ampacity:
             continue
         candidate_drop = None
         if length > 0:
