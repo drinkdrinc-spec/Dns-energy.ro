@@ -83,6 +83,7 @@ export default function Dashboard() {
   const [inboxOperator, setInboxOperator] = useState("all");
   const [inboxCounty, setInboxCounty] = useState("all");
   const [inboxLocality, setInboxLocality] = useState("all");
+  const [inboxDueOnly, setInboxDueOnly] = useState(false);
   const [workflowStatusBusy, setWorkflowStatusBusy] = useState("");
   const [workflowStatusError, setWorkflowStatusError] = useState("");
   useEffect(() => { api.get("/stats/dashboard").then((r) => setS(r.data)).catch(() => {}); }, []);
@@ -101,6 +102,9 @@ export default function Dashboard() {
   }, [clientQuery]);
 
   const inboxItems = s.inbox || [];
+  const now = new Date();
+  const todayKey = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
+  const dueByTodayCount = inboxItems.filter((item) => item.next_action_due && String(item.next_action_due).slice(0, 10) <= todayKey).length;
   const moduleLabels = { prosumator: "Prosumator", atr: "Cerere ATR", power: "Spor de putere", diu: "DI-U", mono: "Schemă monofilară", anre_dossiers: "Dosar ANRE" };
   const inboxStatuses = [...new Set(inboxItems.map((item) => item.workflow_status || item.status || "În lucru"))];
   const inboxOperators = [...new Set(inboxItems.map((item) => item.operator || item.distributor).filter(Boolean))]
@@ -120,7 +124,8 @@ export default function Dashboard() {
       && (inboxStatus === "all" || (item.workflow_status || item.status || "În lucru") === inboxStatus)
       && (inboxOperator === "all" || (item.operator || item.distributor) === inboxOperator)
       && (inboxCounty === "all" || item.county === inboxCounty)
-      && (inboxLocality === "all" || item.locality === inboxLocality);
+      && (inboxLocality === "all" || item.locality === inboxLocality)
+      && (!inboxDueOnly || (item.next_action_due && String(item.next_action_due).slice(0, 10) <= todayKey));
   });
   const renderInboxItem = (item) => {
     const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono", anre_dossiers: "/dosare-anre" };
@@ -266,7 +271,13 @@ export default function Dashboard() {
             <h2 id="dashboard-inbox-title" className="text-lg sm:text-xl font-bold">Dosare de urmărit <span className="ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-bold" style={{ background: "#edf4ff", color: "var(--blue)" }}>{inboxItems.length}</span></h2>
             <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>{inboxItems.filter((item) => item.next_action || item.next_action_due).length} cu următor pas sau termen · acțiunile introduse apar primele.</p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+          <button type="button" onClick={() => setInboxDueOnly((value) => !value)} aria-pressed={inboxDueOnly}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold"
+            style={{ borderColor: inboxDueOnly ? "var(--blue)" : "var(--line)", background: inboxDueOnly ? "#edf4ff" : "transparent", color: inboxDueOnly ? "var(--blue)" : "var(--ink)" }}
+            data-testid="dashboard-inbox-due-filter">
+            <ClipboardCheck size={14} /> Azi · întârziate <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--bg)" }}>{dueByTodayCount}</span>
+          </button>
           <div className="flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: "var(--line)" }} aria-label="Mod vizualizare dosare">
             <button type="button" onClick={() => setInboxView("list")} aria-pressed={inboxView === "list"} aria-label="Vizualizare listă" title="Listă" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "list" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><ListIcon size={17} /></button>
             <button type="button" onClick={() => setInboxView("kanban")} aria-pressed={inboxView === "kanban"} aria-label="Vizualizare Kanban" title="Kanban" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "kanban" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><LayoutGrid size={17} /></button>
