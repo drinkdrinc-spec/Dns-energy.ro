@@ -200,6 +200,7 @@ def check_inverters(user: dict, d: dict):
 # ---------------- Object storage ----------------
 # New files use MongoDB GridFS; legacy files are read-through migrated only when the old source remains accessible.
 from gridfs_storage import init_storage, put_object, get_object, has_gridfs_object, LegacyObjectUnavailable
+from attachment_check import verify_dossier_attachments
 
 @app.exception_handler(LegacyObjectUnavailable)
 async def legacy_file_unavailable(request: Request, exc: LegacyObjectUnavailable):
@@ -2289,7 +2290,7 @@ async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None
     )
 
 
-async def dossier_ctx(owner, item_id: str):
+async def dossier_ctx(owner, item_id: str, verify_files: bool = False):
     if isinstance(owner, dict):
         await check_access(owner, "prosumator", item_id); owner = owner["id"]
     rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
@@ -2300,6 +2301,8 @@ async def dossier_ctx(owner, item_id: str):
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     settings, warns = await effective_settings(owner, rec, base)
     info = await OPIS.build_positions(db, owner, rec, client, settings)
+    if verify_files:
+        info = verify_dossier_attachments(info, get_object, LegacyObjectUnavailable)
     info["signer_warnings"] = warns
     info["finalized"] = rec.get("snapshot", {}).get("at") if rec.get("snapshot") else None
     return rec, client, settings, info
@@ -2390,7 +2393,7 @@ async def dossier_reopen(item_id: str, user: dict = Depends(get_current_user)):
 
 @api_router.get("/dossier/{item_id}")
 async def dossier_info(item_id: str, user: dict = Depends(get_current_user)):
-    rec, client, _, info = await dossier_ctx(user, item_id)
+    rec, client, _, info = await dossier_ctx(user, item_id, verify_files=True)
     return {**info, "client_id": client.get("id"), "client_kind": client.get("kind"), "statuses": OPIS.STATUSES,
             "client": {"name": client.get("name") or rec.get("client_name") or "", "email": client.get("email") or "", "phone": client.get("phone") or ""}}
 
@@ -2458,7 +2461,7 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
 @api_router.get("/dossier/{item_id}/export")
 async def dossier_export(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
-    rec, client, settings, info = await dossier_ctx(user, item_id)
+    rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
     pdf = await OPIS.export_bundle(info, rec, client, settings, get_object, logger)
     name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
@@ -2468,7 +2471,7 @@ SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire"
 @api_router.get("/dossier/{item_id}/simple")
 async def dossier_simple(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
-    rec, client, settings, info = await dossier_ctx(user, item_id)
+    rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
     pos = [p for p in info["positions"] if p["key"] in SIMPLE_KEYS or p.get("source") == "catalog"]
     sub = {**info, "positions": pos, "titles": [p["title"] for p in pos],
            "complete": not any(p.get("missing") for p in pos) and not any(p.get("status") == "de completat" for p in pos)}
