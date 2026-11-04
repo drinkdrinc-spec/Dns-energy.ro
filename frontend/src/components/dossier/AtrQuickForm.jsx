@@ -161,7 +161,13 @@ export function AtrQuickForm({ cfg, form, setVal, refOptions }) {
       <h3 className="text-sm font-bold">Rezumatul cererii</h3>
       <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Verifică datele preluate și echipamentele înainte de salvare și generarea anexelor.</p>
       <dl className="mt-3 grid gap-2 sm:grid-cols-2">{summary.map(([name, value]) => <div key={name} className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}><dt className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{name}</dt><dd className="mt-1 text-sm font-semibold">{value}</dd></div>)}</dl>
-      {form.client_id && <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Dosarul asociat și lista de echipamente sunt disponibile în pasul anterior.</p>}
+      {form.client_id && <section className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid="atr-summary-equipment">
+        <h4 className="text-sm font-bold">Echipamente incluse în cererea ATR</h4>
+        <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Confirmă modelele și valorile transferate înainte să salvezi cererea sau să generezi anexele.</p>
+        {selectedPros ? <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+          {[["Invertor(e)", equipment.inverters], ["Panouri", equipment.panels], ["Putere panouri c.c.", equipment.panelPower ? [`${equipment.panelPower.toFixed(3)} kWp`] : []], ["Baterie / BESS", equipment.batteries], ["Putere evacuată c.a.", equipment.power ? [`${equipment.power} kW`] : []], ["Stringuri", equipment.strings ? [equipment.strings] : []], ["Branșament", [selectedPros.supply || selectedPros.cef?.grid?.supply].filter(Boolean)]].map(([name, values]) => <div key={name} className="rounded-lg border p-3" style={{ borderColor: "var(--line)" }}><dt className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{name}</dt><dd className="mt-1 text-sm font-semibold">{values.length ? values.join(", ") : "Nu este completat în dosarul prosumator"}</dd></div>)}
+        </dl> : <p className="mt-3 text-sm text-amber-800">Nu este selectat un dosar prosumator cu echipamente asociate; cererea poate fi salvată, dar datele echipamentelor nu se vor prelua automat.</p>}
+      </section>}
     </section>}
     {step === 1 && form.client_id && <section className="rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-linked-equipment">
       <div className="flex flex-wrap items-start justify-between gap-3">
