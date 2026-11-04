@@ -708,6 +708,15 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                 worksheet = ATR.render_operator_annex_prep(rec, client, pros, op_key, annex_no, forms[0].get("title", "") if forms else "")
                 archive.writestr(f"Anexe oficiale/Fisa_precompletare_Anexa_{annex_no}.pdf", worksheet)
             note = [
+                "Pachet ATR — formular oficial pentru operator",
+                f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
+                f"Tip solicitare: {ATR.rtype(rec) or 'neselectat'}",
+                f"Anexă oficială selectată pentru tipul cererii: {annex_no or 'nedeterminată'}",
+                "",
+                "Fișa de precompletare din arhivă este inclusă și în PDF-ul principal; ambele sunt generate din aceleași date salvate.",
+                "Formularele oficiale atașate rămân originale și necompletate. Verificați versiunea, eligibilitatea și semnați formularul oficial înainte de depunere.",
+                "Verificați versiunea și eligibilitatea în portalul operatorului înainte de depunere. Valorile lipsă nu sunt inventate.",
+            ]
             if annex_no is None and ATR.rtype(rec) == "mod_fara":
                 cef = (pros or {}).get("cef") or {}
                 supply = str(rec.get("supply") or (pros or {}).get("supply") or (cef.get("grid") or {}).get("supply") or "").casefold()
@@ -720,15 +729,6 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                     missing.append("puterea instalată fotovoltaică (Pi) confirmată")
                 if missing:
                     note.append("Anexa nu a fost aleasă automat; lipsesc date dovedite: " + ", ".join(missing) + ". Completați dosarul și generați din nou pachetul.")
-                "Pachet ATR — formular oficial pentru operator",
-                f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
-                f"Tip solicitare: {ATR.rtype(rec) or 'neselectat'}",
-                f"Anexă oficială selectată pentru tipul cererii: {annex_no or 'nedeterminată'}",
-                "",
-                "Fișa de precompletare din arhivă este inclusă și în PDF-ul principal; ambele sunt generate din aceleași date salvate.",
-                "Formularele oficiale atașate rămân originale și necompletate. Verificați versiunea, eligibilitatea și semnați formularul oficial înainte de depunere.",
-                "Verificați versiunea și eligibilitatea în portalul operatorului înainte de depunere. Valorile lipsă nu sunt inventate.",
-            ]
             if forms:
                 for form in forms:
                     note.extend(["", f"Sursă oficială: {form.get('source_url') or form.get('url')}", f"Formular: {form.get('title')}", f"Stare link: {form.get('status') or 'neverificat'}"])
