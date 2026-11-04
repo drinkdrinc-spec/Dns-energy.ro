@@ -1911,12 +1911,35 @@ async def catalog_files(owner: str, rec: dict) -> list:
                 # Old records can still point at the retired object store. Read-through
                 # migrates accessible files to GridFS; unavailable files must not count
                 # as evidence that the dossier contains the required equipment document.
-                if not has_gridfs_object(f["storage_path"]):
-                    try:
+                try:
+                    if not has_gridfs_object(f["storage_path"]):
                         get_object(f["storage_path"])
-                    except Exception as exc:
-                        logger.warning("Catalog document unavailable for %s (%s): %s", cid, k, exc)
-                        continue
+                except LegacyObjectUnavailable as exc:
+                    # Persist the unavailable state so a legacy pointer is not counted
+                    # as evidence that the technical document is available.
+                    try:
+                        await db.catalog.update_one(
+                            {"owner": owner, "id": cid},
+                            {"$set": {
+                                f"{k}.available": False,
+                                f"{k}.availability_note": "legacy_storage_unavailable",
+                            }},
+                        )
+                    except Exception:
+                        logger.exception("Could not mark unavailable catalog document %s (%s)", cid, k)
+                    logger.warning("Catalog document unavailable for %s (%s): %s", cid, k, exc)
+                    continue
+                except Exception as exc:
+                    logger.warning("Could not verify catalog document %s (%s): %s", cid, k, exc)
+                    continue
+                try:
+                    await db.catalog.update_one(
+                        {"owner": owner, "id": cid},
+                        {"$set": {f"{k}.available": True},
+                         "$unset": {f"{k}.availability_note": ""}},
+                    )
+                except Exception:
+                    logger.exception("Could not mark catalog document available %s (%s)", cid, k)
                 out.append({"catalog_id": cid, "model": it.get("brand_model"), "kind": label, **f})
     return out
 
