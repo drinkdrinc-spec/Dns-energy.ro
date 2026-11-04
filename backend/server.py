@@ -1386,7 +1386,7 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
 
 # ---------------- AI extraction & document generation ----------------
 import docgen
-from ai_extract import extract_pdf, extract_gpt, extract_office_text, extract_gpt_text, extract_office_local
+from ai_extract import extract_pdf, extract_gpt, extract_office_text, extract_gpt_text, extract_office_local, canonical_document_type
 
 async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> dict:
     token = authorization[7:] if authorization and authorization.startswith("Bearer ") else auth
@@ -1466,7 +1466,7 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
             (("cf_nr",), "numărul cărții funciare"),
         ],
     }
-    selected_type = doc_type if doc_type in expected else str(fields.get("doc_type") or "").casefold()
+    selected_type = canonical_document_type(doc_type) or canonical_document_type(fields.get("doc_type"))
     missing_fields = []
     if selected_type in expected:
         for aliases, label in expected[selected_type]:
