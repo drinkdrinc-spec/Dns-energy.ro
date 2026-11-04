@@ -862,6 +862,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                   "locality": 1, "county": 1,
                   "company.name": 1,
                   "kwp": 1, "inverter_kw": 1, "status": 1, "workflow_status": 1, "operator_stage": 1,
+                  "workflow_blockers": 1,
                   "next_action": 1, "next_action_due": 1,
                   "updated_at": 1, "created_at": 1}
     for module, label in inbox_modules:
@@ -887,6 +888,8 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                 "kwp": row.get("kwp") or row.get("panel_kwp") or "",
                 "inverter_kw": row.get("inverter_kw") or row.get("power_kw") or "",
                 "status": row.get("workflow_status") or row.get("status") or row.get("operator_stage") or "În lucru",
+                "workflow_blockers": [str(value).strip() for value in row.get("workflow_blockers", [])
+                                      if str(value or "").strip()] if isinstance(row.get("workflow_blockers"), list) else [],
                 "next_action": row.get("next_action") or "",
                 "next_action_due": row.get("next_action_due") or "",
                 "updated_at": row.get("updated_at") or row.get("created_at") or "",
@@ -935,8 +938,31 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     }
     pending = sum(count for stage, count in stage_counts.items() if stage in attention_stages)
 
+    # Surface explicitly recorded blockers on every active dossier, not only the
+    # small recent-work sample used by the dashboard inbox.
+    blocker_dossiers = 0
+    blocker_count = 0
+    for module, _label in inbox_modules:
+        match = {**scope_q(user, module), **test_dossier_filter,
+                 "$or": [
+                     {"workflow_blockers": {"$type": "array", "$ne": []}},
+                     {"workflow_blockers": {"$type": "string", "$nin": [None, ""]}},
+                 ]}
+        for row in await db[module].find(match, {"_id": 0, "workflow_blockers": 1}).to_list(length=None):
+            values = row.get("workflow_blockers")
+            if isinstance(values, list):
+                active = [str(value).strip() for value in values if str(value or "").strip()]
+            elif isinstance(values, str) and values.strip():
+                active = [line.strip() for line in values.splitlines() if line.strip()]
+            else:
+                active = []
+            if active:
+                blocker_dossiers += 1
+                blocker_count += len(active)
+
     return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
             "recent": [clean(r) for r in recent], "inbox": inbox[:24],
+            "blocker_dossiers": blocker_dossiers, "blocker_count": blocker_count,
             "total_dossiers": sum(stage_counts.values()),
             "stage_counts": dict(sorted(stage_counts.items(), key=lambda item: (-item[1], item[0]))),
             "operator_counts": dict(sorted(operator_counts.items(), key=lambda item: (-item[1], item[0])))}
