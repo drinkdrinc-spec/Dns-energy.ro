@@ -847,7 +847,11 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
         story.append(T([["Model baterie", "Module", "Capacitate", "Ah", "V", "I max (A)", "Cuplare"]] + [storage_row(x) for x in batteries], [42, 12, 38, 15, 15, 20, 26]))
     grid = cef.get("grid") or {}
     meter_model = grid.get("meter") or rec.get("smart_meter_type") or rec.get("meter")
-    meter_present = rec.get("smart_meter_present")
+    meter_present = grid.get("meter_enabled")
+    if meter_present is None:
+        meter_present = rec.get("smart_meter_present")
+    meter_serial = grid.get("meter_serial") or rec.get("meter_serial")
+    meter_specs = grid.get("meter_specs") or rec.get("meter_specs")
     if meter_present is True or str(meter_present or "").strip().casefold() in ("da", "yes", "true"):
         meter_state = "DA"
     elif meter_present is False or str(meter_present or "").strip().casefold() in ("nu", "no", "false"):
@@ -860,8 +864,8 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
               T([["Câmp", "Date disponibile"],
                 ["Smart meter prezent", meter_state],
                 ["Model smart meter", v(meter_model)],
-                ["Serie contor (dacă este introdusă)", v(rec.get("meter_serial"))],
-                ["Date tehnice contor (dacă sunt introduse)", v(rec.get("meter_specs"))]], [58, 120]),
+                ["Serie contor (dacă este introdusă)", v(meter_serial)],
+                ["Date tehnice contor (dacă sunt introduse)", v(meter_specs)]], [58, 120]),
               Spacer(1, 4), P("6. Verificare înainte de depunere", "b"),
               P("Comparați această fișă cu formularul oficial atașat. Confirmați datele de identificare, POD, tipul cererii, puterile aprobate/solicitate și cerințele specifice operatorului. Fișa nu înlocuiește semnătura solicitantului, documentele justificative sau verificarea proiectantului.", "small")]
     doc.build(story)
