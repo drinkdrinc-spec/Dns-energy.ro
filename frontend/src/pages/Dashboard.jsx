@@ -79,6 +79,8 @@ export default function Dashboard() {
   const [inboxModule, setInboxModule] = useState("all");
   const [inboxStatus, setInboxStatus] = useState("all");
   const [inboxOperator, setInboxOperator] = useState("all");
+  const [inboxCounty, setInboxCounty] = useState("all");
+  const [inboxLocality, setInboxLocality] = useState("all");
   const [workflowStatusBusy, setWorkflowStatusBusy] = useState("");
   const [workflowStatusError, setWorkflowStatusError] = useState("");
   useEffect(() => { api.get("/stats/dashboard").then((r) => setS(r.data)).catch(() => {}); }, []);
@@ -101,6 +103,12 @@ export default function Dashboard() {
   const inboxStatuses = [...new Set(inboxItems.map((item) => item.workflow_status || item.status || "În lucru"))];
   const inboxOperators = [...new Set(inboxItems.map((item) => item.operator || item.distributor).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, "ro-RO"));
+  const inboxCounties = [...new Set(inboxItems.map((item) => item.county).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "ro-RO"));
+  const inboxLocalities = [...new Set(inboxItems
+    .filter((item) => inboxCounty === "all" || item.county === inboxCounty)
+    .map((item) => item.locality).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "ro-RO"));
   const normalizedInboxQuery = inboxQuery.trim().toLocaleLowerCase("ro-RO");
   const visibleInboxItems = inboxItems.filter((item) => {
     const searchText = [item.client_name, item.number, item.label, item.pod, item.operator, item.distributor, item.locality, item.county]
@@ -108,7 +116,9 @@ export default function Dashboard() {
     return (!normalizedInboxQuery || searchText.includes(normalizedInboxQuery))
       && (inboxModule === "all" || item.module === inboxModule)
       && (inboxStatus === "all" || (item.workflow_status || item.status || "În lucru") === inboxStatus)
-      && (inboxOperator === "all" || (item.operator || item.distributor) === inboxOperator);
+      && (inboxOperator === "all" || (item.operator || item.distributor) === inboxOperator)
+      && (inboxCounty === "all" || item.county === inboxCounty)
+      && (inboxLocality === "all" || item.locality === inboxLocality);
   });
   const renderInboxItem = (item) => {
     const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono", anre_dossiers: "/dosare-anre" };
@@ -259,7 +269,7 @@ export default function Dashboard() {
             <button type="button" onClick={() => setInboxView("kanban")} aria-pressed={inboxView === "kanban"} aria-label="Vizualizare Kanban" title="Kanban" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "kanban" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><LayoutGrid size={17} /></button>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 mb-3" data-testid="dashboard-inbox-filters">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-2 mb-3" data-testid="dashboard-inbox-filters">
           <input className="den-input w-full" value={inboxQuery} onChange={(event) => setInboxQuery(event.target.value)}
             placeholder="Caută client, număr dosar, POD sau operator…" aria-label="Caută dosare după client, număr, POD sau operator" />
           <select className="den-input w-full" value={inboxModule} onChange={(event) => setInboxModule(event.target.value)} aria-label="Filtrează după tipul dosarului">
@@ -273,6 +283,14 @@ export default function Dashboard() {
           <select className="den-input w-full" value={inboxOperator} onChange={(event) => setInboxOperator(event.target.value)} aria-label="Filtrează după operatorul de distribuție">
             <option value="all">Toți operatorii</option>
             {inboxOperators.map((operator) => <option key={operator} value={operator}>{operator}</option>)}
+          </select>
+          <select className="den-input w-full" value={inboxCounty} onChange={(event) => { setInboxCounty(event.target.value); setInboxLocality("all"); }} aria-label="Filtrează după județ">
+            <option value="all">Toate județele</option>
+            {inboxCounties.map((county) => <option key={county} value={county}>{county}</option>)}
+          </select>
+          <select className="den-input w-full" value={inboxLocality} onChange={(event) => setInboxLocality(event.target.value)} aria-label="Filtrează după localitate">
+            <option value="all">Toate localitățile</option>
+            {inboxLocalities.map((locality) => <option key={locality} value={locality}>{locality}</option>)}
           </select>
         </div>
         {visibleInboxItems.length === 0 ? (
