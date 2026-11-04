@@ -296,7 +296,7 @@ async def import_prosumer_into_diu(user: dict, item_id: str, rec: dict, pid: str
 @api.post("/power/{item_id}/ensure-diu")
 async def power_ensure_diu(item_id: str, user: dict = Depends(get_current_user)):
     """Create or refresh the linked DI-U when a power-increase dossier is saved."""
-    S.guard("power", user)
+    S.guard("power", user, write=True)
     S.guard("diu", user, write=True)
     power = await S.check_access(user, "power", item_id)
     owner = user["id"]
