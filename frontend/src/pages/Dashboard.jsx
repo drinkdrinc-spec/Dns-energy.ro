@@ -75,6 +75,7 @@ export default function Dashboard() {
   const [searchingClients, setSearchingClients] = useState(false);
   const [clientSearchFailed, setClientSearchFailed] = useState(false);
   const [inboxView, setInboxView] = useState("list");
+  const [inboxCollapsed, setInboxCollapsed] = useState(false);
   const [inboxQuery, setInboxQuery] = useState("");
   const [inboxModule, setInboxModule] = useState("all");
   const [inboxStatus, setInboxStatus] = useState("all");
@@ -260,15 +261,19 @@ export default function Dashboard() {
         {workflowStatusError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{workflowStatusError}</p>}
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--blue)" }}>ACTIVITATE RECENTĂ</div>
-            <h2 id="dashboard-inbox-title" className="text-lg sm:text-xl font-bold">Dosare de urmărit</h2>
-            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>Acțiunile și termenele introduse în dosare apar primele; celelalte sunt ordonate după ultima actualizare.</p>
+            <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--blue)" }}>INBOX OPERAȚIONAL</div>
+            <h2 id="dashboard-inbox-title" className="text-lg sm:text-xl font-bold">Dosare de urmărit <span className="ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-bold" style={{ background: "#edf4ff", color: "var(--blue)" }}>{inboxItems.length}</span></h2>
+            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>{inboxItems.filter((item) => item.next_action || item.next_action_due).length} cu următor pas sau termen · acțiunile introduse apar primele.</p>
           </div>
-          <div className="flex items-center gap-1 shrink-0 rounded-lg border p-1" style={{ borderColor: "var(--line)" }} aria-label="Mod vizualizare dosare">
+          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: "var(--line)" }} aria-label="Mod vizualizare dosare">
             <button type="button" onClick={() => setInboxView("list")} aria-pressed={inboxView === "list"} aria-label="Vizualizare listă" title="Listă" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "list" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><ListIcon size={17} /></button>
             <button type="button" onClick={() => setInboxView("kanban")} aria-pressed={inboxView === "kanban"} aria-label="Vizualizare Kanban" title="Kanban" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "kanban" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><LayoutGrid size={17} /></button>
           </div>
+          <button type="button" onClick={() => setInboxCollapsed((value) => !value)} aria-expanded={!inboxCollapsed} aria-controls="dashboard-inbox-content" className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid="dashboard-inbox-toggle">{inboxCollapsed ? "Arată" : "Ascunde"}</button>
+          </div>
         </div>
+        {inboxCollapsed ? <div className="rounded-lg px-3 py-2 text-sm" style={{ background: "var(--bg)", color: "var(--muted)" }}>Inbox ascuns · {inboxItems.length} dosare urmărite · {inboxItems.filter((item) => item.next_action || item.next_action_due).length} cu acțiune sau termen</div> : <div id="dashboard-inbox-content">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-2 mb-3" data-testid="dashboard-inbox-filters">
           <input className="den-input w-full" value={inboxQuery} onChange={(event) => setInboxQuery(event.target.value)}
             placeholder="Caută client, număr dosar, POD sau operator…" aria-label="Caută dosare după client, număr, POD sau operator" />
@@ -311,6 +316,7 @@ export default function Dashboard() {
             </div>
           )
         )}
+        </div>}
       </section>
 
       <section className="den-panel mb-6" aria-labelledby="client-fast-search-title" data-testid="dashboard-client-search">
