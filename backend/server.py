@@ -3049,6 +3049,30 @@ async def power_package(item_id: str, authorization: str = Header(None), auth: s
         except HTTPException as exc:
             notes.append(f"Formularul oficial OD nu a putut fi inclus automat (HTTP {exc.status_code}): {exc.detail}")
 
+        from atr_routes import DEER_AUTHENTICITY_URL, DEER_GDPR_URL, DEER_IMPUTERNICIRE_URL, _fetch_registry_annex
+        pros_operator = ""
+        linked_pros = None
+        linked_pros_id = rec.get("pros_id")
+        if linked_pros_id:
+            linked_pros = await db.prosumator.find_one(
+                {**scope_q(user, "prosumator"), "id": linked_pros_id}, {"id": 1, "operator": 1})
+        operator_key = ATR.op_key(rec.get("operator"), (linked_pros or {}).get("operator"), client.get("operator"))
+        if operator_key == "deer":
+            required_official_docs = [
+                ("Declarație oficială DEER de autenticitate a datelor", DEER_AUTHENTICITY_URL),
+                ("Notă oficială DEER de informare GDPR", DEER_GDPR_URL),
+            ]
+            if str(rec.get("submission_mode") or "").strip().casefold() == "prin împuternicit".casefold():
+                required_official_docs.append(("Model împuternicire DEER", DEER_IMPUTERNICIRE_URL))
+            for title, source_url in required_official_docs:
+                try:
+                    payload, filename = await _fetch_registry_annex({"title": title, "url": source_url}, "deer")
+                    add_file(archive, f"Anexe oficiale/{filename}", payload)
+                    notes.append(f"Document DEER inclus ca sursă oficială necompletată: {filename}. Completați și semnați unde este cazul.")
+                except Exception as exc:
+                    logger.warning("DEER official document fetch failed (%s): %s", title, exc)
+                    notes.append(f"Document DEER obligatoriu/relevant indisponibil la generarea ZIP: {title}. Descărcați-l de la {source_url}.")
+
         owner_prefix = f"{APP_NAME}/uploads/{user['id']}/"
         attachment_count = 0
         for slot, files in (rec.get("attachments") or {}).items():
