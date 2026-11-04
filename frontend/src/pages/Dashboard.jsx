@@ -84,6 +84,7 @@ export default function Dashboard() {
   const [inboxCounty, setInboxCounty] = useState("all");
   const [inboxLocality, setInboxLocality] = useState("all");
   const [inboxDueOnly, setInboxDueOnly] = useState(false);
+  const [inboxBlockedOnly, setInboxBlockedOnly] = useState(false);
   const [workflowStatusBusy, setWorkflowStatusBusy] = useState("");
   const [workflowStatusError, setWorkflowStatusError] = useState("");
   useEffect(() => { api.get("/stats/dashboard").then((r) => setS(r.data)).catch(() => {}); }, []);
@@ -102,6 +103,8 @@ export default function Dashboard() {
   }, [clientQuery]);
 
   const inboxItems = s.inbox || [];
+  const hasInboxBlockers = (item) => Array.isArray(item.workflow_blockers) && item.workflow_blockers.some((note) => String(note || "").trim());
+  const inboxBlockedCount = inboxItems.filter(hasInboxBlockers).length;
   const now = new Date();
   const todayKey = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
   const dueByTodayCount = inboxItems.filter((item) => item.next_action_due && String(item.next_action_due).slice(0, 10) <= todayKey).length;
@@ -125,6 +128,7 @@ export default function Dashboard() {
       && (inboxOperator === "all" || (item.operator || item.distributor) === inboxOperator)
       && (inboxCounty === "all" || item.county === inboxCounty)
       && (inboxLocality === "all" || item.locality === inboxLocality)
+      && (!inboxBlockedOnly || hasInboxBlockers(item))
       && (!inboxDueOnly || (item.next_action_due && String(item.next_action_due).slice(0, 10) <= todayKey));
   });
   const suggestedInboxAction = (item) => {
@@ -246,9 +250,11 @@ export default function Dashboard() {
         </div>
       </details>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 sm:gap-4 mb-6">
         <Stat label="Clienți înregistrați" value={s.clients} foot="În baza de date" icon={Users} />
         <Stat label="Dosare active" value={s.total_dossiers ?? (s.diu + s.mono)} foot="Prosumator, ATR, spor, DI-U, scheme și ANRE" icon={FolderOpen} />
+        <Stat label="Depuse luna aceasta" value={s.submitted_this_month || 0} foot="Trecute în stadiul de depunere luna aceasta" icon={FileCheck2} />
+        <Stat label="Activate luna aceasta" value={s.activated_this_month || 0} foot="Trecute în stadiul Prosumator activ luna aceasta" icon={PackageCheck} />
         <Stat label="Scheme monofilare" value={s.mono} foot="Înregistrări" icon={GitBranch} />
         <Stat label="Necesită atenție" value={s.pending} foot="Dosare în lucru sau de verificat" color="var(--amber)" icon={AlertTriangle} />
         <Stat label="Blocaje active" value={s.blocker_count || 0} foot={`${s.blocker_dossiers || 0} dosare cu blocaje notate`} color="var(--amber)" icon={AlertTriangle} />
@@ -301,6 +307,12 @@ export default function Dashboard() {
             style={{ borderColor: inboxDueOnly ? "var(--blue)" : "var(--line)", background: inboxDueOnly ? "#edf4ff" : "transparent", color: inboxDueOnly ? "var(--blue)" : "var(--ink)" }}
             data-testid="dashboard-inbox-due-filter">
             <ClipboardCheck size={14} /> Azi · întârziate <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--bg)" }}>{dueByTodayCount}</span>
+          </button>
+          <button type="button" onClick={() => setInboxBlockedOnly((value) => !value)} aria-pressed={inboxBlockedOnly}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold"
+            style={{ borderColor: inboxBlockedOnly ? "var(--amber)" : "var(--line)", background: inboxBlockedOnly ? "#fff7e6" : "transparent", color: inboxBlockedOnly ? "#8a5200" : "var(--ink)" }}
+            data-testid="dashboard-inbox-blocked-filter">
+            <AlertTriangle size={14} /> Cu blocaje în listă <span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: "var(--bg)" }}>{inboxBlockedCount}</span>
           </button>
           <div className="flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: "var(--line)" }} aria-label="Mod vizualizare dosare">
             <button type="button" onClick={() => setInboxView("list")} aria-pressed={inboxView === "list"} aria-label="Vizualizare listă" title="Listă" className="grid h-8 w-8 place-items-center rounded-md" style={{ background: inboxView === "list" ? "#edf4ff" : "transparent", color: "var(--blue)" }}><ListIcon size={17} /></button>

@@ -22,6 +22,7 @@ from client_search import build_client_search_queries, NUMERIC_CLIENT_SEARCH_FIE
 import io
 import zipfile
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 # ---------------- DB ----------------
 mongo_url = os.environ['MONGO_URL']
@@ -906,12 +907,41 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     # aggregate counts over every non-test record in the user's own scope.
     stage_counts = {}
     operator_counts = {}
+    local_now = datetime.now(ZoneInfo("Europe/Bucharest"))
+    month_local_start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if local_now.month == 12:
+        next_month_local_start = local_now.replace(year=local_now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        next_month_local_start = local_now.replace(month=local_now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_start = month_local_start.astimezone(timezone.utc).isoformat()
+    month_end = next_month_local_start.astimezone(timezone.utc).isoformat()
+    submitted_stages = [
+        "Depus", "Depusă", "Depus la operator", "Depus la operatorul de distribuție",
+    ]
+    activated_stages = ["Prosumator activ"]
+    submitted_this_month = 0
+    activated_this_month = 0
     stage_expr = {"$let": {"vars": {"value": {"$ifNull": ["$workflow_status", {"$ifNull": ["$status", "$operator_stage"]}]}},
                            "in": {"$cond": [{"$or": [{"$eq": ["$$value", None]}, {"$eq": ["$$value", ""]}]}, "În lucru", "$$value"]}}}
     operator_expr = {"$let": {"vars": {"value": {"$ifNull": ["$operator", {"$ifNull": ["$operator_name", "$distributor"]}]}},
                               "in": {"$cond": [{"$or": [{"$eq": ["$$value", None]}, {"$eq": ["$$value", ""]}]}, "Operator necompletat", "$$value"]}}}
     for module, _label in inbox_modules:
         match = {**scope_q(user, module), **test_dossier_filter}
+        # Count unique dossiers with an explicitly saved transition in this month.
+        submitted_this_month += await db[module].count_documents({
+            **match,
+            "workflow_history": {"$elemMatch": {
+                "to": {"$in": submitted_stages},
+                "at": {"$gte": month_start, "$lt": month_end},
+            }},
+        })
+        activated_this_month += await db[module].count_documents({
+            **match,
+            "workflow_history": {"$elemMatch": {
+                "to": {"$in": activated_stages},
+                "at": {"$gte": month_start, "$lt": month_end},
+            }},
+        })
         for row in await db[module].aggregate([
             {"$match": match},
             {"$project": {"group": stage_expr}},
@@ -964,6 +994,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
             "recent": [clean(r) for r in recent], "inbox": inbox[:24],
             "blocker_dossiers": blocker_dossiers, "blocker_count": blocker_count,
+            "submitted_this_month": submitted_this_month, "activated_this_month": activated_this_month,
             "total_dossiers": sum(stage_counts.values()),
             "stage_counts": dict(sorted(stage_counts.items(), key=lambda item: (-item[1], item[0]))),
             "operator_counts": dict(sorted(operator_counts.items(), key=lambda item: (-item[1], item[0])))}
