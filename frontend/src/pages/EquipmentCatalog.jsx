@@ -192,6 +192,10 @@ export default function EquipmentCatalog() {
     && !/\bTEST\b/i.test(String(i.brand_model || ""))
     && hasStoredDocument(i, "datasheet")
     && hasStoredDocument(i, "conformity")).length;
+  const categoryCounts = useMemo(() => Object.fromEntries(CATS.map((category) => {
+    const models = items.filter((item) => item.category === category && !/\bTEST\b/i.test(String(item.brand_model || "")));
+    return [category, { total: models.length, complete: models.filter((item) => hasStoredDocument(item, "datasheet") && hasStoredDocument(item, "conformity")).length }];
+  })), [items]);
   const measureLabel = cat === "Invertor" ? "putere nominală (kW)" : cat === "Panou" ? "putere panou (W)" : cat === "Baterie" ? "capacitate (kWh)" : cat === "Smart meter" ? "curent max. (A)" : cat === "Gateway" ? "dispozitive" : "putere modul (W)";
   const clearFilters = () => { setPhaseFilter(""); setTypeFilter(""); setMinValue(""); setMaxValue(""); setCompleteDocsOnly(false); setQ(""); };
 
@@ -321,11 +325,19 @@ export default function EquipmentCatalog() {
           <a href="https://delgaz.ro/getattachment/f005023f-8d6f-4065-b6f5-cee47673593e/Lista-invertoare-conforme.xlsx" target="_blank" rel="noopener noreferrer" data-testid="catalog-delgaz-approved-inverters" className="inline-flex min-h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} title="Lista oficială Delgaz Grid cu invertoare conforme">Listă invertoare Delgaz ↗</a>
           <Btn onClick={() => setForm(form ? null : { category: cat })} data-testid="catalog-add-btn">{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> Model nou</>}</Btn>
         </div>} />
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="mb-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Categorii echipamente">
         {CATS.map((c) => <button key={c} onClick={() => { setCat(c); setForm(null); setPhaseFilter(""); setTypeFilter(""); setMinValue(""); setMaxValue(""); setCompleteDocsOnly(false); }} data-testid={`catalog-tab-${c}`}
-          className="rounded-full px-4 py-2 text-[12px] font-bold border transition-colors" style={c === cat ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>{c}</button>)}
+          role="tab" aria-selected={c === cat} className="shrink-0 rounded-full border px-3 py-2 text-xs font-bold transition-colors" style={c === cat ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>
+          {c}<span className="ml-2 text-[10px] font-medium opacity-75">{categoryCounts[c]?.total || 0}</span></button>)}
       </div>
-      {form && (
+      <div className="den-panel mb-3 flex flex-col gap-3 p-3 sm:flex-row sm:items-center" data-testid="catalog-unified-search">
+        <input className="den-input min-w-0 flex-1" placeholder={`Caută ${cat.toLocaleLowerCase("ro-RO")} după marcă sau model…`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Caută în catalog și la furnizori" data-testid="catalog-db-search" />
+        <Btn onClick={() => searchSuppliers()} disabled={supplierLoading || q.trim().length < 2} data-testid="supplier-search-btn">
+          {supplierLoading ? "Se caută…" : "Caută la furnizori"}
+        </Btn>
+        <span className="text-[11px] sm:max-w-48" style={{ color: "var(--muted)" }}>{rows.length} în catalog · {completeDocsCount} cu ambele PDF-uri</span>
+      </div>
+      {form && (      {form && (
         <div className="den-panel mb-6" data-testid="catalog-form">
           <h2 className="text-lg font-bold mb-4">{form.id ? "Editează modelul" : `Model nou — ${cat}`}</h2>
           <div className="grid sm:grid-cols-3 gap-3">
@@ -363,15 +375,13 @@ export default function EquipmentCatalog() {
           </article>)}
         </div>
       </section>}
-      <section className="den-panel mb-4" aria-label="Căutare la furnizori" data-testid="supplier-search-panel">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <section className="den-panel mb-4 p-3" aria-label="Căutare la furnizori" data-testid="supplier-search-panel">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="font-bold">Caută modele la furnizori</h2>
-            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Caută după model sau marcă în Depozit Solar, SolarHev și SolarTech. Prețul și stocul sunt afișate de comerciant și pot varia.</p>
+            <h2 className="text-sm font-bold">Modele de la furnizori</h2>
+            <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Depozit Solar · SolarHev · SolarTech. Prețul și stocul se verifică la comerciant.</p>
           </div>
-          <Btn onClick={searchSuppliers} disabled={supplierLoading} data-testid="supplier-search-btn">
-            {supplierLoading ? "Se caută…" : "Caută în magazine"}
-          </Btn>
+          {supplierResults.length > 0 && <span className="text-[11px]" style={{ color: "var(--muted)" }}>{supplierResults.length} rezultate încărcate</span>}
         </div>
         {supplierResults.length > 0 && <div className="grid md:grid-cols-2 gap-3 mt-4">
           {supplierResults.map((product) => <article key={product.product_url} className="rounded-xl border p-3" style={{ borderColor: "var(--line)" }}>
@@ -398,10 +408,9 @@ export default function EquipmentCatalog() {
       <div className="den-panel">
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <div>
-            <h2 className="text-lg font-bold">{cat} <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({rows.length})</span></h2>
+            <h2 className="text-lg font-bold">{cat} <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({rows.length} din {categoryCounts[cat]?.total || 0})</span></h2>
             <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{completeDocsCount} modele au fișa tehnică și declarația de conformitate PDF salvate în catalog. Linkurile producătorului rămân surse de preluare până când PDF-ul este atașat.</p>
           </div>
-          <input className="den-input w-full sm:w-[260px]" placeholder="Caută marcă sau model..." value={q} onChange={(e) => setQ(e.target.value)} data-testid="catalog-db-search" />
         </div>
         <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" data-testid="catalog-filters">
           {(cat === "Invertor" || cat === "Smart meter") && <select className="den-input" value={phaseFilter} onChange={(e) => setPhaseFilter(e.target.value)} aria-label="Filtrează după faze" data-testid="catalog-filter-phases">
