@@ -133,15 +133,15 @@ export default function Dashboard() {
       return "Verifică lipsurile semnalate în dosar";
     }
     const stage = String(item.workflow_status || item.status || item.operator_stage || "")
-      .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLocaleLowerCase("ro-RO");
+      .toLocaleLowerCase("ro-RO");
     if (!stage || /(finalizat|prosumator activ)/.test(stage)) return "";
     if (/(respins|neconform)/.test(stage)) return "Revizuiește observațiile și corectează dosarul";
-    if (/(asteapta|asteptare)/.test(stage)) return "Verifică răspunsul operatorului";
+    if (/(așteapt|asteapt)/.test(stage)) return "Verifică răspunsul operatorului";
     if (/(depus|transmis)/.test(stage)) return "Urmărește răspunsul operatorului";
     if (/(aviz|atr emis|avizat)/.test(stage)) return "Verifică ATR-ul și pregătește etapa următoare";
     if (/(montaj|instalat|probe|pif|teste)/.test(stage)) return "Programează sau finalizează probele și PIF";
-    if (/(gata de depunere|pregatit pentru depunere|generat)/.test(stage)) return "Verifică opisul și pregătește depunerea";
-    if (/(pregat|in lucru|ciorna|draft)/.test(stage)) return "Continuă completarea și verificarea dosarului";
+    if (/(gata de depunere|pregătit pentru depunere|pregatit pentru depunere|generat)/.test(stage)) return "Verifică opisul și pregătește depunerea";
+    if (/(pregăt|pregat|în lucru|in lucru|ciornă|ciorna|draft)/.test(stage)) return "Continuă completarea și verificarea dosarului";
     return "";
   };
   const renderInboxItem = (item) => {
