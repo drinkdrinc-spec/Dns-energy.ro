@@ -620,17 +620,24 @@ async def atr_official_docx(item_id: str, user: dict = Depends(get_current_user)
 
     if ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) != "deer":
         raise HTTPException(status_code=400, detail="Precompletarea anexei oficiale este disponibilă pentru cererile DEER.")
+    annex_info = ATR.deer_annex_info(rec)
+    if annex_info and annex_info[0] == "Procedură dedicată":
+        content = ATR.render_operator_annex_prep(
+            rec, client, pros or {}, "deer", annex_info[0], annex_info[1]
+        )
+        return Response(content=content, media_type="application/pdf",
+                        headers={"Content-Disposition": S.disp("attachment", "Fisa_precompletare_DEER_peste_400_kW.pdf"),
+                                 "Cache-Control": "no-store"})
     try:
         content = ATR.render_deer_official_docx(rec, client, settings, pros or {})
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    annex_info = ATR.deer_annex_info(rec)
     label = re.sub(r"[^A-Za-z0-9_-]+", "_", (annex_info or ("Anexa_DEER",))[0]).strip("_")
     filename = f"{label}_completata.docx"
     return Response(content=content,
                     media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    headers={"Content-Disposition": S.disp("attachment", filename)})
+                    headers={"Content-Disposition": S.disp("attachment", filename), "Cache-Control": "no-store"})
 
 
 # ---------------- complete downloadable package ----------------
@@ -658,21 +665,38 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
         op_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
         if op_key == "deer":
             annex_info = ATR.deer_annex_info(rec)
-            try:
-                annex = ATR.render_deer_official_docx(rec, client, settings, pros or {})
-            except (ValueError, RuntimeError) as exc:
-                raise HTTPException(status_code=400, detail=str(exc))
-            label = re.sub(r"[^A-Za-z0-9_-]+", "_", (annex_info or ("Anexa_DEER",))[0]).strip("_")
-            archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
+            if annex_info and annex_info[0] == "Procedură dedicată":
+                worksheet = ATR.render_operator_annex_prep(
+                    rec, client, pros or {}, op_key, annex_info[0], annex_info[1]
+                )
+                archive.writestr("Anexe oficiale/Fisa_precompletare_DEER_peste_400_kW.pdf", worksheet)
+                deer_notes = [
+                    "Pachet DEER pentru procedura dedicată instalațiilor de peste 400 kW.",
+                    "Fișa PDF este un document de lucru precompletat din datele salvate; nu este formularul oficial și nu înlocuiește documentele operatorului.",
+                    "Formularul oficial este publicat de DEER în format DOC la sursa indicată mai jos; completați-l, verificați datele și semnați înainte de depunere.",
+                    f"Formular oficial DEER: {annex_info[2]}",
+                    f"Sursa oficială cu formularele aplicabile: {DEER_FORMS_URL}",
+                ]
+                try:
+                    source_form, source_name = await _fetch_registry_annex(
+                        {"title": annex_info[1], "url": annex_info[2]}, "deer")
+                    archive.writestr(f"Anexe oficiale/Formular oficial original/{source_name}", source_form)
+                    deer_notes.append("Formularul oficial original DEER a fost inclus în pachet.")
+                except (httpx.HTTPError, ValueError) as exc:
+                    deer_notes.append(f"Formularul oficial original nu a putut fi preluat acum; descărcați-l de la sursa DEER de mai sus. ({exc})")
+            else:
+                try:
+                    annex = ATR.render_deer_official_docx(rec, client, settings, pros or {})
+                except (ValueError, RuntimeError) as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
+                label = re.sub(r"[^A-Za-z0-9_-]+", "_", (annex_info or ("Anexa_DEER",))[0]).strip("_")
+                archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
 
-            # Include the operator's blank source form beside the prefilled working copy.
-            # The source file is retrieved only from the allow-listed DEER host and checked
-            # for an official document signature and a 20 MB size limit by _fetch_registry_annex.
-            deer_notes = [
-                "Pachet DEER — formularul completat este o copie de lucru precompletată din datele salvate.",
-                "Verificați versiunea curentă, completați câmpurile rămase goale și semnați înainte de depunere.",
-                f"Sursa oficială cu formularele aplicabile: {DEER_FORMS_URL}",
-            ]
+                deer_notes = [
+                    "Pachet DEER — formularul completat este o copie de lucru precompletată din datele salvate.",
+                    "Verificați versiunea curentă, completați câmpurile rămase goale și semnați înainte de depunere.",
+                    f"Sursa oficială cu formularele aplicabile: {DEER_FORMS_URL}",
+                ]
             try:
                 authenticity, authenticity_name = await _fetch_registry_annex(
                     {"title": "Declarația oficială DEER de autenticitate a datelor", "url": DEER_AUTHENTICITY_URL}, "deer")
