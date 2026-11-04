@@ -896,6 +896,35 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                 "next_action_due": row.get("next_action_due") or "",
                 "updated_at": row.get("updated_at") or row.get("created_at") or "",
             })
+    # Surface OD correspondence in the same operational inbox, while keeping it
+    # separate from dossier stage/operator aggregate counts below.
+    message_scope = {**scope_q(user, "operator_messages"), **test_dossier_filter}
+    message_projection = {"_id": 0, "id": 1, "client_name": 1, "operator": 1,
+                          "subject": 1, "reference": 1, "received_at": 1, "status": 1,
+                          "next_action": 1, "next_action_due": 1, "updated_at": 1, "created_at": 1}
+    recent_messages = await db.operator_messages.find(message_scope, message_projection).sort("received_at", -1).limit(5).to_list(5)
+    scheduled_messages = await db.operator_messages.find(
+        {**message_scope, "next_action": {"$exists": True, "$nin": [None, ""]}}, message_projection
+    ).sort("next_action_due", 1).limit(5).to_list(5)
+    messages = list({row.get("id"): row for row in [*recent_messages, *scheduled_messages] if row.get("id")}.values())
+    for row in messages:
+        inbox.append({
+            "id": row.get("id"),
+            "module": "operator_messages",
+            "label": "Corespondență OD",
+            "client_name": row.get("client_name") or row.get("subject") or "",
+            "number": row.get("reference") or "",
+            "pod": "",
+            "operator": row.get("operator") or "",
+            "locality": "",
+            "county": "",
+            "status": row.get("status") or "Nou",
+            "workflow_blockers": [],
+            "next_action": row.get("next_action") or "",
+            "next_action_due": row.get("next_action_due") or "",
+            "updated_at": row.get("updated_at") or row.get("received_at") or row.get("created_at") or "",
+        })
+
     # Prioritize scheduled work. The user enters both action and due date; we do not infer either.
     inbox.sort(key=lambda item: (
         not bool(item.get("next_action")),
