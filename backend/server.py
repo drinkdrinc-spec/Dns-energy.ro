@@ -562,12 +562,51 @@ async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), 
     return {"results": results, "unavailable": []}
 
 
+AUTO_ARCHIVE_MODULES = ("prosumator", "atr", "power", "diu", "mono", "anre_dossiers")
+_archive_sweep_at = {}
+_ARCHIVE_SWEEP_INTERVAL = timedelta(hours=1)
+_ARCHIVE_INACTIVE_AFTER = timedelta(days=183)
+
+
+async def archive_inactive_dossiers(user: dict):
+    """Soft-archive dossier workflows with no saved activity for about six months."""
+    user_id = str(user.get("id") or "")
+    if not user_id:
+        return
+    current = datetime.now(timezone.utc)
+    previous = _archive_sweep_at.get(user_id)
+    if previous and current - previous < _ARCHIVE_SWEEP_INTERVAL:
+        return
+    cutoff = (current - _ARCHIVE_INACTIVE_AFTER).isoformat()
+    archived_at = current.isoformat()
+    for collection in AUTO_ARCHIVE_MODULES:
+        base_scope = scope_q(user, collection)
+        stale = {"$and": [
+            base_scope,
+            {"archived_at": {"$exists": False}},
+            {"$or": [
+                {"updated_at": {"$lt": cutoff}},
+                {"updated_at": {"$exists": False}, "created_at": {"$lt": cutoff}},
+            ]},
+        ]}
+        await db[collection].update_many(stale, {"$set": {
+            "archived_at": archived_at,
+            "archive_reason": "inactivitate_6_luni",
+            "archived_by": "system",
+        }})
+    _archive_sweep_at[user_id] = current
+
+
 @api_router.get("/data/{module}")
-async def list_items(module: str, q: Optional[str] = None, user: dict = Depends(get_current_user)):
+async def list_items(module: str, q: Optional[str] = None, include_archived: bool = False,
+                     user: dict = Depends(get_current_user)):
     if module not in MODULES:
         raise HTTPException(status_code=404, detail="Modul inexistent")
     guard(module, user)
     query = scope_q(user, module)
+    if module in AUTO_ARCHIVE_MODULES:
+        await archive_inactive_dossiers(user)
+        query = {"$and": [query, {"archived_at": {"$exists": bool(include_archived)}}]}
     if module == "catalog":
         await seed_catalog(user["id"])
     search_fields = {
@@ -671,7 +710,10 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
             c = await db.clients.find_one({**scope_q(user, "clients"), "name": data["client_name"]}, {"id": 1})
             if c:
                 data["client_id"] = c["id"]
-    res = await db[module].update_one({"id": item_id, "owner": user["id"]}, {"$set": data})
+    res = await db[module].update_one(
+        {"id": item_id, "owner": user["id"]},
+        {"$set": data, "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""}},
+    )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă")
     await audit(user, "modificare", module, item_id, list(data.keys()))
@@ -707,12 +749,39 @@ async def update_dossier_workflow_status(module: str, item_id: str, request: Req
     result = await db[module].update_one(
         {**scope_q(user, module), "id": item_id},
         {"$set": {"workflow_status": status, "updated_at": updated_at, "updated_by": user.get("email")},
+         "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""},
          "$push": {"workflow_history": {"$each": [history_entry], "$slice": -500}}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     await audit(user, "actualizare stadiu flux", module, item_id, ["workflow_status"])
     return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at, "history_entry": history_entry}
+
+
+
+@api_router.post("/data/{module}/{item_id}/restore")
+async def restore_archived_dossier(module: str, item_id: str, user: dict = Depends(get_current_user)):
+    if module not in AUTO_ARCHIVE_MODULES:
+        raise HTTPException(status_code=404, detail="Modulul nu folosește arhivarea automată")
+    guard(module, user, write=True)
+    record = await check_access(user, module, item_id)
+    if not record.get("archived_at"):
+        return {"ok": True, "restored": False, "id": item_id}
+    restored_at = datetime.now(timezone.utc).isoformat()
+    result = await db[module].update_one(
+        {**scope_q(user, module), "id": item_id, "archived_at": {"$exists": True}},
+        {"$set": {"updated_at": restored_at, "updated_by": user.get("email")},
+         "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""},
+         "$push": {"workflow_history": {"$each": [{
+             "event": "Dosar readus din arhivă",
+             "at": restored_at,
+             "by": user.get("email") or user.get("id"),
+         }], "$slice": -500}}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dosarul arhivat nu mai există")
+    await audit(user, "restaurare din arhivă automată", module, item_id, ["archived_at"])
+    return {"ok": True, "restored": True, "id": item_id, "updated_at": restored_at}
 
 
 @api_router.delete("/data/{module}/{item_id}")
@@ -733,8 +802,10 @@ async def delete_item(module: str, item_id: str, user: dict = Depends(get_curren
 # ---------------- Dashboard ----------------
 @api_router.get("/stats/dashboard")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
+    await archive_inactive_dossiers(user)
     owner = scope_q(user, "diu")
     test_dossier_filter = {"$and": [
+        {"archived_at": {"$exists": False}},
         {"is_test": {"$ne": True}},
         {"$nor": [
             {"client_name": {"$regex": r"^TEST", "$options": "i"}},
