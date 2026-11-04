@@ -105,6 +105,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [selectedClient, setSelectedClient] = useState(null);
   const [selectedSiteId, setSelectedSiteId] = useState("new");
   const [operatorManuallySet, setOperatorManuallySet] = useState(false);
+  const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
   const inputs = useRef({});
 
   useEffect(() => { if (autoOpen) setOpen(true); }, [autoOpen]);
@@ -229,6 +230,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     }
     setFiles((prev) => ({ ...prev, [kind]: mergedFiles }));
     setValues(mergedValues);
+    if (kind === "ci" || kind === "cf") setClientDetailsOpen(true);
     if (summaries.length) setNotes((prev) => ({ ...prev, altele: [...(prev.altele || []), ...summaries] }));
     if (extractionWarnings.length) setNotes((prev) => ({ ...prev, [kind]: [...(prev[kind] || []), ...extractionWarnings] }));
     const imported = mergedFiles.length - initialCount;
@@ -323,7 +325,9 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             {notes[kind]?.length > 0 && <ul className="mt-2 list-disc pl-4 text-[11px] text-amber-700">{notes[kind].map((note, i) => <li key={i}>{note}</li>)}</ul>}
           </div>)}
         </div>
-        <div className="space-y-3 pt-2">
+        <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} open={clientDetailsOpen} onToggle={(event) => setClientDetailsOpen(event.currentTarget.open)}>
+          <summary className="cursor-pointer text-xs font-semibold">Verifică datele clientului{values.client_name ? ` · ${values.client_name}` : ""}{values.cnp ? ` · ${values.cnp}` : ""}</summary>
+          <div className="space-y-3 pt-3">
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Date client din acte</div>
             <div className="grid sm:grid-cols-2 gap-3">
@@ -349,7 +353,8 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
               {field("bank", "Bancă")}{field("iban", "IBAN")}
             </div>
           </details>
-        </div>
+          </div>
+        </details>
         </>}
         {step === 1 && <div className="space-y-3 pt-2">
           {selectedClient && <label className="den-field">
@@ -414,5 +419,6 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     </Dialog>
   </>;
 }
+
 
 
