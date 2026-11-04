@@ -130,4 +130,29 @@ SEED = [
        "notes": "Date tehnice din fișa oficială Huawei MB0 v02-202403. Declarația UE de conformitate exactă nu este atașată în catalog; adăugați documentul potrivit SKU-ului și cerinței OD."}
       for kw, pmax in [(12, 13.2), (15, 16.5), (17, 18.7), (20, 22), (25, 27.5)]),
 
+    # Huawei SUN2000 L1 exact single-phase SKUs from the official family datasheet and EU declaration.
+    *({"category": "Invertor", "brand_model": f"Huawei SUN2000-{kw}KTL-L1", "type": "Hibrid", "phases": "Monofazat",
+       "p_nom_kw": kw, "vdc_max": 600, "mppt_min": 90, "mppt_max": 560,
+       "mppt_count": 2, "imax_mppt": 12.5, "battery_voltage": "HV 350–560 Vdc (LUNA2000)",
+       "datasheet_url": "https://solar.huawei.com/download?p=%2F-%2Fmedia%2FSolar%2Fattachment%2Fpdf%2Feu%2Fdatasheet%2FSUN2000-2_3_3_68_4_4_6_5_6KTL-L1.pdf",
+       "conformity_url": "https://solar.huawei.com/-/media/Solar/attachment/pdf/eu/certificate/residential/SUN2000-2-6-L1_Declaration_of_Conformity.pdf",
+       "notes": "Fișă și declarație UE Huawei pentru familia L1. Verificați separat certificatele de racordare cerute de operatorul local."}
+      for kw in [2, 3, 3.68, 4, 4.6, 5, 6]),
+    # GoodWe ET PLUS+ models from the official 5–10 kW datasheet and family EU DoC.
+    *({"category": "Invertor", "brand_model": f"GoodWe GW{model}-ET", "type": "Hibrid", "phases": "Trifazat",
+       "p_nom_kw": kw, "p_max_kw": kw, "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850,
+       "mppt_count": 2, "imax_mppt": 12.5, "battery_voltage": "HV 180–600 V",
+       "datasheet_url": "https://en.goodwe.com/Ftp/EN/Downloads/Datasheet/GW_ET%20PLUS%2B_Datasheet-EN.pdf",
+       "conformity_url": "https://en.goodwe.com/Ftp/EN/Downloads/Certificate/GW_ET%2CET%20PLUS%2B_EU%20Declaration%20of%20Conformity_MULTI.pdf",
+       "notes": "Datele sunt din fișa oficială ET PLUS+; Pmax este păstrată la puterea activă nominală. Verificați separat certificatele de racordare cerute de operatorul local."}
+      for model, kw in [("5K", 5), ("6.5K", 6.5), ("8K", 8), ("10K", 10)]),
+    # Deye SG04LP3 exact variants; shared EU datasheet and EU Declaration embedded in official manual.
+    *({"category": "Invertor", "brand_model": f"Deye SUN-{kw}K-SG04LP3-EU", "type": "Hibrid", "phases": "Trifazat",
+       "p_nom_kw": kw, "p_max_kw": pmax, "vdc_max": 800, "mppt_min": 200, "mppt_max": 650,
+       "mppt_count": 2, "battery_voltage": "LV 40–60 V",
+       "datasheet_url": "https://www.deyeinverter.com/deyeinverter/2023/10/20/datasheet_sun-5-12k-sg04lp3_231020_en.pdf",
+       "conformity_url": "https://www.deyeinverter.com/deyeinverter/2024/08/13/instructions_sun-5-12k-sg04lp3-eu_240813_en.pdf",
+       "notes": "Fișă de familie Deye SUN-5–12K-SG04LP3-EU; manualul oficial include declarația UE. Valorile curentului PV se extrag din fișă, nu sunt estimate aici."}
+      for kw, pmax in [(5, 5.5), (6, 6.6), (8, 8.8), (12, 13.2)]),
+
 ]
