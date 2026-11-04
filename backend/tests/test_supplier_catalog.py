@@ -197,6 +197,80 @@ def test_legacy_catalog_document_can_be_resolved_from_its_product_page(monkeypat
     assert result == document_url
 
 
+def test_public_pdf_download_follows_only_bounded_trusted_redirects(monkeypatch):
+    start = "https://depozitsolar.ro/files/model.pdf"
+    final = "https://files.deyeinverter.com/docs/model.pdf"
+    requested = []
+
+    class FakeResponse:
+        def __init__(self, url, status, headers, content=b""):
+            self.url = url
+            self.status_code = status
+            self.headers = headers
+            self.content = content
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def aiter_bytes(self, _size):
+            yield self.content
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def stream(self, _method, url, **_kwargs):
+            requested.append(url)
+            if url == start:
+                return FakeResponse(url, 302, {"location": final})
+            return FakeResponse(url, 200, {"content-length": "8"}, b"%PDF-1.7")
+
+    monkeypatch.setattr(supplier_catalog.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    result = asyncio.run(supplier_catalog.fetch_public_pdf(start, "depozitsolar.ro", 64))
+
+    assert result == (b"%PDF-1.7", final)
+    assert requested == [start, final]
+
+
+def test_public_pdf_download_rejects_oversized_documents(monkeypatch):
+    url = "https://depozitsolar.ro/files/model.pdf"
+
+    class FakeResponse:
+        def __init__(self):
+            self.status_code = 200
+            self.headers = {"content-length": "9"}
+            self.url = url
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def aiter_bytes(self, _size):
+            yield b"%PDF-1.7"
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def stream(self, _method, _url, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(supplier_catalog.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+
+    assert asyncio.run(supplier_catalog.fetch_public_pdf(url, "depozitsolar.ro", 8)) is None
+
+
 def test_supplier_search_returns_all_discovered_matches_in_pages(monkeypatch):
     category_url = "https://depozitsolar.ro/invertoare"
     product_urls = [f"https://depozitsolar.ro/invertor-deye-model-{i}" for i in range(9)]
