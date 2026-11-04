@@ -335,20 +335,27 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.battery(cx, cy - 26)
             device_code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
             rating = gv(protection.get("rating"), " A")
+            switch_voltage = n(bt.get("breaker_voltage_dc") or bt.get("dc_switch_voltage_v"))
             if protection["kind"] == "breaker":
-                switch_voltage = n(bt.get("breaker_voltage_dc") or bt.get("dc_switch_voltage_v"))
-                details = f"{device_code}{i + 1}.B {rating or '[lipsă]'} DC · UdcQ {gv(switch_voltage, 'V') or '[lipsă]'}"
+                details = f"{device_code}{i + 1}.B {rating or '[lipsă]'} DC"
             else:
                 details = f"{device_code}{i + 1}.B {rating + ' · ' if rating else ''}{protection['source']}"
             color = RED if protection["kind"] == "missing" else (PV_ORANGE if protection["kind"] == "proposal" else INK)
             S.text(cx + 6, cy - 17.2, details, 4.15, True, color, w=29)
-            S.text(cx + 6, cy - 22.4, f"-G{i + 1} {bt.get('model') or '[model baterie lipsă]'}", 4.4, True, w=29)
+            detail_y = cy - 22.4
+            if protection["kind"] == "breaker":
+                voltage_color = RED if not switch_voltage else INK
+                S.text(cx + 6, detail_y, f"UdcQ {gv(switch_voltage, 'V') or '[lipsă]'}", 4.15, True, voltage_color, w=29)
+                detail_y -= 4.4
+            S.text(cx + 6, detail_y, f"-G{i + 1} {bt.get('model') or '[model baterie lipsă]'}", 4.4, True, w=29)
+            detail_y -= 4.4
             cable_unit = " mm² DC"
             if n(bt.get("breaker_icu_ka")):
                 cable_unit += f" · Icu {gv(n(bt.get('breaker_icu_ka')), 'kA')}"
-            S.val(cx + 6, cy - 26.8, "Cablu ", bt.get("cable_section") or bt.get("section") or r["proposals"]["battery"].get("section"), cable_unit, size=4.4, w=29)
+            S.val(cx + 6, detail_y, "Cablu ", bt.get("cable_section") or bt.get("section") or r["proposals"]["battery"].get("section"), cable_unit, size=4.4, w=29)
+            detail_y -= 4.4
             battery_unit = f" A · Ubat {gv(n(bt.get('voltage')), 'V') or '[lipsă]'}"
-            S.val(cx + 6, cy - 31.2, "I max ", bt.get("i_max"), battery_unit, size=4.4, w=29)
+            S.val(cx + 6, detail_y, "I max ", bt.get("i_max"), battery_unit, size=4.4, w=29)
         if (inv.get("backup") or {}).get("enabled"):
             b = inv["backup"]
             S.wire(cx + hh, cy - 10, 152, cy - 10); S.wire(152, cy - 10, 152, cy - 16); S.wire(152, cy - 16, 182, cy - 16)
