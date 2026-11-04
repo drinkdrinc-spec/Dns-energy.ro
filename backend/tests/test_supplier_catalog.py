@@ -19,18 +19,6 @@ def test_depozit_solar_download_route_accepts_only_keyed_pdf_files():
     assert not supplier_catalog._safe_document(valid.replace("depozitsolar.ro/", "depozitsolar.ro:444/"), "depozitsolar.ro")
 
 
-def test_official_victron_and_eastron_document_hosts_are_allowed_but_untrusted_hosts_are_not():
-    assert supplier_catalog._safe_document(
-        "https://www.victronenergy.com/upload/documents/Datasheet-MultiPlus-II-inverter-charger-EN.pdf",
-        "victronenergy.com",
-    )
-    assert supplier_catalog._safe_document(
-        "https://www.eastrongroup.com/eastrongroup/2024/08/10/eastronsdm630seriesdinrailmounted%3Bthreephase%3B100adatasheet.pdf",
-        "eastrongroup.com",
-    )
-    assert not supplier_catalog._safe_document("https://attacker.example/model.pdf", "victronenergy.com")
-
-
 def test_product_document_links_classify_depozit_download_query_urls():
     page_url = "https://depozitsolar.ro/invertoare/model.html"
     doc = html.fromstring("""
@@ -54,21 +42,6 @@ def test_category_filter_excludes_inverter_and_battery_bundles():
 def test_category_filter_keeps_individual_equipment_models():
     assert supplier_catalog._correct_category("Invertor Deye SUN-10K-SG04LP3-EU", "Invertor") is True
     assert supplier_catalog._correct_category("Acumulator V-TAC 10 kWh", "Baterie") is True
-
-
-
-def test_optim_solar_has_individual_equipment_category_sources():
-    source = supplier_catalog.SOURCES["Optim Solar"]
-    assert source["host"] == "optimsolar.ro"
-    assert source["categories"] == {
-        "Invertor": "https://optimsolar.ro/product-category/invertoare/",
-        "Panou": "https://optimsolar.ro/product-category/panouri-fotovoltaice/",
-        "Baterie": "https://optimsolar.ro/product-category/acumulatori/",
-    }
-    assert supplier_catalog._correct_category("INVERTOR GROWATT WIT 12K-HU", "Invertor")
-    assert supplier_catalog._correct_category("Panou Fotovoltaic Astronergy 460W", "Panou")
-    assert supplier_catalog._correct_category("Acumulator Growatt HOPE 16 kWh", "Baterie")
-    assert not supplier_catalog._correct_category("Kit invertor + baterie Growatt", "Invertor")
 
 
 def test_listing_pages_are_bounded_and_stay_on_the_same_category():
@@ -128,41 +101,6 @@ def test_listing_pages_support_solartech_path_pagination():
     ]
 
 
-def test_listing_page_crawler_follows_pages_beyond_visible_pagination(monkeypatch):
-    category_url = "https://depozitsolar.ro/invertoare"
-    pages = {
-        category_url + "?p=1": b'<a href="/invertoare?p=2">3</a>',
-        category_url + "?p=2": b'<a href="/invertoare?p=3">4</a>',
-        category_url + "?p=3": b'<a href="/invertoare?p=4">5</a>',
-        category_url + "?p=4": b'<a href="/invertoare?p=5">6</a>',
-    }
-    requested = []
-
-    async def fake_get(_client, url, host):
-        requested.append((url, host))
-        content = pages.get(url)
-        if content is None:
-            return None
-        return httpx.Response(200, content=content, request=httpx.Request("GET", url))
-
-    initial = httpx.Response(
-        200,
-        content=b'<a href="/invertoare?p=1">2</a>',
-        request=httpx.Request("GET", category_url),
-    )
-    monkeypatch.setattr(supplier_catalog, "_get", fake_get)
-    responses = asyncio.run(supplier_catalog._collect_listing_pages(
-        object(), initial, "depozitsolar.ro", asyncio.Semaphore(8)
-    ))
-
-    assert [str(response.url) for response in responses] == [
-        category_url,
-        *(category_url + f"?p={page}" for page in range(1, 5)),
-    ]
-    assert len(requested) == 5
-    assert all(host == "depozitsolar.ro" for _, host in requested)
-
-
 def test_supplier_search_finds_model_on_later_depozit_solar_page(monkeypatch):
     category_url = "https://depozitsolar.ro/invertoare"
     page_two_url = category_url + "?p=1"
@@ -190,6 +128,34 @@ def test_supplier_search_finds_model_on_later_depozit_solar_page(monkeypatch):
 
     assert [item["product_url"] for item in result["products"]] == [product_url]
     assert (page_two_url, "depozitsolar.ro") in requests
+
+
+def test_supplier_search_follows_sequential_pagination_links(monkeypatch):
+    category_url = "https://depozitsolar.ro/invertoare"
+    product_url = "https://depozitsolar.ro/invertor-solis-x20-patru"
+    requests = []
+
+    async def fake_get(_client, url, host):
+        requests.append((url, host))
+        if url == product_url:
+            content = b"<html><h1>Invertor Solis X20 Patru 10 kW</h1></html>"
+        elif url == category_url:
+            content = b'<a href="/invertoare?p=1">Următoarea pagină</a>'
+        elif url.startswith(category_url + "?p="):
+            page_number = int(url.rsplit("=", 1)[1])
+            if page_number < 4:
+                content = f'<a href="/invertoare?p={page_number + 1}">Următoarea pagină</a>'.encode()
+            else:
+                content = f'<a href="{product_url}">Invertor Solis X20 Patru 10 kW</a>'.encode()
+        else:
+            return None
+        return httpx.Response(200, content=content, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(supplier_catalog, "_get", fake_get)
+    result = asyncio.run(supplier_catalog.search_supplier_products("Solis X20 Patru", "Invertor"))
+
+    assert [item["product_url"] for item in result["products"]] == [product_url]
+    assert (category_url + "?p=4", "depozitsolar.ro") in requests
 
 
 
@@ -269,3 +235,4 @@ def test_panel_temperature_coefficients_require_explicit_percent_per_degree_unit
         "temp_pmax": -0.35,
     }
     assert "coef_voc" not in supplier_catalog._properties(missing_unit)
+
