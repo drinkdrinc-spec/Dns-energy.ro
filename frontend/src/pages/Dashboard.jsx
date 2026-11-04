@@ -76,6 +76,8 @@ export default function Dashboard() {
   const [searchingClients, setSearchingClients] = useState(false);
   const [clientSearchFailed, setClientSearchFailed] = useState(false);
   const [inboxView, setInboxView] = useState("list");
+  const [draggedInboxItem, setDraggedInboxItem] = useState("");
+  const [dropTargetStatus, setDropTargetStatus] = useState("");
   const [inboxCollapsed, setInboxCollapsed] = useState(false);
   const [inboxQuery, setInboxQuery] = useState("");
   const [inboxModule, setInboxModule] = useState("all");
@@ -151,6 +153,24 @@ export default function Dashboard() {
     if (/(pregăt|pregat|în lucru|in lucru|ciornă|ciorna|draft)/.test(stage)) return "Continuă completarea și verificarea dosarului";
     return "";
   };
+  const saveInboxStatus = async (item, nextStatus) => {
+    const itemKey = item.module + "-" + item.id;
+    const currentStatus = item.workflow_status || item.status || "În lucru";
+    if (!nextStatus || nextStatus === currentStatus || workflowStatusBusy) return;
+    setWorkflowStatusBusy(itemKey);
+    setWorkflowStatusError("");
+    try {
+      await api.patch(`/data/${encodeURIComponent(item.module)}/${encodeURIComponent(item.id)}/status`, { status: nextStatus });
+      const refreshed = await api.get("/stats/dashboard");
+      setS(refreshed.data);
+    } catch (error) {
+      setWorkflowStatusError(error.response?.data?.detail || "Nu am putut salva stadiul dosarului.");
+    } finally {
+      setWorkflowStatusBusy("");
+      setDraggedInboxItem("");
+      setDropTargetStatus("");
+    }
+  };
   const renderInboxItem = (item) => {
     const paths = { prosumator: "/prosumator", atr: "/cerere-atr", power: "/spor-putere", diu: "/diu", mono: "/mono", anre_dossiers: "/dosare-anre" };
     const path = paths[item.module] || "/prosumator";
@@ -167,8 +187,16 @@ export default function Dashboard() {
     const stages = ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru depunere", "Depus la operator", "În așteptare la operator", "Avizat", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Prosumator activ", "Respins", "Finalizat"];
     return (
       <article key={itemKey}
+        draggable={inboxView === "kanban" && item.module !== "anre_dossiers" && workflowStatusBusy !== itemKey}
+        onDragStart={(event) => {
+          if (inboxView !== "kanban" || item.module === "anre_dossiers") { event.preventDefault(); return; }
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", itemKey);
+          setDraggedInboxItem(itemKey);
+        }}
+        onDragEnd={() => { setDraggedInboxItem(""); setDropTargetStatus(""); }}
         data-testid={"inbox-item-" + item.module + "-" + item.id}
-        className={`flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:shadow-sm ${inboxView === "kanban" ? "mb-2" : ""}`}
+        className={`flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:shadow-sm ${inboxView === "kanban" ? "mb-2 cursor-grab active:cursor-grabbing" : ""} ${draggedInboxItem === itemKey ? "opacity-50" : ""}`}
         style={{ borderColor: "var(--line)", background: "var(--surface, white)" }}>
         <Link to={path + "?" + openParam + "=" + encodeURIComponent(item.id)} className="min-w-0 flex-1">
           <b className="block text-sm truncate">{item.client_name || item.number || item.label}</b>
@@ -193,20 +221,7 @@ export default function Dashboard() {
           data-testid={"inbox-status-" + itemKey}
           value={currentStatus}
           disabled={workflowStatusBusy === itemKey}
-          onChange={async (event) => {
-            const nextStatus = event.target.value;
-            setWorkflowStatusBusy(itemKey);
-            setWorkflowStatusError("");
-            try {
-              await api.patch(`/data/${encodeURIComponent(item.module)}/${encodeURIComponent(item.id)}/status`, { status: nextStatus });
-              const refreshed = await api.get("/stats/dashboard");
-              setS(refreshed.data);
-            } catch (error) {
-              setWorkflowStatusError(error.response?.data?.detail || "Nu am putut salva stadiul dosarului.");
-            } finally {
-              setWorkflowStatusBusy("");
-            }
-          }}>
+          onChange={(event) => { void saveInboxStatus(item, event.target.value); }}>
           {!stages.includes(currentStatus) && <option value={currentStatus}>{currentStatus}</option>}
           {stages.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>}
@@ -354,14 +369,31 @@ export default function Dashboard() {
           inboxView === "list" ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">{visibleInboxItems.map(renderInboxItem)}</div>
           ) : (
+            <>
+            <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Trage dosarul într-o coloană pentru a-i corecta stadiul. Schimbarea este înregistrată în istoricul dosarului.</p>
             <div className="flex gap-3 overflow-x-auto pb-2" data-testid="dashboard-inbox-kanban">
               {inboxStatuses.filter((status) => inboxStatus === "all" || status === inboxStatus).map((status) => (
-                <div key={status} className="min-w-[260px] flex-1 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }}>
+                <div key={status} onDragOver={(event) => {
+                  if (!event.dataTransfer.types.includes("text/plain")) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setDropTargetStatus((current) => current === status ? current : status);
+                }} onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setDropTargetStatus((current) => current === status ? "" : current);
+                }} onDrop={(event) => {
+                  event.preventDefault();
+                  const key = event.dataTransfer.getData("text/plain") || draggedInboxItem;
+                  const moved = inboxItems.find((entry) => entry.module + "-" + entry.id === key);
+                  setDraggedInboxItem("");
+                  setDropTargetStatus("");
+                  if (moved && moved.module !== "anre_dossiers") void saveInboxStatus(moved, status);
+                }} className="min-w-[260px] flex-1 rounded-xl border p-3 transition-colors" style={{ borderColor: dropTargetStatus === status ? "var(--blue)" : "var(--line)", background: dropTargetStatus === status ? "#edf4ff" : "var(--bg)" }} data-testid={`dashboard-kanban-column-${status}`}>
                   <h3 className="text-xs font-extrabold uppercase tracking-wide mb-3">{status}<span className="ml-2 font-normal" style={{ color: "var(--muted)" }}>{visibleInboxItems.filter((item) => (item.workflow_status || item.status || "În lucru") === status).length}</span></h3>
                   {visibleInboxItems.filter((item) => (item.workflow_status || item.status || "În lucru") === status).map(renderInboxItem)}
                 </div>
               ))}
             </div>
+            </>
           )
         )}
         </div>}
