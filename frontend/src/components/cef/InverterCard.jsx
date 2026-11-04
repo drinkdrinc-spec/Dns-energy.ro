@@ -157,6 +157,8 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
             <F label="Curent max descărcare (A)" type="number" value={inv.battery?.i_max} onChange={sub("battery", "i_max")} testid={`${t}-bat-imax`} />
             <F label="Siguranță DC baterie (A)" type="number" value={inv.battery?.fuse_a} onChange={sub("battery", "fuse_a")} testid={`${t}-bat-fuse`} />
             <F label="Siguranță maximă admisă (A), din fișă" type="number" value={inv.battery?.max_fuse_a} onChange={sub("battery", "max_fuse_a")} testid={`${t}-bat-max-fuse`} />
+            <F label="Separator DC: tensiune nominală (V)" type="number" value={inv.battery?.dc_switch_voltage_v ?? inv.battery?.breaker_voltage_dc} onChange={sub("battery", "dc_switch_voltage_v")} testid={`${t}-bat-dc-switch-voltage`} />
+            <F label="Separator DC: curent nominal (A)" type="number" value={inv.battery?.dc_switch_current_a ?? inv.battery?.breaker_a} onChange={sub("battery", "dc_switch_current_a")} testid={`${t}-bat-dc-switch-current`} />
             <F label="Cablu baterie: secțiune (mm²)" type="number" value={inv.battery?.cable_section} onChange={sub("battery", "cable_section")} testid={`${t}-bat-cable`} />
             <F label="Cablu baterie: lungime (m)" type="number" value={inv.battery?.cable_length} onChange={sub("battery", "cable_length")} testid={`${t}-bat-cable-len`} />
             </div></details>
