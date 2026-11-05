@@ -63,7 +63,7 @@ BROWSE_SEARCH_TERMS = {
 }
 # Public supplier pages are crawled only within their own category/search URL,
 # with separate bounds for a quick model search and a full category browse.
-FAST_SEARCH_LISTING_PAGES = 4
+FAST_SEARCH_LISTING_PAGES = 5
 MAX_LISTING_PAGES = 24
 SEARCH_CACHE_TTL_SECONDS = 300
 SEARCH_CACHE_MAX_ENTRIES = 64
