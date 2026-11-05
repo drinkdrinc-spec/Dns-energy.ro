@@ -349,7 +349,9 @@ async def power_ensure_diu(item_id: str, user: dict = Depends(get_current_user))
             "is_test": bool(power.get("is_test")),
         }
         if not pros_id:
-            rec.update(power_cef_diu_fields(power))
+            mapped = power_cef_diu_fields(power)
+            rec.update(mapped)
+            rec["power_cef_snapshot"] = mapped
         await db.diu.insert_one(dict(rec))
     else:
         # Existing user-entered DI-U values remain authoritative. Power-request
