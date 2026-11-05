@@ -14,6 +14,14 @@ def missing_seed_values(existing: dict, seed: dict) -> dict:
     return updates
 
 SEED = [
+    {"category": "RSD", "brand_model": "PROJOY PEFS-EL40H-4(P2) 2-STRING", "manufacturer": "PROJOY", "string_count": 2, "poles": 4,
+     "voltage_min_v": 300, "voltage_max_v": 1500, "current_300v_a": 40, "current_600v_a": 40, "current_800v_a": 40,
+     "current_1000v_a": 40, "current_1200v_a": 30, "current_1500v_a": 20,
+     "ac_voltage_min_v": 100, "ac_voltage_max_v": 270, "ip_rating": "66", "protection_class": "II",
+     "datasheet_url": "https://www.projoy-electric.com/File/2022-11-23-111202-_H2Cdp0U",
+     "conformity_url": "https://omo-oss-file110.thefastfile.com/portal-saas/pg2024092314533024417/cms/file/1-2%20ce-lvd.pdf",
+     "source_url": "https://www.projoy-electric.com/products_detail/7.html",
+     "notes": "Tabelul oficial PEFS-EL40H-Y-P2 indică, pentru varianta cu 4 poli/2 stringuri: 40 A la 300/600/800/1.000 V, 30 A la 1.200 V și 20 A la 1.500 V. Selectarea se validează față de Voc × 1,15 și Isc × 1,25; nu este o aprobare automată a configurației."},
     {"category": "Invertor", "brand_model": "Solis S6-EH3P12K02-NV-YD-L", "type": "Hibrid", "phases": "Trifazat", "p_nom_kw": 12, "p_max_kw": 13.2,
      "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850, "mppt_count": 2, "imax_mppt": 20, "battery_voltage": "LV 48 V",
      "datasheet_url": "https://www.solisinverters.com/uploads/file/S6-EH3P(8-15)K-IT-Flyer-V2,0.pdf"},

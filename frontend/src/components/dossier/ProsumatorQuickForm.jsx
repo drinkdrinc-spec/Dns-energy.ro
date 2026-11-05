@@ -110,6 +110,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
   const selected = form.catalog_selection || {};
   useEffect(() => {
     const inferred = { ...selected };
+    const existingRsd = form.cef?.inverters?.[0]?.rsd?.catalog_id;
+    if (!inferred.rsd && existingRsd) inferred.rsd = existingRsd;
     for (const [kind, value] of [["inverter", form.inverter], ["panel", form.panels], ["battery", form.battery], ["meter", form.smart_meter_type]]) {
       if (inferred[kind] || !value) continue;
       const hit = options[kind].find((x) => x.brand_model === value);
@@ -139,6 +141,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       panel: unique("Panou"),
       battery: unique("Baterie"),
       meter: unique("Smart meter"),
+      rsd: unique("RSD"),
     };
   }, [catalog]);
   const blockedSupplierModels = useMemo(() => catalog
@@ -168,6 +171,14 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     if (kind === "battery") Object.assign(inv, item ? {
       battery_mode: "own", battery: { ...(inv.battery || {}), ...batteryCatalogData(item, inv.phases), modules: Number(currentForm.battery_count || 1) },
     } : { battery_mode: "none", battery: {} });
+    if (kind === "rsd") inv.rsd = item ? {
+      enabled: true, catalog_id: item.id, brand_model: item.brand_model, string_count: item.string_count, poles: item.poles,
+      voltage_min_v: item.voltage_min_v, voltage_max_v: item.voltage_max_v,
+      current_300v_a: item.current_300v_a, current_600v_a: item.current_600v_a, current_800v_a: item.current_800v_a,
+      current_1000v_a: item.current_1000v_a, current_1200v_a: item.current_1200v_a, current_1500v_a: item.current_1500v_a,
+      ac_voltage_min_v: item.ac_voltage_min_v, ac_voltage_max_v: item.ac_voltage_max_v, ip_rating: item.ip_rating,
+      protection_class: item.protection_class, datasheet_url: item.datasheet_url, conformity_url: item.conformity_url,
+    } : { enabled: false };
     if (kind === "meter") setVal("cef", { ...cef, grid: { ...(cef.grid || {}), meter: item?.brand_model || "", meter_catalog_id: item?.id || "" } });
     else {
       if (canReplaceStrings) {
@@ -219,7 +230,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       setVal("battery_v", batteryData.voltage || ""); setVal("battery_ah", batteryData.ah || "");
       setVal("battery_coupling", batteryData.coupling || ""); setVal("battery_count", item ? (currentForm.battery_count || 1) : "");
 
-    } else setVal("smart_meter_type", item?.brand_model || "");
+    } else if (kind === "meter") setVal("smart_meter_type", item?.brand_model || "");
     cefUpdate(kind, item, id, panelCountOverride);
     if (item && kind !== "meter") {
       const documents = ["datasheet", "conformity"].filter((documentKind) =>
@@ -499,6 +510,13 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         {form.panel_count_auto === true && <p className="sm:col-span-2 -mt-2 text-xs text-blue-800">Propunere: puterea solicitată ÷ puterea din fișa panoului, rotunjită în sus. Poți modifica numărul; verifică apoi stringurile și limitele invertorului.</p>}
         {catalogSelect("battery", "Baterie (opțional)")}
         {input("battery_count", "Număr baterii", "number")}
+        <label className="den-field"><span>Deconectare rapidă DC (opțional)</span>
+          <select className="den-input" style={selectStyle} value={selected.rsd || ""} onChange={(e) => choose("rsd", e.target.value)} data-testid="catalog-select-rsd">
+            <option value="">Fără RSD selectat</option>
+            {(options.rsd || []).map((item) => <option key={item.id} value={item.id}>{item.brand_model} · {item.string_count || "?"} stringuri / {item.poles || "?"} poli</option>)}
+          </select>
+          {selected.rsd && (() => { const item = options.rsd.find((row) => row.id === selected.rsd); return item ? <small className="mt-1 block" style={{ color: "var(--muted)" }}>Verifică modelul față de Voc string × 1,15 și Isc × 1,25. Curentul admis diferă în funcție de tensiunea DC.</small> : null; })()}
+        </label>
         <label className="den-field"><span>Smart meter</span><span className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={form.smart_meter_present === true} onChange={(e) => {
           const present = e.target.checked;
           setVal("smart_meter_present", present);

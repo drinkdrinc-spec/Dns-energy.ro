@@ -6,7 +6,7 @@ import { F, Check } from "@/components/cef/F";
 import { Plus, Pencil, Trash2, Upload, FileText, X, Sparkles, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-const CATS = ["Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"];
+const CATS = ["Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator", "RSD"];
 const hasStoredDocument = (item, kind) => Boolean(item?.[kind]?.storage_path) && item?.[kind]?.available !== false;
 const isCompositeEquipmentName = (name) => /\b(?:kit|bundle|pachet)\b/i.test(String(name || "")) || (/(?:invertor|inverter)/i.test(String(name || "")) && /(?:baterie|battery|\b\d+(?:[.,]\d+)?\s*kwh\b)/i.test(String(name || "")));
 const FIELDS = {
@@ -17,8 +17,9 @@ const FIELDS = {
   "Smart meter": [["phases", "Faze", ["Trifazat", "Monofazat"]], ["current_max_a", "Curent nominal/max (A)"], ["voltage_nominal_v", "Tensiune nominală", null, "text"], ["frequency_hz", "Frecvență", null, "text"], ["protocol", "Protocol comunicație", null, "text"], ["wiring", "Configurație rețea", null, "text"], ["accuracy_class", "Clasă precizie", null, "text"]],
   Gateway: [["phases", "Faze", ["Monofazat", "Trifazat"]], ["p_nom_kw", "Putere nominală AC (kW)"], ["current_max_a", "Curent nominal (A)"], ["voltage_nominal_v", "Tensiune nominală", null, "text"], ["frequency_hz", "Frecvență", null, "text"], ["compatible_inverters", "Invertoare compatibile", null, "text"], ["protocol", "Protocol comunicație", null, "text"], ["interfaces", "Interfețe (Wi-Fi/Ethernet/RS485)", null, "text"], ["max_devices", "Număr maxim de dispozitive"], ["monitoring_platform", "Platformă de monitorizare", null, "text"]],
   Optimizator: [["compatible_inverters", "Invertoare compatibile", null, "text"], ["p_max_w", "Putere nominală de intrare (W)"], ["vdc_max", "Tensiune maximă intrare (V)"], ["isc_max_a", "Curent maxim de scurtcircuit (A)"], ["imax_output_a", "Curent maxim ieșire (A)"], ["vdc_output_max", "Tensiune maximă ieșire (V)"], ["model_scope", "Domeniu de utilizare (modul/string)", null, "text"]],
+  RSD: [["string_count", "Număr stringuri"], ["poles", "Număr poli"], ["voltage_min_v", "Tensiune minimă (Vdc)"], ["voltage_max_v", "Tensiune maximă (Vdc)"], ["current_300v_a", "Curent admis la 300 V (A)"], ["current_600v_a", "Curent admis la 600 V (A)"], ["current_800v_a", "Curent admis la 800 V (A)"], ["current_1000v_a", "Curent admis la 1.000 V (A)"], ["current_1200v_a", "Curent admis la 1.200 V (A)"], ["current_1500v_a", "Curent admis la 1.500 V (A)"], ["ac_voltage_min_v", "Alimentare AC min. (V)"], ["ac_voltage_max_v", "Alimentare AC max. (V)"], ["ip_rating", "Grad IP", null, "text"], ["protection_class", "Clasă protecție", null, "text"]],
 };
-const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || ""} · ${i.type || ""}` : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V` : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.voltage ?? "—"} V · protecție DC ${i.breaker_a ?? "—"} A / ${i.breaker_voltage_dc ?? "—"} V` : i.category === "Smart meter" ? [i.phases, i.current_max_a ? i.current_max_a + " A max" : null, i.voltage_nominal_v, i.frequency_hz, i.protocol, i.wiring, i.accuracy_class].filter(Boolean).join(" · ") : i.category === "Gateway" ? [i.phases, i.p_nom_kw ? `${i.p_nom_kw} kW` : null, i.current_max_a ? `${i.current_max_a} A` : null, i.voltage_nominal_v, i.protocol, i.max_devices ? `${i.max_devices} dispozitive` : null, i.monitoring_platform].filter(Boolean).join(" · ") : [i.compatible_inverters, i.p_max_w ? `${i.p_max_w} W intrare` : null, i.vdc_max ? `${i.vdc_max} V max` : null, i.isc_max_a ? `${i.isc_max_a} A Isc` : null, i.imax_output_a ? `${i.imax_output_a} A ieșire` : null, i.vdc_output_max ? `${i.vdc_output_max} V ieșire` : null, i.model_scope].filter(Boolean).join(" · ");
+const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || ""} · ${i.type || ""}` : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V` : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.voltage ?? "—"} V · protecție DC ${i.breaker_a ?? "—"} A / ${i.breaker_voltage_dc ?? "—"} V` : i.category === "Smart meter" ? [i.phases, i.current_max_a ? i.current_max_a + " A max" : null, i.voltage_nominal_v, i.frequency_hz, i.protocol, i.wiring, i.accuracy_class].filter(Boolean).join(" · ") : i.category === "Gateway" ? [i.phases, i.p_nom_kw ? `${i.p_nom_kw} kW` : null, i.current_max_a ? `${i.current_max_a} A` : null, i.voltage_nominal_v, i.protocol, i.max_devices ? `${i.max_devices} dispozitive` : null, i.monitoring_platform].filter(Boolean).join(" · ") : i.category === "RSD" ? `${i.string_count ?? "—"} stringuri · ${i.poles ?? "—"} poli · ${i.voltage_min_v ?? "—"}–${i.voltage_max_v ?? "—"} Vdc · IP${i.ip_rating || "—"}` : [i.compatible_inverters, i.p_max_w ? `${i.p_max_w} W intrare` : null, i.vdc_max ? `${i.vdc_max} V max` : null, i.isc_max_a ? `${i.isc_max_a} A Isc` : null, i.imax_output_a ? `${i.imax_output_a} A ieșire` : null, i.vdc_output_max ? `${i.vdc_output_max} V ieșire` : null, i.model_scope].filter(Boolean).join(" · ");
 
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
@@ -207,7 +208,7 @@ export default function EquipmentCatalog() {
     if (q && !String(i.brand_model || "").toLocaleLowerCase("ro-RO").includes(q.toLocaleLowerCase("ro-RO"))) return false;
     if (phaseFilter && String(i.phases || "").toLocaleLowerCase("ro-RO") !== phaseFilter.toLocaleLowerCase("ro-RO")) return false;
     if (typeFilter && String(i.type || "").toLocaleLowerCase("ro-RO") !== typeFilter.toLocaleLowerCase("ro-RO")) return false;
-    const measure = Number(cat === "Invertor" ? i.p_nom_kw : cat === "Panou" ? i.w : cat === "Baterie" ? i.kwh : cat === "Smart meter" || cat === "Gateway" ? i.current_max_a : i.p_max_w);
+    const measure = Number(cat === "Invertor" ? i.p_nom_kw : cat === "Panou" ? i.w : cat === "Baterie" ? i.kwh : cat === "Smart meter" || cat === "Gateway" ? i.current_max_a : cat === "RSD" ? i.string_count : i.p_max_w);
     if (minValue !== "" && (!Number.isFinite(measure) || measure < Number(minValue))) return false;
     if (maxValue !== "" && (!Number.isFinite(measure) || measure > Number(maxValue))) return false;
     const hasDatasheet = hasStoredDocument(i, "datasheet");
@@ -224,7 +225,7 @@ export default function EquipmentCatalog() {
     const models = items.filter((item) => item.category === category && !/\bTEST\b/i.test(String(item.brand_model || "")));
     return [category, { total: models.length, complete: models.filter((item) => hasStoredDocument(item, "datasheet") && hasStoredDocument(item, "conformity")).length }];
   })), [items]);
-  const measureLabel = cat === "Invertor" ? "putere nominală (kW)" : cat === "Panou" ? "putere panou (W)" : cat === "Baterie" ? "capacitate (kWh)" : cat === "Smart meter" || cat === "Gateway" ? "curent nominal/maxim (A)" : "putere intrare (W)";
+  const measureLabel = cat === "Invertor" ? "putere nominală (kW)" : cat === "Panou" ? "putere panou (W)" : cat === "Baterie" ? "capacitate (kWh)" : cat === "Smart meter" || cat === "Gateway" ? "curent nominal/maxim (A)" : cat === "RSD" ? "stringuri" : "putere intrare (W)";
   const clearFilters = () => { setPhaseFilter(""); setTypeFilter(""); setMinValue(""); setMaxValue(""); setCompleteDocsOnly(false); setQ(""); };
 
   const save = async () => {

@@ -262,6 +262,10 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             for k, s in enumerate(strings):
                 par.setdefault(s["mppt"], []).append(k)
             fuses = max(len(v) for v in par.values()) >= 3
+            rsd = inv.get("rsd") or {}
+            if rsd.get("enabled"):
+                S.enclosure(73, max(ys) + 3, 115, max(ys) + 9,
+                            f"-Q{i + 1}.RSD  Oprire rapidă", f"{rsd.get('brand_model') or 'RSD'} · {rsd.get('poles') or '?'}P")
             S.enclosure(56, min(ys) - 13, 116, max(ys) + 13, f"-TDC{i + 1}  Cutie DC / joncțiune", "SR EN 61439-2 · IEC 62548")
             for k, s in enumerate(strings):
                 y = ys[k]
@@ -788,6 +792,13 @@ def protections(rec, res):
             out.append((f"-FA{i + 1}.DC", "Descărcător SPD DC tip 2", gv(n(dc.get("spd_ucpv")), " V Ucpv"), f"-TDC{i + 1}"))
             if r["proposals"]["dc"]["fuse"]:
                 out.append((f"-F{i + 1}.S", "Siguranțe gPV pe stringuri", gv(n(dc.get("fuse_a")), " A gPV"), f"-TDC{i + 1}"))
+            rsd = inv.get("rsd") or {}
+            if rsd.get("enabled"):
+                voltage_rows = [(300, "current_300v_a"), (600, "current_600v_a"), (800, "current_800v_a"), (1000, "current_1000v_a"), (1200, "current_1200v_a"), (1500, "current_1500v_a")]
+                ratings = ", ".join(f"{voltage} V: {rsd[key]} A" for voltage, key in voltage_rows if n(rsd.get(key)))
+                out.append((f"-Q{i + 1}.RSD", "Întrerupător de oprire rapidă DC (RSD)",
+                            f"{rsd.get('brand_model') or 'model neprecizat'} · {rsd.get('string_count') or '?'} stringuri / {rsd.get('poles') or '?'} poli · {ratings or 'rating de confirmat'}; verificare Voc×1,15 și Isc×1,25",
+                            f"-TDC{i + 1}"))
         out.append((f"-Q{i + 1}.1", "Întreruptor automat AC invertor", (f"C{gv(n(ac.get('breaker_a')))} A {r['proposals']['ac']['poles']}" + (f", Icu {gv(n(ac.get('icu_ka')))} kA" if n(ac.get("icu_ka")) else "")) if n(ac.get("breaker_a")) else None, "-TFV"))
         out.append((f"-F{i + 1}.1", "Dispozitiv diferențial (DDR)", (f"{inv.get('rcd_type')} {gv(n(inv.get('rcd_ma')), ' mA') or ''}".strip()) if inv.get("rcd_type") else None, "-TFV"))
         if inv.get("battery_mode") == "own":
@@ -841,6 +852,13 @@ def sheet_data(rec, client, settings, res, approval):
             eq.append([f"-PV{i + 1}", "Module fotovoltaice", inv.get("panel_model"),
                        f"{gv(n(inv.get('panel_w')), ' W') or '—'} · Voc {gv(n(inv.get('panel_voc')), ' V') or '—'} · Isc {gv(n(inv.get('panel_isc')), ' A') or '—'} · stringuri: " + " + ".join(f"{s['panels']} (MPPT{s['mppt']})" for s in r["strings"]),
                        str(sum(s["panels"] for s in r["strings"]))])
+        rsd = inv.get("rsd") or {}
+        if rsd.get("enabled"):
+            voltage_rows = [(300, "current_300v_a"), (600, "current_600v_a"), (800, "current_800v_a"), (1000, "current_1000v_a"), (1200, "current_1200v_a"), (1500, "current_1500v_a")]
+            ratings = "; ".join(f"{voltage} Vdc / {rsd[key]} A" for voltage, key in voltage_rows if n(rsd.get(key)))
+            eq.append([f"-Q{i + 1}.RSD", "Oprire rapidă stringuri fotovoltaice", rsd.get("brand_model"),
+                       f"{rsd.get('string_count') or '—'} stringuri · {rsd.get('poles') or '—'} poli · {ratings or 'rating de confirmat'} · alimentare AC {rsd.get('ac_voltage_min_v') or '—'}–{rsd.get('ac_voltage_max_v') or '—'} V · IP{rsd.get('ip_rating') or '—'} · verificați Voc×1,15 și Isc×1,25",
+                       "1"])
         if inv.get("battery_mode") == "own":
             bt = inv.get("battery") or {}
             protection = battery_protection(bt, r["proposals"]["battery"])
