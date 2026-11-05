@@ -45,10 +45,13 @@ EXEC = ["company", "cui", "regcom", "address", "phone", "email", "anre_attest", 
 
 def catalog_refs(rec):
     c = rec.get("cef") or {}
-    inv, pan, bat = [], [], []
+    inv, pan, bat, rsd = [], [], [], []
     for i in c.get("inverters") or []:
         inv.append((i.get("catalog_id"), i.get("brand_model")))
         pan.append((i.get("panel_catalog_id"), i.get("panel_model")))
+        rsd_config = i.get("rsd") or {}
+        if rsd_config.get("enabled"):
+            rsd.append((rsd_config.get("catalog_id"), rsd_config.get("brand_model")))
         if i.get("battery_mode") == "own":
             bat.append(((i.get("battery") or {}).get("catalog_id"), (i.get("battery") or {}).get("model")))
     bat += [(b.get("catalog_id"), b.get("model")) for b in c.get("shared_batteries") or []]
@@ -70,7 +73,7 @@ def catalog_refs(rec):
             out[identity] = (cid, name)
         return list(out.values())
 
-    return dedup(inv), dedup(pan), dedup(bat), dedup(met)
+    return dedup(inv), dedup(pan), dedup(bat), dedup(met), dedup(rsd)
 
 
 async def build_positions(db, owner, rec, client, settings):
@@ -127,7 +130,7 @@ async def build_positions(db, owner, rec, client, settings):
         pos.append({"key": "gdpr", "title": "Notă oficială DEER privind prelucrarea datelor personale (GDPR)", "source": "manual",
                     "files": [], "missing": ["Atașează nota oficială DEER aplicabilă dosarului"]})
 
-    inv, pan, bat, met = catalog_refs(rec)
+    inv, pan, bat, met, rsd = catalog_refs(rec)
 
     async def cat(cid, kind):
         it = await db.catalog.find_one({"owner": owner, "id": cid}, {"_id": 0}) if cid else None
@@ -138,7 +141,7 @@ async def build_positions(db, owner, rec, client, settings):
         return [f] if f and f.get("storage_path") and f.get("available") is not False else []
 
     groups = [("invertor", inv), ("panou", pan)]
-    extra = [("baterie", bat), ("smart meter", met)]
+    extra = [("baterie", bat), ("smart meter", met), ("RSD", rsd)]
     for label, items in groups + extra:
         for cid, model in items:
             for kind, prefix in (("datasheet", "Fișă tehnică"), ("conformity", "Declarație de conformitate")):

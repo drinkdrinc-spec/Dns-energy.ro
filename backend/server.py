@@ -2307,6 +2307,9 @@ def catalog_ids(rec: dict) -> list:
     ids = []
     for i in c.get("inverters") or []:
         ids += [i.get("catalog_id"), i.get("panel_catalog_id"), (i.get("battery") or {}).get("catalog_id")]
+        rsd = i.get("rsd") or {}
+        if rsd.get("enabled"):
+            ids.append(rsd.get("catalog_id"))
     ids += [b.get("catalog_id") for b in c.get("shared_batteries") or []]
     g = c.get("grid") or {}
     ids.append(g.get("meter_catalog_id"))
@@ -2868,6 +2871,9 @@ def expected_catalog_document_keys(pros: dict) -> set:
     for inv in cef.get("inverters") or []:
         add("invertor", inv.get("brand_model"), inv.get("catalog_id"))
         add("panou", inv.get("panel_model"), inv.get("panel_catalog_id"))
+        rsd = inv.get("rsd") or {}
+        if rsd.get("enabled"):
+            add("RSD", rsd.get("brand_model"), rsd.get("catalog_id"))
         if inv.get("battery_mode") == "own":
             battery = inv.get("battery") or {}
             add("baterie", battery.get("model"), battery.get("catalog_id"))

@@ -734,6 +734,9 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         for inv in inverters:
             if inv.get("brand_model"):
                 supply_details.append("Invertor: " + str(inv["brand_model"]))
+            rsd = inv.get("rsd") or {}
+            if rsd.get("enabled") and rsd.get("brand_model"):
+                supply_details.append("Oprire rapidă DC (RSD): " + str(rsd["brand_model"]))
         for battery in batteries:
             desc = "Baterie: " + str(battery.get("model") or "model necompletat")
             if battery.get("modules"):

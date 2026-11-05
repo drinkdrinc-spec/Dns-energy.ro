@@ -16,7 +16,7 @@ DOCS = [("a", "copia actului de identitate / certificatului de înregistrare la 
         ("g", "autorizația de construire, pentru organizare de șantier (doar loc nou)"),
         ("h", "procesul-verbal de recepție la terminarea lucrărilor instalației de producere"),
         ("i", "buletinul de încercare a prizei de pământ"),
-        ("j", "fișele tehnice și declarațiile de conformitate pentru invertoare, panouri fotovoltaice și baterii selectate"),
+        ("j", "fișele tehnice și declarațiile de conformitate pentru invertoare, panouri, baterii și alte echipamente selectate"),
         ("k", "schema electrică monofilară a instalației de producere și modul de racordare, cu protecțiile și reglajele")]
 EXISTING_ONLY, NEW_ONLY = set("hijk"), set("cdefg")
 

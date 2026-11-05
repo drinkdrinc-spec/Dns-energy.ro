@@ -845,6 +845,10 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                 panel_model = str(inverter.get("panel_model") or "").strip()
                 if panel_model:
                     expected.append((panel_model, "panou"))
+                rsd = inverter.get("rsd") or {}
+                rsd_model = str(rsd.get("brand_model") or "").strip() if rsd.get("enabled") else ""
+                if rsd_model:
+                    expected.append((rsd_model, "RSD"))
                 battery_model = str((inverter.get("battery") or {}).get("model") or "").strip()
                 if battery_model:
                     expected.append((battery_model, "baterie"))

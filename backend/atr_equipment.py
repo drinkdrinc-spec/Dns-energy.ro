@@ -69,6 +69,9 @@ def catalog_documents_complete(cef: dict | None, files: list[dict] | None) -> bo
             continue
         add(inverter.get("catalog_id"))
         add(inverter.get("panel_catalog_id"))
+        rsd = inverter.get("rsd") or {}
+        if rsd.get("enabled"):
+            add(rsd.get("catalog_id"))
         if inverter.get("battery_mode") == "own":
             add((inverter.get("battery") or {}).get("catalog_id"))
     for battery in cef.get("shared_batteries") or []:

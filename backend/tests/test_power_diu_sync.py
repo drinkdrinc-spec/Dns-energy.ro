@@ -14,6 +14,7 @@ def _power(supply="Trifazat", breaker=40, inverter_breaker=25):
                 "rcd_type": "Tip A",
                 "battery_mode": "own",
                 "battery": {"model": "Baterie test", "kwh": 10},
+            "rsd": {"enabled": True, "catalog_id": "rsd-1", "brand_model": "PROJOY PEFS-EL40H-4(P2)"},
             }],
             "shared_batteries": [],
         },
@@ -29,6 +30,7 @@ def test_power_request_maps_declared_design_into_diu_without_pram_measurements()
     assert fields["type"] == "Sistem fotovoltaic hibrid"
     assert fields["cef"]["inverters"][0]["brand_model"] == "Inverter test"
     assert fields["cef"]["inverters"][0]["battery"]["model"] == "Baterie test"
+    assert fields["cef"]["inverters"][0]["rsd"]["catalog_id"] == "rsd-1"
     assert fields["circuits"] == [{
         "name": "INV1 — Inverter test × 2 buc.",
         "breaker_a": 25,

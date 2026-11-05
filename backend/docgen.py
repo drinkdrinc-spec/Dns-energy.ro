@@ -429,6 +429,9 @@ def equipment_lines(ctx):
     for inv in inverters(ctx):
         count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
         rows.append(["Invertor", f"{count} buc", escape(inv.get("brand_model") or M)])
+        rsd = inv.get("rsd") or {}
+        if rsd.get("enabled"):
+            rows.append(["Oprire rapidă stringuri fotovoltaice (RSD)", "1 buc", escape(rsd.get("brand_model") or M)])
     for p in panel_rows(ctx):
         total_panels = int(num(p["n"]) * num(p.get("count"), 1))
         rows.append(["Panouri fotovoltaice", f"{total_panels} buc" if total_panels else M, escape(p["model"] or M)])
