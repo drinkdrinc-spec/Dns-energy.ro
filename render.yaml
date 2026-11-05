@@ -9,7 +9,7 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.11"
@@ -25,6 +25,8 @@ services:
         value: "true"
       - key: CORS_ORIGINS
         value: https://dns-energy-web.onrender.com,https://dns-energy.ro,https://www.dns-energy.ro
+      - key: PUBLIC_APP_URL
+        value: https://dns-energy-web.onrender.com
       - key: ADMIN_PASSWORD
         sync: false
       - key: OPENAI_API_KEY

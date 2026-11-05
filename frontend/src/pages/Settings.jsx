@@ -3,8 +3,10 @@ import { api } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { Save, Upload, FileCheck2 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Settings() {
+  const { logout } = useAuth();
   const [f, setF] = useState({ company: "", brand: "", rep: "", phone: "", address: "" });
   const [loaded, setLoaded] = useState(false);
   const [companyExtract, setCompanyExtract] = useState(null);
@@ -72,7 +74,8 @@ export default function Settings() {
     try {
       await api.post("/auth/change-password", { current_password: passwordForm.current_password, new_password: passwordForm.new_password });
       setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
-      toast.success("Parola a fost schimbată.");
+      toast.success("Parola a fost schimbată. Autentifică-te din nou cu parola nouă.");
+      logout();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Nu am putut schimba parola.");
     } finally {

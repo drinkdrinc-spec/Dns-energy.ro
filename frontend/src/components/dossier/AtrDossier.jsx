@@ -6,6 +6,7 @@ import { Plus, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { FormAlert } from "@/components/dossier/FormAlert";
 import { AtrTracking } from "@/components/dossier/AtrTracking";
 import { CefEditor } from "@/components/cef/CefEditor";
+import { AtrSitePlan } from "@/components/dossier/AtrSitePlan";
 
 function installedPanelKwp(pros) {
   if (!pros) return "";
@@ -383,6 +384,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
           <CefEditor value={form.atr_cef || { grid: { supply: form.supply || "" }, inverters: [], shared_batteries: [] }} onChange={(value) => setVal("atr_cef", value)} />
         </details>}
       </details>
+      <AtrSitePlan id={id} value={form.site_plan} files={att.plan || []} onChange={(value) => setVal("site_plan", value)} />
       <div className="mt-4 flex items-center gap-2 text-xs font-bold" data-testid="atr-checklist-status">
         {missing.length ? <><AlertTriangle size={14} style={{ color: "#8a5a00" }} />Lipsesc {missing.length} documente obligatorii</> : <><CheckCircle2 size={14} style={{ color: "#166534" }} />Toate documentele obligatorii sunt atașate</>}</div>
       <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-documents-details">

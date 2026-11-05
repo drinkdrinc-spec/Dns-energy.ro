@@ -29,7 +29,6 @@ function Pad({ onChange }) {
   );
 }
 
-
 function ClientAttachments({ files, setFiles }) {
   return <div className="space-y-2">
     <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "#dbe3ee", color: "#2878f0" }}>
@@ -40,8 +39,8 @@ function ClientAttachments({ files, setFiles }) {
         event.target.value = "";
       }} data-testid="sign-client-attachment-input" />
     </label>
-    {!!files.length && <ul className="space-y-1">{files.map((file, index) => <li key={index} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#5a6b85" }}>
-      <span className="truncate">{file.name}</span><button type="button" aria-label={"Elimină " + file.name} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={14} /></button>
+    {!!files.length && <ul className="space-y-1">{files.map((file, index) => <li key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#5a6b85" }}>
+      <span className="truncate">{file.name}</span><button type="button" aria-label={`Elimină ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={14} /></button>
     </li>)}</ul>}
     <p className="text-[10px]" style={{ color: "#6b7789" }}>Maximum 5 fișiere per mesaj, 25 MB fiecare.</p>
   </div>;
@@ -117,11 +116,11 @@ export default function SignPage() {
       const attachments = [];
       for (const file of clientFiles) {
         const form = new FormData(); form.append("file", file);
-        const uploaded = await axios.post(API + "/" + token + "/message-uploads", form);
+        const uploaded = await axios.post(`${API}/${token}/message-uploads`, form);
         attachments.push(uploaded.data.file);
       }
-      await axios.post(API + "/" + token + "/messages", { text: clientReply.trim(), attachments });
-      const { data } = await axios.get(API + "/" + token + "/messages");
+      await axios.post(`${API}/${token}/messages`, { text: clientReply.trim(), attachments });
+      const { data } = await axios.get(`${API}/${token}/messages`);
       setClientMessages(data.messages || []); setClientReply(""); setClientFiles([]); setMsg("Mesajul a fost adăugat la dosar.");
     } catch (e) { setMsg(e.response?.data?.detail || e.message || "Mesajul nu a putut fi trimis."); }
     finally { setReplyBusy(false); }

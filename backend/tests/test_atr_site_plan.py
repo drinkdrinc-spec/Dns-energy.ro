@@ -1,0 +1,86 @@
+from io import BytesIO
+
+from pypdf import PdfReader
+from PIL import Image
+from reportlab.pdfgen import canvas
+
+import atr_doc as ATR
+
+
+def test_site_plan_is_omitted_until_user_adds_geometry():
+    assert ATR.render_atr_site_plan({"site_plan": {"markers": [], "route": [], "boundary": []}}) == b""
+
+
+def test_site_plan_pdf_contains_user_markers_and_is_landscape():
+    record = {
+        "client_name": "Popescu Ion",
+        "address": "Strada Exemplu 1",
+        "pod": "RO001E0000000000000000",
+        "site_plan": {
+            "markers": [
+                {"id": "m1", "type": "CEF", "label": "Panouri acoperiș", "x": 200, "y": 180},
+                {"id": "m2", "type": "BESS", "label": "Baterie", "x": 690, "y": 360},
+                {"id": "m3", "type": "TEG", "label": "Tablou general", "x": 500, "y": 470},
+            ],
+            "route": [{"x": 200, "y": 180}, {"x": 500, "y": 470}, {"x": 690, "y": 360}],
+            "boundary": [{"x": 80, "y": 60}, {"x": 900, "y": 80}, {"x": 860, "y": 560}, {"x": 110, "y": 540}],
+        },
+    }
+    data = ATR.render_atr_site_plan(record, {"name": "Popescu Ion"})
+    reader = PdfReader(BytesIO(data))
+    assert len(reader.pages) == 1
+    assert float(reader.pages[0].mediabox.width) > float(reader.pages[0].mediabox.height)
+    extracted = reader.pages[0].extract_text()
+    assert "Panouri acoperiș" in extracted
+    assert "Baterie" in extracted
+    assert "fără scară" in extracted
+
+
+def test_site_plan_pdf_uses_uploaded_plan_image_as_background():
+    image = Image.new("RGB", (64, 40), "#dce8f5")
+    image_buffer = BytesIO()
+    image.save(image_buffer, format="PNG")
+    record = {"site_plan": {"markers": [{"id": "m1", "type": "CEF", "label": "CEF", "x": 400, "y": 250}]}}
+    data = ATR.render_atr_site_plan(record, {}, (image_buffer.getvalue(), "image/png"))
+    page = PdfReader(BytesIO(data)).pages[0]
+    assert len(page.images) == 1
+
+
+def test_background_loader_rejects_other_tenant_and_unattached_files():
+    calls = []
+    loader = lambda path: calls.append(path) or (b"image", "image/png")
+    foreign = {"site_plan": {"background_path": "dns/uploads/other-owner/plan.png"},
+               "attachments": {"plan": [{"storage_path": "dns/uploads/other-owner/plan.png"}]}}
+    unattached = {"site_plan": {"background_path": "dns/uploads/owner-1/plan.png"},
+                  "attachments": {"plan": []}}
+    assert ATR.load_site_plan_background("owner-1", foreign, loader) is None
+    assert ATR.load_site_plan_background("owner-1", unattached, loader) is None
+    assert calls == []
+
+
+def test_background_loader_uses_image_attached_to_current_atr():
+    image = Image.new("RGB", (32, 24), "#e5eef8")
+    image_buffer = BytesIO()
+    image.save(image_buffer, format="PNG")
+    path = "dns/uploads/owner-1/plan.png"
+    record = {"site_plan": {"background_path": path},
+              "attachments": {"plan": [{"storage_path": path}]}}
+    data, content_type = ATR.load_site_plan_background(
+        "owner-1", record, lambda requested: (image_buffer.getvalue(), "image/png") if requested == path else None
+    )
+    assert content_type == "image/png"
+    assert Image.open(BytesIO(data)).size == (32, 24)
+
+
+def test_uploaded_site_plan_pdf_is_rasterized_for_background():
+    source = BytesIO()
+    pdf = canvas.Canvas(source)
+    pdf.drawString(48, 720, "Plan de amplasament")
+    pdf.showPage()
+    pdf.showPage()
+    pdf.save()
+    image_data, image_type = ATR.rasterize_site_plan_background(source.getvalue(), "application/pdf")
+    assert image_type == "image/png"
+    with Image.open(BytesIO(image_data)) as image:
+        assert image.format == "PNG"
+        assert image.width > 0 and image.height > 0

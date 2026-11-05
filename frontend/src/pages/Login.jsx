@@ -13,17 +13,24 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
   const [billing, setBilling] = useState({});
   const [gdpr, setGdpr] = useState(false);
   const reg = mode === "register";
+  const forgot = mode === "forgot";
 
   const submit = async (e) => {
     e.preventDefault();
     setErr(""); setLoading(true);
     try {
+      if (forgot) {
+        const { data } = await api.post("/auth/forgot-password", { email });
+        setNotice(data?.message || "Dacă există un cont activ pentru această adresă, vei primi instrucțiunile pe e-mail.");
+        return;
+      }
       if (reg) {
         if (!gdpr) { setErr("Confirmați acordul privind prelucrarea datelor pentru facturare"); return; }
         const { data } = await api.post("/auth/register", { email, password, name, billing: { ...billing, billing_email: billing.billing_email || email } });
@@ -54,19 +61,20 @@ export default function Login() {
       <div className="flex items-center justify-center px-5 py-8 sm:p-12" style={{ background: "var(--bg)" }}>
         <form onSubmit={submit} className={`w-full ${reg ? "max-w-2xl" : "max-w-sm"} den-panel`} data-testid="login-form">
           <div className="lg:hidden flex flex-col items-center gap-3 mb-8 text-center"><BrandMark size={54} /><span className="text-xl font-extrabold tracking-wide">DNS ENERGY</span><span className="text-xs" style={{color:"var(--muted)"}}>Platformă pentru documentații fotovoltaice</span></div>
-          <h1 className="text-2xl font-extrabold">{reg ? "Cont nou" : "Conectează-te"}</h1>
-          <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>{reg ? "Contul devine activ după aprobarea administratorului. Apoi alegeți și plătiți abonamentul." : "Intră în contul tău DNS Energy pentru a continua."}</p>
+          <h1 className="text-2xl font-extrabold">{reg ? "Cont nou" : forgot ? "Resetează parola" : "Conectează-te"}</h1>
+          <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>{reg ? "Contul devine activ după aprobarea administratorului. Apoi alegeți și plătiți abonamentul." : forgot ? "Îți trimitem un link temporar dacă adresa aparține unui cont activ." : "Intră în contul tău DNS Energy pentru a continua."}</p>
           {reg && <div className="den-field mb-4"><label>Nume complet</label><input data-testid="register-name" className="den-input" value={name} onChange={(e) => setName(e.target.value)} required /></div>}
           <div className="den-field mb-4"><label>Email (cont)</label>
             <input data-testid="login-email" className="den-input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-          <div className="den-field mb-4"><label>Parolă{reg ? " (minimum 8 caractere)" : ""}</label>
+          {!forgot && <div className="den-field mb-4"><label>Parolă{reg ? " (minimum 8 caractere)" : ""}</label>
             <div className="relative">
               <LockKeyhole size={17} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
               <input data-testid="login-password" className="den-input pl-10 pr-12" type={showPassword ? "text" : "password"} autoComplete={reg ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} required />
               <button type="button" aria-label={showPassword ? "Ascunde parola" : "Afișează parola"} onClick={() => setShowPassword((visible) => !visible)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1" style={{ color: "var(--muted)" }}>
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
-            </div></div>
+            </div></div>}
+          {notice && <div className="text-[13px] my-4 rounded-lg px-3 py-2" style={{ background: "#edf8f1", color: "#23613b" }} role="status" data-testid="password-reset-notice">{notice}</div>}
           {reg && <>
             <h2 className="text-base font-extrabold mt-2 mb-2">Date de facturare</h2>
             <BillingForm value={billing} onChange={setBilling} />
@@ -81,8 +89,10 @@ export default function Login() {
           </div>}
           {err && <div data-testid="login-error" className="text-[13px] my-4 rounded-lg px-3 py-2" style={{ background: "#fff0f0", color: "#b33333" }}>{err}</div>}
           <Btn type="submit" data-testid="login-submit" className="w-full justify-center mt-4 min-h-12" disabled={loading}>
-            {loading ? "Se verifică..." : reg ? "Trimite cererea de cont" : "Intră în cont"}
+            {loading ? "Se verifică..." : reg ? "Trimite cererea de cont" : forgot ? "Trimite link de resetare" : "Intră în cont"}
           </Btn>
+          {forgot ? <button type="button" className="mt-4 w-full text-sm font-bold underline" onClick={() => { setMode("login"); setErr(""); setNotice(""); }}>Înapoi la autentificare</button>
+            : !reg && <button type="button" className="mt-4 w-full text-sm font-semibold underline" style={{ color: "var(--blue)" }} onClick={() => { setMode("forgot"); setErr(""); setNotice(""); }}>Ai uitat parola?</button>}
           <p className="text-[11px] text-center mt-5" style={{color:"var(--muted)"}}>Acces privat de testare DNS Energy · Înregistrarea publică este dezactivată.</p>
         </form>
       </div>

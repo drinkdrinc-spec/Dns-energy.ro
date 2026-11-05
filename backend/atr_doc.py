@@ -1,8 +1,12 @@
 import io
+import math
 from html import escape
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
+from reportlab.lib import colors
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 import docgen as D
 import cef as CEF
 
@@ -11,6 +15,152 @@ M = D.M
 
 def first_present(*values):
     return next((value for value in values if value not in (None, "")), None)
+
+
+def rasterize_site_plan_background(data: bytes, content_type: str):
+    """Normalize an attached plan image/PDF to an image safe for the sketch renderer."""
+    if content_type in {"image/png", "image/jpeg", "image/webp"}:
+        return data, content_type
+    if content_type != "application/pdf":
+        return None
+    import pymupdf
+
+    document = pymupdf.open(stream=data, filetype="pdf")
+    if not document.page_count:
+        return None
+    page = document.load_page(0)
+    width, height = float(page.rect.width), float(page.rect.height)
+    if width <= 0 or height <= 0:
+        return None
+    scale = min(1.5, 1800 / max(width, height))
+    pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+    return pixmap.tobytes("png"), "image/png"
+
+
+def load_site_plan_background(owner: str, rec: dict, object_loader):
+    """Only load a supported background already attached to this tenant's ATR plan slot."""
+    plan = (rec or {}).get("site_plan")
+    if not isinstance(plan, dict):
+        return None
+    path = str(plan.get("background_path") or "")
+    if not path or (f"/{owner}/" not in "/" + path.strip("/") + "/") or ".." in path.split("/"):
+        return None
+    attached_plans = ((rec or {}).get("attachments") or {}).get("plan") or []
+    if not any(isinstance(item, dict) and item.get("storage_path") == path for item in attached_plans):
+        return None
+    try:
+        data, content_type = object_loader(path)
+        if len(data) > 10 * 1024 * 1024:
+            return None
+        return rasterize_site_plan_background(data, content_type)
+    except Exception:
+        return None
+
+
+def render_atr_site_plan(rec: dict, client: dict | None = None, background: tuple[bytes, str] | None = None) -> bytes:
+    """Render the user's editable, explicitly non-survey site sketch as a PDF sheet."""
+    plan = (rec or {}).get("site_plan") or {}
+    if not isinstance(plan, dict):
+        return b""
+    def bounded_items(key, limit):
+        value = plan.get(key)
+        return [item for item in value[:limit] if isinstance(item, dict)] if isinstance(value, list) else []
+
+    markers = bounded_items("markers", 200)
+    boundary = bounded_items("boundary", 500)
+    route = bounded_items("route", 500)
+    if not (markers or boundary or route):
+        return b""
+
+    buf = io.BytesIO()
+    page_w, page_h = landscape(A4)
+    c = canvas.Canvas(buf, pagesize=(page_w, page_h), pageCompression=1)
+    c.setTitle("Schiță de amplasament ATR — ilustrativă")
+    c.setFillColor(colors.HexColor("#142b4d"))
+    c.setFont("LSB", 15)
+    c.drawString(18 * mm, page_h - 18 * mm, "SCHIȚĂ DE AMPLASAMENT — CERERE ATR")
+    c.setFillColor(colors.HexColor("#4b5563"))
+    c.setFont("LS", 8.5)
+    customer = str((client or {}).get("name") or rec.get("client_name") or "")[:100]
+    address = str(rec.get("address") or (client or {}).get("address") or "")[:150]
+    pod = str(rec.get("pod") or "")[:80]
+    c.drawString(18 * mm, page_h - 25 * mm, f"Client: {customer or 'necompletat'}")
+    c.drawString(18 * mm, page_h - 30 * mm, f"Adresă: {address or 'necompletată'}    POD: {pod or 'necompletat'}")
+
+    left, bottom, area_w, area_h = 20 * mm, 28 * mm, page_w - 40 * mm, page_h - 68 * mm
+    c.setStrokeColor(colors.HexColor("#cbd5e1")); c.setLineWidth(.6)
+    c.rect(left, bottom, area_w, area_h, stroke=1, fill=0)
+    if background and len(background) == 2 and background[1] in {"image/png", "image/jpeg", "image/webp"}:
+        try:
+            image = ImageReader(io.BytesIO(background[0]))
+            image_w, image_h = image.getSize()
+            if image_w > 0 and image_h > 0:
+                scale = min(area_w / image_w, area_h / image_h)
+                draw_w, draw_h = image_w * scale, image_h * scale
+                c.saveState()
+                c.setFillAlpha(.8)
+                c.drawImage(image, left + (area_w - draw_w) / 2, bottom + (area_h - draw_h) / 2,
+                            width=draw_w, height=draw_h, preserveAspectRatio=True, mask="auto")
+                c.restoreState()
+        except Exception:
+            # A bad optional background must not prevent the rest of the sketch from exporting.
+            pass
+    c.setStrokeColor(colors.HexColor("#edf1f5")); c.setLineWidth(.3)
+    for ix in range(1, 20):
+        x = left + area_w * ix / 20
+        c.line(x, bottom, x, bottom + area_h)
+    for iy in range(1, 12):
+        y = bottom + area_h * iy / 12
+        c.line(left, bottom + area_h * iy / 12, left + area_w, y)
+
+    def coords(point):
+        try:
+            x, y = float(point.get("x")), float(point.get("y"))
+            if not (math.isfinite(x) and math.isfinite(y)):
+                return None
+            return (left + max(0, min(1000, x)) / 1000 * area_w,
+                    bottom + (1 - max(0, min(620, y)) / 620) * area_h)
+        except (TypeError, ValueError):
+            return None
+
+    points = [p for item in boundary if (p := coords(item))]
+    if len(points) >= 2:
+        c.setStrokeColor(colors.HexColor("#b45309")); c.setFillColor(colors.Color(.96, .62, .12, alpha=.08))
+        c.setLineWidth(1.5); c.setDash(5, 4)
+        path = c.beginPath(); path.moveTo(*points[0])
+        for xy in points[1:]: path.lineTo(*xy)
+        if len(points) > 2: path.close()
+        c.drawPath(path, stroke=1, fill=1 if len(points) > 2 else 0); c.setDash()
+
+    points = [p for item in route if (p := coords(item))]
+    if len(points) >= 2:
+        c.setStrokeColor(colors.HexColor("#2563eb")); c.setLineWidth(2.2)
+        path = c.beginPath(); path.moveTo(*points[0])
+        for xy in points[1:]: path.lineTo(*xy)
+        c.drawPath(path, stroke=1, fill=0)
+
+    allowed = {"Stâlp", "BMP", "TEG", "CEF", "BESS", "Contor"}
+    for marker in markers:
+        xy = coords(marker)
+        if not xy: continue
+        kind = str(marker.get("type") or "Echipament")[:20]
+        if kind not in allowed: kind = "Echipament"
+        label = str(marker.get("label") or kind).replace("\n", " ")[:80]
+        x, y = xy
+        c.setFillColor(colors.white); c.setStrokeColor(colors.HexColor("#163c70")); c.setLineWidth(1.5)
+        c.circle(x, y, 6 * mm, stroke=1, fill=1)
+        c.setFillColor(colors.HexColor("#163c70")); c.setFont("LSB", 6.5)
+        c.drawCentredString(x, y - 1.5 * mm, kind[:5])
+        c.setFillColor(colors.HexColor("#1f2937")); c.setFont("LSB", 7)
+        c.drawCentredString(x, y - 10 * mm, label)
+
+    legend_y = 17 * mm
+    c.setFont("LSB", 7.5); c.setFillColor(colors.HexColor("#1f2937"))
+    c.drawString(20 * mm, legend_y, "Legendă: simboluri = echipamente / puncte; linie albastră = traseu cablu; linie întreruptă = limita indicată a proprietății.")
+    c.setFont("LSB", 7.2); c.setFillColor(colors.HexColor("#991b1b"))
+    c.drawString(20 * mm, 11 * mm, "ATENȚIE: schiță ilustrativă, fără scară și fără coordonate cadastrale. Nu înlocuiește planul oficial vizat de emitentul CU.")
+    c.save()
+    return buf.getvalue()
 OP_NAMES = {"deer": "Distribuție Energie Electrică Romania S.A. (DEER)", "delgaz": "Delgaz Grid S.A.", "rer": "Rețele Electrice România S.A.",
             "oltenia": "Distribuție Energie Oltenia S.A."}
 DOCS = [("plan", "Plan de situație la scară, cu viza emitentului certificatului de urbanism (sau schiță de amplasament pentru construcție existentă)", True),

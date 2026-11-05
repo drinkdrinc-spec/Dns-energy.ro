@@ -19,6 +19,8 @@ import bcrypt
 import jwt
 import requests
 from client_search import build_client_search_queries, NUMERIC_CLIENT_SEARCH_FIELDS
+from client_portal import is_client_upload_path, public_client_messages
+from password_reset import reset_lookup_hash, reset_rate_key, reset_token_hash, trusted_reset_origin
 import io
 import zipfile
 from datetime import datetime, timezone, timedelta
@@ -73,9 +75,9 @@ def hash_password(password: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
-def create_access_token(user_id: str, email: str) -> str:
+def create_access_token(user_id: str, email: str, token_version: int = 0) -> str:
     payload = {"sub": user_id, "email": email,
-               "exp": datetime.now(timezone.utc) + timedelta(days=7), "type": "access"}
+               "ver": token_version, "exp": datetime.now(timezone.utc) + timedelta(days=7), "type": "access"}
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 async def get_current_user(request: Request) -> dict:
@@ -91,6 +93,8 @@ async def get_current_user(request: Request) -> dict:
         user = await db.users.find_one({"id": payload["sub"]})
         if not user:
             raise HTTPException(status_code=401, detail="Utilizator inexistent")
+        if int(payload.get("ver", 0)) != int(user.get("token_version", 0)):
+            raise HTTPException(status_code=401, detail="Sesiunea a fost revocată. Autentifică-te din nou.")
         if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
             admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
             if not admin_email or user.get("email", "").lower() != admin_email or user.get("role") != "admin":
@@ -279,6 +283,107 @@ class PasswordChangeReq(BaseModel):
     current_password: str
     new_password: str
 
+class ForgotPasswordReq(BaseModel):
+    email: EmailStr
+
+class ResetPasswordReq(BaseModel):
+    token: str
+    new_password: str
+
+
+PASSWORD_RESET_MESSAGE = "Dacă există un cont activ pentru această adresă, vei primi un e-mail cu pașii de resetare. Verifică și folderul Spam."
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordReq, request: Request):
+    """Send a generic, one-time password recovery link without disclosing account existence."""
+    email = str(body.email).strip().lower()
+    now = datetime.now(timezone.utc)
+    bucket = int(now.timestamp() // 3600)
+    expires_at = datetime.fromtimestamp((bucket + 48) * 3600, timezone.utc)
+    ip = request.client.host if request.client else "unknown"
+    rate_keys = (reset_rate_key("email", email), reset_rate_key("ip", ip))
+    limited = False
+    for key in rate_keys:
+        await db.password_reset_limits.update_one(
+            {"key": key, "bucket": bucket},
+            {"$setOnInsert": {"expires_at": expires_at}, "$inc": {"count": 1}},
+            upsert=True,
+        )
+        counter = await db.password_reset_limits.find_one({"key": key, "bucket": bucket}, {"_id": 0, "count": 1})
+        limited = limited or int((counter or {}).get("count", 0)) > 5
+    if limited:
+        return {"ok": True, "message": PASSWORD_RESET_MESSAGE}
+
+    account = await db.users.find_one({"email": email, "$or": [
+        {"status": "active"}, {"status": {"$exists": False}}, {"status": None},
+    ]}, {"_id": 0, "id": 1, "email": 1, "name": 1})
+    if not account:
+        return {"ok": True, "message": PASSWORD_RESET_MESSAGE}
+
+    token = secrets.token_urlsafe(32)
+    reset_expires = now + timedelta(minutes=30)
+    await db.password_resets.delete_many({"user_id": account["id"], "used_at": {"$exists": False}})
+    await db.password_resets.insert_one({
+        "user_id": account["id"], "email": email,
+        "lookup_hash": reset_lookup_hash(token),
+        "token_hash": reset_token_hash(account["id"], token),
+        "created_at": now.isoformat(), "expires_at": reset_expires.isoformat(),
+        "expires_ts": reset_expires,
+    })
+    try:
+        origin = trusted_reset_origin(request.headers.get("origin"), os.environ.get("CORS_ORIGINS", ""), os.environ.get("PUBLIC_APP_URL"))
+        # Keep the bearer token in the URL fragment: browsers do not send it to
+        # the web server in requests, access logs, or referrer headers.
+        link = f"{origin}/reset-password#token={token}"
+        html = (f'<div style="font-family:Arial,sans-serif;color:#0b1f3a">'
+                f'<p>Bună ziua, {hesc(str(account.get("name") or email))}.</p>'
+                f'<p>Ai solicitat schimbarea parolei contului DNS Energy.</p>'
+                f'<p><a href="{hesc(link)}">Resetează parola în DNS Energy</a></p>'
+                f'<p>Linkul expiră în 30 de minute și poate fi folosit o singură dată. Dacă nu ai cerut această schimbare, ignoră mesajul.</p>'
+                f'<p style="font-size:12px;color:#888">Trimis de {hesc(EMAIL_FROM_NAME)}. Nu răspunde cu parola ta la acest e-mail.</p></div>')
+        await send_email(to=email, subject="Resetare parolă DNS Energy", html=html)
+    except Exception as exc:
+        logger.warning("Password reset email could not be sent: %s", type(exc).__name__)
+    return {"ok": True, "message": PASSWORD_RESET_MESSAGE}
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordReq):
+    token = str(body.token or "").strip()
+    new_password = body.new_password or ""
+    if len(new_password) < 12:
+        raise HTTPException(status_code=400, detail="Parola nouă trebuie să aibă cel puțin 12 caractere")
+    if len(new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=400, detail="Parola nouă este prea lungă; limita este 72 de octeți")
+    if not token or len(token) > 200:
+        raise HTTPException(status_code=400, detail="Link de resetare invalid sau expirat")
+    now = datetime.now(timezone.utc)
+    candidate = await db.password_resets.find_one({
+        "lookup_hash": reset_lookup_hash(token),
+        "expires_ts": {"$gt": now},
+        "used_at": {"$exists": False},
+    }, {"_id": 0})
+    if not candidate or candidate.get("token_hash") != reset_token_hash(candidate.get("user_id", ""), token):
+        raise HTTPException(status_code=400, detail="Link de resetare invalid sau expirat")
+    consumed = await db.password_resets.update_one(
+        {"user_id": candidate["user_id"], "token_hash": candidate["token_hash"], "expires_ts": {"$gt": now}, "used_at": {"$exists": False}},
+        {"$set": {"used_at": now.isoformat()}},
+    )
+    if consumed.matched_count != 1:
+        raise HTTPException(status_code=400, detail="Link de resetare invalid sau expirat")
+    result = await db.users.update_one(
+        {"id": candidate["user_id"], "email": candidate.get("email"), "$or": [
+            {"status": "active"}, {"status": {"$exists": False}}, {"status": None},
+        ]},
+        {"$set": {"password_hash": hash_password(new_password), "password_changed_at": now.isoformat()}, "$inc": {"token_version": 1}},
+    )
+    if result.matched_count != 1:
+        raise HTTPException(status_code=400, detail="Link de resetare invalid sau expirat")
+    await db.password_resets.delete_many({"user_id": candidate["user_id"], "token_hash": {"$ne": candidate["token_hash"]}})
+    await db.login_attempts.delete_many({"identifier": f"login:{candidate['email']}"})
+    return {"ok": True, "message": "Parola a fost schimbată. Te poți autentifica folosind parola nouă."}
+
 # ---------------- Auth routes ----------------
 STATUS_MSG = {"pending": "Contul așteaptă aprobarea administratorului", "suspended": "Contul este suspendat — contactați administratorul",
               "disabled": "Contul este dezactivat"}
@@ -315,7 +420,7 @@ async def register(body: RegisterReq, request: Request):
         await BR.save_profile(uid, prof, email, {})
         await db.audit.insert_one({"owner": admin["id"], "user": email, "action": "înregistrare cont (în așteptare)", "module": "users", "item_id": uid, "fields": [], "at": doc["created_at"]})
         return {"pending": True, "message": STATUS_MSG["pending"]}
-    return {"access_token": create_access_token(uid, email), "user": pub_user(doc)}
+    return {"access_token": create_access_token(uid, email, int(doc.get("token_version", 0))), "user": pub_user(doc)}
 
 @api_router.post("/auth/login")
 async def login(body: LoginReq, request: Request):
@@ -338,7 +443,7 @@ async def login(body: LoginReq, request: Request):
     await db.login_attempts.delete_many({"identifier": ident})
     if user.get("status", "active") != "active":
         raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
-    tok = create_access_token(user["id"], email)
+    tok = create_access_token(user["id"], email, int(user.get("token_version", 0)))
     return {"access_token": tok, "user": pub_user(await finish_user(user))}
 
 @api_router.get("/auth/me")
@@ -364,7 +469,7 @@ async def change_password(body: PasswordChangeReq, user: dict = Depends(get_curr
         raise HTTPException(status_code=400, detail="Parola actuală este incorectă")
     await db.users.update_one({"id": user["uid"]}, {"$set": {
         "password_hash": hash_password(new), "password_changed_at": datetime.now(timezone.utc).isoformat()
-    }})
+    }, "$inc": {"token_version": 1}})
     await db.login_attempts.delete_many({"identifier": f"login:{account['email'].lower()}"})
     await audit(user, "schimbare parolă", "auth", user["uid"], [])
     return {"ok": True}
@@ -2772,6 +2877,10 @@ def atr_client_documents(user: dict, client: dict):
     return result, issues
 
 
+def atr_site_plan_background(owner: str, rec: dict):
+    return ATR.load_site_plan_background(owner, rec, get_object)
+
+
 async def atr_pack(user: dict, rec: dict, full: int):
     client = await get_client(user["id"], rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
@@ -2830,6 +2939,10 @@ async def atr_pack(user: dict, rec: dict, full: int):
     if pros and ATR.is_prod(rec) and "fise" in ATR.required(rec) and not catalog_complete:
         attached.discard("fise")
     parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
+    if full:
+        site_plan_pdf = ATR.render_atr_site_plan(rec, client, atr_site_plan_background(user["id"], rec))
+        if site_plan_pdf:
+            parts.append(site_plan_pdf)
     annex_registry_issue = ""
     if full:
         operator_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
@@ -3543,8 +3656,7 @@ async def sign_by_token(token: str) -> dict:
     return r
 
 def public_dossier_messages(messages) -> list[dict]:
-    return [{k: item.get(k) for k in ("id", "sender", "sender_name", "text", "created_at", "attachments")}
-            for item in (messages or []) if isinstance(item, dict) and item.get("audience") == "client"]
+    return public_client_messages(messages)
 
 def public_client_access(r: dict) -> bool:
     return (r.get("module") or "prosumator") == "prosumator" and (
@@ -3639,7 +3751,7 @@ async def public_sign_message_file(token: str, message_id: str, file_index: int)
         raise HTTPException(status_code=404, detail="Atașamentul nu există")
     item = files[file_index]
     storage_path = str(item.get("storage_path") or "")
-    if not storage_path.startswith(f"{APP_NAME}/uploads/{r.get('owner')}/") or ".." in storage_path:
+    if not is_client_upload_path(storage_path, APP_NAME, str(r.get("owner") or ""), str(r.get("id") or "")):
         raise HTTPException(status_code=404, detail="Atașamentul nu există")
     data, content_type = get_object(storage_path)
     return Response(content=data, media_type=content_type or "application/octet-stream",
@@ -3671,7 +3783,7 @@ async def public_sign_message_upload(token: str, file: UploadFile = File(...)):
     )
     if not quota.modified_count:
         raise HTTPException(status_code=429, detail="Ai atins limita de 10 fișiere încărcate prin acest link")
-    stored = put_object(f"{APP_NAME}/uploads/{r['owner']}/client-messages/{r['id']}/{uuid.uuid4()}.{ext}", data, content_type)
+    stored = put_object(f"{APP_NAME}/uploads/{r['owner']}/sign/{r['id']}/{uuid.uuid4()}.{ext}", data, content_type)
     original = filename.replace("\\", "/").rsplit("/", 1)[-1][:255] or "document"
     return {"file": {"storage_path": stored["path"], "original_filename": original,
                      "content_type": content_type, "size": len(data)}}
@@ -3699,9 +3811,8 @@ async def public_sign_add_message(token: str, request: Request):
             pass
     body = await request.json()
     attachments = clean_message_attachments(body.get("attachments"), str(owner))
-    client_upload_prefix = f"{APP_NAME}/uploads/{owner}/client-messages/{r['id']}/"
-    if any(not item["storage_path"].startswith(client_upload_prefix) for item in attachments):
-        raise HTTPException(status_code=403, detail="Atașamentul nu a fost încărcat prin acest link")
+    if any(not is_client_upload_path(item["storage_path"], APP_NAME, str(owner), str(r["id"])) for item in attachments):
+        raise HTTPException(status_code=403, detail="Atașamentul nu a fost încărcat prin acest link de semnare")
     raw_text = str(body.get("text") or "").strip()
     message_text = clean_message_text(raw_text) if raw_text else ""
     if not message_text and not attachments:
@@ -3990,6 +4101,10 @@ async def startup():
     # Uniqueness avoids duplicate rows during concurrent failures; TTL bounds storage.
     await db.login_attempts.create_index("identifier", unique=True, name="login_attempt_identifier_unique")
     await db.login_attempts.create_index("expires_at", expireAfterSeconds=0, name="login_attempt_expires_at_ttl")
+    await db.password_resets.create_index("lookup_hash", unique=True, name="password_reset_lookup_unique")
+    await db.password_resets.create_index("expires_ts", expireAfterSeconds=0, name="password_reset_expiry_ttl")
+    await db.password_reset_limits.create_index([("key", 1), ("bucket", 1)], unique=True, name="password_reset_limit_bucket_unique")
+    await db.password_reset_limits.create_index("expires_at", expireAfterSeconds=0, name="password_reset_limit_expiry_ttl")
     for m in MODULES:
         await db[m].create_index("owner")
         # Keep tenant-scoped list and quick-search sorts efficient as collections grow.

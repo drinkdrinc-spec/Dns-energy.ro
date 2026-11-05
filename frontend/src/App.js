@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Layout from "@/components/Layout";
 const Login = lazy(() => import("@/pages/Login"));
+const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const ModulePage = lazy(() => import("@/pages/ModulePage"));
 const Documents = lazy(() => import("@/pages/Documents"));
@@ -55,6 +56,7 @@ function AppRoutes() {
     <Suspense fallback={<div className="min-h-screen grid place-items-center text-sm text-slate-400" role="status">Se încarcă modulul...</div>}>
       <Routes>
       <Route path="/login" element={user ? <AfterLogin /> : <Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/semneaza/:token" element={<SignPage />} />
       <Route element={<Protected><Layout /></Protected>}>
         <Route path="/semnare" element={<Gate feat={ROUTE_FEATURE["/semnare"]}><RemoteSigning /></Gate>} />
