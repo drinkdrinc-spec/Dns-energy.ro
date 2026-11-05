@@ -2,6 +2,7 @@ from io import BytesIO
 
 from pypdf import PdfReader
 from PIL import Image
+from reportlab.pdfgen import canvas
 
 import atr_doc as ATR
 
@@ -43,4 +44,18 @@ def test_site_plan_pdf_uses_uploaded_plan_image_as_background():
     data = ATR.render_atr_site_plan(record, {}, (image_buffer.getvalue(), "image/png"))
     page = PdfReader(BytesIO(data)).pages[0]
     assert len(page.images) == 1
+
+
+def test_uploaded_site_plan_pdf_is_rasterized_for_background():
+    source = BytesIO()
+    pdf = canvas.Canvas(source)
+    pdf.drawString(48, 720, "Plan de amplasament")
+    pdf.showPage()
+    pdf.showPage()
+    pdf.save()
+    image_data, image_type = ATR.rasterize_site_plan_background(source.getvalue(), "application/pdf")
+    assert image_type == "image/png"
+    with Image.open(BytesIO(image_data)) as image:
+        assert image.format == "PNG"
+        assert image.width > 0 and image.height > 0
 
