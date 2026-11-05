@@ -1,6 +1,11 @@
 import axios from "axios";
 
-const API = `${(process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "")}/api`;
+const configuredBackend = (process.env.REACT_APP_BACKEND_URL || "").trim().replace(/\/$/, "");
+const isLocalHost = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+// Render hosts the SPA and API as separate services. Keep a production fallback
+// so a missing static-site build variable cannot silently send API calls to the SPA.
+const backendOrigin = configuredBackend || (isLocalHost ? "" : "https://dns-energy-api.onrender.com");
+const API = `${backendOrigin}/api`;
 
 export const api = axios.create({ baseURL: API });
 

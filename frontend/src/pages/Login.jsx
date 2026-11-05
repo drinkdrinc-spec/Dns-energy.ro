@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { BrandMark } from "@/components/BrandMark";
 import { Btn } from "@/components/Layout";
-import { api, formatApiErrorDetail } from "@/lib/api";
+import { api, API, formatApiErrorDetail } from "@/lib/api";
 import { BillingForm } from "@/components/billing/BillingForm";
 import { toast } from "sonner";
 import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
@@ -15,12 +15,24 @@ export default function Login() {
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [apiWarmup, setApiWarmup] = useState("checking");
   const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
   const [billing, setBilling] = useState({});
   const [gdpr, setGdpr] = useState(false);
   const reg = mode === "register";
   const forgot = mode === "forgot";
+  const apiOrigin = API.replace(/\/api\/?$/, "") || window.location.origin;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api.get(`${apiOrigin}/readyz`, { timeout: 120000, signal: controller.signal })
+      .then(({ data }) => setApiWarmup(data?.status === "ready" ? "ready" : "unavailable"))
+      .catch((error) => {
+        if (error.code !== "ERR_CANCELED") setApiWarmup("unavailable");
+      });
+    return () => controller.abort();
+  }, [apiOrigin]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -86,6 +98,11 @@ export default function Login() {
             <button type="button" onClick={refresh} disabled={authChecking} className="mt-2 font-bold underline disabled:opacity-60" data-testid="auth-retry">
               {authChecking ? "Se verifică sesiunea…" : "Reîncearcă verificarea"}
             </button>
+          </div>}
+          {apiWarmup !== "ready" && <div className="text-[13px] my-4 rounded-lg px-3 py-3" style={{ background: "#fff8e6", color: "#805600" }} role="status" data-testid="auth-api-warmup">
+            {apiWarmup === "checking"
+              ? "Se pornește conexiunea la server. După o perioadă fără activitate, prima pornire poate dura aproximativ un minut; completează datele și trimite autentificarea o singură dată."
+              : "Serverul nu a răspuns la verificarea inițială. Poate încă pornește; așteaptă și încearcă o singură autentificare, ca să nu declanșezi blocarea temporară."}
           </div>}
           {err && <div data-testid="login-error" className="text-[13px] my-4 rounded-lg px-3 py-2" style={{ background: "#fff0f0", color: "#b33333" }}>{err}</div>}
           <Btn type="submit" data-testid="login-submit" className="w-full justify-center mt-4 min-h-12" disabled={loading}>

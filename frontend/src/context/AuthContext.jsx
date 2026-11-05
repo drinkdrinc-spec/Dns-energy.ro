@@ -3,6 +3,8 @@ import { api } from "@/lib/api";
 
 const AuthContext = createContext(null);
 const SESSION_CHECK_TIMEOUT_MS = 45000;
+// Render's free API may take about a minute to wake after inactivity.
+const LOGIN_TIMEOUT_MS = 120000;
 const AUTH_SERVICE_UNAVAILABLE = "Serverul DNS Energy nu a răspuns. Sesiunea a fost păstrată; verifică conexiunea și încearcă din nou.";
 
 export function AuthProvider({ children }) {
@@ -51,7 +53,7 @@ export function AuthProvider({ children }) {
   }, [refresh]);
 
   const login = async (email, password) => {
-    const { data } = await api.post("/auth/login", { email, password }, { timeout: SESSION_CHECK_TIMEOUT_MS });
+    const { data } = await api.post("/auth/login", { email, password }, { timeout: LOGIN_TIMEOUT_MS });
     localStorage.setItem("den_token", data.access_token);
     setAuthIssue("");
     setUser(data.user);
