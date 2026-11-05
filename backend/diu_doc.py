@@ -238,8 +238,11 @@ def doc_izol(ctx, r, pos):
     p = r.get("pram_m") or {}
     rows = [["Nr.", "Circuit", "Tensiune încercare (V)", "Riso măsurată (MΩ)", "Valoare minimă (MΩ)", "Rezultat"]]
     for i, c in enumerate(circuits(r)):
-        v = num(c.get("riso"))
-        rows.append([str(i + 1), escape(c["name"]), e(p.get("test_v")), e(c.get("riso")), f"{RISO_MIN:g}", verdict(None if v is None else v >= RISO_MIN)])
+        test_v, riso = num(p.get("test_v")), num(c.get("riso"))
+        # A pass/fail result is meaningful only when both the actual test
+        # voltage and the measured insulation resistance were recorded.
+        result = verdict(None if test_v is None or test_v <= 0 or riso is None else riso >= RISO_MIN)
+        rows.append([str(i + 1), escape(c["name"]), e(p.get("test_v")), e(c.get("riso")), f"{RISO_MIN:g}", result])
     if len(rows) == 1:
         rows.append(["—", M, M, M, f"{RISO_MIN:g}", "—"])
     return pram_head(ctx, r, "BULETIN DE MĂSURARE A REZISTENȚEI DE IZOLAȚIE", "SR HD 60364-6, art. 6.4.3.3 (circuite ≤ 500 V: încercare 500 V c.c., minimum 1 MΩ)") + [
@@ -355,3 +358,4 @@ def render(keys, r, s, client):
 
 
 _ = colors
+
