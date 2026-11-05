@@ -1345,8 +1345,6 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
     if not product:
         raise HTTPException(status_code=400, detail="Produsul nu mai poate fi verificat la sursa publică")
     existing = await db.catalog.find_one({"owner": user["id"], "category": category, "source_url": product_url}, {"_id": 0})
-    if existing:
-        return {"ok": True, "existing": True, "item": clean(existing)}
 
     allowed = ("p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt",
                "w", "voc", "coef_voc", "coef_vmp", "temp_pmax", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max", "p_max_w", "max_devices",
@@ -1359,9 +1357,17 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
             **{key: product[key] for key in allowed if key in product}}
     now = datetime.now(timezone.utc).isoformat()
     for kind in ("datasheet", "conformity"):
-        doc_url = product.get(kind + "_url") or ""
+        prior_doc = (existing or {}).get(kind)
+        doc_url = ((existing or {}).get(kind + "_url")
+                   or (existing or {}).get(kind + "_source_url")
+                   or (prior_doc.get("source_url") if isinstance(prior_doc, dict) else "")
+                   or product.get(kind + "_url") or "")
         source_host = SUPPLIER_CATALOG.SOURCES[supplier]["host"]
         if not doc_url or not SUPPLIER_CATALOG._safe_document(doc_url, source_host):
+            continue
+        item[kind + "_url"] = doc_url
+        item[kind + "_source_url"] = doc_url
+        if isinstance(prior_doc, dict) and prior_doc.get("storage_path"):
             continue
         try:
             fetched = await SUPPLIER_CATALOG.fetch_public_pdf(doc_url, source_host, MAX_UPLOAD_BYTES)
@@ -1375,9 +1381,16 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
             item[kind] = {"storage_path": stored["path"], "original_filename": f"{product['brand_model']} — {kind}.pdf",
                           "content_type": "application/pdf", "size": len(data), "source_url": doc_url,
                           "source_host": host, "resolved_url": resolved_url, "imported_at": now}
-            item[kind + "_source_url"] = doc_url
         except Exception as exc:
             logger.info("Supplier catalog document unavailable (%s): %s", kind, str(exc)[:160])
+    if existing:
+        updates = SUPPLIER_CATALOG.merge_catalog_enrichment(existing, item)
+        updates["last_source_check_at"] = now
+        await db.catalog.update_one({"id": existing["id"], "owner": user["id"]}, {"$set": updates})
+        refreshed = await db.catalog.find_one({"id": existing["id"], "owner": user["id"]}, {"_id": 0})
+        if updates:
+            await audit(user, "actualizare model catalog furnizor", "catalog", existing["id"], list(updates))
+        return {"ok": True, "existing": True, "item": clean(refreshed or existing)}
     record = _new(user, item)
     await db.catalog.insert_one(dict(record))
     await audit(user, "import produs catalog furnizor", "catalog", record["id"], ["category", "brand_model", "supplier", "source_url", *[k for k in ("datasheet", "conformity") if k in item]])

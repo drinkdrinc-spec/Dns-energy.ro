@@ -245,6 +245,26 @@ def _offer(doc):
     return "", ""
 
 
+def merge_catalog_enrichment(existing: dict, imported: dict) -> dict:
+    """Fill missing catalog data from a fresh source check without overwriting curated values."""
+    updates = {}
+    for key, value in imported.items():
+        if key in {"id", "owner", "_id", "created_at", "updated_at"} or value in (None, "", {}, []):
+            continue
+        if key in {"datasheet", "conformity"}:
+            current = existing.get(key)
+            if isinstance(value, dict) and value.get("storage_path") and not (isinstance(current, dict) and current.get("storage_path")):
+                updates[key] = value
+            continue
+        if key in {"source_price", "source_availability"}:
+            updates[key] = value
+            continue
+        current = existing.get(key)
+        if current in (None, "", {}, []):
+            updates[key] = value
+    return updates
+
+
 def _properties(doc):
     pairs = []
     for row in doc.xpath("//tr"):

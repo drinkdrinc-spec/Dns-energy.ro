@@ -44,6 +44,30 @@ def test_category_filter_keeps_individual_equipment_models():
     assert supplier_catalog._correct_category("Acumulator V-TAC 10 kWh", "Baterie") is True
 
 
+def test_reimport_enriches_missing_specs_and_document_links_without_overwriting_curated_data():
+    existing = {
+        "id": "catalog-item", "owner": "owner", "p_nom_kw": 5,
+        "vdc_max": None, "datasheet_url": "", "notes": "Valoare revizuită manual",
+        "datasheet": {"source_url": "https://depozitsolar.ro/files/old.pdf"},
+        "conformity": {"storage_path": "owned/current.pdf"},
+    }
+    imported = {
+        "id": "other-id", "owner": "other-owner", "p_nom_kw": 10,
+        "vdc_max": 1000, "datasheet_url": "https://depozitsolar.ro/files/model.pdf",
+        "notes": "Import automat", "datasheet": {"storage_path": "owned/new.pdf"},
+        "conformity": {"storage_path": "owned/replacement.pdf"},
+    }
+
+    updates = supplier_catalog.merge_catalog_enrichment(existing, imported)
+
+    assert updates["vdc_max"] == 1000
+    assert updates["datasheet_url"] == imported["datasheet_url"]
+    assert updates["datasheet"] == imported["datasheet"]
+    assert "id" not in updates and "owner" not in updates
+    assert "p_nom_kw" not in updates and "notes" not in updates
+    assert "conformity" not in updates
+
+
 def test_listing_pages_are_bounded_and_stay_on_the_same_category():
     page = html.fromstring("""
         <nav>
