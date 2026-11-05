@@ -2773,22 +2773,28 @@ def atr_client_documents(user: dict, client: dict):
 
 
 def atr_site_plan_background(owner: str, rec: dict):
-    """Load only the current tenant's supported plan image for the ATR sketch."""
+    """Load and rasterize only the current tenant-owned attached plan."""
     plan = (rec or {}).get("site_plan")
     if not isinstance(plan, dict):
         return None
     path = str(plan.get("background_path") or "")
-    if not path or f"/{owner}/" not in f"/{path.strip('/')}" or ".." in path.split("/"):
+    if not path or (f"/{owner}/" not in "/" + path.strip("/") + "/") or ".." in path.split("/") + ":
+        return None
+    attached_plans = (rec.get("attachments") or {}).get("plan") or []
+    if not any(isinstance(item, dict) and item.get("storage_path") == path for item in attached_plans):
         return None
     try:
         data, content_type = get_object(path)
     except Exception as exc:
         logger.warning("ATR site-plan image unavailable: %s", type(exc).__name__)
         return None
-    if content_type not in {"image/png", "image/jpeg", "image/webp"} or len(data) > 10 * 1024 * 1024:
+    if len(data) > 10 * 1024 * 1024:
         return None
-    return data, content_type
-
+    try:
+        return ATR.rasterize_site_plan_background(data, content_type)
+    except Exception as exc:
+        logger.warning("ATR site-plan background could not be rendered: %s", type(exc).__name__)
+        return None
 
 async def atr_pack(user: dict, rec: dict, full: int):
     client = await get_client(user["id"], rec)
