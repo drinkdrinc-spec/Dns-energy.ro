@@ -13,6 +13,7 @@ export function AtrSitePlan({ id, value, files = [], onChange }) {
   const [tool, setTool] = useState("marker:CEF");
   const [dragging, setDragging] = useState("");
   const [backgroundUrl, setBackgroundUrl] = useState("");
+  const [backgroundError, setBackgroundError] = useState("");
   const plan = value && typeof value === "object" ? value : {};
   const markers = Array.isArray(plan.markers) ? plan.markers : [];
   const boundary = Array.isArray(plan.boundary) ? plan.boundary : [];
@@ -31,12 +32,13 @@ export function AtrSitePlan({ id, value, files = [], onChange }) {
       backgroundUrlRef.current = "";
       setBackgroundUrl("");
     };
+    clearCurrent();
+    setBackgroundError("");
     if (!selectedImage?.storage_path) {
-      clearCurrent();
       return () => { active = false; };
     }
     if (!id) {
-      clearCurrent();
+      setBackgroundError("Salvează cererea ATR înainte de previzualizarea fundalului.");
       return () => { active = false; };
     }
     api.get(`/atr/${encodeURIComponent(id)}/site-plan-background`, { params: { path: selectedImage.storage_path }, responseType: "blob" })
@@ -48,8 +50,13 @@ export function AtrSitePlan({ id, value, files = [], onChange }) {
         if (backgroundUrlRef.current) URL.revokeObjectURL(backgroundUrlRef.current);
         backgroundUrlRef.current = url;
         setBackgroundUrl(url);
+        setBackgroundError("");
       })
-      .catch(() => { if (active) clearCurrent(); });
+      .catch(() => {
+        if (!active) return;
+        clearCurrent();
+        setBackgroundError("Nu s-a putut previzualiza fișierul. Verifică atașamentul „Plan de situație” și încearcă din nou.");
+      });
     return () => {
       active = false;
       if (backgroundUrlRef.current) URL.revokeObjectURL(backgroundUrlRef.current);
@@ -97,6 +104,7 @@ export function AtrSitePlan({ id, value, files = [], onChange }) {
     </label>
     {!imageFiles.length && <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Atașează o imagine PNG/JPEG/WebP sau un PDF în documentul „Plan de situație”. Pentru PDF se folosește prima pagină ca fundal; originalul rămâne în dosar.</p>}
     {selectedImage && !id && <p className="mt-1 text-xs text-amber-800">Salvează cererea ATR înainte să încarci fundalul în editor.</p>}
+    {backgroundError && <p className="mt-1 text-xs text-amber-800" role="status" data-testid="atr-site-plan-background-error">{backgroundError}</p>}
     {id && <button type="button" disabled={!hasGeometry} className="mt-3 rounded-lg border px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/atr/${encodeURIComponent(id)}/site-plan.pdf`, "Schiță_amplasament_ATR.pdf")} data-testid="atr-site-plan-download">Descarcă PDF separat</button>}
     <div className="mt-3 flex flex-wrap gap-2" role="toolbar" aria-label="Instrumente pentru schiță">
       {MARKERS.map((type) => <button key={type} type="button" className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold" aria-pressed={tool === `marker:${type}`} style={{ borderColor: tool === `marker:${type}` ? "var(--blue)" : "var(--line)", color: tool === `marker:${type}` ? "var(--blue)" : "var(--ink)" }} onClick={() => setTool(`marker:${type}`)}>{type}</button>)}
