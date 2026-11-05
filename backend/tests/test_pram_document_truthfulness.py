@@ -93,7 +93,7 @@ def _diu_isolation_result(test_v, riso):
         "pram_m": {"test_v": test_v},
         "circuits": [{"name": "Circuit test", "riso": riso}],
     }
-    context = type("Context", (), {"name": "Client test", "loc": "Adresă test"})()
+    context = type("Context", (), {"name": "Client test", "loc": "Adresă test", "company": "Firmă test", "rep": "Reprezentant test"})()
     blocks = diu_doc.doc_izol(context, record, [])
     rows = next(block[1] for block in blocks if block[0] == "table")
     return rows[-1][-1]
