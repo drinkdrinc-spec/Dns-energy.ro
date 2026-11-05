@@ -85,3 +85,23 @@ def test_diu_ddr_requires_measured_trip_current_before_completion():
     record["circuits"][0]["rcd_i"] = 22
     missing = diu_doc.missing("pram_ddr", record, settings)
     assert not any("Curent declanșare DDR" in item for item in missing)
+
+
+
+def _diu_isolation_result(test_v, riso):
+    record = {
+        "pram_m": {"test_v": test_v},
+        "circuits": [{"name": "Circuit test", "riso": riso}],
+    }
+    context = type("Context", (), {"name": "Client test", "loc": "Adresă test"})()
+    blocks = diu_doc.doc_izol(context, record, [])
+    rows = next(block[1] for block in blocks if block[0] == "table")
+    return rows[-1][-1]
+
+
+def test_diu_isolation_verdict_requires_recorded_test_voltage():
+    assert _diu_isolation_result(None, "250") == "—"
+    assert _diu_isolation_result("0", "250") == "—"
+    assert _diu_isolation_result("500", "250") == "Corespunde"
+    assert _diu_isolation_result("500", "0.5") == "NU corespunde"
+    assert _diu_isolation_result("500", None) == "—"
