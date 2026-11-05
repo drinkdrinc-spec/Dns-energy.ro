@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { BrandMark } from "@/components/BrandMark";
-import { FileText } from "lucide-react";
+import { CheckCircle2, Download, FileText, RefreshCw } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api/public/sign`;
 
@@ -29,6 +29,48 @@ function Pad({ onChange }) {
   );
 }
 
+
+function ClientPortal({ info, token, messages, reply, setReply, onReply, busy, notice, onRefresh, refreshing }) {
+  const portal = info.portal;
+  const activeIndex = Number.isInteger(portal.stage_index) ? portal.stage_index : -1;
+  return <>
+    <header className="mb-5 rounded-2xl bg-white p-5 shadow-sm" data-testid="client-portal-header">
+      <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "#2878f0" }}>{info.company} · portal client</div>
+      <h1 className="mt-1 text-2xl font-extrabold">Dosarul tău</h1>
+      <p className="mt-1 text-sm" style={{ color: "#5a6b85" }}>{info.client_name}{info.signed_at ? \` · semnat la \${new Date(info.signed_at).toLocaleString("ro-RO")}\` : ""}</p>
+    </header>
+    <section className="mb-4 rounded-2xl border bg-white p-4" style={{ borderColor: "#dbe3ee" }} data-testid="client-portal-status">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><p className="text-xs font-semibold" style={{ color: "#5a6b85" }}>Stadiul curent</p><h2 className="text-lg font-extrabold">{portal.status}</h2></div>
+        <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-xs font-bold disabled:opacity-60" style={{ borderColor: "#dbe3ee", color: "#2878f0" }} data-testid="client-portal-refresh"><RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />Actualizează</button>
+      </div>
+      {activeIndex >= 0 && <ol className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="Etapele dosarului">
+        {portal.stages.map((stage, index) => <li key={stage} className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: index === activeIndex ? "#eaf1ff" : "#f8fafd", color: index <= activeIndex ? "#173968" : "#76859a", fontWeight: index === activeIndex ? 700 : 500 }} aria-current={index === activeIndex ? "step" : undefined}>
+          <CheckCircle2 size={15} style={{ color: index <= activeIndex ? "#2878f0" : "#aab5c4", flex: "none" }} />{stage}
+        </li>)}
+      </ol>}
+      {portal.signed_document_available && <a href={\`\${API}/\${token}/signed-document\`} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold text-white sm:w-auto" style={{ background: "#2878f0" }} data-testid="client-portal-signed-download"><Download size={16} />Descarcă documentul semnat</a>}
+      <p className="mt-3 text-[11px]" style={{ color: "#6b7789" }}>Linkul portalului este valabil 180 de zile de la semnare. Păstrează-l privat.</p>
+    </section>
+    <section className="rounded-2xl border bg-white p-4" style={{ borderColor: "#dbe3ee" }} data-testid="sign-client-messages">
+      <h2 className="text-sm font-bold">Mesaje despre dosar</h2>
+      <div className="mt-3 max-h-64 space-y-2 overflow-y-auto" data-testid="sign-client-message-list">
+        {!messages.length && <p className="text-xs" style={{ color: "#5a6b85" }}>Nu există mesaje în acest dosar.</p>}
+        {messages.map((item) => <article key={item.id} className="rounded-lg border p-3" style={{ borderColor: "#dbe3ee", background: "#f8fafd" }}>
+          <div className="flex justify-between gap-2 text-[11px] font-semibold"><span>{item.sender === "client" ? "Tu" : item.sender_name || "Echipa DNS"}</span><time style={{ color: "#5a6b85" }}>{item.created_at ? new Date(item.created_at).toLocaleString("ro-RO") : ""}</time></div>
+          {item.text && <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5">{item.text}</p>}
+          {!!item.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{item.attachments.map((file, index) => <a key={\`\${item.id}-\${index}\`} href={\`\${API}/\${token}/message-files/\${encodeURIComponent(item.id)}/\${index}\`} className="inline-flex items-center gap-1 text-xs underline" style={{ color: "#2878f0" }}><FileText size={12} />{file.original_filename || "Atașament"}</a>)}</div>}
+        </article>)}
+      </div>
+      <form className="mt-3 space-y-2" onSubmit={onReply}>
+        <textarea className="den-input" rows={2} maxLength={2000} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Scrie un mesaj către echipa DNS…" data-testid="sign-client-message-input" />
+        <button className="min-h-10 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: "#2878f0" }} disabled={busy || !reply.trim()} data-testid="sign-client-message-send">{busy ? "Se trimite…" : "Trimite mesajul"}</button>
+      </form>
+      {notice && <p className="mt-2 text-xs font-semibold" style={{ color: notice.includes("nu a putut") ? "#9b2c2c" : "#166534" }} role="status">{notice}</p>}
+    </section>
+  </>;
+}
+
 export default function SignPage() {
   const { token } = useParams();
   const [info, setInfo] = useState(null);
@@ -45,7 +87,7 @@ export default function SignPage() {
   useEffect(() => { axios.get(`${API}/${token}`).then((r) => { setInfo(r.data); setClientMessages(r.data.client_messages || []); }).catch((e) => setErr(e.response?.data?.detail || "Link invalid")); }, [token]);
   const call = async (path, body, ok) => {
     setBusy(true); setMsg("");
-    try { const r = await axios.post(`${API}/${token}/${path}`, body); ok(r.data); } catch (e) { setMsg(e.response?.data?.detail || "Eroare"); } finally { setBusy(false); }
+    try { const r = await axios.post(`${API}/${token}/${path}`, body); await ok(r.data); } catch (e) { setMsg(e.response?.data?.detail || "Eroare"); } finally { setBusy(false); }
   };
   const sendClientReply = async (event) => {
     event.preventDefault();
@@ -61,6 +103,10 @@ export default function SignPage() {
   if (err) return <Shell><p className="text-center font-bold" data-testid="sign-error">{err}</p></Shell>;
   if (!info) return <Shell><p className="text-center">Se încarcă…</p></Shell>;
   if (done) return <Shell><div className="text-center" data-testid="sign-done"><h2 className="text-xl font-extrabold mb-2">{done}</h2><p className="text-sm">Linkul nu mai poate fi folosit. Poți închide această pagină.</p></div></Shell>;
+  if (info.portal) return <Shell><ClientPortal info={info} token={token} messages={clientMessages} reply={clientReply} setReply={setClientReply} onReply={sendClientReply} busy={replyBusy} notice={msg} onRefresh={async () => {
+    try { const { data } = await axios.get(`${API}/${token}`); setInfo(data); setClientMessages(data.client_messages || []); setMsg(""); }
+    catch (e) { setMsg(e.response?.data?.detail || "Portalul nu a putut fi actualizat."); }
+  }} refreshing={busy} /></Shell>;
   if (!info.pages) return <Shell><p className="text-center font-bold" data-testid="sign-closed">{info.status === "Semnat" ? `Documentul a fost deja semnat${info.signed_at ? ` la ${new Date(info.signed_at).toLocaleString("ro-RO")}` : ""}.` : info.status === "Refuzat" ? "Semnarea acestui document a fost refuzată." : "Acest link a expirat. Cere emitentului un link nou."}</p></Shell>;
   const ok = f.declared_name.trim() && f.intent && f.otp.length === 6 && f.signature;
   return (
@@ -101,7 +147,7 @@ export default function SignPage() {
           <span>Am citit integral documentul și îmi exprim explicit intenția de a-l semna electronic. Înțeleg că aceasta este o <b>semnătură electronică simplă</b> (eIDAS), cu înregistrarea datei, orei, adresei IP și a dispozitivului.</span></label>
         {msg && <p className="text-sm font-bold" style={{ color: msg.startsWith("Cod trimis") ? "#166534" : "#9b2c2c" }} data-testid="sign-msg">{msg}</p>}
         <button className="w-full rounded-xl py-3 font-extrabold text-white disabled:opacity-40" style={{ background: "#2878f0" }} disabled={!ok || busy}
-          onClick={() => call("sign", f, () => setDone("Document semnat. Mulțumim!"))} data-testid="sign-submit">Semnează documentul</button>
+          onClick={() => call("sign", f, async () => { const { data } = await axios.get(`${API}/${token}`); setInfo(data); setClientMessages(data.client_messages || []); })} data-testid="sign-submit">Semnează documentul</button>
         {!refusing ? <button className="w-full text-sm" style={{ color: "#9b2c2c" }} onClick={() => setRefusing(true)} data-testid="sign-refuse-open">Refuz să semnez</button> : (
           <div className="space-y-2"><textarea className="den-input" placeholder="Motivul refuzului (opțional)" value={reason} onChange={(e) => setReason(e.target.value)} data-testid="sign-refuse-reason" />
             <button className="w-full rounded-xl py-2 font-bold border" style={{ color: "#9b2c2c", borderColor: "#9b2c2c" }} onClick={() => call("refuse", { reason }, () => setDone("Ai refuzat semnarea documentului."))} data-testid="sign-refuse-submit">Confirm refuzul</button></div>
