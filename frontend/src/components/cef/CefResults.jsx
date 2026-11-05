@@ -29,7 +29,7 @@ export function Totals({ res, inverters = [], sharedBatteries = [] }) {
         {res.grid.anti && <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "#7f1d1d" }}>Tablou antiinsularizare inclus</span>}
       </div>
       {res.inverters?.length > 0 && <div className="mt-3 rounded-lg border border-white/15 bg-white/5 p-3" data-testid="cef-auto-sizing">
-        <b className="block text-xs">Propuneri automate de protecții și cabluri</b>
+        <b className="block text-xs">Propuneri preliminare automate de protecții și cabluri</b>
         {res.grid?.main_proposal && <p className="mt-2 text-xs">Branșament: protecție generală propusă {res.grid.main_proposal} A · Ib {res.grid.i_br} A{res.grid.main_section_proposal ? " · coloană BMP–TG minim " + res.grid.main_section_proposal + " mm² (Iz " + res.grid.main_section_iz + " A" + (res.grid.main_section_du != null ? ", ΔU " + res.grid.main_section_du + "%" : "") + ")" : ""}.</p>}
         {res.grid?.anti_breaker_proposal && <p className="mt-1 text-xs">Antiinsularizare: întreruptor motorizat propus {res.grid.anti_breaker_proposal} A, cu bobină de declanșare. Verifică modelul, Icu/Ics și soluția din ATR.</p>}
         {res.grid?.main_proposal && !res.grid.main_section_proposal && <p className="mt-1 text-xs text-amber-100">Pentru această putere secțiunea coloanei nu poate fi aleasă sigur din tabelul disponibil; este necesar proiect dedicat.</p>}
@@ -48,7 +48,7 @@ export function Totals({ res, inverters = [], sharedBatteries = [] }) {
             return <div key={inv.index || index} className="text-xs leading-relaxed" data-testid={`cef-auto-sizing-${inv.index || index + 1}`}>
               <p>Invertor {inv.index || index + 1}{units}: AC {ac.breaker_a ? `${ac.breaker_a} A` : "protecție nedeterminată"} / {ac.section ? `${ac.section} mm²` : "secțiune nedeterminată"} · DC {dc.section ? `${dc.section} mm²` : "secțiune nedeterminată"}{dc.spd_ucpv ? ` · SPD ${dc.spd_ucpv} V` : ""}{dc.fuse ? ` · gPV ${dc.fuse} A` : ""}</p>
               {battery && <p className="mt-1 text-amber-100" data-testid={`cef-battery-sizing-${inv.index || index + 1}`}>
-                Baterie {battery.model || "selectată"}: {battery.voltage ? `${battery.voltage} V` : "tensiune din fișa tehnică neidentificată"} · {battery.i_max ? `Imax ${battery.i_max} A` : "Imax din fișa tehnică neidentificat"} · cablu DC {batteryProposal?.section ? `${batteryProposal.section} mm²` : "nedimensionat"}{batteryProposal?.fuse_a ? ` · protecție ${batteryProposal.fuse_a} A` : " · protecție de confirmat din fișa producătorului"}{batteryProposal?.du != null ? ` · ΔU ${batteryProposal.du}%` : ""}{batteryProposal?.note ? ` — ${batteryProposal.note}` : ""}
+                Baterie {battery.model || "selectată"}: {battery.voltage ? `${battery.voltage} V` : "tensiune din fișa tehnică neidentificată"} · {battery.i_max ? `Imax ${battery.i_max} A` : "Imax din fișa tehnică neidentificat"} · cablu DC {batteryProposal?.section ? `${batteryProposal.section} mm²` : "nedimensionat"}{batteryProposal?.fuse_a ? ` · protecție ${batteryProposal.fuse_a} A` : " · protecție de confirmat din fișa producătorului"}{batteryProposal?.du != null ? ` · ΔU ${batteryProposal.du}%` : Number(battery.cable_length) > 0 ? " · ΔU neverificată" : " · ΔU neverificată (lungime traseu lipsă)"}{batteryProposal?.note ? ` — ${batteryProposal.note}` : ""}
               </p>}
             </div>;
           })}
