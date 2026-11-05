@@ -662,7 +662,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
     bundle = io.BytesIO()
     with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(pdf_name, pdf)
-        site_plan_pdf = ATR.render_atr_site_plan(rec, client)
+        site_plan_pdf = ATR.render_atr_site_plan(rec, client, S.atr_site_plan_background(user["id"], rec))
         if site_plan_pdf:
             archive.writestr("Plan de situatie/Schiță_amplasament_ATR_ilustrativă.pdf", site_plan_pdf)
         op_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
@@ -900,7 +900,7 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
 async def atr_site_plan_pdf(item_id: str, user: dict = Depends(get_current_user)):
     rec = await get_rec(user, item_id, write=False)
     client = await S.get_client(user["id"], rec) or {}
-    content = ATR.render_atr_site_plan(rec, client)
+    content = ATR.render_atr_site_plan(rec, client, S.atr_site_plan_background(user["id"], rec))
     if not content:
         raise HTTPException(status_code=404, detail="Adaugă cel puțin un simbol sau un traseu în schița ATR înainte de descărcare.")
     return Response(content=content, media_type="application/pdf",
