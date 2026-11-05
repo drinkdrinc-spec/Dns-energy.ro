@@ -37,7 +37,7 @@ function ClientPortal({ info, token, messages, reply, setReply, onReply, busy, n
     <header className="mb-5 rounded-2xl bg-white p-5 shadow-sm" data-testid="client-portal-header">
       <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "#2878f0" }}>{info.company} · portal client</div>
       <h1 className="mt-1 text-2xl font-extrabold">Dosarul tău</h1>
-      <p className="mt-1 text-sm" style={{ color: "#5a6b85" }}>{info.client_name}{info.signed_at ? \` · semnat la \${new Date(info.signed_at).toLocaleString("ro-RO")}\` : ""}</p>
+      <p className="mt-1 text-sm" style={{ color: "#5a6b85" }}>{info.client_name}{info.signed_at ? ` · semnat la ${new Date(info.signed_at).toLocaleString("ro-RO")}` : ""}</p>
     </header>
     <section className="mb-4 rounded-2xl border bg-white p-4" style={{ borderColor: "#dbe3ee" }} data-testid="client-portal-status">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -49,7 +49,7 @@ function ClientPortal({ info, token, messages, reply, setReply, onReply, busy, n
           <CheckCircle2 size={15} style={{ color: index <= activeIndex ? "#2878f0" : "#aab5c4", flex: "none" }} />{stage}
         </li>)}
       </ol>}
-      {portal.signed_document_available && <a href={\`\${API}/\${token}/signed-document\`} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold text-white sm:w-auto" style={{ background: "#2878f0" }} data-testid="client-portal-signed-download"><Download size={16} />Descarcă documentul semnat</a>}
+      {portal.signed_document_available && <a href={`${API}/${token}/signed-document`} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold text-white sm:w-auto" style={{ background: "#2878f0" }} data-testid="client-portal-signed-download"><Download size={16} />Descarcă documentul semnat</a>}
       <p className="mt-3 text-[11px]" style={{ color: "#6b7789" }}>Linkul portalului este valabil 180 de zile de la semnare. Păstrează-l privat.</p>
     </section>
     <section className="rounded-2xl border bg-white p-4" style={{ borderColor: "#dbe3ee" }} data-testid="sign-client-messages">
@@ -59,7 +59,7 @@ function ClientPortal({ info, token, messages, reply, setReply, onReply, busy, n
         {messages.map((item) => <article key={item.id} className="rounded-lg border p-3" style={{ borderColor: "#dbe3ee", background: "#f8fafd" }}>
           <div className="flex justify-between gap-2 text-[11px] font-semibold"><span>{item.sender === "client" ? "Tu" : item.sender_name || "Echipa DNS"}</span><time style={{ color: "#5a6b85" }}>{item.created_at ? new Date(item.created_at).toLocaleString("ro-RO") : ""}</time></div>
           {item.text && <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5">{item.text}</p>}
-          {!!item.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{item.attachments.map((file, index) => <a key={\`\${item.id}-\${index}\`} href={\`\${API}/\${token}/message-files/\${encodeURIComponent(item.id)}/\${index}\`} className="inline-flex items-center gap-1 text-xs underline" style={{ color: "#2878f0" }}><FileText size={12} />{file.original_filename || "Atașament"}</a>)}</div>}
+          {!!item.attachments?.length && <div className="mt-2 flex flex-wrap gap-2">{item.attachments.map((file, index) => <a key={`${item.id}-${index}`} href={`${API}/${token}/message-files/${encodeURIComponent(item.id)}/${index}`} className="inline-flex items-center gap-1 text-xs underline" style={{ color: "#2878f0" }}><FileText size={12} />{file.original_filename || "Atașament"}</a>)}</div>}
         </article>)}
       </div>
       <form className="mt-3 space-y-2" onSubmit={onReply}>
