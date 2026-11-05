@@ -388,12 +388,13 @@ export default function EquipmentCatalog() {
   const [officialImportProgress, setOfficialImportProgress] = useState("");
   const importOfficialDocuments = async () => {
     const jobs = items.flatMap((item) => ["datasheet", "conformity"]
-      .filter((kind) => !hasStoredDocument(item, kind) && (item[`${kind}_source_url`] || item[`${kind}_url`]))
-      .map((kind) => ({ item, kind, url: item[`${kind}_source_url`] || item[`${kind}_url`] })));
-    if (!jobs.length) return toast.info("Nu există PDF-uri oficiale noi de preluat; poți adăuga linkuri HTTPS în catalog.");
+      .filter((kind) => !hasStoredDocument(item, kind) && (item[`${kind}_source_url`] || item[`${kind}_url`] || item.source_url))
+      .map((kind) => ({ item, kind, url: item[`${kind}_source_url`] || item[`${kind}_url`] || "", recover: !item[`${kind}_source_url`] && !item[`${kind}_url`] })));
+    if (!jobs.length) return toast.info("Nu există PDF-uri noi sau pagini de produs cunoscute de verificat.");
     setImportingOfficial(true);
     setOfficialImportProgress(`0 / ${jobs.length} documente`);
     let imported = 0;
+    let recovered = 0;
     let extractedModels = 0;
     let extractionFailed = 0;
     let completed = 0;
@@ -403,7 +404,19 @@ export default function EquipmentCatalog() {
       while (cursor < jobs.length) {
         const job = jobs[cursor++];
         try {
-          await api.post(`/catalog/${job.item.id}/import-document`, { kind: job.kind, url: job.url }, { timeout: 90000 });
+          if (job.recover) {
+            await api.post(`/catalog/${job.item.id}/recover-document`, { kind: job.kind }, { timeout: 90000 });
+            recovered += 1;
+          } else {
+            try {
+              await api.post(`/catalog/${job.item.id}/import-document`, { kind: job.kind, url: job.url }, { timeout: 90000 });
+            } catch (directError) {
+              // A stale/missing PDF URL should not prevent trying the validated product page.
+              if (!job.item.source_url) throw directError;
+              await api.post(`/catalog/${job.item.id}/recover-document`, { kind: job.kind }, { timeout: 90000 });
+              recovered += 1;
+            }
+          }
           imported += 1;
           if (job.kind === "datasheet") {
             try {
@@ -424,7 +437,7 @@ export default function EquipmentCatalog() {
     try {
       await Promise.all(Array.from({ length: Math.min(3, jobs.length) }, () => worker()));
       await load();
-      const summary = `Preluate ${imported} PDF-uri oficiale${extractedModels ? `; extrase date din ${extractedModels} fișe tehnice` : ""}.`;
+      const summary = `Preluate ${imported} PDF-uri oficiale${recovered ? ` (${recovered} găsite în paginile produselor)` : ""}${extractedModels ? `; extrase date din ${extractedModels} fișe tehnice` : ""}.`;
       if (failed.length || extractionFailed) {
         toast.warning(`${summary} ${failed.length ? `${failed.length} documente au eșuat.` : ""}${extractionFailed ? ` Extragerea nu a reușit pentru ${extractionFailed} fișe.` : ""}`);
         if (failed.length) console.warn("Importuri oficiale nereușite:", failed);
