@@ -1,6 +1,6 @@
 """MongoDB GridFS storage with lazy read-through migration for legacy files."""
 import os
-from functools import lru_cache
+import logging
 
 import requests
 from gridfs import GridFSBucket
@@ -8,6 +8,7 @@ from pymongo import MongoClient
 
 LEGACY_STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 LEGACY_STORAGE_KEY = (os.environ.get("EMERGENT_LLM_KEY") or "").strip()
+logger = logging.getLogger("d-energy.storage")
 
 
 class LegacyObjectUnavailable(FileNotFoundError):
@@ -65,6 +66,20 @@ def _legacy_storage_token(force: bool = False) -> str:
     return _legacy_key
 
 
+def _r2_object(key: str):
+    """Try the previous S3-compatible object store when the GridFS key is absent."""
+    required = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME")
+    if not all((os.environ.get(name) or "").strip() for name in required):
+        return None
+    try:
+        from r2_storage import get_object as get_r2_object
+        data, content_type = get_r2_object(key)
+        return data, content_type
+    except Exception as exc:
+        logger.warning("R2 read-through failed for a legacy object (%s)", type(exc).__name__)
+        return None
+
+
 def get_object(path: str):
     key = str(path).lstrip("/")
     if not key or ".." in key.split("/"):
@@ -74,6 +89,15 @@ def get_object(path: str):
         with _bucket.open_download_stream(stored._id) as stream:
             metadata = getattr(stored, "metadata", None) or {}
             return stream.read(), metadata.get("contentType", "application/octet-stream")
+
+    r2_object = _r2_object(key)
+    if r2_object:
+        data, content_type = r2_object
+        try:
+            put_object(key, data, content_type)
+        except Exception as exc:
+            logger.warning("R2 object could not be copied to GridFS (%s)", type(exc).__name__)
+        return data, content_type
 
     try:
         token = _legacy_storage_token()
