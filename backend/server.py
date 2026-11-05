@@ -3371,13 +3371,17 @@ def client_portal_stage(value: str | None) -> int | None:
     plain = unicodedata.normalize("NFKD", str(value or "").casefold()).encode("ascii", "ignore").decode("ascii")
     key = re.sub(r"[^a-z0-9]+", " ", plain).strip()
     aliases = {
-        "dosar in pregatire": 0, "in pregatire": 0, "date de completat": 0,
-        "gata de depunere": 1, "dosar generat": 1,
-        "depus la operator": 2, "depus la operatorul de distributie": 2, "dosar depus": 2,
-        "atr emis": 3, "aviz tehnic emis": 3,
+        "in lucru": 0, "dosar in pregatire": 0, "in pregatire": 0,
+        "date de completat": 0, "documente de completat": 0,
+        "in verificare": 1, "gata de depunere": 1, "pregatit pentru depunere": 1, "dosar generat": 1,
+        "depus": 2, "depusa": 2, "depus la operator": 2, "depus la operatorul de distributie": 2,
+        "in asteptare la operator": 2, "asteapta operator": 2, "completari cerute": 2,
+        "completari solicitate": 2, "dosar depus": 2,
+        "atr emis": 3, "avizat": 3, "aviz emis": 3, "aviz tehnic emis": 3, "factura atr": 3,
         "asteapta instalare": 4, "programat pentru montaj": 4, "in executie": 4,
         "instalat": 5, "montaj efectuat": 5,
-        "probe si punere in functiune": 6, "punere in functiune": 6, "pv teste pif": 6,
+        "pv teste pif": 6, "probe si pif": 6, "probe si punere in functiune": 6,
+        "punere in functiune": 6,
         "prosumator activ": 7, "finalizat": 7,
     }
     return aliases.get(key)
