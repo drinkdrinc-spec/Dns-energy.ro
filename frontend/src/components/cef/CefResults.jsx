@@ -10,7 +10,7 @@ export function Issues({ errors = [], warnings = [], testid }) {
   );
 }
 
-export function Totals({ res, inverters = [] }) {
+export function Totals({ res, inverters = [], sharedBatteries = [] }) {
   if (!res) return null;
   const t = res.totals;
   const items = [["Panouri", `${t.kwp} kWp`, "tot-kwp"], ["Invertoare", `${t.inverters_kw} kW`, "tot-kw"], ["Evacuat", `${t.export_kw} kW`, "tot-export"],
@@ -37,10 +37,20 @@ export function Totals({ res, inverters = [] }) {
           {res.inverters.map((inv, index) => {
             const ac = inv.proposals?.ac || {};
             const dc = inv.proposals?.dc || {};
+            const configured = inverters[index] || {};
+            const battery = configured.battery_mode === "shared"
+              ? sharedBatteries.find((item) => item.id === configured.shared_battery_id)
+              : configured.battery_mode === "own" ? configured.battery : null;
+            const batteryProposal = configured.battery_mode === "shared"
+              ? res.shared_battery_proposals?.[configured.shared_battery_id]
+              : inv.proposals?.battery;
             const units = inv.count > 1 ? ` · ${inv.count} buc.` : "";
-            return <p key={inv.index || index} className="text-xs leading-relaxed" data-testid={`cef-auto-sizing-${inv.index || index + 1}`}>
-              Invertor {inv.index || index + 1}{units}: AC {ac.breaker_a ? `${ac.breaker_a} A` : "protecție nedeterminată"} / {ac.section ? `${ac.section} mm²` : "secțiune nedeterminată"} · DC {dc.section ? `${dc.section} mm²` : "secțiune nedeterminată"}{dc.spd_ucpv ? ` · SPD ${dc.spd_ucpv} V` : ""}{dc.fuse ? ` · gPV ${dc.fuse} A` : ""}
-            </p>;
+            return <div key={inv.index || index} className="text-xs leading-relaxed" data-testid={`cef-auto-sizing-${inv.index || index + 1}`}>
+              <p>Invertor {inv.index || index + 1}{units}: AC {ac.breaker_a ? `${ac.breaker_a} A` : "protecție nedeterminată"} / {ac.section ? `${ac.section} mm²` : "secțiune nedeterminată"} · DC {dc.section ? `${dc.section} mm²` : "secțiune nedeterminată"}{dc.spd_ucpv ? ` · SPD ${dc.spd_ucpv} V` : ""}{dc.fuse ? ` · gPV ${dc.fuse} A` : ""}</p>
+              {battery && <p className="mt-1 text-amber-100" data-testid={`cef-battery-sizing-${inv.index || index + 1}`}>
+                Baterie {battery.model || "selectată"}: {battery.voltage ? `${battery.voltage} V` : "tensiune din fișa tehnică neidentificată"} · {battery.i_max ? `Imax ${battery.i_max} A` : "Imax din fișa tehnică neidentificat"} · cablu DC {batteryProposal?.section ? `${batteryProposal.section} mm²` : "nedimensionat"}{batteryProposal?.fuse_a ? ` · protecție ${batteryProposal.fuse_a} A` : " · protecție de confirmat din fișa producătorului"}{batteryProposal?.du != null ? ` · ΔU ${batteryProposal.du}%` : ""}{batteryProposal?.note ? ` — ${batteryProposal.note}` : ""}
+              </p>}
+            </div>;
           })}
         </div>
         {inverters.length > 0 && inverters.some((inv) => !Number(inv.ac?.length_m) || !Number(inv.dc?.length_m)) &&
