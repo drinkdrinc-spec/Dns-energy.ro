@@ -662,6 +662,9 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
     bundle = io.BytesIO()
     with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(pdf_name, pdf)
+        site_plan_pdf = ATR.render_atr_site_plan(rec, client)
+        if site_plan_pdf:
+            archive.writestr("Plan de situatie/Schiță_amplasament_ATR_ilustrativă.pdf", site_plan_pdf)
         op_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
         if op_key == "deer":
             annex_info = ATR.deer_annex_info(rec)
@@ -893,6 +896,17 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                     headers={"Content-Disposition": S.disp("attachment", name), "Cache-Control": "no-store"})
 
 
+@api.get("/atr/{item_id}/site-plan.pdf")
+async def atr_site_plan_pdf(item_id: str, user: dict = Depends(get_current_user)):
+    rec = await get_rec(user, item_id, write=False)
+    client = await S.get_client(user["id"], rec) or {}
+    content = ATR.render_atr_site_plan(rec, client)
+    if not content:
+        raise HTTPException(status_code=404, detail="Adaugă cel puțin un simbol sau un traseu în schița ATR înainte de descărcare.")
+    return Response(content=content, media_type="application/pdf",
+                    headers={"Content-Disposition": S.disp("attachment", "Schita_amplasament_ATR.pdf"), "Cache-Control": "no-store"})
+
+
 # ---------------- submission ----------------
 @api.post("/atr/{item_id}/submit")
 async def atr_submit(item_id: str, request: Request, user: dict = Depends(get_current_user)):
@@ -1045,3 +1059,4 @@ async def cron_atr(request: Request, background: BackgroundTasks):
     await db.cron_runs.insert_one({"id": run_id, "at": now(), "name": "atr-deadlines"})
     background.add_task(run_deadlines, run_id)
     return {"status": "accepted"}
+
