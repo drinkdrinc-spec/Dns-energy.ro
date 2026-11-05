@@ -162,8 +162,8 @@ class CefDrawing(Flowable):
                 coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
                 battery_section = bt.get("cable_section") or bp.get("section")
                 battery_fuse = bt.get("fuse_a") or bp.get("fuse_a")
-                switch_u = bt.get("dc_switch_voltage_v")
-                switch_i = bt.get("dc_switch_current_a")
+                switch_u = bt.get("dc_switch_voltage_v") or bt.get("breaker_voltage_dc")
+                switch_i = bt.get("dc_switch_current_a") or bt.get("breaker_a")
                 switch_text = f"Qbat DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "Qbat DC: tensiune/curent nominal de confirmat"
                 battery_lines = [
                     str(bt.get("model") or "—"),
@@ -186,8 +186,8 @@ class CefDrawing(Flowable):
             coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
             battery_section = b.get("cable_section") or bp.get("section")
             battery_fuse = b.get("fuse_a") or bp.get("fuse_a")
-            switch_u = b.get("dc_switch_voltage_v")
-            switch_i = b.get("dc_switch_current_a")
+            switch_u = b.get("dc_switch_voltage_v") or b.get("breaker_voltage_dc")
+            switch_i = b.get("dc_switch_current_a") or b.get("breaker_a")
             switch_text = f"Qbat DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "Qbat DC: tensiune/curent nominal de confirmat"
             modules = max(1, int(C.n(b.get("modules"), 1) or 1))
             module_kwh = C.n(b.get("kwh"))

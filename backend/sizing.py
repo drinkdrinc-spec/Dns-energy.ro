@@ -232,6 +232,10 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             o.need(f"cef.inverters.{i}.battery.model", "Model baterie", bat.get("model"), T)
             o.need(f"cef.inverters.{i}.battery.i_max", "Curent max descărcare baterie (A)", bat.get("i_max"), T)
             o.need(f"cef.inverters.{i}.battery.cable_length", "Lungime cablu baterie (m)", bat.get("cable_length"), T)
+            o.need(f"cef.inverters.{i}.battery.dc_switch_voltage_v", "Tensiune nominală separator / întreruptor DC baterie (V, din fișă)",
+                   bat.get("dc_switch_voltage_v") or bat.get("breaker_voltage_dc"), T)
+            o.need(f"cef.inverters.{i}.battery.dc_switch_current_a", "Curent nominal separator / întreruptor DC baterie (A, din fișă)",
+                   bat.get("dc_switch_current_a") or bat.get("breaker_a"), T)
             ibat = n(bat.get("i_max"))
             if ibat:
                 battery_proposal = r.get("proposals", {}).get("battery") or {}
@@ -294,6 +298,10 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         o.need("cef.grid.anti_relay", "Releu protecție interfață (antiinsularizare)", grid.get("anti_relay"), G)
     for b in cef.get("shared_batteries") or []:
         o.need("shared.i_max", f"Baterie comună {b.get('model') or ''} — curent max (A)", b.get("i_max"), "Baterii")
+        o.need("shared.dc_switch_voltage_v", f"Baterie comună {b.get('model') or ''} — tensiune separator / întreruptor DC (V, din fișă)",
+               b.get("dc_switch_voltage_v") or b.get("breaker_voltage_dc"), "Baterii")
+        o.need("shared.dc_switch_current_a", f"Baterie comună {b.get('model') or ''} — curent separator / întreruptor DC (A, din fișă)",
+               b.get("dc_switch_current_a") or b.get("breaker_a"), "Baterii")
     o.it(G, "Pierderi totale estimate în cabluri", g(tot_loss, " W", 1), "calculat", "Σ pierderi DC + AC (la Pmax / STC)")
     for it in o.items:
         if it["ok"] is False:
