@@ -39,6 +39,7 @@ def test_power_request_maps_declared_design_into_diu_without_pram_measurements()
     }]
     assert "pram_m" not in fields
     assert "earth_ohm" not in fields
+    assert "power_cef_snapshot" not in fields
 
 
 def test_power_request_fills_empty_diu_fields():
@@ -53,7 +54,7 @@ def test_power_request_refreshes_unchanged_fields_but_preserves_manual_edits():
     old_fields = sync.power_cef_diu_fields(old_power)
     rec = {
         **{key: value for key, value in old_fields.items() if key != "power_cef_snapshot"},
-        "power_cef_snapshot": old_fields["power_cef_snapshot"],
+        "power_cef_snapshot": old_fields,
         "tg_breaker_a": 50,  # manually edited after the original synchronization
     }
 
@@ -62,6 +63,13 @@ def test_power_request_refreshes_unchanged_fields_but_preserves_manual_edits():
     assert fields["supply"] == "Monofazat"  # still matches prior synchronized value
     assert fields["circuits"][0]["breaker_a"] == 32
     assert "tg_breaker_a" not in fields  # manual value is not overwritten
-    assert fields["power_cef_snapshot"]["grid"]["tg_breaker_a"] == 63
+    assert fields["power_cef_snapshot"]["tg_breaker_a"] == 63
+
+
+def test_power_request_does_not_infer_photovoltaic_type_without_declared_equipment():
+    fields = sync.power_cef_diu_fields({"new_supply": "Monofazat", "power_cef": {"grid": {}, "inverters": []}})
+
+    assert fields["supply"] == "Monofazat"
+    assert "type" not in fields
 
 
