@@ -19,6 +19,11 @@ def reset_rate_key(kind: str, value: str) -> str:
     return hashlib.sha256(f"{kind}:{value.strip().casefold()}".encode("utf-8")).hexdigest()
 
 
+def admin_reset_nonce_hash(nonce: str) -> str:
+    """Hash the one-time Render-controlled primary-admin recovery nonce."""
+    return hashlib.sha256(f"dns-energy-admin-reset:{nonce}".encode("utf-8")).hexdigest()
+
+
 def _https_origin(value: str | None) -> str | None:
     parsed = urlparse(str(value or "").strip())
     if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password

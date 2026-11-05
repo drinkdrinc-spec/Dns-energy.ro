@@ -29,6 +29,8 @@ services:
         value: https://dns-energy-web.onrender.com
       - key: ADMIN_PASSWORD
         sync: false
+      - key: ADMIN_PASSWORD_RESET_NONCE
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL

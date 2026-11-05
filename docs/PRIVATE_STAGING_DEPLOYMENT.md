@@ -8,6 +8,7 @@ Nu conecta acest mediu la domeniul principal `dns-energy.ro` și nu modifica dep
 - Protecția la nivel de edge trebuie activată înainte de a comunica linkul: Cloudflare Zero Trust Access (sau protecție echivalentă a furnizorului), cu allow policy doar pentru adresa de e-mail a administratorului.
 - Backend-ul rulează cu `DNS_ENERGY_PRIVATE_MODE=true` și `ADMIN_EMAIL` setat la adresa administratorului. În acest mod, login-ul și fiecare cerere API autentificată sunt limitate la acel cont admin.
 - `MONGO_URL`, `JWT_SECRET`, `ADMIN_EMAIL` și orice chei de integrare se configurează ca environment secrets în hosting, niciodată în Git.
+- `ADMIN_PASSWORD` creează contul inițial; schimbarea sa singură nu modifică parola deja salvată în MongoDB. Pentru recuperare fără e-mail, setează o parolă nouă și un nonce nou în `ADMIN_PASSWORD_RESET_NONCE`, apoi repornește/deployează API-ul. API-ul aplică rotația o singură dată, revocă sesiunile existente și șterge blocarea loginului. După autentificare, golește nonce-ul; la următoarea recuperare folosește o valoare nouă.
 - Folosește o bază de date separată pentru test; nu conecta testul la baza de date de producție și nu copia date reale ale clienților în test.
 - Dezactivează endpoint-ul de documentație publică API pentru deployment-ul expus sau pune-l în spatele aceleiași protecții edge.
 

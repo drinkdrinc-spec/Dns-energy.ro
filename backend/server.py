@@ -20,7 +20,7 @@ import jwt
 import requests
 from client_search import build_client_search_queries, NUMERIC_CLIENT_SEARCH_FIELDS
 from client_portal import is_client_upload_path, public_client_messages
-from password_reset import reset_lookup_hash, reset_rate_key, reset_token_hash, trusted_reset_origin
+from password_reset import admin_reset_nonce_hash, reset_lookup_hash, reset_rate_key, reset_token_hash, trusted_reset_origin
 import io
 import zipfile
 from datetime import datetime, timezone, timedelta
@@ -4172,7 +4172,23 @@ async def startup():
             "password_hash": hash_password(admin_password), "name": "Administrator",
             "role": "admin", "created_at": datetime.now(timezone.utc).isoformat()})
         logger.info("Admin seeded")
-    elif not existing.get("password_hash"):
+        existing = await db.users.find_one({"email": admin_email})
+    recovery_nonce = os.environ.get("ADMIN_PASSWORD_RESET_NONCE", "").strip()
+    if existing and recovery_nonce:
+        nonce_hash = admin_reset_nonce_hash(recovery_nonce)
+        recovery = await db.admin_password_recovery.find_one({"_id": "primary-admin"}, {"_id": 0, "nonce_hash": 1})
+        if not recovery or recovery.get("nonce_hash") != nonce_hash:
+            reset_at = datetime.now(timezone.utc).isoformat()
+            await db.users.update_one({"id": existing["id"], "email": admin_email}, {"$set": {
+                "password_hash": hash_password(admin_password), "password_changed_at": reset_at,
+            }, "$inc": {"token_version": 1}})
+            await db.login_attempts.delete_many({"identifier": f"login:{admin_email}"})
+            await db.admin_password_recovery.update_one({"_id": "primary-admin"}, {"$set": {
+                "nonce_hash": nonce_hash, "applied_at": reset_at,
+            }}, upsert=True)
+            existing = await db.users.find_one({"email": admin_email})
+            logger.warning("Primary admin password reset using one-time environment recovery")
+    if existing and not existing.get("password_hash"):
         # Seed a missing credential once; do not overwrite an existing password on every deploy.
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
     PLATFORM["id"] = (await db.users.find_one({"email": admin_email}))["id"]

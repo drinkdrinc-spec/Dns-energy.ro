@@ -1,4 +1,12 @@
-from password_reset import reset_lookup_hash, reset_rate_key, reset_token_hash, trusted_reset_origin
+from password_reset import admin_reset_nonce_hash, reset_lookup_hash, reset_rate_key, reset_token_hash, trusted_reset_origin
+
+
+def test_admin_recovery_nonce_is_stored_as_a_one_time_digest():
+    nonce = "fresh-one-time-recovery-nonce"
+    digest = admin_reset_nonce_hash(nonce)
+    assert digest != nonce
+    assert digest == admin_reset_nonce_hash(nonce)
+    assert digest != admin_reset_nonce_hash("another-recovery-nonce")
 
 
 def test_reset_token_digests_are_account_scoped_and_never_the_token():
