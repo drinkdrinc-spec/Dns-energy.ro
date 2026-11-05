@@ -66,6 +66,13 @@ def test_listing_pages_are_bounded_and_stay_on_the_same_category():
     ]
 
 
+def test_supplier_pages_reject_nonstandard_ports_and_userinfo():
+    assert supplier_catalog._safe_page("https://depozitsolar.ro/invertoare", "depozitsolar.ro")
+    assert supplier_catalog._safe_page("https://www.depozitsolar.ro/invertoare", "depozitsolar.ro")
+    assert not supplier_catalog._safe_page("https://depozitsolar.ro:444/invertoare", "depozitsolar.ro")
+    assert not supplier_catalog._safe_page("https://user@depozitsolar.ro/invertoare", "depozitsolar.ro")
+
+
 
 def test_listing_pages_support_solarhev_query_parameter_pagination():
     page = html.fromstring("""

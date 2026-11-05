@@ -114,7 +114,13 @@ def _norm(value: str) -> str:
 
 def _safe_page(url: str, host: str) -> bool:
     parsed = urlparse(url)
-    return parsed.scheme == "https" and (parsed.hostname or "").lower().rstrip(".") in (host, "www." + host) and not parsed.username and not parsed.password
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    return (parsed.scheme == "https" and port in (None, 443)
+            and (parsed.hostname or "").lower().rstrip(".") in (host, "www." + host)
+            and not parsed.username and not parsed.password)
 
 
 def _safe_document_host(url: str, supplier_host: str) -> bool:
