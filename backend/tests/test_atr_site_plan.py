@@ -1,6 +1,7 @@
 from io import BytesIO
 
 from pypdf import PdfReader
+from PIL import Image
 
 import atr_doc as ATR
 
@@ -32,4 +33,14 @@ def test_site_plan_pdf_contains_user_markers_and_is_landscape():
     assert "Panouri acoperiș" in extracted
     assert "Baterie" in extracted
     assert "fără scară" in extracted
+
+
+def test_site_plan_pdf_uses_uploaded_plan_image_as_background():
+    image = Image.new("RGB", (64, 40), "#dce8f5")
+    image_buffer = BytesIO()
+    image.save(image_buffer, format="PNG")
+    record = {"site_plan": {"markers": [{"id": "m1", "type": "CEF", "label": "CEF", "x": 400, "y": 250}]}}
+    data = ATR.render_atr_site_plan(record, {}, (image_buffer.getvalue(), "image/png"))
+    page = PdfReader(BytesIO(data)).pages[0]
+    assert len(page.images) == 1
 
