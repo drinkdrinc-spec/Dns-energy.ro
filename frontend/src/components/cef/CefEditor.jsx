@@ -182,7 +182,7 @@ export function CefEditor({ value, onChange }) {
           }} className="inline-flex items-center gap-2 rounded-[9px] border px-4 py-2.5 text-[12px] font-bold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} data-testid="add-bess-inverter"><Plus size={15} /> Adaugă invertor BESS / PCS AC</button>
         </div>
       </div>
-      <Totals res={res} inverters={invs} />
+      <Totals res={res} inverters={invs} sharedBatteries={cef.shared_batteries || []} />
       <GridCard grid={cef.grid || {}} set={(g) => set({ grid: g })} catalog={catalog} res={res} />
       {invs.map((inv, i) => (
         <InverterCard key={inv.id || i} idx={i} inv={inv} catalog={catalog} shared={cef.shared_batteries || []} res={res?.inverters?.[i]}
