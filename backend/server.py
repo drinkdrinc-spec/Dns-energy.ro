@@ -1928,6 +1928,44 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{fname}")})
 
+
+@api_router.get("/pram/{item_id}/pdf")
+async def pram_record_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    """Generate a standalone PRAM work sheet from a PRAM registry entry.
+
+    Missing field measurements remain blank; this endpoint never fabricates test results.
+    """
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "pram", item_id)
+    client = {}
+    client_id = str(rec.get("client_id") or "")
+    if client_id:
+        client = await db.clients.find_one({**scope_q(user, "clients"), "id": client_id}, {"_id": 0}) or {}
+    elif rec.get("client_name"):
+        client = await db.clients.find_one({"$and": [scope_q(user, "clients"), {"$or": [
+            {"name": rec.get("client_name")}, {"label": rec.get("client_name")}
+        ]}]}, {"_id": 0}) or {}
+    # Map the registry's human-facing fields to the existing PRAM document generator.
+    source = {
+        **rec,
+        "name": client.get("name") or rec.get("client_name"),
+        "address": rec.get("address") or client.get("address"),
+        "bulletin_no": rec.get("number"),
+        "measure_date": rec.get("date"),
+        "measure_object": rec.get("measure_object") or "Instalație de legare la pământ",
+        "grounding_ohm": rec.get("resistance_ohm"),
+        "grounding_limit": rec.get("grounding_limit"),
+        "soil_psi": rec.get("soil_psi"),
+        "soil": rec.get("soil"),
+    }
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    # If the inputs needed for a measured result are absent, docgen labels the PDF as
+    # an unfinished work sheet and leaves the verdict unset.
+    pdf = docgen.render(["buletin_priza"], source, settings, client)
+    filename = f"buletin_pram_{str(rec.get('number') or item_id[:8]).replace(' ', '_')}.pdf"
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": disp("attachment", filename)})
+
 # ---------------- CEF checks & catalog ----------------
 import cef as CEF
 import supplier_catalog as SUPPLIER_CATALOG

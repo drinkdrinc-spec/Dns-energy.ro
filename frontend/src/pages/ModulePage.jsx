@@ -455,7 +455,7 @@ export default function ModulePage({ moduleKey }) {
   const setVal = (name, value) => {
     if (key === "pram" && name === "client_name") {
       const client = (refOptions.clients || []).find((item) => item.label === value);
-      setForm((prev) => ({ ...prev, client_name: value, address: client?.address || prev.address || "" }));
+      setForm((prev) => ({ ...prev, client_name: value, client_id: client?.id || "", address: client?.address || prev.address || "" }));
       return;
     }
     if (key === "atr" && name === "client_name") {
@@ -1394,6 +1394,7 @@ export default function ModulePage({ moduleKey }) {
                           </>}
                         </span>;
                       })()}
+                      {key === "pram" && <button type="button" onClick={() => downloadAuthenticatedFile(`/pram/${encodeURIComponent(it.id)}/pdf`, `buletin_pram_${String(it.number || it.id).slice(0, 16)}.pdf`)} className="rounded border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} title="Descarcă PDF PRAM" data-testid={`pram-pdf-${it.id}`}>PDF</button>}
                       <button onClick={() => openEdit(it)} data-testid={`edit-${it.id}`} className="p-1.5 rounded hover:bg-[#eef4ff]" title="Editează"><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
                       {canDelete && <button onClick={() => remove(it.id)} data-testid={`delete-${it.id}`} className="p-1.5 rounded hover:bg-[#fff0f0] ml-1" title="Șterge"><Trash2 size={15} style={{ color: "#b33333" }} /></button>}
                     </td>
