@@ -16,12 +16,15 @@ on:
       - "backend/docgen.py"
       - "backend/diu_doc.py"
       - "backend/diu_routes.py"
+      - "backend/power_diu_sync.py"
       - "backend/schema_cef.py"
       - "backend/sizing.py"
       - "backend/supplier_catalog.py"
       - "backend/tests/test_cef_unknown_phases.py"
       - "backend/tests/test_deer_annex2_battery.py"
       - "backend/tests/test_pram_document_truthfulness.py"
+      - "backend/tests/test_power_diu_sync.py"
+      - "backend/tests/test_diu_doc_unit.py"
       - "backend/tests/test_supplier_catalog.py"
       - "backend/tests/test_technical_parameter_safety.py"
       - "backend/templates/deer/**"
@@ -39,12 +42,15 @@ on:
       - "backend/docgen.py"
       - "backend/diu_doc.py"
       - "backend/diu_routes.py"
+      - "backend/power_diu_sync.py"
       - "backend/schema_cef.py"
       - "backend/sizing.py"
       - "backend/supplier_catalog.py"
       - "backend/tests/test_cef_unknown_phases.py"
       - "backend/tests/test_deer_annex2_battery.py"
       - "backend/tests/test_pram_document_truthfulness.py"
+      - "backend/tests/test_power_diu_sync.py"
+      - "backend/tests/test_diu_doc_unit.py"
       - "backend/tests/test_supplier_catalog.py"
       - "backend/tests/test_technical_parameter_safety.py"
       - "backend/templates/deer/**"
@@ -77,6 +83,8 @@ jobs:
           tests/test_cef_unknown_phases.py
           tests/test_deer_annex2_battery.py
           tests/test_pram_document_truthfulness.py
+          tests/test_power_diu_sync.py
+          tests/test_diu_doc_unit.py
           tests/test_supplier_catalog.py
           tests/test_atr_equipment_direct_catalog.py
           tests/test_schema_battery_protection.py
