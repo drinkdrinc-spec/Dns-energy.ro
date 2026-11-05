@@ -3643,6 +3643,36 @@ async def public_sign_message_file(token: str, message_id: str, file_index: int)
                              "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
+@api_router.post("/public/sign/{token}/message-uploads")
+async def public_sign_message_upload(token: str, file: UploadFile = File(...)):
+    r = await sign_by_token(token)
+    if not public_client_access(r):
+        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
+    if not data:
+        raise HTTPException(status_code=400, detail="Fișierul este gol")
+    filename = str(file.filename or "document.pdf")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+    content_type = str(file.content_type or "").split(";", 1)[0].strip().lower()
+    if not content_type or content_type == "application/octet-stream":
+        content_type = MIME_TYPES.get(ext, "application/octet-stream")
+    content_type = validate_upload_payload(filename, content_type, data)
+    quota = await db.sign_requests.update_one(
+        {"id": r["id"], "token_hash": r["token_hash"], "$or": [
+            {"client_upload_count": {"$lt": 10}}, {"client_upload_count": {"$exists": False}},
+        ]},
+        {"$inc": {"client_upload_count": 1}},
+    )
+    if not quota.modified_count:
+        raise HTTPException(status_code=429, detail="Ai atins limita de 10 fișiere încărcate prin acest link")
+    stored = put_object(f"{APP_NAME}/uploads/{r['owner']}/{uuid.uuid4()}.{ext}", data, content_type)
+    original = filename.replace("\\", "/").rsplit("/", 1)[-1][:255] or "document"
+    return {"file": {"storage_path": stored["path"], "original_filename": original,
+                     "content_type": content_type, "size": len(data)}}
+
+
 @api_router.post("/public/sign/{token}/messages")
 async def public_sign_add_message(token: str, request: Request):
     r = await sign_by_token(token)
@@ -3664,8 +3694,13 @@ async def public_sign_add_message(token: str, request: Request):
         except ValueError:
             pass
     body = await request.json()
+    attachments = clean_message_attachments(body.get("attachments"), str(owner))
+    raw_text = str(body.get("text") or "").strip()
+    message_text = clean_message_text(raw_text) if raw_text else ""
+    if not message_text and not attachments:
+        raise HTTPException(status_code=400, detail="Adaugă un mesaj sau cel puțin un fișier")
     message = {"id": str(uuid.uuid4()), "sender": "client", "sender_name": str(r.get("signer_name") or "Client")[:120],
-               "audience": "client", "text": clean_message_text(body.get("text")), "created_at": now_iso()}
+               "audience": "client", "text": message_text, "attachments": attachments, "created_at": now_iso()}
     await db.prosumator.update_one({"id": did, "owner": owner}, {"$push": {"client_messages": {"$each": [message], "$slice": -300}}})
     await db.sign_requests.update_one({"id": r["id"]}, {"$push": {"history": hist("Mesaj de la client", client_meta(request))}})
     return {"message": message}
