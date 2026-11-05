@@ -37,6 +37,26 @@ def rasterize_site_plan_background(data: bytes, content_type: str):
     return pixmap.tobytes("png"), "image/png"
 
 
+def load_site_plan_background(owner: str, rec: dict, object_loader):
+    """Only load a supported background already attached to this tenant's ATR plan slot."""
+    plan = (rec or {}).get("site_plan")
+    if not isinstance(plan, dict):
+        return None
+    path = str(plan.get("background_path") or "")
+    if not path or (f"/{owner}/" not in "/" + path.strip("/") + "/") or ".." in path.split("/"):
+        return None
+    attached_plans = ((rec or {}).get("attachments") or {}).get("plan") or []
+    if not any(isinstance(item, dict) and item.get("storage_path") == path for item in attached_plans):
+        return None
+    try:
+        data, content_type = object_loader(path)
+        if len(data) > 10 * 1024 * 1024:
+            return None
+        return rasterize_site_plan_background(data, content_type)
+    except Exception:
+        return None
+
+
 def render_atr_site_plan(rec: dict, client: dict | None = None, background: tuple[bytes, str] | None = None) -> bytes:
     """Render the user's editable, explicitly non-survey site sketch as a PDF sheet."""
     plan = (rec or {}).get("site_plan") or {}
