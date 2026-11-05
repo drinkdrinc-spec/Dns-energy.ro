@@ -1387,7 +1387,6 @@ export default function ModulePage({ moduleKey }) {
                         return <button type="button" className="inline-flex rounded border px-2 py-1 text-[11px] font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/atr/" + it.id + "/official-docx", name)} title={largePower ? "Fișă de lucru precompletată; formularul oficial DEER original se află în pachetul ZIP" : "Descarcă formularul oficial DEER precompletat cu datele cunoscute din dosar"}>{largePower ? "Fișă DEER >400 kW (PDF)" : "Anexa DEER completată (DOCX)"}</button>;
                       })()}</span>}
                       {key === "prosumator" && (() => {
-                        const token = localStorage.getItem("den_token");
                         const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
                         const diu = linkedDiu.find((d) => d.pros_id === it.id || (d.client_id ? d.client_id === it.client_id : normalize(d.client_name) === normalize(it.client_name)));
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";

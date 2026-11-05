@@ -5,8 +5,6 @@ import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/li
 import { Btn } from "@/components/Layout";
 import { DiuCircuits } from "./DiuCircuits";
 
-const tok = () => localStorage.getItem("den_token");
-
 const OPERATOR_DOCS = {
   deer: [
     { label: "Dosar instalației și documentația tehnică", keys: ["opis", "memoriu"] },

@@ -8,7 +8,6 @@ import { SldChecks } from "./SldChecks";
 import { SldCompare } from "./SldCompare";
 import { SldEditor } from "./SldEditor";
 
-const tok = () => localStorage.getItem("den_token");
 const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare anulată — configurație modificată", "#fff4e0", "#8a5a00"], draft: ["Ciornă — neaprobată", "#fff0f0", "#9b2c2c"] };
 
 export function SldPanel({ id, form, setVal }) {
