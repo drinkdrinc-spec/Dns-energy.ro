@@ -12,7 +12,7 @@ import server as S
 import cef as CEF
 import diu_doc as DD
 import opis as OPIS
-from power_diu_sync import power_cef_diu_fields, power_cef_diu_sync
+from power_diu_sync import power_cef_diu_fields, power_cef_diu_sync, prosumer_cef_diu_sync
 
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
 OWN = ("receptie_", "pif_date", "pif_decision", "warranty_", "doc_date", "date")
@@ -246,7 +246,8 @@ async def import_prosumer_into_diu(user: dict, item_id: str, rec: dict, pid: str
             "operator": p.get("operator"), "power": p.get("power"), "atr": p.get("atr"),
             "supply": p.get("supply"), "earthing": g.get("earthing"), "tg_breaker_a": g.get("tg_breaker_a"),
             "bmp_a": g.get("bmp_a"), "meter_enabled": bool(g.get("meter_enabled") if g.get("meter_enabled") is not None else g.get("meter")),
-            "meter": g.get("meter"), "meter_serial": g.get("meter_serial"), "meter_specs": g.get("meter_specs"),
+            "meter": g.get("meter"), "smart_meter_type": g.get("meter"),
+            "meter_serial": g.get("meter_serial"), "meter_specs": g.get("meter_specs"),
             "type": "Sistem fotovoltaic hibrid" if has_storage else "Sistem fotovoltaic on-grid",
             **{k: p.get(k) for k in ("receptie_date", "receptie_decision", "receptie_findings", "pif_date", "warranty_months")}}
     upd = {"pros_id": pid}
@@ -262,6 +263,7 @@ async def import_prosumer_into_diu(user: dict, item_id: str, rec: dict, pid: str
                             "curve": (inv.get("ac") or {}).get("curve") or "C", "section": (inv.get("ac") or {}).get("section"),
                             "cable": (inv.get("ac") or {}).get("cable_type"), "length": (inv.get("ac") or {}).get("length_m"),
                             "rcd_ma": inv.get("rcd_ma"), "rcd_type": rcd(inv.get("rcd_type"))} for i, inv in enumerate(inverters)]
+    upd.update(prosumer_cef_diu_sync(rec, p))
     gr = g.get("grounding_ohm") or p.get("grounding_ohm")
     if switching:
         # Measurements belong to the selected installation; clear old values

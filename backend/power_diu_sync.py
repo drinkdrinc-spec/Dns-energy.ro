@@ -19,6 +19,7 @@ def inverter_circuit_name(index: int, inverter: dict) -> str:
 def power_cef_diu_fields(power: dict) -> dict:
     """Map declared power-request design data into DI-U technical fields."""
     cef = power.get("power_cef") if isinstance(power.get("power_cef"), dict) else {}
+    normalized_cef = CEF.from_legacy({"cef": cef}).get("cef") if cef else None
     grid = cef.get("grid") if isinstance(cef.get("grid"), dict) else {}
     inverters = cef.get("inverters") if isinstance(cef.get("inverters"), list) else []
     fields = {
@@ -30,6 +31,7 @@ def power_cef_diu_fields(power: dict) -> dict:
         "meter": grid.get("meter") or "",
         "meter_serial": grid.get("meter_serial") or "",
         "meter_specs": grid.get("meter_specs") or "",
+        **({"cef": normalized_cef or cef} if cef else {}),
         **({"type": "Sistem fotovoltaic hibrid" if CEF.has_storage({"cef": cef}) else "Sistem fotovoltaic on-grid"}
            if inverters or cef.get("shared_batteries") else {}),
         "circuits": [{
@@ -60,5 +62,16 @@ def power_cef_diu_sync(rec: dict, power: dict) -> dict:
     old_circuits = previous.get("circuits")
     if not rec.get("circuits") or (previous and rec.get("circuits") == old_circuits):
         sync["circuits"] = mapped.get("circuits", [])
+    return sync
+
+
+def prosumer_cef_diu_sync(rec: dict, prosumer: dict) -> dict:
+    """Carry the selected prosumer equipment into DI-U without erasing manual DI-U edits."""
+    source = CEF.from_legacy(prosumer).get("cef") or {}
+    previous = rec.get("prosumer_cef_snapshot") if isinstance(rec.get("prosumer_cef_snapshot"), dict) else {}
+    source_changed = str(rec.get("pros_id") or "") != str(prosumer.get("id") or "")
+    sync = {"prosumer_cef_snapshot": source}
+    if source_changed or not rec.get("cef") or (previous and rec.get("cef") == previous):
+        sync["cef"] = source
     return sync
 
