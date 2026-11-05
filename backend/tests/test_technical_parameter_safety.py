@@ -134,3 +134,21 @@ def test_catalog_backfill_never_overwrites_existing_user_values():
     existing = {"i_max": 9, "coupling": "AC", "voltage_1ph": 230, "voltage_3ph": 400, "i_max_source_url": "manual.pdf"}
     seed = {"i_max": 7.5, "coupling": "DC", "voltage_1ph": 450, "voltage_3ph": 600, "i_max_source_url": "official.pdf"}
     assert missing_seed_values(existing, seed) == {}
+
+
+def test_catalog_backfill_fills_missing_rsd_model_ratings_but_preserves_manual_values():
+    from catalog_seed import missing_seed_values
+
+    seed = {
+        "string_count": 2, "poles": 4, "voltage_min_v": 300, "voltage_max_v": 1500,
+        "current_1000v_a": 40, "current_1200v_a": 30, "current_1500v_a": 20,
+        "ac_voltage_min_v": 100, "ac_voltage_max_v": 270, "ip_rating": "66", "protection_class": "II",
+    }
+    existing = {"category": "RSD", "string_count": None, "poles": 4, "voltage_min_v": 0,
+                "current_1000v_a": 32, "current_1200v_a": None, "ip_rating": "65"}
+
+    assert missing_seed_values(existing, seed) == {
+        "string_count": 2, "voltage_min_v": 300, "voltage_max_v": 1500,
+        "current_1200v_a": 30, "current_1500v_a": 20,
+        "ac_voltage_min_v": 100, "ac_voltage_max_v": 270, "protection_class": "II",
+    }

@@ -1,6 +1,16 @@
 NOTE = "Date orientative — verificați fișa tehnică oficială a modelului exact."
 
-SEED_BACKFILL_FIELDS = ("i_max", "coupling", "voltage_1ph", "voltage_3ph", "i_max_source_url")
+SEED_BACKFILL_FIELDS = (
+    "i_max", "coupling", "voltage_1ph", "voltage_3ph", "i_max_source_url",
+    "string_count", "poles", "voltage_min_v", "voltage_max_v",
+    "current_300v_a", "current_600v_a", "current_800v_a", "current_1000v_a", "current_1200v_a", "current_1500v_a",
+    "ac_voltage_min_v", "ac_voltage_max_v", "ip_rating", "protection_class",
+)
+NUMERIC_SEED_FIELDS = {
+    "i_max", "voltage_1ph", "voltage_3ph", "string_count", "poles", "voltage_min_v", "voltage_max_v",
+    "current_300v_a", "current_600v_a", "current_800v_a", "current_1000v_a", "current_1200v_a", "current_1500v_a",
+    "ac_voltage_min_v", "ac_voltage_max_v",
+}
 
 
 def missing_seed_values(existing: dict, seed: dict) -> dict:
@@ -8,7 +18,7 @@ def missing_seed_values(existing: dict, seed: dict) -> dict:
     updates = {}
     for field in SEED_BACKFILL_FIELDS:
         current = existing.get(field)
-        is_missing = current is None or current == "" or (field in ("i_max", "voltage_1ph", "voltage_3ph") and current == 0)
+        is_missing = current is None or current == "" or (field in NUMERIC_SEED_FIELDS and current == 0)
         if is_missing and seed.get(field) not in (None, ""):
             updates[field] = seed[field]
     return updates
