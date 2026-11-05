@@ -3667,7 +3667,7 @@ async def public_sign_message_upload(token: str, file: UploadFile = File(...)):
     )
     if not quota.modified_count:
         raise HTTPException(status_code=429, detail="Ai atins limita de 10 fișiere încărcate prin acest link")
-    stored = put_object(f"{APP_NAME}/uploads/{r['owner']}/{uuid.uuid4()}.{ext}", data, content_type)
+    stored = put_object(f"{APP_NAME}/uploads/{r['owner']}/client-messages/{r['id']}/{uuid.uuid4()}.{ext}", data, content_type)
     original = filename.replace("\\", "/").rsplit("/", 1)[-1][:255] or "document"
     return {"file": {"storage_path": stored["path"], "original_filename": original,
                      "content_type": content_type, "size": len(data)}}
@@ -3695,6 +3695,9 @@ async def public_sign_add_message(token: str, request: Request):
             pass
     body = await request.json()
     attachments = clean_message_attachments(body.get("attachments"), str(owner))
+    client_upload_prefix = f"{APP_NAME}/uploads/{owner}/client-messages/{r['id']}/"
+    if any(not item["storage_path"].startswith(client_upload_prefix) for item in attachments):
+        raise HTTPException(status_code=403, detail="Atașamentul nu a fost încărcat prin acest link")
     raw_text = str(body.get("text") or "").strip()
     message_text = clean_message_text(raw_text) if raw_text else ""
     if not message_text and not attachments:
