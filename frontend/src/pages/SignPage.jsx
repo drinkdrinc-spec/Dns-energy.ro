@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { BrandMark } from "@/components/BrandMark";
-import { CheckCircle2, Download, FileText, RefreshCw } from "lucide-react";
+import { CheckCircle2, Download, FileText, Paperclip, RefreshCw, X } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api/public/sign`;
 
@@ -30,7 +30,24 @@ function Pad({ onChange }) {
 }
 
 
-function ClientPortal({ info, token, messages, reply, setReply, onReply, busy, notice, onRefresh, refreshing }) {
+function ClientAttachments({ files, setFiles }) {
+  return <div className="space-y-2">
+    <label className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "#dbe3ee", color: "#2878f0" }}>
+      <Paperclip size={14} />Adaugă fișiere
+      <input type="file" multiple accept=".pdf,image/*,.doc,.docx,.xls,.xlsx" className="sr-only" onChange={(event) => {
+        const selected = Array.from(event.target.files || []);
+        setFiles((current) => [...current, ...selected].slice(0, 5));
+        event.target.value = "";
+      }} data-testid="sign-client-attachment-input" />
+    </label>
+    {!!files.length && <ul className="space-y-1">{files.map((file, index) => <li key={index} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#5a6b85" }}>
+      <span className="truncate">{file.name}</span><button type="button" aria-label={"Elimină " + file.name} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}><X size={14} /></button>
+    </li>)}</ul>}
+    <p className="text-[10px]" style={{ color: "#6b7789" }}>Maximum 5 fișiere per mesaj, 25 MB fiecare.</p>
+  </div>;
+}
+
+function ClientPortal({ info, token, messages, reply, setReply, files, setFiles, onReply, busy, notice, onRefresh, refreshing }) {
   const portal = info.portal;
   const activeIndex = Number.isInteger(portal.stage_index) ? portal.stage_index : -1;
   return <>
@@ -64,7 +81,8 @@ function ClientPortal({ info, token, messages, reply, setReply, onReply, busy, n
       </div>
       <form className="mt-3 space-y-2" onSubmit={onReply}>
         <textarea className="den-input" rows={2} maxLength={2000} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Scrie un mesaj către echipa DNS…" data-testid="sign-client-message-input" />
-        <button className="min-h-10 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: "#2878f0" }} disabled={busy || !reply.trim()} data-testid="sign-client-message-send">{busy ? "Se trimite…" : "Trimite mesajul"}</button>
+        <ClientAttachments files={files} setFiles={setFiles} />
+        <button className="min-h-10 rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: "#2878f0" }} disabled={busy || (!reply.trim() && !files.length)} data-testid="sign-client-message-send">{busy ? "Se trimite…" : "Trimite mesajul"}</button>
       </form>
       {notice && <p className="mt-2 text-xs font-semibold" style={{ color: notice.includes("nu a putut") ? "#9b2c2c" : "#166534" }} role="status">{notice}</p>}
     </section>
@@ -83,6 +101,7 @@ export default function SignPage() {
   const [reason, setReason] = useState("");
   const [clientMessages, setClientMessages] = useState([]);
   const [clientReply, setClientReply] = useState("");
+  const [clientFiles, setClientFiles] = useState([]);
   const [replyBusy, setReplyBusy] = useState(false);
   useEffect(() => { axios.get(`${API}/${token}`).then((r) => { setInfo(r.data); setClientMessages(r.data.client_messages || []); }).catch((e) => setErr(e.response?.data?.detail || "Link invalid")); }, [token]);
   const call = async (path, body, ok) => {
@@ -91,19 +110,26 @@ export default function SignPage() {
   };
   const sendClientReply = async (event) => {
     event.preventDefault();
-    if (!clientReply.trim() || replyBusy) return;
+    if ((!clientReply.trim() && !clientFiles.length) || replyBusy) return;
     setReplyBusy(true); setMsg("");
     try {
-      await axios.post(`${API}/${token}/messages`, { text: clientReply.trim() });
-      const { data } = await axios.get(`${API}/${token}/messages`);
-      setClientMessages(data.messages || []); setClientReply(""); setMsg("Mesajul a fost adăugat la dosar.");
-    } catch (e) { setMsg(e.response?.data?.detail || "Mesajul nu a putut fi trimis."); }
+      if (clientFiles.length > 5) throw new Error("Poți atașa cel mult 5 fișiere la un mesaj.");
+      const attachments = [];
+      for (const file of clientFiles) {
+        const form = new FormData(); form.append("file", file);
+        const uploaded = await axios.post(API + "/" + token + "/message-uploads", form);
+        attachments.push(uploaded.data.file);
+      }
+      await axios.post(API + "/" + token + "/messages", { text: clientReply.trim(), attachments });
+      const { data } = await axios.get(API + "/" + token + "/messages");
+      setClientMessages(data.messages || []); setClientReply(""); setClientFiles([]); setMsg("Mesajul a fost adăugat la dosar.");
+    } catch (e) { setMsg(e.response?.data?.detail || e.message || "Mesajul nu a putut fi trimis."); }
     finally { setReplyBusy(false); }
   };
   if (err) return <Shell><p className="text-center font-bold" data-testid="sign-error">{err}</p></Shell>;
   if (!info) return <Shell><p className="text-center">Se încarcă…</p></Shell>;
   if (done) return <Shell><div className="text-center" data-testid="sign-done"><h2 className="text-xl font-extrabold mb-2">{done}</h2><p className="text-sm">Linkul nu mai poate fi folosit. Poți închide această pagină.</p></div></Shell>;
-  if (info.portal) return <Shell><ClientPortal info={info} token={token} messages={clientMessages} reply={clientReply} setReply={setClientReply} onReply={sendClientReply} busy={replyBusy} notice={msg} onRefresh={async () => {
+  if (info.portal) return <Shell><ClientPortal info={info} token={token} messages={clientMessages} reply={clientReply} setReply={setClientReply} files={clientFiles} setFiles={setClientFiles} onReply={sendClientReply} busy={replyBusy} notice={msg} onRefresh={async () => {
     try { const { data } = await axios.get(`${API}/${token}`); setInfo(data); setClientMessages(data.client_messages || []); setMsg(""); }
     catch (e) { setMsg(e.response?.data?.detail || "Portalul nu a putut fi actualizat."); }
   }} refreshing={busy} /></Shell>;
@@ -132,7 +158,8 @@ export default function SignPage() {
         </div>
         <form className="mt-3 space-y-2" onSubmit={sendClientReply}>
           <textarea className="den-input" rows={2} maxLength={2000} value={clientReply} onChange={(e) => setClientReply(e.target.value)} placeholder="Scrie un mesaj către echipa DNS…" data-testid="sign-client-message-input" />
-          <button className="rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: "#2878f0" }} disabled={replyBusy || !clientReply.trim()} data-testid="sign-client-message-send">{replyBusy ? "Se trimite…" : "Trimite mesajul"}</button>
+          <ClientAttachments files={clientFiles} setFiles={setClientFiles} />
+          <button className="rounded-lg px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: "#2878f0" }} disabled={replyBusy || (!clientReply.trim() && !clientFiles.length)} data-testid="sign-client-message-send">{replyBusy ? "Se trimite…" : "Trimite mesajul"}</button>
         </form>
       </section>
       <div className="mt-6 rounded-xl border bg-white p-4 space-y-4" style={{ borderColor: "#dbe3ee" }}>
