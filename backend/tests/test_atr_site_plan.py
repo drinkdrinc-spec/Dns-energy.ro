@@ -46,6 +46,32 @@ def test_site_plan_pdf_uses_uploaded_plan_image_as_background():
     assert len(page.images) == 1
 
 
+def test_background_loader_rejects_other_tenant_and_unattached_files():
+    calls = []
+    loader = lambda path: calls.append(path) or (b"image", "image/png")
+    foreign = {"site_plan": {"background_path": "dns/uploads/other-owner/plan.png"},
+               "attachments": {"plan": [{"storage_path": "dns/uploads/other-owner/plan.png"}]}}
+    unattached = {"site_plan": {"background_path": "dns/uploads/owner-1/plan.png"},
+                  "attachments": {"plan": []}}
+    assert ATR.load_site_plan_background("owner-1", foreign, loader) is None
+    assert ATR.load_site_plan_background("owner-1", unattached, loader) is None
+    assert calls == []
+
+
+def test_background_loader_uses_image_attached_to_current_atr():
+    image = Image.new("RGB", (32, 24), "#e5eef8")
+    image_buffer = BytesIO()
+    image.save(image_buffer, format="PNG")
+    path = "dns/uploads/owner-1/plan.png"
+    record = {"site_plan": {"background_path": path},
+              "attachments": {"plan": [{"storage_path": path}]}}
+    data, content_type = ATR.load_site_plan_background(
+        "owner-1", record, lambda requested: (image_buffer.getvalue(), "image/png") if requested == path else None
+    )
+    assert content_type == "image/png"
+    assert Image.open(BytesIO(data)).size == (32, 24)
+
+
 def test_uploaded_site_plan_pdf_is_rasterized_for_background():
     source = BytesIO()
     pdf = canvas.Canvas(source)
