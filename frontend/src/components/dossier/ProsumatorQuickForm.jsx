@@ -157,6 +157,10 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       vdc_max: item.vdc_max, mppt_min: item.mppt_min, mppt_max: item.mppt_max, mppt_count: item.mppt_count, imax_mppt: item.imax_mppt, bat_i_max: item.bat_i_max,
       red_limit_mode: item.red_limit_mode || "Nu este declarată", count: Math.max(1, Number(currentForm.inverter_count) || 1),
     } : { catalog_id: "", brand_model: "", p_nom_kw: "", p_max_kw: "", type: "", phases: "", count: 1 });
+    if (kind === "inverter" && item && inv.battery_mode === "own" && inv.battery?.catalog_id) {
+      const batteryItem = catalog.find((row) => row.id === inv.battery.catalog_id);
+      if (batteryItem) inv.battery = { ...inv.battery, ...batteryCatalogData(batteryItem, item.phases) };
+    }
     if (kind === "panel") Object.assign(inv, item ? {
       panel_catalog_id: item.id, panel_model: item.brand_model, panel_w: item.w, panel_voc: item.voc, panel_vmp: item.vmp,
       panel_isc: item.isc, panel_coef_voc: item.coef_voc, panel_coef_vmp: item.coef_vmp,
@@ -190,6 +194,15 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     if (kind === "inverter") {
       setVal("inverter", item?.brand_model || ""); setVal("inverter_kw", item?.p_nom_kw || "");
       setVal("inverter_count", item ? (currentForm.inverter_count || 1) : "");
+      const selectedBattery = currentForm.cef?.inverters?.[0]?.battery;
+      const batteryItem = item && selectedBattery?.catalog_id
+        ? catalog.find((row) => row.id === selectedBattery.catalog_id)
+        : null;
+      if (batteryItem) {
+        const batteryData = batteryCatalogData(batteryItem, item.phases);
+        setVal("battery_kwh", batteryData.kwh || ""); setVal("battery_v", batteryData.voltage || "");
+        setVal("battery_ah", batteryData.ah || ""); setVal("battery_coupling", batteryData.coupling || "");
+      }
 
     } else if (kind === "panel") {
       setVal("panels", item?.brand_model || ""); setVal("panel_w", item?.w || "");
