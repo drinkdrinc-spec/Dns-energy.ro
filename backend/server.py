@@ -2778,7 +2778,7 @@ def atr_site_plan_background(owner: str, rec: dict):
     if not isinstance(plan, dict):
         return None
     path = str(plan.get("background_path") or "")
-    if not path or (f"/{owner}/" not in "/" + path.strip("/") + "/") or ".." in path.split("/") + ":
+    if not path or (f"/{owner}/" not in "/" + path.strip("/") + "/") or ".." in path.split("/"):
         return None
     attached_plans = (rec.get("attachments") or {}).get("plan") or []
     if not any(isinstance(item, dict) and item.get("storage_path") == path for item in attached_plans):
