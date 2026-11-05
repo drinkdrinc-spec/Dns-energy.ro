@@ -2830,6 +2830,10 @@ async def atr_pack(user: dict, rec: dict, full: int):
     if pros and ATR.is_prod(rec) and "fise" in ATR.required(rec) and not catalog_complete:
         attached.discard("fise")
     parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
+    if full:
+        site_plan_pdf = ATR.render_atr_site_plan(rec, client)
+        if site_plan_pdf:
+            parts.append(site_plan_pdf)
     annex_registry_issue = ""
     if full:
         operator_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
