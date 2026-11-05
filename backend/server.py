@@ -3330,6 +3330,7 @@ import hashlib
 import re
 import secrets
 import base64
+import unicodedata
 from html import escape as hesc
 from mailer import send_email, EMAIL_FROM_NAME
 from reportlab.pdfgen import canvas as rlc
@@ -3344,6 +3345,42 @@ def sign_status(r: dict) -> str:
     if r["status"] in SIGN_ACTIVE and r.get("expires_at") and r["expires_at"] < now_iso():
         return "Expirat"
     return r["status"]
+
+def signed_portal_active(r: dict, now: datetime | None = None) -> bool:
+    """Allow the client portal only after this request was signed, for 180 days."""
+    if r.get("status") != "Semnat" or not r.get("signed_at"):
+        return False
+    try:
+        signed_at = datetime.fromisoformat(str(r["signed_at"]).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return False
+    if signed_at.tzinfo is None:
+        signed_at = signed_at.replace(tzinfo=timezone.utc)
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return signed_at <= now <= signed_at + timedelta(days=180)
+
+CLIENT_PORTAL_STAGES = [
+    "Dosar în pregătire", "Gata de depunere", "Depus la operatorul de distribuție",
+    "Aviz tehnic emis", "Programat pentru montaj", "Montaj efectuat",
+    "Probe și punere în funcțiune", "Prosumator activ",
+]
+
+def client_portal_stage(value: str | None) -> int | None:
+    plain = unicodedata.normalize("NFKD", str(value or "").casefold()).encode("ascii", "ignore").decode("ascii")
+    key = re.sub(r"[^a-z0-9]+", " ", plain).strip()
+    aliases = {
+        "dosar in pregatire": 0, "in pregatire": 0, "date de completat": 0,
+        "gata de depunere": 1, "dosar generat": 1,
+        "depus la operator": 2, "depus la operatorul de distributie": 2, "dosar depus": 2,
+        "atr emis": 3, "aviz tehnic emis": 3,
+        "asteapta instalare": 4, "programat pentru montaj": 4, "in executie": 4,
+        "instalat": 5, "montaj efectuat": 5,
+        "probe si punere in functiune": 6, "punere in functiune": 6, "pv teste pif": 6,
+        "prosumator activ": 7, "finalizat": 7,
+    }
+    return aliases.get(key)
 
 def sign_public(r: dict) -> dict:
     out = {k: r.get(k) for k in ("id", "group_id", "dossier_id", "module", "client_name", "pos_key", "doc_title", "signer_name", "signer_email",
@@ -3505,6 +3542,26 @@ def public_dossier_messages(messages) -> list[dict]:
     return [{k: item.get(k) for k in ("id", "sender", "sender_name", "text", "created_at", "attachments")}
             for item in (messages or []) if isinstance(item, dict) and item.get("audience") == "client"]
 
+def public_client_access(r: dict) -> bool:
+    return (r.get("module") or "prosumator") == "prosumator" and (
+        sign_status(r) in SIGN_ACTIVE or signed_portal_active(r)
+    )
+
+async def client_portal_payload(r: dict) -> dict:
+    rec = await db.prosumator.find_one(
+        {"id": r.get("dossier_id"), "owner": r.get("owner")},
+        {"_id": 0, "workflow_status": 1, "status": 1, "operator_stage": 1, "client_messages": 1},
+    )
+    current = str((rec or {}).get("workflow_status") or (rec or {}).get("status") or
+                  (rec or {}).get("operator_stage") or "Dosar în pregătire")
+    return {
+        "status": current,
+        "stage_index": client_portal_stage(current),
+        "stages": CLIENT_PORTAL_STAGES,
+        "signed_document_available": bool((r.get("signed_file") or {}).get("storage_path")),
+        "client_messages": public_dossier_messages((rec or {}).get("client_messages")),
+    }
+
 def clean_message_attachments(value, owner: str) -> list[dict]:
     if value is None:
         return []
@@ -3561,7 +3618,7 @@ async def dossier_add_client_message(did: str, request: Request, user: dict = De
 @api_router.get("/public/sign/{token}/messages")
 async def public_sign_messages(token: str):
     r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE or (r.get("module") or "prosumator") != "prosumator":
+    if not public_client_access(r):
         raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
     rec = await db.prosumator.find_one({"id": r.get("dossier_id"), "owner": r.get("owner")}, {"_id": 0, "client_messages": 1})
     return {"messages": public_dossier_messages((rec or {}).get("client_messages"))}
@@ -3569,7 +3626,7 @@ async def public_sign_messages(token: str):
 @api_router.get("/public/sign/{token}/message-files/{message_id}/{file_index}")
 async def public_sign_message_file(token: str, message_id: str, file_index: int):
     r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE or (r.get("module") or "prosumator") != "prosumator":
+    if not public_client_access(r):
         raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
     rec = await db.prosumator.find_one({"id": r.get("dossier_id"), "owner": r.get("owner")}, {"_id": 0, "client_messages": 1})
     message = next((item for item in (rec or {}).get("client_messages", []) if isinstance(item, dict) and item.get("id") == message_id and item.get("audience") == "client"), None)
@@ -3589,7 +3646,7 @@ async def public_sign_message_file(token: str, message_id: str, file_index: int)
 @api_router.post("/public/sign/{token}/messages")
 async def public_sign_add_message(token: str, request: Request):
     r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE or (r.get("module") or "prosumator") != "prosumator":
+    if not public_client_access(r):
         raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
     did, owner = r.get("dossier_id"), r.get("owner")
     rec = await db.prosumator.find_one({"id": did, "owner": owner}, {"_id": 0, "client_messages": 1})
@@ -3635,13 +3692,25 @@ async def pub_sign_info(token: str, request: Request):
         import pymupdf
         data, _ = get_object(r["doc_path"])
         pages = pymupdf.open(stream=data, filetype="pdf").page_count
-    dossier_messages = []
-    if st in SIGN_ACTIVE and (r.get("module") or "prosumator") == "prosumator":
-        dossier = await db.prosumator.find_one({"id": r.get("dossier_id"), "owner": r.get("owner")}, {"_id": 0, "client_messages": 1})
-        dossier_messages = public_dossier_messages((dossier or {}).get("client_messages"))
+    portal = await client_portal_payload(r) if public_client_access(r) else None
+    dossier_messages = (portal or {}).get("client_messages", [])
     return {"status": st, "pages": pages, "doc_title": r["doc_title"], "signer_name": r["signer_name"], "role": r["role"], "client_name": r["client_name"],
             "company": s.get("company") or "DNS HOSTESS SRL", "email_masked": mask(r["signer_email"]), "expires_at": r["expires_at"],
-            "doc_sha256": r["doc_sha256"], "signed_at": r.get("signed_at"), "client_messages": dossier_messages}
+            "doc_sha256": r["doc_sha256"], "signed_at": r.get("signed_at"), "client_messages": dossier_messages,
+            "portal": portal if st == "Semnat" and signed_portal_active(r) else None}
+
+@api_router.get("/public/sign/{token}/signed-document")
+async def pub_signed_document(token: str):
+    r = await sign_by_token(token)
+    if not signed_portal_active(r):
+        raise HTTPException(status_code=410, detail="Portalul clientului nu mai este activ")
+    path = (r.get("signed_file") or {}).get("storage_path")
+    if not path:
+        raise HTTPException(status_code=404, detail="PDF-ul semnat nu este disponibil")
+    data, content_type = get_object(path)
+    return Response(content=data, media_type=content_type or "application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="document-semnat.pdf"',
+                             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 @api_router.get("/public/sign/{token}/document")
 async def pub_sign_doc(token: str):
