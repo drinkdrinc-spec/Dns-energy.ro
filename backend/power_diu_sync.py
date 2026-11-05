@@ -22,7 +22,6 @@ def power_cef_diu_fields(power: dict) -> dict:
     grid = cef.get("grid") if isinstance(cef.get("grid"), dict) else {}
     inverters = cef.get("inverters") if isinstance(cef.get("inverters"), list) else []
     fields = {
-        "power_cef_snapshot": cef,
         "supply": grid.get("supply") or power.get("new_supply") or power.get("current_supply") or power.get("supply") or "",
         "earthing": grid.get("earthing") or "",
         "tg_breaker_a": grid.get("tg_breaker_a") or "",
@@ -31,7 +30,8 @@ def power_cef_diu_fields(power: dict) -> dict:
         "meter": grid.get("meter") or "",
         "meter_serial": grid.get("meter_serial") or "",
         "meter_specs": grid.get("meter_specs") or "",
-        "type": "Sistem fotovoltaic hibrid" if CEF.has_storage({"cef": cef}) else "Sistem fotovoltaic on-grid",
+        **({"type": "Sistem fotovoltaic hibrid" if CEF.has_storage({"cef": cef}) else "Sistem fotovoltaic on-grid"}
+           if inverters or cef.get("shared_batteries") else {}),
         "circuits": [{
             "name": inverter_circuit_name(index, inverter),
             "breaker_a": (inverter.get("ac") or {}).get("breaker_a"),
@@ -50,15 +50,14 @@ def power_cef_diu_sync(rec: dict, power: dict) -> dict:
     """Prepare safe DI-U synchronization while preserving manual user edits."""
     mapped = power_cef_diu_fields(power)
     previous = rec.get("power_cef_snapshot") if isinstance(rec.get("power_cef_snapshot"), dict) else {}
-    previous_fields = power_cef_diu_fields({"power_cef": previous}) if previous else {}
-    sync = {"power_cef_snapshot": mapped.get("power_cef_snapshot", {})}
+    sync = {"power_cef_snapshot": mapped}
     for key, value in mapped.items():
-        if key in ("power_cef_snapshot", "circuits"):
+        if key == "circuits":
             continue
-        old_value = previous_fields.get(key)
+        old_value = previous.get(key)
         if rec.get(key) in (None, "") or (previous and rec.get(key) == old_value):
             sync[key] = value
-    old_circuits = previous_fields.get("circuits")
+    old_circuits = previous.get("circuits")
     if not rec.get("circuits") or (previous and rec.get("circuits") == old_circuits):
         sync["circuits"] = mapped.get("circuits", [])
     return sync
