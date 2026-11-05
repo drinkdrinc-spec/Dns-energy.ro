@@ -6,6 +6,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 import docgen as D
 import cef as CEF
 
@@ -16,7 +17,7 @@ def first_present(*values):
     return next((value for value in values if value not in (None, "")), None)
 
 
-def render_atr_site_plan(rec: dict, client: dict | None = None) -> bytes:
+def render_atr_site_plan(rec: dict, client: dict | None = None, background: tuple[bytes, str] | None = None) -> bytes:
     """Render the user's editable, explicitly non-survey site sketch as a PDF sheet."""
     plan = (rec or {}).get("site_plan") or {}
     if not isinstance(plan, dict):
@@ -49,13 +50,28 @@ def render_atr_site_plan(rec: dict, client: dict | None = None) -> bytes:
     left, bottom, area_w, area_h = 20 * mm, 28 * mm, page_w - 40 * mm, page_h - 68 * mm
     c.setStrokeColor(colors.HexColor("#cbd5e1")); c.setLineWidth(.6)
     c.rect(left, bottom, area_w, area_h, stroke=1, fill=0)
+    if background and len(background) == 2 and background[1] in {"image/png", "image/jpeg", "image/webp"}:
+        try:
+            image = ImageReader(io.BytesIO(background[0]))
+            image_w, image_h = image.getSize()
+            if image_w > 0 and image_h > 0:
+                scale = min(area_w / image_w, area_h / image_h)
+                draw_w, draw_h = image_w * scale, image_h * scale
+                c.saveState()
+                c.setFillAlpha(.8)
+                c.drawImage(image, left + (area_w - draw_w) / 2, bottom + (area_h - draw_h) / 2,
+                            width=draw_w, height=draw_h, preserveAspectRatio=True, mask="auto")
+                c.restoreState()
+        except Exception:
+            # A bad optional background must not prevent the rest of the sketch from exporting.
+            pass
     c.setStrokeColor(colors.HexColor("#edf1f5")); c.setLineWidth(.3)
     for ix in range(1, 20):
         x = left + area_w * ix / 20
         c.line(x, bottom, x, bottom + area_h)
     for iy in range(1, 12):
         y = bottom + area_h * iy / 12
-        c.line(left, y, left + area_w, y)
+        c.line(left, bottom + area_h * iy / 12, left + area_w, y)
 
     def coords(point):
         try:
