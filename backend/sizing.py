@@ -106,6 +106,48 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             if o.need(f"cef.inverters.{i}.{k}", lbl, inv.get(k), T):
                 o.it(T, lbl, g(inv.get(k)), si)
         strings = r["strings"]
+        # A selected rapid-shutdown device must be checked against the actual
+        # PV strings. Merely drawing an RSD in the schematic is not a technical
+        # compatibility check. Ratings are per voltage tier from the exact
+        # catalog model; unknown values remain unresolved instead of passing.
+        rsd = inv.get("rsd") or {}
+        if rsd.get("enabled"):
+            rsd_group = f"RSD INV {i + 1}"
+            o.need(f"cef.inverters.{i}.rsd.brand_model", "Model RSD", rsd.get("brand_model"), rsd_group)
+            rsd_strings = n(rsd.get("string_count"))
+            rsd_poles = n(rsd.get("poles"))
+            o.need(f"cef.inverters.{i}.rsd.string_count", "Număr de stringuri acceptat de model", rsd_strings, rsd_group)
+            o.need(f"cef.inverters.{i}.rsd.poles", "Număr de poli din fișa modelului", rsd_poles, rsd_group)
+            active_strings = len(strings)
+            capacity_ok = rsd_strings >= active_strings if rsd_strings and active_strings else None
+            poles_ok = rsd_poles >= 2 * active_strings if rsd_poles and active_strings else None
+            o.it(rsd_group, "Canale/stringuri și poli RSD",
+                 f"{active_strings} stringuri active · {rsd_poles or '—'} poli / {rsd_strings or '—'} stringuri admise",
+                 "catalog", "minimum 2 poli pentru fiecare string comutat", capacity_ok and poles_ok if capacity_ok is not None and poles_ok is not None else None,
+                 "numărul de poli sau de stringuri din fișa modelului este incomplet" if capacity_ok is None or poles_ok is None else
+                 ("modelul nu acoperă toate stringurile active" if not capacity_ok else "poli insuficienți pentru stringurile active" if not poles_ok else ""))
+            if active_strings:
+                voltages = [300, 600, 800, 1000, 1200, 1500]
+                voltage = max((s.get("voc_cold") or 0) * 1.15 for s in strings) if all(s.get("voc_cold") is not None for s in strings) else None
+                currents = [n(s.get("isc")) * 1.25 for s in strings]
+                required_current = max(currents) if currents and all(currents) else None
+                tier = next((v for v in voltages if voltage is not None and voltage <= v), None)
+                o.need(f"cef.inverters.{i}.rsd.voltage_max_v", "Tensiune maximă DC admisă din fișa RSD", rsd.get("voltage_max_v"), rsd_group)
+                rating_key = f"current_{tier}v_a" if tier else None
+                rated_current = n(rsd.get(rating_key)) if rating_key else None
+                if voltage is None:
+                    o.need(f"cef.inverters.{i}.rsd.string_voc", "Voc la temperatura minimă din fișa panoului", None, rsd_group)
+                o.it(rsd_group, "Tensiune de proiectare RSD",
+                     g(voltage, " V", 0) if voltage is not None else None, "calculat" if voltage is not None else "de confirmat",
+                     "1,15 × Voc string la temperatura minimă",
+                     (voltage <= n(rsd.get("voltage_max_v"))) if voltage is not None and n(rsd.get("voltage_max_v")) else None,
+                     f"limita din fișa RSD: {n(rsd.get('voltage_max_v')):g} V" if n(rsd.get("voltage_max_v")) else "lipsește limita de tensiune DC din fișa modelului")
+                o.it(rsd_group, f"Curent admis RSD la {tier or '—'} V",
+                     f"{rated_current:g} A ≥ {required_current:.1f} A" if rated_current and required_current is not None else None,
+                     "catalog" if rated_current else "de confirmat", "rating model la tensiunea aplicabilă ≥ 1,25 × Isc string",
+                     (rated_current >= required_current) if rated_current and required_current is not None else (False if voltage is not None and tier is None else None),
+                     "tensiunea calculată depășește toate treptele publicate" if voltage is not None and tier is None else
+                     ("lipsește ratingul de curent al modelului la tensiunea aplicabilă sau Isc din fișa panoului" if not rated_current or required_current is None else ""))
         if inv.get("kind") != "Invertor de baterie (AC)":
             for k, lbl in [("panel_model", "Model panou"), ("panel_w", "Putere panou (W)"), ("panel_voc", "Voc panou (V)"),
                            ("panel_vmp", "Vmp panou (V)"), ("panel_isc", "Isc panou (A)")]:
@@ -377,3 +419,4 @@ def approved_file(rec: dict, fp: str):
         if h.get("hash") == fp and h.get("file"):
             return h["file"]
     return None
+

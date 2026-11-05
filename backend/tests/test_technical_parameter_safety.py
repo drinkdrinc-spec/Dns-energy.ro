@@ -152,3 +152,32 @@ def test_catalog_backfill_fills_missing_rsd_model_ratings_but_preserves_manual_v
         "current_1200v_a": 30, "current_1500v_a": 20,
         "ac_voltage_min_v": 100, "ac_voltage_max_v": 270, "protection_class": "II",
     }
+
+
+def test_selected_rsd_is_checked_against_string_voltage_and_current():
+    import sizing
+
+    inverter = {
+        "brand_model": "Invertor test", "type": "On-grid", "phases": "Trifazat",
+        "p_nom_kw": 5, "p_max_kw": 5, "vdc_max": 1000, "mppt_min": 100,
+        "mppt_max": 850, "mppt_count": 1, "imax_mppt": 20, "isc_max_mppt": 20,
+        "panel_model": "Panou test", "panel_w": 500, "panel_voc": 45,
+        "panel_vmp": 37, "panel_isc": 12, "panel_coef_voc": -0.3,
+        "panel_coef_vmp": -0.3, "strings": [{"panels": 10, "mppt": 1}],
+        "rsd": {"enabled": True, "brand_model": "PROJOY PEFS-EL40H-4(P2) 2-STRING",
+                "string_count": 2, "poles": 4, "voltage_max_v": 1500,
+                "current_300v_a": 40, "current_600v_a": 40, "current_800v_a": 40,
+                "current_1000v_a": 40, "current_1200v_a": 30, "current_1500v_a": 20},
+    }
+    result = sizing.compute({"cef": {"tmin": -10, "grid": {}, "inverters": [inverter]}}, {})
+    checks = [item for item in result["items"] if item["group"] == "RSD INV 1"]
+    assert next(item for item in checks if item["label"] == "Canale/stringuri și poli RSD")["ok"] is True
+    assert next(item for item in checks if item["label"] == "Tensiune de proiectare RSD")["ok"] is True
+    assert next(item for item in checks if item["label"] == "Curent admis RSD la 600 V")["ok"] is True
+
+    inverter["rsd"]["current_600v_a"] = 10
+    result = sizing.compute({"cef": {"tmin": -10, "grid": {}, "inverters": [inverter]}}, {})
+    current_check = next(item for item in result["items"] if item["label"] == "Curent admis RSD la 600 V")
+    assert current_check["ok"] is False
+    assert any("RSD INV 1" in error and "NECONFORM" in error for error in result["errors"])
+
