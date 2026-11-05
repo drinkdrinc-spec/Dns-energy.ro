@@ -17,6 +17,26 @@ def first_present(*values):
     return next((value for value in values if value not in (None, "")), None)
 
 
+def rasterize_site_plan_background(data: bytes, content_type: str):
+    """Normalize an attached plan image/PDF to an image safe for the sketch renderer."""
+    if content_type in {"image/png", "image/jpeg", "image/webp"}:
+        return data, content_type
+    if content_type != "application/pdf":
+        return None
+    import pymupdf
+
+    document = pymupdf.open(stream=data, filetype="pdf")
+    if not document.page_count:
+        return None
+    page = document.load_page(0)
+    width, height = float(page.rect.width), float(page.rect.height)
+    if width <= 0 or height <= 0:
+        return None
+    scale = min(1.5, 1800 / max(width, height))
+    pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+    return pixmap.tobytes("png"), "image/png"
+
+
 def render_atr_site_plan(rec: dict, client: dict | None = None, background: tuple[bytes, str] | None = None) -> bytes:
     """Render the user's editable, explicitly non-survey site sketch as a PDF sheet."""
     plan = (rec or {}).get("site_plan") or {}
