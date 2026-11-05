@@ -1223,6 +1223,22 @@ export default function ModulePage({ moduleKey }) {
               </article>;
             })}
           </div>}
+          {key === "pram" && <div className="grid gap-3 sm:hidden" data-testid="mobile-pram-actions">
+            {filtered.map((it) => <article key={it.id} className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: "var(--line)" }} data-testid={`pram-card-${it.id}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="truncate font-bold">{it.client_name || it.number || "Buletin PRAM"}</h3>
+                  <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{[it.number, it.date].filter(Boolean).join(" · ") || "Număr și dată necompletate"}</p>
+                  <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{it.address || "Adresă necompletată"}</p>
+                  <p className="mt-1 text-xs">Rd măsurată: {it.resistance_ohm ? `${it.resistance_ohm} Ω` : "necompletată"}</p>
+                </div>
+                <button type="button" className="shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openEdit(it)}>Editează</button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => downloadAuthenticatedFile(`/pram/${encodeURIComponent(it.id)}/pdf`, `buletin_pram_${String(it.number || it.id).slice(0, 16)}.pdf`)}>Descarcă PDF</button>
+              </div>
+            </article>)}
+          </div>}
           {key === "atr" && <div className="grid gap-3 sm:hidden" data-testid="atr-mobile-cards">
             {filtered.map((it) => {
               const { linked, ambiguous } = resolveLinkedProsumer(it, linkedProsumer);
@@ -1285,7 +1301,7 @@ export default function ModulePage({ moduleKey }) {
               </article>;
             })}
           </div>}
-          <div className={["prosumator", "atr"].includes(key) && recordsView === "board" ? "hidden" : (["clients", "prosumator", "atr"].includes(key) ? "hidden overflow-x-auto sm:block" : "overflow-x-auto")}>
+          <div className={["prosumator", "atr"].includes(key) && recordsView === "board" ? "hidden" : (["clients", "prosumator", "atr", "pram"].includes(key) ? "hidden overflow-x-auto sm:block" : "overflow-x-auto")}>
             <table className="w-full text-sm" data-testid="items-table">
               <thead>
                 <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
