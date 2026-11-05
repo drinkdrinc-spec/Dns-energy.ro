@@ -2772,6 +2772,24 @@ def atr_client_documents(user: dict, client: dict):
     return result, issues
 
 
+def atr_site_plan_background(owner: str, rec: dict):
+    """Load only the current tenant's supported plan image for the ATR sketch."""
+    plan = (rec or {}).get("site_plan")
+    if not isinstance(plan, dict):
+        return None
+    path = str(plan.get("background_path") or "")
+    if not path or f"/{owner}/" not in f"/{path.strip('/')}" or ".." in path.split("/"):
+        return None
+    try:
+        data, content_type = get_object(path)
+    except Exception as exc:
+        logger.warning("ATR site-plan image unavailable: %s", type(exc).__name__)
+        return None
+    if content_type not in {"image/png", "image/jpeg", "image/webp"} or len(data) > 10 * 1024 * 1024:
+        return None
+    return data, content_type
+
+
 async def atr_pack(user: dict, rec: dict, full: int):
     client = await get_client(user["id"], rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
@@ -2831,7 +2849,7 @@ async def atr_pack(user: dict, rec: dict, full: int):
         attached.discard("fise")
     parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
     if full:
-        site_plan_pdf = ATR.render_atr_site_plan(rec, client)
+        site_plan_pdf = ATR.render_atr_site_plan(rec, client, atr_site_plan_background(user["id"], rec))
         if site_plan_pdf:
             parts.append(site_plan_pdf)
     annex_registry_issue = ""
