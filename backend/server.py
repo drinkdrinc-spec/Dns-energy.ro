@@ -1476,7 +1476,7 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
         raise HTTPException(status_code=400, detail="Citire automată pentru PDF, imagini, DOCX și XLSX. Alte formate pot fi atașate și verificate manual.")
     if doc_type not in {"auto", "ci", "factura", "cf", "other"}:
         raise HTTPException(status_code=400, detail="Tip de document invalid")
-    use_gpt = has_feature(user, "ai_gpt") and "ai_gpt" not in user["plan"].get("disabled", [])
+    use_gpt = bool((os.environ.get("OPENAI_API_KEY") or "").strip()) and has_feature(user, "ai_gpt") and "ai_gpt" not in user["plan"].get("disabled", [])
     try:
         if ct in office_types:
             if use_gpt:
