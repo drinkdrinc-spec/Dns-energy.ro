@@ -144,7 +144,7 @@
 ##     status_history:
 ##       - working: "NA"
 ##         agent: "main"
-##         comment: "Login/reset and site-plan JSX parse; full Vite build and browser interaction remain unverified."
+##         comment: "All frontend sources compile into a production Vite build (1,890 modules transformed). Browser interaction against the deployed build remains unverified because the Render build quota is exhausted."
 ## test_plan:
 ##   current_focus:
 ##     - "backend/tests/test_password_reset.py"
@@ -163,8 +163,7 @@
 ##     - "backend/tests/test_cef_unknown_phases.py"
 ##     - "frontend/src/App.js and touched JSX files"
 ##   stuck_tasks:
-##     - "Latest local changes are not deployed; Render's API last successful deploy is c072db2 and a later build for 2ad92a0 failed because workspace pipeline minutes were exhausted."
-##     - "Full Vite build is unavailable because dependencies are absent from this checkout and the offline dependency link is denied."
+##     - "Latest changes are pushed as 489aca2 but Render's API build failed before compiling because workspace pipeline minutes are exhausted; API remains on c072db2 and frontend on 22bf944."
 ##   test_all: false
 ##   test_priority: "high_first"
 ## agent_communication:
@@ -176,3 +175,5 @@
 ##     message: "Render MCP shows frontend commit 22bf944 is live, API commit c072db2 is live, and API commit 2ad92a0 failed because pipeline minutes are exhausted. Earlier direct smoke checks returned frontend HTTP 200 and API /readyz HTTP 200 with MongoDB ping ok; these verify the deployed versions only, not the current local integration."
 ##   - agent: "main"
 ##     message: "Compared the public WattEver manual against DNS source: DNS already has a three-step document-first dossier flow, live dashboard inbox/Kanban, equipment selection and DIU/ATR/ANRE/catalog/signing modules. Authenticated UI inspection was unavailable because browser control is disabled; no proprietary UI/source was copied."
+##   - agent: "main"
+##     message: "Installed frontend dependencies locally from the committed yarn.lock and completed Vite production build successfully (1,890 modules). Build emitted only existing peer-dependency and plugin-timing warnings. Render deploy of 489aca2 failed immediately because workspace pipeline minutes are exhausted; no paid limit was changed."
