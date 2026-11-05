@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta, date
 from html import escape as hesc
 from typing import Optional
 
-from fastapi import HTTPException, Request, Depends, BackgroundTasks, Response
+from fastapi import HTTPException, Request, Depends, BackgroundTasks, Response, Query
 from pypdf import PdfReader, PdfWriter
 
 import server as S
@@ -905,6 +905,18 @@ async def atr_site_plan_pdf(item_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Adaugă cel puțin un simbol sau un traseu în schița ATR înainte de descărcare.")
     return Response(content=content, media_type="application/pdf",
                     headers={"Content-Disposition": S.disp("attachment", "Schita_amplasament_ATR.pdf"), "Cache-Control": "no-store"})
+
+@api.get("/atr/{item_id}/site-plan-background")
+async def atr_site_plan_background_preview(item_id: str, path: str = Query(..., min_length=1, max_length=1024),
+                                           user: dict = Depends(get_current_user)):
+    rec = await get_rec(user, item_id, write=False)
+    plan = rec.get("site_plan") if isinstance(rec.get("site_plan"), dict) else {}
+    preview_rec = {**rec, "site_plan": {**plan, "background_path": path}}
+    image = S.atr_site_plan_background(user["id"], preview_rec)
+    if not image:
+        raise HTTPException(status_code=404, detail="Selectează un plan imagine sau PDF atașat la această cerere ATR.")
+    return Response(content=image[0], media_type=image[1],
+                    headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 # ---------------- submission ----------------
