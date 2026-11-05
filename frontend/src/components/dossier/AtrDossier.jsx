@@ -313,7 +313,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
       {operatorSource?.id === "deer" && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-deer-gdpr">
         <div className="font-bold mb-1">Document GDPR — DEER</div>
         <p className="mb-2" style={{ color: "var(--muted)" }}>Pentru persoane fizice, include în dosar nota de informare privind prelucrarea datelor personale, conform listei curente DEER. Este o notă de informare oficială, nu un formular de consimțământ creat de DNS Energy.</p>
-        <a href="https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf" target="_blank" rel="noopener noreferrer" className="underline font-semibold">Deschide nota oficială DEER (PDF) ↗</a>
+        <a href="https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf" target="_blank" rel="noopener noreferrer" className="underline font-semibold">Deschide nota oficială DEER (PDF, versiunea octombrie 2026) ↗</a>
       </div>}
       {form.operator && operatorSource && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-official-source-links">
         <div className="font-bold mb-2">Surse oficiale pentru formulare și documente — {form.operator}</div>

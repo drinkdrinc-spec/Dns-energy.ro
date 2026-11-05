@@ -26,7 +26,7 @@ OP_DOMAINS = {"deer": ("distributie-energie.ro",), "delgaz": ("delgaz-grid.ro", 
               "oltenia": ("distributieoltenia.ro", "evryo.ro")}
 DEFAULT_TERMS = {"check_days": 10, "issue_days": 30, "remind_days": 3}
 LINK_DAYS = 30
-DEER_GDPR_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf"
+DEER_GDPR_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf"
 DEER_AUTHENTICITY_URL = "https://www.distributie-energie.ro/wp-content/uploads/2024/02/Declaratie-autenticitate-date-racordare.doc"
 DEER_FORMS_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/"
 DEER_IMPUTERNICIRE_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/07/Model-de-imputernicire.pdf"

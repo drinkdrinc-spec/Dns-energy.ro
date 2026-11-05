@@ -199,7 +199,7 @@ class TestIter13:
         pa, pf = len(PdfReader(io.BytesIO(a.content)).pages), len(PdfReader(io.BytesIO(f.content)).pages)
         assert pf > pa and len(f.content) > len(a.content), (pa, pf)
         txt = "".join(p.extract_text() for p in PdfReader(io.BytesIO(a.content)).pages)
-        assert "Anexa 1" in txt and "69/2020" in txt
+        assert "Anexa 1" in txt and "19/2022" in txt
         S["anexa_txt"] = txt
 
     def test_09_power_stale_pros_link(self):

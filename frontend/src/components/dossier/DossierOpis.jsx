@@ -22,7 +22,7 @@ function Row({ p, id, statuses, reload }) {
       <td className="px-2 py-2.5">
         <div className="font-semibold">{p.title}</div>
         <div className="text-[11px]" style={{ color: "var(--muted)" }}>{p.upload ? `Încărcat: ${p.upload.original_filename}` : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : p.source === "manual" ? "Document oficial — atașează PDF-ul aplicabil" : "Din catalog echipamente"}</div>
-        {p.key === "gdpr" && <a className="text-[11px] underline inline-block mt-1" style={{ color: "var(--blue)" }} href="https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf" target="_blank" rel="noopener noreferrer">Deschide nota oficială DEER (PDF) ↗</a>}
+        {p.key === "gdpr" && <a className="text-[11px] underline inline-block mt-1" style={{ color: "var(--blue)" }} href="https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf" target="_blank" rel="noopener noreferrer">Deschide nota oficială DEER (PDF, versiunea octombrie 2026) ↗</a>}
         {p.missing.length > 0 && <div className="text-[11px] mt-1" style={{ color: "#9b2c2c" }}>Lipsă: {p.missing.join(", ")}</div>}
       </td>
       <td className="px-2 py-2.5">

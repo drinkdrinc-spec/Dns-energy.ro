@@ -60,7 +60,7 @@ SEED = [
     ("DEER", "Anexa tehnică consumator mare noncasnic", "ATR consum", "https://www.distributie-energie.ro/wp-content/uploads/2021/01/3-Consumator-mare-noncasnic.pdf"),
     ("DEER", "Model de împuternicire", "împuternicire", "https://www.distributie-energie.ro/wp-content/uploads/2026/07/Model-de-imputernicire.pdf"),
     ("DEER", "Pagina oficială Racordare la rețea", "pagină", "https://www.distributie-energie.ro/racordare-la-retea-2/"),
-    ("Delgaz Grid", "Cerere de racordare prosumator (Anexa 1, Ord. ANRE 69/2020)", "prosumator / spor putere",
+    ("Delgaz Grid", "Cerere istorică prosumator Anexa 1 (formular înlocuit; verifică documentele curente conform Ord. ANRE 19/2022)", "prosumator / spor putere",
      "https://delgaz.ro/getattachment/a49b57e4-6692-4772-87cd-314cd378657a/Cerere_de_racordare_prosumator.pdf"),
     ("Delgaz Grid", "Cerere de racordare prosumatori care accesează programe de finanțare", "prosumator",
      "https://delgaz.ro/getattachment/b70508d0-b697-4015-8281-440e696d57ad/Cerere-de-racordare-pt-prosumatorii-care-acceseaza-programe-de-finantare.pdf"),
@@ -95,8 +95,17 @@ async def seed():
         "https://delgaz.ro/getattachment/a49b57e4-6692-4772-87cd-314cd378657a/Cerere_de_racordare_prosumator.pdf":
             "Formular istoric. Folosiți formularul curent Anexa 1 publicat de Delgaz Grid.",
     }
+    historical_titles = {
+        "https://www.distributie-energie.ro/wp-content/uploads/2021/01/10-Cerere-loc-consum-existent-Spor-de-putere-Anexa-1.pdf":
+            "Formular istoric prosumator — Anexa 1 (Ord. ANRE 69/2020)",
+        "https://delgaz.ro/getattachment/a49b57e4-6692-4772-87cd-314cd378657a/Cerere_de_racordare_prosumator.pdf":
+            "Formular istoric prosumator — Anexa 1 (înlocuit; consultați versiunea curentă Delgaz Grid)",
+    }
     for url, note in retired.items():
-        await db.official_forms.update_one({"url": url}, {"$set": {"status": "formular retras", "deprecated": True, "notes": note}})
+        await db.official_forms.update_one({"url": url}, {"$set": {
+            "status": "formular retras", "deprecated": True, "notes": note,
+            "title": historical_titles[url],
+        }})
 
 
 def detect_version(data: bytes, ct: str) -> str:

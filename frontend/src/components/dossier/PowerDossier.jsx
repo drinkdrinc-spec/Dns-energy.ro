@@ -73,7 +73,7 @@ export function PowerDossier({ id, form, setVal }) {
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="power-dossier">
       <FormAlert operator={form.operator} scope="power" />
-      <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere de racordare — Anexa 1 (Ord. ANRE 69/2020, model DEER) și dosar</h3>
+      <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere de racordare — Anexa 1 aplicabilă (procedura prosumatorilor, Ord. ANRE 19/2022 și modificările în vigoare) și dosar</h3>
       {form.diu_id && <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="power-linked-diu">
         <span><b>Dosar DI-U asociat automat.</b> Datele și măsurătorile rămân editabile în dosarul DI-U.</span>
         <a className="font-semibold underline" style={{ color: "var(--blue)" }} href={`/diu?edit=${encodeURIComponent(form.diu_id)}`}>Deschide DI-U</a>
