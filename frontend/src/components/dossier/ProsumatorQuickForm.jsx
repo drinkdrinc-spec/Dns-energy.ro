@@ -201,9 +201,10 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       setVal("panel_count", useSuggestion ? suggestedCount : (item ? (currentForm.panel_count || "") : ""));
       setVal("panel_count_auto", autoMode);
     } else if (kind === "battery") {
-      setVal("battery", item?.brand_model || ""); setVal("battery_kwh", item?.kwh || "");
-      setVal("battery_v", item?.voltage || ""); setVal("battery_ah", item?.ah || "");
-      setVal("battery_coupling", item?.coupling || ""); setVal("battery_count", item ? (currentForm.battery_count || 1) : "");
+      const batteryData = item ? batteryCatalogData(item, currentForm.cef?.inverters?.[0]?.phases) : {};
+      setVal("battery", item?.brand_model || ""); setVal("battery_kwh", batteryData.kwh || "");
+      setVal("battery_v", batteryData.voltage || ""); setVal("battery_ah", batteryData.ah || "");
+      setVal("battery_coupling", batteryData.coupling || ""); setVal("battery_count", item ? (currentForm.battery_count || 1) : "");
 
     } else setVal("smart_meter_type", item?.brand_model || "");
     cefUpdate(kind, item, id, panelCountOverride);
