@@ -163,4 +163,26 @@ SEED = [
        "notes": "Fișă de familie Deye SUN-5–12K-SG04LP3-EU; manualul oficial include declarația UE. Valorile curentului PV se extrag din fișă, nu sunt estimate aici."}
       for kw, pmax in [(5, 5.5), (6, 6.6), (8, 8.8), (12, 13.2)]),
 
+    # Additional reference-app categories, populated only from the exact
+    # manufacturer's public datasheets. No conformity file is implied where
+    # an exact-model declaration is not available.
+    {"category": "Optimizator", "brand_model": "Huawei MERC-1300W-P", "p_max_w": 1300,
+     "vdc_max": 125, "isc_max_a": 20, "imax_output_a": 22, "vdc_output_max": 80,
+     "compatible_inverters": "Huawei SUN2000-12/15/17/20/25K-MB0; SUN2000-12/15/17/20/25KTL-M5; SUN2000-30/36/40KTL-M3; SUN2000-50KTL-M3",
+     "model_scope": "Un optimizator pentru fiecare modul; limita de intrare PV STC trebuie să respecte puterea nominală de intrare din fișa exactă.",
+     "datasheet_url": "https://solar.huawei.com/download?p=%2F-%2Fmedia%2FSolarV4%2Fsolar-version2%2Feurope%2Fgr%2Fprofessionals%2Fall-products%2Fci%2Fsmart-module-controller%2Fdatasheet-of-merc-1100-1300w-p-for-20230307.pdf",
+     "conformity_url": "https://solsol.eu/file/view/3759/huawei_doc_ce-10125678-merc-1300w-p-merc-1100w-p-_en.pdf",
+     "notes": "Putere nominală intrare 1300 W; Umax 125 V; Isc max 20 A; ieșire max. 80 V / 22 A. Fișa este publicată de Huawei. Declarația UE CE-10125678 este emisă și semnată de Huawei, găzduită de distribuitor; verificați versiunea exactă și compatibilitatea invertorului înainte de depunere."},
+    {"category": "Gateway", "brand_model": "Sigenergy Sigen Energy Gateway HomePro SP", "phases": "Monofazat", "p_nom_kw": 12,
+     "current_max_a": 54.6, "voltage_nominal_v": "220 / 230 / 240 V AC", "frequency_hz": "50 / 60 Hz",
+     "protocol": "Ethernet; RS485; contact uscat", "interfaces": "Fast Ethernet, RS485, contact uscat",
+     "datasheet_url": "https://www.sigenergy.com/en/support/files/1519",
+     "notes": "Fișă oficială Sigenergy pentru HomePro SP/TP: 12 kW, 54,6 A, comutare backup 0 ms în condițiile din fișă; funcția backup necesită Energy Controller și baterie compatibile. Declarația de conformitate pentru HomePro SP nu este atașată."},
+    {"category": "Gateway", "brand_model": "Sigenergy Sigen Energy Gateway HomePro TP", "phases": "Trifazat", "p_nom_kw": 30,
+     "current_max_a": 45.6, "voltage_nominal_v": "380 / 400 V AC", "frequency_hz": "50 / 60 Hz",
+     "protocol": "Ethernet; RS485; contact uscat", "interfaces": "Fast Ethernet, RS485, contact uscat",
+     "datasheet_url": "https://www.sigenergy.com/en/support/files/1519",
+     "notes": "Fișă oficială Sigenergy pentru HomePro SP/TP: 30 kW, 45,6 A; funcția backup depinde de sistemul Energy Controller + baterie și de condițiile de sarcină din fișă. Declarația de conformitate pentru HomePro TP nu este atașată."},
+
 ]
+

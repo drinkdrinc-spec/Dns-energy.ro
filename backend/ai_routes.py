@@ -323,6 +323,8 @@ async def ai_catalog_extract(item_id: str, user: dict = Depends(get_current_user
         "Panou": ("w", "voc", "vmp", "isc", "imp", "coef_voc", "coef_vmp", "temp_noct", "temp_pmax"),
         "Baterie": ("kwh", "ah", "voltage", "i_max", "max_fuse_a", "tech", "coupling", "breaker_a", "breaker_voltage_dc", "breaker_poles", "breaker_icu_ka", "breaker_integrated"),
         "Smart meter": ("phases", "current_max_a", "voltage_nominal_v", "frequency_hz", "protocol", "wiring", "accuracy_class"),
+        "Gateway": ("phases", "p_nom_kw", "current_max_a", "voltage_nominal_v", "frequency_hz", "compatible_inverters", "protocol", "interfaces", "max_devices", "monitoring_platform"),
+        "Optimizator": ("compatible_inverters", "p_max_w", "vdc_max", "isc_max_a", "imax_output_a", "vdc_output_max", "model_scope"),
     }
     category = item.get("category")
     allowed = fields.get(category)
@@ -642,3 +644,4 @@ async def ai_sign_message(request: Request, user: dict = Depends(get_current_use
               "Explică pe scurt pașii: deschide linkul, citește documentul, cere codul primit pe e-mail, semnează pe ecran. Menționează că fiecare link este valabil 7 zile "
               "și că este o semnătură electronică simplă. Răspunde doar cu textul mesajului.\n\nDocumente și linkuri:\n" + lst)
     return sse(new_chat("Ești asistentul de comunicare cu clienții al firmei. " + RULES), prompt)
+

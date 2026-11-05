@@ -1244,7 +1244,9 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
         return {"ok": True, "existing": True, "item": clean(existing)}
 
     allowed = ("p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt",
-               "w", "voc", "coef_voc", "coef_vmp", "temp_pmax", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max", "p_max_w", "max_devices")
+               "w", "voc", "coef_voc", "coef_vmp", "temp_pmax", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max", "p_max_w", "max_devices",
+               "phases", "current_max_a", "voltage_nominal_v", "frequency_hz", "protocol", "interfaces", "compatible_inverters",
+               "isc_max_a", "imax_output_a", "vdc_output_max", "model_scope")
     item = {"category": category, "brand_model": product["brand_model"], "supplier": supplier,
             "source_url": product_url, "source_price": product.get("price_text", ""),
             "source_availability": product.get("availability", ""),
@@ -3954,5 +3956,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
+
 
 

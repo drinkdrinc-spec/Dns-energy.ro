@@ -263,7 +263,30 @@ def extract_equipment_specs(category: str, text: str) -> dict:
                 result["protocol"] = protocol
             if wiring:
                 result["wiring"] = wiring.group(1)
+    elif category == "Optimizator":
+        specs = {
+            "p_max_w": ((r"\b(?:rated|nominal)\s+(?:input\s+)?(?:DC\s+)?power\b",), kw_units,
+                        lambda unit: 1000 if unit == "kw" else 1000000 if unit == "mw" else 1),
+            "vdc_max": ((r"\b(?:absolute\s+)?maximum\s+input\s+voltage\b", r"\bmax\.?\s+input\s+voltage\b"), volt_units, convert_v),
+            "isc_max_a": ((r"\bmaximum\s+short[- ]circuit\s+current(?:\s*\(Isc\))?\b",), amp_units, convert_a),
+            "imax_output_a": ((r"\bmaximum\s+output\s+current\b",), amp_units, convert_a),
+            "vdc_output_max": ((r"\bmaximum\s+output\s+voltage\b",), volt_units, convert_v),
+        }
+        for key, (labels, units, factor) in specs.items():
+            value = _numeric(text, labels, units, factor)
+            if value is not None:
+                result[key] = value
+    elif category == "Gateway":
+        specs = {
+            "p_nom_kw": ((r"\bnominal\s+AC\s+power\b",), kw_units, convert_kw),
+            "current_max_a": ((r"\bnominal\s+AC\s+current\b",), amp_units, convert_a),
+        }
+        for key, (labels, units, factor) in specs.items():
+            value = _numeric(text, labels, units, factor)
+            if value is not None:
+                result[key] = value
     else:
         return {}
     return result
+
 

@@ -52,6 +52,7 @@ DOCUMENT_HOSTS = {
     "qcells.com", "ja-solar.com", "jasolar.com", "pylontech.com", "pylontech.com.cn", "pylontech.us", "bydbatterybox.com", "fox-ess.com", "foxess.com",
     "dyness.com", "solaredge.com", "growatt.com", "solaxpower.com", "sofar.com", "alphaess.com", "risenenergy.com",
     "solarshop.baywa-re.lv", "hqsmartcloud.com", "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro",
+    "sigenergy.com", "solsol.eu",
     "reteleelectrice.ro", "distributieoltenia.ro",
 }
 CATEGORIES = {"Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"}
@@ -72,7 +73,7 @@ DOCUMENT_LABELS = {
     "conformity": ("declaration", "declaratie", "declarație", "conformity", "compliance", "certificat de conformitate", "certificat conformitate"),
 }
 FIELD_LABELS = {
-    "p_nom_kw": ("putere nominala", "rated power", "nominal power"),
+    "p_nom_kw": ("putere nominala", "rated power", "nominal power", "nominal ac power"),
     "p_max_kw": ("putere maxima ac", "maximum ac power", "max ac output power"),
     "vdc_max": ("tensiune dc maxima", "max dc voltage", "maximum dc input voltage"),
     "mppt_min": ("tensiune mppt minima", "mppt voltage min"),
@@ -91,7 +92,11 @@ FIELD_LABELS = {
     "ah": ("capacitate ah", "capacity ah"),
     "voltage": ("tensiune nominala", "tensiune baterie", "nominal voltage", "battery voltage"),
     "i_max": ("curent maxim descarcare", "maximum discharge current"),
-    "p_max_w": ("putere maxima modul", "putere maxima intrare", "maximum input power", "max input power", "maximum module power"),
+    "current_max_a": ("maximum rated current", "maximum current (imax)", "nominal ac current", "curent nominal"),
+    "p_max_w": ("putere maxima modul", "putere maxima intrare", "rated input power", "maximum input power", "max input power", "maximum module power"),
+    "isc_max_a": ("maximum short circuit current", "max short-circuit current", "max isc"),
+    "imax_output_a": ("maximum output current", "max output current"),
+    "vdc_output_max": ("maximum output voltage", "max output voltage"),
     "max_devices": ("numar maxim dispozitive", "numar maxim de dispozitive", "maximum devices", "max devices"),
 }
 FIELD_UNITS = {
@@ -129,6 +134,13 @@ def _safe_document(url: str, supplier_host: str) -> bool:
     if not _safe_document_host(url, supplier_host):
         return False
     if parsed.path.lower().endswith(".pdf"):
+        return True
+
+    # Sigenergy publishes some official product PDFs as numeric support-file
+    # routes without a .pdf suffix. Allow only those exact HTTPS routes.
+    if ((parsed.hostname or "").lower().rstrip(".") in {"sigenergy.com", "www.sigenergy.com"}
+            and re.fullmatch(r"/(?:index\.php/)?en/support/files/\d+", parsed.path)
+            and not parsed.query and not parsed.fragment):
         return True
 
     # Depozit Solar serves product PDFs through this same-origin route, with
@@ -555,6 +567,7 @@ async def fetch_public_pdf(url: str, supplier_host: str, max_bytes: int) -> tupl
     if not data.startswith(b"%PDF-"):
         return None
     return data, current_url
+
 
 
 
