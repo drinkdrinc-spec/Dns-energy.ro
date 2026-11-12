@@ -293,7 +293,7 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && editId && ["documents", "all"].includes(dossierPage) && <><DossierOpis id={editId} /><GeneratedDocs id={editId} files={form.files} /></>}
           {key === "prosumator" && editId && ["equipment", "all"].includes(dossierPage) && <><div className="mt-2"><h3 className="font-bold text-base">Echipamente și parametri instalației</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează modelul din catalog pentru a prelua datele tehnice și a verifica fișele disponibile.</p><CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} /></div><SldPanel id={editId} form={form} setVal={setVal} /></>}
           {key === "prosumator" && editId && ["team", "all"].includes(dossierPage) && <DossierExtras form={form} setVal={setVal} view={dossierPage === "all" ? "all" : "team"} />}
-          {key === "prosumator" && editId && dossierPage === "pif" && <><DossierExtras form={form} setVal={setVal} view="pif" /><PifPanel id={editId} /></>}
+          {key === "prosumator" && editId && dossierPage === "pif" && <DossierExtras form={form} setVal={setVal} view="pif" />}
           {key === "prosumator" && editId && ["pif", "all"].includes(dossierPage) && <PifPanel id={editId} />}
           {key === "prosumator" && editId && ["timeline", "all"].includes(dossierPage) && <DossierTimeline id={editId} />}
           {key === "prosumator" && editId && ["other", "all"].includes(dossierPage) && <><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierMessages id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /><SignRequests dossierId={editId} /></>}
