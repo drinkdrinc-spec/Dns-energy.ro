@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { BrandMark } from "@/components/BrandMark";
+import { ClientMessagePortal } from "@/components/dossier/DossierMessages";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api/public/sign`;
 
@@ -59,6 +60,7 @@ export default function SignPage() {
         {[...Array(info.pages).keys()].map((i) => <a key={i} href={`${API}/${token}/page/${i}`} target="_blank" rel="noopener noreferrer"><img src={`${API}/${token}/page/${i}`} alt={`Pagina ${i + 1}`} className="w-full bg-white shadow-sm" style={{ aspectRatio: "210 / 297" }} loading="lazy" /></a>)}
       </div>
       <a href={`${API}/${token}/document`} target="_blank" rel="noopener noreferrer" className="text-xs underline mt-1 inline-block" style={{ color: "#2878f0" }} data-testid="sign-download-original">Descarcă documentul (PDF)</a>
+      <ClientMessagePortal token={token} />
       <div className="mt-6 rounded-xl border bg-white p-4 space-y-4" style={{ borderColor: "#dbe3ee" }}>
         <div className="den-field"><label>Numele complet al semnatarului</label><input className="den-input" value={f.declared_name} onChange={(e) => setF({ ...f, declared_name: e.target.value })} data-testid="sign-name" /></div>
         <div>

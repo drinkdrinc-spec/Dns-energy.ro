@@ -22,6 +22,8 @@ import { AiDraft } from "@/components/ai/AiDraft";
 import { DiuDossier } from "@/components/dossier/DiuDossier";
 import { AiPrecheck } from "@/components/ai/AiPrecheck";
 import { can } from "@/lib/plan";
+import { DossierTimeline } from "@/components/dossier/DossierTimeline";
+import { DossierMessages } from "@/components/dossier/DossierMessages";
 
 const PROSUM_STATUS_MAP = { "În pregătire": "Așteaptă depunere", "Depus la operator": "Dosar depus", "ATR emis": "Factură ATR", "În execuție": "Așteaptă instalare", "Punere în funcțiune": "PV Teste / PIF", "Prosumator activ": "Finalizat" };
 const displayStatus = (item) => PROSUM_STATUS_MAP[item.status] || item.status || "Așteaptă depunere";
@@ -195,7 +197,7 @@ export default function ModulePage({ moduleKey }) {
             </div>
           </> : <h2 className="text-lg font-bold mb-5">{editId ? (key === "prosumator" ? `Dosar ${form.number || "prosumator"} · documentație` : "Editează înregistrarea") : cfg.addLabel}</h2>}
           {key === "prosumator" && editId && <div className="mb-5 flex gap-2 overflow-x-auto border-b pb-2" role="tablist" aria-label="Pagini dosar">
-            {[ ["client", "Client"], ["installation", "Instalație"], ["documents", "Documente"], ["equipment", "Echipamente"], ["pif", "Teste și PIF"], ["other", "Altele"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
+            {[ ["client", "Client"], ["installation", "Instalație"], ["documents", "Documente"], ["equipment", "Echipamente"], ["team", "Echipă & semnături"], ["pif", "Teste și PIF"], ["timeline", "Jurnal"], ["other", "Altele"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
           </div>}
           <div className="grid sm:grid-cols-2 gap-4">
             {cfg.fields.map((f, i) => {
@@ -249,8 +251,10 @@ export default function ModulePage({ moduleKey }) {
 
           {key === "prosumator" && editId && dossierPage === "documents" && <><DossierOpis id={editId} /><GeneratedDocs id={editId} files={form.files} /></>}
           {key === "prosumator" && editId && dossierPage === "equipment" && <><div className="mt-2"><h3 className="font-bold text-base">Echipamente și parametri instalației</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează modelul din catalog pentru a prelua datele tehnice și a verifica fișele disponibile.</p><CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} /></div><SldPanel id={editId} form={form} setVal={setVal} /></>}
-          {key === "prosumator" && editId && dossierPage === "pif" && <><DossierExtras form={form} setVal={setVal} /><PifPanel id={editId} /></>}
-          {key === "prosumator" && editId && dossierPage === "other" && <><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /><SignRequests dossierId={editId} /></>}
+          {key === "prosumator" && editId && dossierPage === "team" && <DossierExtras form={form} setVal={setVal} view="team" />}
+          {key === "prosumator" && editId && dossierPage === "pif" && <><DossierExtras form={form} setVal={setVal} view="pif" /><PifPanel id={editId} /></>}
+          {key === "prosumator" && editId && dossierPage === "timeline" && <DossierTimeline id={editId} />}
+          {key === "prosumator" && editId && dossierPage === "other" && <><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierMessages id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /><SignRequests dossierId={editId} /></>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
           {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} savedAt={savedAt} />}
@@ -302,8 +306,8 @@ export default function ModulePage({ moduleKey }) {
               const cards = filtered.filter((item) => displayStatus(item) === status);
               return <section key={status} className="w-[260px] shrink-0 rounded-xl p-3" style={{ background: "#f5f7fb" }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const item = items.find((i) => i.id === dragId(e)); if (item && item.status !== status) changeStatus(item, status); }} data-testid={`kanban-column-${status}`}>
                 <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-[10px] font-extrabold uppercase tracking-wide">{status}</h3><span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "#e8edf5", color: "var(--muted)" }}>{cards.length}</span></div>
-                <div className="space-y-2 min-h-10">{cards.map((item) => <article key={item.id} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", item.id)} className="rounded-xl border bg-white p-3 shadow-sm cursor-grab" style={{ borderColor: "var(--line)" }} data-testid={`kanban-card-${item.id}`}>
-                  <button className="w-full text-left" onClick={() => openEdit(item)}><span className="block text-[10px] font-bold" style={{ color: "var(--blue)" }}>{item.number || "Fără număr"}</span><b className="mt-1 block text-[12px]">{item.client_name || "Beneficiar neprecizat"}</b><span className="mt-1 block truncate text-[10px]" style={{ color: "var(--muted)" }}>{[item.locality, item.county].filter(Boolean).join(", ") || item.address || "Loc de consum necompletat"}</span></button>
+                <div className="space-y-2 min-h-10">{cards.map((item) => <article key={item.id} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", item.id)} className="rounded-xl border bg-white p-3 shadow-sm cursor-grab" style={{ borderColor: item.blocker?.active ? "#e8a1a1" : "var(--line)" }} data-testid={`kanban-card-${item.id}`}>
+                  <button className="w-full text-left" onClick={() => openEdit(item)}><span className="block text-[10px] font-bold" style={{ color: "var(--blue)" }}>{item.number || "Fără număr"}</span><b className="mt-1 block text-[12px]">{item.client_name || "Beneficiar neprecizat"}</b><span className="mt-1 block truncate text-[10px]" style={{ color: "var(--muted)" }}>{[item.locality, item.county].filter(Boolean).join(", ") || item.address || "Loc de consum necompletat"}</span>{item.blocker?.active && <span className="mt-2 block rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#9b2c2c", background: "#fff0f0" }}>Blocaj: {item.blocker.title}</span>}</button>
                   <div className="mt-2 flex items-center justify-between border-t pt-2" style={{ borderColor: "var(--line)" }}><span className="truncate text-[9px]" style={{ color: "var(--muted)" }}>{item.operator || "Operator neprecizat"}</span><button className="rounded-md p-1 hover:bg-slate-100" title="Editează dosarul" onClick={() => openEdit(item)}><ChevronRight size={14} /></button></div>
                 </article>)}</div>
               </section>;
@@ -321,7 +325,7 @@ export default function ModulePage({ moduleKey }) {
               <tbody>
                 {filtered.map((it) => (
                   <tr key={it.id} className="border-t hover:bg-[#fafcff]" style={{ borderColor: "var(--line)" }}>
-                    {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{key === "prosumator" && c.key === "status" ? <select className="den-input !w-auto !py-1.5 !text-xs" value={displayStatus(it)} onChange={(e) => changeStatus(it, e.target.value)} aria-label={`Stadiu ${it.number || it.client_name}`}>{statusOptions.map((s) => <option key={s}>{s}</option>)}</select> : it[c.key] || "—"}</td>)}
+                    {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{key === "prosumator" && c.key === "status" ? <span className="inline-flex items-center gap-2"><span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: "#eef4ff", color: "#1d4ed8" }}>{displayStatus(it)}</span>{it.blocker?.active && <span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ color: "#9b2c2c", background: "#fff0f0" }}>Blocaj</span>}</span> : it[c.key] || "—"}</td>)}
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       <button onClick={() => openEdit(it)} data-testid={`edit-${it.id}`} className="p-1.5 rounded hover:bg-[#eef4ff]" title="Editează"><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
                       {canDelete && <button onClick={() => remove(it.id)} data-testid={`delete-${it.id}`} className="p-1.5 rounded hover:bg-[#fff0f0] ml-1" title="Șterge"><Trash2 size={15} style={{ color: "#b33333" }} /></button>}

@@ -67,7 +67,7 @@ function CreateForm({ dossierId, module, onCreated }) {
   const [days, setDays] = useState(7);
   const diu = module === "diu";
   useEffect(() => { api.get(diu ? `/diu/${dossierId}/docs` : `/dossier/${dossierId}`).then((r) => {
-    setPositions(diu ? r.data.positions : r.data.positions.filter((p) => p.source === "generat"));
+    setPositions(diu ? r.data.positions : r.data.positions.filter((p) => p.source === "generat" || p.files?.length));
     const c = r.data.client || {};
     setSigners((cur) => [{ name: cur[0].name || c.name || "", email: cur[0].email || c.email || "", phone: cur[0].phone || c.phone || "", role: "Beneficiar" }]);
   }); }, [dossierId]); // eslint-disable-line

@@ -12,7 +12,7 @@ const ROLES = [["executant", "Reprezentant executant"], ["resp_tehnic", "Respons
 const status = (exp, file) => (!file ? "lipsă" : !exp ? "valabil" : exp < new Date().toISOString().slice(0, 10) ? "expirat" : "valabil");
 const eligible = (p) => (p.auths || []).some((a) => a.verified && status(a.expires, a.file) === "valabil");
 
-export function DossierExtras({ form, setVal }) {
+export function DossierExtras({ form, setVal, view = "all" }) {
   const [staff, setStaff] = useState([]);
   const [inst, setInst] = useState([]);
   useEffect(() => { api.get("/data/staff").then((r) => setStaff(r.data)).catch(() => {}); api.get("/data/instruments").then((r) => setInst(r.data)).catch(() => {}); }, []);
@@ -21,7 +21,7 @@ export function DossierExtras({ form, setVal }) {
   const setT = (k, f, v) => setVal("tests", { ...ts, [k]: { ...(ts[k] || {}), [f]: v } });
   return (
     <div className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
-      <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
+      {(view === "all" || view === "team") && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <h4 className="font-bold text-sm mb-1">Semnatari și aparat de măsură</h4>
         <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>Pot fi alese doar persoanele cu cel puțin o autorizație valabilă, încărcată și marcată „verificată” în Setări de bază.</p>
         {ROLES.map(([k, l]) => (
@@ -36,7 +36,9 @@ export function DossierExtras({ form, setVal }) {
             <option value="">— neselectat —</option>
             {inst.map((i) => <option key={i.id} value={i.id} disabled={status(i.expires, i.file) !== "valabil"}>{i.maker_model} · seria {i.serial} · {i.cert_name} până la {i.expires || "—"}{status(i.expires, i.file) !== "valabil" ? " (expirat / lipsă)" : ""}</option>)}
           </select></div>
-      </div>
+        <label className="mt-3 flex items-start gap-2 text-sm" data-testid="include-authorizations"><input type="checkbox" className="mt-1" checked={!!sg.include_authorizations} onChange={(e) => setVal("signers", { ...sg, include_authorizations: e.target.checked })} /><span>Include atestatul ANRE, autorizațiile selectate și documentele metrologice în opis și exportul dosarului.</span></label>
+      </div>}
+      {(view === "all" || view === "pif") && <>
       <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between mb-2"><h4 className="font-bold text-sm">Buletin reglaj — valori setate în invertor</h4>
           <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("reglaj", Object.fromEntries(REGLAJ.map(([k]) => [k, { val: TYPICAL[k][0], t: TYPICAL[k][1] }])))} data-testid="reglaj-typical">Preia valorile tip Ord. ANRE 132/2020 (verifică în invertor)</button></div>
@@ -57,6 +59,7 @@ export function DossierExtras({ form, setVal }) {
           ))}
         </div>
       </div>
+      </>}
     </div>
   );
 }

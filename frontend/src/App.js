@@ -27,6 +27,7 @@ import Contracts from "@/pages/Contracts";
 import OperatorAttest from "@/pages/OperatorAttest";
 import AdminOperators from "@/pages/AdminOperators";
 import AnreDossiers from "@/pages/AnreDossiers";
+import PramRegistry from "@/pages/PramRegistry";
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -67,7 +68,7 @@ function AppRoutes() {
         <Route path="/mono" element={<Gate feat={ROUTE_FEATURE["/mono"]}><ModulePage moduleKey="mono" /></Gate>} />
         <Route path="/tablouri" element={<Gate feat={ROUTE_FEATURE["/tablouri"]}><ModulePage moduleKey="panels" /></Gate>} />
         <Route path="/antiinsularizare" element={<Gate feat={ROUTE_FEATURE["/antiinsularizare"]}><ModulePage moduleKey="anti" /></Gate>} />
-        <Route path="/pram" element={<Gate feat={ROUTE_FEATURE["/pram"]}><ModulePage moduleKey="pram" /></Gate>} />
+        <Route path="/pram" element={<Gate feat={ROUTE_FEATURE["/pram"]}><PramRegistry /></Gate>} />
         <Route path="/echipamente" element={<Gate feat={ROUTE_FEATURE["/echipamente"]}><ModulePage moduleKey="equipment" /></Gate>} />
         <Route path="/spor-putere" element={<Gate feat={ROUTE_FEATURE["/spor-putere"]}><ModulePage moduleKey="power" /></Gate>} />
         <Route path="/cerere-atr" element={<Gate feat="atr"><ModulePage moduleKey="atr" /></Gate>} />

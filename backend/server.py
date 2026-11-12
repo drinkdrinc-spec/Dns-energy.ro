@@ -8,6 +8,7 @@ load_dotenv(ROOT_DIR / '.env')
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadFile, File, Form, Response, Header, Query
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ReturnDocument
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 import logging
@@ -386,6 +387,9 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
         data.pop("pif", None)
     if module in ("prosumator", "diu"):
         data.pop("ai_precheck", None); data.pop("signed", None)
+    if module == "prosumator":
+        # Timeline and blocker state are managed through their dedicated event route.
+        data.pop("events", None); data.pop("blocker", None)
     if module == "clients" and isinstance(data.get("docs"), dict):
         data["docs"]["semnate"] = (cur.get("docs") or {}).get("semnate") or []
     data["updated_by"] = user.get("email")
@@ -434,9 +438,215 @@ async def update_item_status(module: str, item_id: str, request: Request, user: 
     if status not in allowed[module]:
         raise HTTPException(status_code=400, detail="Stadiu invalid pentru acest modul")
     now = datetime.now(timezone.utc).isoformat()
-    await db[module].update_one({"id": item_id, "owner": current["owner"]}, {"$set": {"status": status, "updated_at": now, "updated_by": user.get("email")}})
+    update = {"$set": {"status": status, "updated_at": now, "updated_by": user.get("email")}}
+    if module == "prosumator" and status != current.get("status"):
+        update["$push"] = {"events": {"id": str(uuid.uuid4()), "at": now, "by": user.get("email"),
+                                         "type": "status_correction", "label": "Corecție manuală de etapă",
+                                         "from_status": current.get("status"), "to_status": status}}
+    await db[module].update_one({"id": item_id, "owner": current["owner"]}, update)
     await audit(user, "schimbare stadiu", module, item_id, [status])
     return {"ok": True, "status": status, "updated_at": now}
+
+PROSUMATOR_EVENTS = {
+    "dossier_generated": ("Dosar generat", "Așteaptă depunere"),
+    "dossier_submitted": ("Dosar depus la distribuitor", "Dosar depus"),
+    "atr_received": ("ATR emis", "Factură ATR"),
+    "atr_paid": ("Factură ATR plătită", "Așteaptă instalare"),
+    "installation_completed": ("Instalație montată", "Instalat"),
+    "pif_started": ("Probe și punere sub tensiune începute", "PV Teste / PIF"),
+    "prosumer_active": ("Prosumator activ", "Finalizat"),
+    "note": ("Notă în jurnal", None),
+    "blocker_opened": ("Blocaj înregistrat", None),
+    "blocker_resolved": ("Blocaj rezolvat", None),
+}
+
+@api_router.get("/prosumator/{item_id}/timeline")
+async def get_prosumator_timeline(item_id: str, user: dict = Depends(get_current_user)):
+    guard("prosumator", user)
+    doc = await check_access(user, "prosumator", item_id)
+    return {"events": doc.get("events") or [], "blocker": doc.get("blocker") or {"active": False}}
+
+@api_router.post("/prosumator/{item_id}/timeline")
+async def add_prosumator_timeline_event(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    doc = await check_access(user, "prosumator", item_id)
+    body = await request.json()
+    kind = str(body.get("type") or "").strip()
+    if kind not in PROSUMATOR_EVENTS:
+        raise HTTPException(status_code=400, detail="Eveniment invalid")
+    label, next_status = PROSUMATOR_EVENTS[kind]
+    note = str(body.get("note") or "").strip()[:1200]
+    due_date = str(body.get("due_date") or "").strip()
+    if due_date:
+        try:
+            datetime.strptime(due_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Termenul blocajului trebuie să fie o dată validă")
+    if kind in ("note", "blocker_opened") and not note:
+        raise HTTPException(status_code=400, detail="Completează detaliile evenimentului")
+    if kind == "blocker_opened" and (doc.get("blocker") or {}).get("active"):
+        raise HTTPException(status_code=409, detail="Există deja un blocaj activ. Rezolvă-l înainte de a înregistra altul.")
+    if kind == "blocker_resolved" and not (doc.get("blocker") or {}).get("active"):
+        raise HTTPException(status_code=409, detail="Dosarul nu are un blocaj activ")
+    now = datetime.now(timezone.utc).isoformat()
+    event = {"id": str(uuid.uuid4()), "at": now, "by": user.get("email"), "type": kind, "label": label,
+             "note": note or None, "from_status": doc.get("status"), "to_status": next_status or doc.get("status")}
+    update = {"$push": {"events": event}, "$set": {"updated_at": now, "updated_by": user.get("email")}}
+    if next_status:
+        update["$set"]["status"] = next_status
+    if kind == "blocker_opened":
+        update["$set"]["blocker"] = {"active": True, "title": note, "due_date": due_date or None, "opened_at": now, "opened_by": user.get("email")}
+    elif kind == "blocker_resolved":
+        update["$set"]["blocker"] = {"active": False, "title": (doc.get("blocker") or {}).get("title"), "resolved_at": now, "resolved_by": user.get("email")}
+    await db.prosumator.update_one({"id": item_id, "owner": doc["owner"]}, update)
+    await audit(user, "jurnal dosar", "prosumator", item_id, [kind, label])
+    return {"ok": True, "event": event, "status": next_status or doc.get("status"), "blocker": update["$set"].get("blocker", doc.get("blocker") or {"active": False})}
+
+@api_router.get("/prosumator/{item_id}/messages")
+async def list_prosumator_messages(item_id: str, user: dict = Depends(get_current_user)):
+    guard("prosumator", user)
+    rec = await check_access(user, "prosumator", item_id)
+    return {"messages": rec.get("messages") or []}
+
+@api_router.post("/prosumator/{item_id}/messages")
+async def add_prosumator_message(item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    rec = await check_access(user, "prosumator", item_id)
+    body = await request.json()
+    content = str(body.get("content") or "").strip()[:2000]
+    files = body.get("files") or []
+    if not content:
+        raise HTTPException(status_code=400, detail="Scrie mesajul pentru client")
+    if not isinstance(files, list) or len(files) > 5:
+        raise HTTPException(status_code=400, detail="Poți atașa cel mult 5 fișiere")
+    safe_files = []
+    for f in files:
+        path = str((f or {}).get("storage_path") or "")
+        if not path or f"/{user['id']}/" not in path:
+            raise HTTPException(status_code=400, detail="Un atașament nu aparține contului")
+        safe_files.append({k: f.get(k) for k in ("storage_path", "original_filename", "content_type", "size")})
+    now = datetime.now(timezone.utc).isoformat()
+    message = {"id": str(uuid.uuid4()), "at": now, "author": user.get("name") or user.get("email"), "author_type": "firmă", "content": content, "files": safe_files}
+    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$push": {"messages": message}, "$set": {"updated_at": now}})
+    await audit(user, "mesaj către client", "prosumator", item_id, ["content", "files"])
+    return message
+
+@api_router.get("/public/sign/{token}/messages")
+async def public_sign_messages(token: str):
+    req = await sign_by_token(token)
+    if (req.get("module") or "prosumator") != "prosumator" or sign_status(req) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Portalul de mesaje nu mai este activ")
+    rec = await db.prosumator.find_one({"id": req["dossier_id"], "owner": req["owner"]}, {"_id": 0, "messages": 1})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosarul nu mai există")
+    return {"messages": [{**m, "files": [{"name": f.get("original_filename") or "Fișier", "url": f"/api/public/sign/{token}/messages/{m['id']}/files/{i}"} for i, f in enumerate(m.get("files") or [])]} for m in rec.get("messages") or []]}
+
+@api_router.post("/public/sign/{token}/messages")
+async def public_sign_message(token: str, request: Request):
+    req = await sign_by_token(token)
+    if (req.get("module") or "prosumator") != "prosumator" or sign_status(req) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Portalul de mesaje nu mai este activ")
+    body = await request.json()
+    content = str(body.get("content") or "").strip()[:2000]
+    files = body.get("files") or []
+    if not content:
+        raise HTTPException(status_code=400, detail="Scrie mesajul pentru instalator")
+    if not isinstance(files, list) or len(files) > 5:
+        raise HTTPException(status_code=400, detail="Poți atașa cel mult 5 fișiere")
+    safe_files = []
+    for f in files:
+        path = str((f or {}).get("storage_path") or "")
+        if not path.startswith(f"{APP_NAME}/portal/{req['owner']}/"):
+            raise HTTPException(status_code=400, detail="Atașament invalid")
+        safe_files.append({k: f.get(k) for k in ("storage_path", "original_filename", "content_type", "size")})
+    now = datetime.now(timezone.utc).isoformat()
+    message = {"id": str(uuid.uuid4()), "at": now, "author": "Client", "author_type": "client", "content": content, "files": safe_files}
+    await db.prosumator.update_one({"id": req["dossier_id"], "owner": req["owner"]}, {"$push": {"messages": message}, "$set": {"updated_at": now}})
+    await db.sign_requests.update_one({"id": req["id"]}, {"$push": {"history": hist("Mesaj de la client", client_meta(request))}})
+    return {"ok": True}
+
+@api_router.post("/public/sign/{token}/messages/upload")
+async def public_sign_message_upload(token: str, file: UploadFile = File(...)):
+    req = await sign_by_token(token)
+    if (req.get("module") or "prosumator") != "prosumator" or sign_status(req) not in SIGN_ACTIVE:
+        raise HTTPException(status_code=410, detail="Portalul de mesaje nu mai este activ")
+    data = await file.read()
+    if not data or len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Fișierul trebuie să fie mai mic de 10 MB")
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    ct = file.content_type or MIME_TYPES.get(ext, "")
+    if ext not in ("pdf", "png", "jpg", "jpeg", "webp") or not ("pdf" in ct or ct.startswith("image/")):
+        raise HTTPException(status_code=400, detail="Atașează un PDF sau o imagine")
+    stored = put_object(f"{APP_NAME}/portal/{req['owner']}/{uuid.uuid4()}.{ext}", data, ct)
+    return {"storage_path": stored["path"], "original_filename": file.filename, "content_type": ct, "size": len(data)}
+
+@api_router.get("/public/sign/{token}/messages/{message_id}/files/{file_index}")
+async def public_sign_message_file(token: str, message_id: str, file_index: int):
+    req = await sign_by_token(token)
+    rec = await db.prosumator.find_one({"id": req.get("dossier_id"), "owner": req.get("owner")}, {"_id": 0, "messages": 1})
+    msg = next((m for m in (rec or {}).get("messages") or [] if m.get("id") == message_id), None)
+    files = (msg or {}).get("files") or []
+    if not files or file_index < 0 or file_index >= len(files):
+        raise HTTPException(status_code=404, detail="Fișierul nu există")
+    f = files[file_index]
+    data, ct = get_object(f["storage_path"])
+    return Response(content=data, media_type=f.get("content_type") or ct, headers={"Content-Disposition": disp("inline", f.get("original_filename") or "atasament")})
+
+@api_router.post("/pram/create")
+async def create_individual_pram(request: Request, user: dict = Depends(get_current_user)):
+    guard("pram", user, write=True)
+    body = await request.json()
+    client_id = str(body.get("client_id") or "").strip()
+    client_rec = await db.clients.find_one({**scope_q(user, "clients"), "id": client_id}, {"_id": 0}) if client_id else None
+    if not client_rec:
+        raise HTTPException(status_code=400, detail="Alege un client din registru")
+    name = str(client_rec.get("name") or "").strip()
+    address = str(body.get("address") or client_rec.get("address") or "").strip()
+    measure = str(body.get("earth_ohm") or "").strip().replace(",", ".")
+    try:
+        value = float(measure)
+        if value <= 0:
+            raise ValueError()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Introdu o valoare măsurată validă, mai mare decât zero")
+    for field, title in (("date", "data măsurătorii"), ("instrument_id", "aparatul de măsură"), ("verifier_id", "verificatorul")):
+        if not str(body.get(field) or "").strip():
+            raise HTTPException(status_code=400, detail=f"Completează {title}")
+    instrument = await db.instruments.find_one({**scope_q(user, "instruments"), "id": body["instrument_id"]}, {"_id": 0})
+    verifier = await db.staff.find_one({**scope_q(user, "staff"), "id": body["verifier_id"]}, {"_id": 0})
+    if not instrument or not verifier:
+        raise HTTPException(status_code=400, detail="Aparatul sau verificatorul ales nu mai este disponibil")
+    year = datetime.now(timezone.utc).year
+    seq = await db.pram_counters.find_one_and_update({"owner": user["id"], "year": year},
+        {"$inc": {"value": 1}, "$setOnInsert": {"owner": user["id"], "year": year}}, upsert=True, return_document=ReturnDocument.AFTER)
+    rec = _new(user, {"number": f"PRAM-{year}-{seq['value']:04d}", "source": "Individual", "client_id": client_id,
+        "client_name": name, "address": address, "date": str(body["date"]), "soil": str(body.get("soil") or "mediu"),
+        "soil_psi": {"uscat": 1.1, "mediu": 1.3, "foarte umed": 1.5}.get(str(body.get("soil") or "mediu"), 1.3),
+        "earth_ohm": value, "earth_limit": float(body.get("earth_limit") or 4), "instrument_id": instrument["id"],
+        "instrument": " ".join(str(x) for x in (instrument.get("maker_model"), instrument.get("serial")) if x),
+        "verifier_id": verifier["id"], "author": verifier.get("name"), "verifier": verifier.get("name")})
+    await db.pram.insert_one(dict(rec))
+    await audit(user, "emitere buletin PRAM individual", "pram", rec["id"], ["number", "client_id", "earth_ohm"])
+    return clean(rec)
+
+@api_router.get("/pram/{item_id}/pdf")
+async def individual_pram_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    guard("pram", user)
+    rec = await check_access(user, "pram", item_id)
+    client_rec = await get_client(user["id"], rec)
+    if not client_rec:
+        raise HTTPException(status_code=404, detail="Clientul legat de buletin nu mai există")
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    settings, warns = await effective_settings(user["id"], {}, base)
+    if warns:
+        raise HTTPException(status_code=400, detail="Completează datele firmei în Setări: " + "; ".join(warns))
+    from diu_doc import render as render_diu
+    technical = {"number": rec.get("number"), "client_name": rec.get("client_name"), "address": rec.get("address"),
+                 "earthing": "—", "pram_m": {"date": rec.get("date"), "soil": rec.get("soil"), "soil_psi": rec.get("soil_psi"),
+                    "earth_ohm": rec.get("earth_ohm"), "earth_limit": rec.get("earth_limit"), "instrument": rec.get("instrument"), "verifier": rec.get("verifier")}}
+    pdf = render_diu(["pram_priza"], technical, settings, client_rec)
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp("inline", f"Buletin_PRAM_{rec.get('number')}.pdf")})
 
 @api_router.delete("/data/{module}/{item_id}")
 async def delete_item(module: str, item_id: str, user: dict = Depends(get_current_user)):
@@ -503,7 +713,10 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         status = legacy_status.get(item.get("status"), item.get("status")) or "Așteaptă depunere"
         task = None
         priority = 3
-        if status == "Așteaptă depunere":
+        blocker = item.get("blocker") or {}
+        if blocker.get("active"):
+            task, priority = f"Blocaj: {blocker.get('title') or 'necesită rezolvare'}", 0
+        elif status == "Așteaptă depunere":
             task, priority = "Dosar generat, nedepus la operator", 2
         elif status == "Dosar depus":
             try:

@@ -1,4 +1,5 @@
 import io
+from datetime import date
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib import colors
@@ -37,6 +38,13 @@ GEN = [("notificare", "Anexa 2 — Notificare (Ord. ANRE 19/2022)", ["notificare
        ("imputernicire", "Împuternicire", ["imputernicire"], ["county"], [])]
 COMMON = ["name", "idcode", "hq_address", "phone", "address", "county", "pod", "operator"]
 EXEC = ["company", "cui", "regcom", "address", "phone", "email", "anre_attest", "rep"]
+
+
+def auth_is_current(auth):
+    if not auth.get("verified") or not auth.get("file"):
+        return False
+    expires = auth.get("expires") or ""
+    return not expires or expires >= date.today().isoformat()
 
 
 def catalog_refs(rec):
@@ -129,6 +137,48 @@ async def build_positions(db, owner, rec, client, settings):
                 k = f"cat_{kind}_{label.replace(' ', '_')}_{cid or model}"
                 pos.append({"key": k, "title": f"{prefix} {label} — {model}", "source": "catalog", "files": files,
                             "missing": [] if files else [f"Încarcă {prefix.lower()} în Catalog echipamente ({model})" + ("" if cid else " și alege modelul din catalog în CEF")]})
+
+    # Add requested company, staff and metrology certificates to the exported dossier.
+    signers = rec.get("signers") or {}
+    if signers.get("include_authorizations"):
+        cert_files, cert_missing, seen = [], [], set()
+
+        def add_cert(file, label):
+            path = (file or {}).get("storage_path")
+            if path and path not in seen:
+                seen.add(path)
+                cert_files.append({**file, "original_filename": file.get("original_filename") or label})
+
+        company_cert = settings.get("anre_file")
+        if company_cert and company_cert.get("storage_path"):
+            add_cert(company_cert, "Atestat ANRE firmă")
+        else:
+            cert_missing.append("Atestat ANRE al firmei")
+
+        for role, staff_id in signers.items():
+            if role == "include_authorizations" or not staff_id:
+                continue
+            person = await db.staff.find_one({"owner": owner, "id": staff_id}, {"_id": 0})
+            auth = next((a for a in (person or {}).get("auths") or [] if auth_is_current(a)), None)
+            auth_file = (auth or {}).get("file")
+            if auth_file and auth_file.get("storage_path"):
+                add_cert(auth_file, f"Autorizație — {(person or {}).get('name') or role}")
+            else:
+                cert_missing.append(f"Autorizație valabilă pentru {(person or {}).get('name') or role}")
+
+        instrument_id = rec.get("instrument_id")
+        if instrument_id:
+            instrument = await db.instruments.find_one({"owner": owner, "id": instrument_id}, {"_id": 0})
+            meter_file = (instrument or {}).get("file")
+            if meter_file and meter_file.get("storage_path"):
+                add_cert(meter_file, "Certificat metrologic aparat de măsură")
+            else:
+                cert_missing.append("Document metrologic al aparatului de măsură")
+        else:
+            cert_missing.append("Aparat de măsură selectat în dosar")
+
+        pos.append({"key": "authorizations", "title": "Atestat ANRE, autorizații și documente metrologice",
+                    "source": "catalog", "files": cert_files, "missing": cert_missing})
 
     for i, p in enumerate(pos):
         p["nr"] = i + 1
