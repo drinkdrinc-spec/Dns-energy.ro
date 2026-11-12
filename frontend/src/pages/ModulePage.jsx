@@ -67,7 +67,7 @@ export default function ModulePage({ moduleKey }) {
   const [savedAt, setSavedAt] = useState(0);
   const [diuPre, setDiuPre] = useState(false);
   const [prosumStep, setProsumStep] = useState(1);
-  const [dossierPage, setDossierPage] = useState("client");
+  const [dossierPage, setDossierPage] = useState("all");
   const [dossierView, setDossierView] = useState("kanban");
   const [operatorFilter, setOperatorFilter] = useState("");
   const [countyFilter, setCountyFilter] = useState("");
@@ -96,7 +96,7 @@ export default function ModulePage({ moduleKey }) {
   }, [key]);
 
   const openNew = () => { setForm(key === "prosumator" ? { doc_date: new Date().toISOString().slice(0, 10), status: "CER" } : {}); setEditId(null); setChecks({}); setProsumStep(1); };
-  const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("client"); };
+  const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("all"); };
   const setVal = (name, value) => setForm((p) => {
     const next = { ...p, [name]: value };
     if (key === "prosumator" && name === "client_name") {
@@ -197,7 +197,7 @@ export default function ModulePage({ moduleKey }) {
             </div>
           </> : <h2 className="text-lg font-bold mb-5">{editId ? (key === "prosumator" ? `Dosar ${form.number || "prosumator"} · documentație` : "Editează înregistrarea") : cfg.addLabel}</h2>}
           {key === "prosumator" && editId && <div className="mb-5 flex gap-2 overflow-x-auto border-b pb-2" role="tablist" aria-label="Pagini dosar">
-            {[ ["client", "Client"], ["installation", "Instalație"], ["documents", "Documente"], ["equipment", "Echipamente"], ["team", "Echipă & semnături"], ["pif", "Teste și PIF"], ["timeline", "Jurnal"], ["other", "Altele"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
+            {[ ["all", "Dosar complet"], ["client", "Client"], ["installation", "Instalație"], ["documents", "Acte & documente"], ["equipment", "Echipamente"], ["team", "Echipă & semnături"], ["pif", "Teste și PIF"], ["timeline", "Jurnal"], ["other", "Mesaje & semnare"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
           </div>}
           <div className="grid sm:grid-cols-2 gap-4">
             {cfg.fields.map((f, i) => {
@@ -213,7 +213,7 @@ export default function ModulePage({ moduleKey }) {
                 const pageBySection = { "Client și loc de consum": "client", "Date tehnice": "installation", "Date documente dosar": "documents", "Recepție la terminarea lucrărilor": "documents", "Punere în funcțiune și teste": "documents", "Buletin priză de pământ (valori măsurate)": "documents", "Tablou general și alimentare": "documents", "Recepție, punere în funcțiune și garanție": "documents" };
                 const section = cfg.fields.slice(0, i + 1).filter((field) => field.type === "section").at(-1)?.label;
                 const fieldPage = pageBySection[section] || "client";
-                if (fieldPage !== dossierPage) return null;
+                if (dossierPage !== "all" && fieldPage !== dossierPage) return null;
               }
               return <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} allowNewReference={key === "prosumator" && f.name === "client_name"} ai={can(user, "ai_gpt") ? { module: key, form } : null} />;
             })}
@@ -232,7 +232,7 @@ export default function ModulePage({ moduleKey }) {
             {prosumStep < 3 ? <Btn onClick={continueProsum}>Continuă</Btn> : <Btn onClick={save} data-testid="save-btn"><Plus size={15} /> Creează dosarul</Btn>}
           </div>}
 
-          {cfg.checklist && (key !== "prosumator" || (!!editId && dossierPage === "documents")) && (
+          {cfg.checklist && (key !== "prosumator" || (!!editId && ["documents", "all"].includes(dossierPage))) && (
             <div className="mt-6">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-sm">Checklist documente — {cfg.title}</h3>
@@ -249,12 +249,13 @@ export default function ModulePage({ moduleKey }) {
             </div>
           )}
 
-          {key === "prosumator" && editId && dossierPage === "documents" && <><DossierOpis id={editId} /><GeneratedDocs id={editId} files={form.files} /></>}
-          {key === "prosumator" && editId && dossierPage === "equipment" && <><div className="mt-2"><h3 className="font-bold text-base">Echipamente și parametri instalației</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează modelul din catalog pentru a prelua datele tehnice și a verifica fișele disponibile.</p><CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} /></div><SldPanel id={editId} form={form} setVal={setVal} /></>}
-          {key === "prosumator" && editId && dossierPage === "team" && <DossierExtras form={form} setVal={setVal} view="team" />}
+          {key === "prosumator" && editId && ["documents", "all"].includes(dossierPage) && <><DossierOpis id={editId} /><GeneratedDocs id={editId} files={form.files} /></>}
+          {key === "prosumator" && editId && ["equipment", "all"].includes(dossierPage) && <><div className="mt-2"><h3 className="font-bold text-base">Echipamente și parametri instalației</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează modelul din catalog pentru a prelua datele tehnice și a verifica fișele disponibile.</p><CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} /></div><SldPanel id={editId} form={form} setVal={setVal} /></>}
+          {key === "prosumator" && editId && ["team", "all"].includes(dossierPage) && <DossierExtras form={form} setVal={setVal} view={dossierPage === "all" ? "all" : "team"} />}
           {key === "prosumator" && editId && dossierPage === "pif" && <><DossierExtras form={form} setVal={setVal} view="pif" /><PifPanel id={editId} /></>}
-          {key === "prosumator" && editId && dossierPage === "timeline" && <DossierTimeline id={editId} />}
-          {key === "prosumator" && editId && dossierPage === "other" && <><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierMessages id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /><SignRequests dossierId={editId} /></>}
+          {key === "prosumator" && editId && ["pif", "all"].includes(dossierPage) && <PifPanel id={editId} />}
+          {key === "prosumator" && editId && ["timeline", "all"].includes(dossierPage) && <DossierTimeline id={editId} />}
+          {key === "prosumator" && editId && ["other", "all"].includes(dossierPage) && <><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierMessages id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /><SignRequests dossierId={editId} /></>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
           {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} savedAt={savedAt} />}
@@ -340,3 +341,4 @@ export default function ModulePage({ moduleKey }) {
     </div>
   );
 }
+
