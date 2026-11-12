@@ -9,29 +9,26 @@ import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/plan";
 
 const tok = () => localStorage.getItem("den_token");
-const STATUS_STYLE = { "de completat": ["#fff0f0", "#9b2c2c"], generat: ["#eef4ff", "#1d4ed8"], "necesită semnătură": ["#fff8e6", "#8a5a00"], "atașat": ["#ecfdf3", "#166534"] };
+const STATUS_STYLE = { "de completat": ["#fff5e8", "#9a5c12", "#e79334"], generat: ["#eef4ff", "#1d4ed8", "#4386e5"], "necesită semnătură": ["#fff8e6", "#8a5a00", "#d7a33d"], "atașat": ["#ecfdf3", "#166534", "#218e50"] };
 
 function Row({ p, id, statuses, reload, preview }) {
   const ref = useRef();
   const put = async (body) => { await api.put(`/dossier/${id}/item/${p.key}`, body); reload(); };
   const url = `${API}/dossier/${id}/file/${encodeURIComponent(p.key)}?auth=${tok()}`;
-  const [bg, fg] = STATUS_STYLE[p.status] || STATUS_STYLE.generat;
+  const [bg, fg, dot] = STATUS_STYLE[p.status] || STATUS_STYLE.generat;
   const canView = p.source === "generat" || !!p.upload || p.files.length > 0;
   return (
-    <tr className="border-t align-top" style={{ borderColor: "var(--line)" }} data-testid={`opis-row-${p.nr}`}>
-      <td className="px-2 py-2.5 font-bold">{p.nr}</td>
-      <td className="px-2 py-2.5">
-        <div className="font-semibold">{p.title}</div>
-        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{p.upload ? `Încărcat: ${p.upload.original_filename}` : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : "Din catalog echipamente"}</div>
-        {p.missing.length > 0 && <div className="text-[11px] mt-1" style={{ color: "#9b2c2c" }}>Lipsă: {p.missing.join(", ")}</div>}
-      </td>
-      <td className="px-2 py-2.5">
-        <select className="den-input text-xs py-1" style={{ background: bg, color: fg, fontWeight: 700, minWidth: 190 }} value={p.status} data-testid={`opis-status-${p.nr}`}
+    <div className="grid grid-cols-1 gap-2 border-t py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" style={{ borderColor: "var(--line)" }} data-testid={`opis-row-${p.nr}`}>
+      <div className="min-w-0">
+        <div className="flex items-start gap-2.5"><span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: dot }} aria-hidden="true" /><span className="min-w-0"><b className="block text-sm">{p.title}</b><span className="mt-0.5 block text-[11px]" style={{ color: "var(--muted)" }}>{p.upload ? `Încărcat: ${p.upload.original_filename}` : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : "Din catalog echipamente"}</span></span></div>
+        {p.missing.length > 0 && <div className="ml-5 mt-1 text-[11px]" style={{ color: "#9b2c2c" }}>Lipsă: {p.missing.join(", ")}</div>}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+        <select aria-label={`Stadiu: ${p.title}`} className="den-input max-w-[165px] !py-1 text-[11px]" style={{ background: bg, color: fg, fontWeight: 700 }} value={p.status} data-testid={`opis-status-${p.nr}`}
           onChange={(e) => put({ status: e.target.value === p.auto_status ? null : e.target.value })}>
           {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-      </td>
-      <td className="px-2 py-2.5 whitespace-nowrap text-right">
+        <div className="flex items-center">
         {canView && <button className="p-1.5 rounded hover:bg-[#eef4ff]" title="Previzualizare" onClick={() => preview(url, p.title)} data-testid={`opis-preview-${p.nr}`}><Eye size={15} style={{ color: "var(--blue)" }} /></button>}
         {canView && <a className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="PDF" href={url} target="_blank" rel="noopener noreferrer" data-testid={`opis-pdf-${p.nr}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></a>}
         {p.source === "generat" && p.key !== "schema" && <a className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="Word" href={`${url}&fmt=docx`} data-testid={`opis-docx-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></a>}
@@ -39,8 +36,9 @@ function Row({ p, id, statuses, reload, preview }) {
           onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; await put({ upload: await uploadFile(f), status: null }); toast.success("Document atașat"); ref.current.value = ""; }} />
         <button className="p-1.5 rounded hover:bg-[#eef4ff]" title="Încarcă document existent / semnat" onClick={() => ref.current.click()} data-testid={`opis-upload-${p.nr}`}><Upload size={15} style={{ color: "var(--blue)" }} /></button>
         {p.upload && <button className="p-1.5 rounded hover:bg-[#fff0f0]" title="Elimină documentul încărcat" onClick={() => put({ clear_upload: true })} data-testid={`opis-clear-${p.nr}`}><X size={15} style={{ color: "#b33333" }} /></button>}
-      </td>
-    </tr>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -59,11 +57,11 @@ export function DossierOpis({ id }) {
   };
   const lock = () => (!d.finalized && can(user, "ai_gpt") ? setPre(true) : doLock().catch(() => {}));
   return (
-    <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="dossier-opis">
+    <div className="mt-6 rounded-xl border bg-white p-4 sm:p-5" style={{ borderColor: "var(--line)" }} data-testid="dossier-opis">
       <AiPrecheck id={id} open={pre} onClose={() => setPre(false)} onFinalize={doLock} />
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <div>
-          <h3 className="font-bold">Opis dosar prosumator ({d.positions.length} poziții)</h3>
+          <h3 className="font-bold">Acte & poze</h3>
           <button onClick={() => setShowReport(!showReport)} className="text-xs font-bold inline-flex items-center gap-1 mt-1" style={{ color: d.complete ? "#166534" : "#9b2c2c" }} data-testid="opis-report-toggle">
             <AlertTriangle size={13} /> {d.complete ? "Dosar complet" : `${d.missing_total} informații / documente lipsă — vezi raportul`}
           </button>
@@ -84,11 +82,9 @@ export function DossierOpis({ id }) {
           {d.complete && "Nu lipsește nimic."}
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm bg-white rounded-lg">
-          <thead><tr className="text-left text-[11px]" style={{ color: "var(--muted)" }}><th className="px-2 py-2">Nr.</th><th className="px-2 py-2">Document</th><th className="px-2 py-2">Stadiu</th><th></th></tr></thead>
-          <tbody>{d.positions.map((p) => <Row key={p.key} p={p} id={id} statuses={d.statuses} reload={load} preview={(u, t) => setPv({ u, t })} />)}</tbody>
-        </table>
+      <div className="mt-3" aria-label="Documente dosar">
+        <div className="mb-2 text-right text-[11px]" style={{ color: "var(--muted)" }}>{d.positions.length} fișiere</div>
+        {d.positions.map((p) => <Row key={p.key} p={p} id={id} statuses={d.statuses} reload={load} preview={(u, t) => setPv({ u, t })} />)}
       </div>
       {pv && (
         <div className="fixed inset-0 z-50 bg-black/60 flex flex-col p-3 sm:p-8" data-testid="opis-preview-modal">
@@ -99,3 +95,4 @@ export function DossierOpis({ id }) {
     </div>
   );
 }
+
