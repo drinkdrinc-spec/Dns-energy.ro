@@ -58,6 +58,9 @@ async def get_current_user(request: Request) -> dict:
         user = await db.users.find_one({"id": payload["sub"]})
         if not user:
             raise HTTPException(status_code=401, detail="Utilizator inexistent")
+        owner_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+        if not owner_email or user.get("email", "").strip().lower() != owner_email:
+            raise HTTPException(status_code=401, detail="Sesiune invalidă")
         user.pop("password_hash", None)
         user.pop("_id", None)
         if user.get("status", "active") != "active":
@@ -154,9 +157,20 @@ STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = "d-energy"
 storage_key = None
+LOCAL_STORAGE = os.environ.get("DNS_LOCAL_STORAGE", "").strip().lower() in ("1", "true", "yes")
+LOCAL_STORAGE_ROOT = (ROOT_DIR / "local_storage").resolve()
+
+def local_storage_path(path: str) -> Path:
+    target = (LOCAL_STORAGE_ROOT / path).resolve()
+    if not target.is_relative_to(LOCAL_STORAGE_ROOT):
+        raise ValueError("Calea fișierului este invalidă")
+    return target
 
 def init_storage(force: bool = False):
     global storage_key
+    if LOCAL_STORAGE:
+        LOCAL_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        return "local"
     if storage_key and not force:
         return storage_key
     resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
@@ -165,6 +179,11 @@ def init_storage(force: bool = False):
     return storage_key
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
+    if LOCAL_STORAGE:
+        target = local_storage_path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        return {"path": path, "content_type": content_type, "size": len(data)}
     key = init_storage()
     resp = requests.put(f"{STORAGE_URL}/objects/{path}",
                         headers={"X-Storage-Key": key, "Content-Type": content_type},
@@ -178,6 +197,9 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
     return resp.json()
 
 def get_object(path: str):
+    if LOCAL_STORAGE:
+        target = local_storage_path(path)
+        return target.read_bytes(), MIME_TYPES.get(target.suffix.lower().lstrip("."), "application/octet-stream")
     key = init_storage()
     resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     if resp.status_code == 404:
@@ -193,12 +215,6 @@ MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gi
               "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 # ---------------- Models ----------------
-class RegisterReq(BaseModel):
-    email: EmailStr
-    password: str
-    name: Optional[str] = None
-    billing: Optional[dict] = None
-
 class LoginReq(BaseModel):
     email: EmailStr
     password: str
@@ -215,29 +231,15 @@ def pub_user(u: dict) -> dict:
             "plan": u.get("plan"), "platform": bool(PLATFORM["id"]) and (u.get("uid") or u["id"]) == PLATFORM["id"]}
 
 @api_router.post("/auth/register")
-async def register(body: RegisterReq, request: Request):
-    email = body.email.lower()
-    if await db.users.find_one({"email": email}):
-        raise HTTPException(status_code=400, detail="Email deja înregistrat")
-    if len(body.password or "") < 8:
-        raise HTTPException(status_code=400, detail="Parola trebuie să aibă minimum 8 caractere")
-    admin = await db.users.find_one({"email": os.environ["ADMIN_EMAIL"].lower()}) or await db.users.find_one({"role": "admin", "tenant": {"$in": [None, ""]}}, sort=[("created_at", 1)])
-    import billing_routes as BR
-    prof = BR.validate_profile(body.billing or {}, email) if admin else None
-    uid = str(uuid.uuid4())
-    doc = {"id": uid, "email": email, "password_hash": hash_password(body.password), "name": body.name or email.split("@")[0],
-           "role": "admin", "status": "pending" if admin else "active", "tenant": None, "account_type": "subscriber" if admin else "owner",
-           "created_at": datetime.now(timezone.utc).isoformat()}
-    await db.users.insert_one(doc)
-    if admin:
-        await BR.save_profile(uid, prof, email, {})
-        await db.audit.insert_one({"owner": admin["id"], "user": email, "action": "înregistrare cont (în așteptare)", "module": "users", "item_id": uid, "fields": [], "at": doc["created_at"]})
-        return {"pending": True, "message": STATUS_MSG["pending"]}
-    return {"access_token": create_access_token(uid, email), "user": pub_user(doc)}
+async def register():
+    raise HTTPException(status_code=404, detail="Înregistrarea conturilor publice este închisă")
 
 @api_router.post("/auth/login")
 async def login(body: LoginReq, request: Request):
     email = body.email.lower()
+    owner_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    if not owner_email or email != owner_email:
+        raise HTTPException(status_code=401, detail="Email sau parolă incorectă")
     ident = f"login:{email}"
     att = await db.login_attempts.find_one({"identifier": ident})
     if att and att.get("count", 0) >= 5 and att.get("until", "") > datetime.now(timezone.utc).isoformat():
@@ -412,6 +414,30 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
     return clean(doc)
 
+@api_router.patch("/data/{module}/{item_id}/status")
+async def update_item_status(module: str, item_id: str, request: Request, user: dict = Depends(get_current_user)):
+    if module not in ("prosumator", "diu", "works", "atr", "power"):
+        raise HTTPException(status_code=404, detail="Modulul nu are flux de status")
+    guard(module, user, write=True)
+    current = await check_access(user, module, item_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    body = await request.json()
+    status = (body.get("status") or "").strip()
+    allowed = {
+        "prosumator": ["Așteaptă depunere", "Dosar depus", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Finalizat"],
+        "diu": ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru predare", "Predat beneficiarului"],
+        "works": ["Ofertat", "Contractat", "În execuție", "În verificare", "Finalizat", "Facturat"],
+        "atr": ["În pregătire", "Depus la operator", "ATR emis", "Respins", "Finalizat"],
+        "power": ["În pregătire", "Depus la operator", "ATR emis", "În execuție", "Finalizat"],
+    }
+    if status not in allowed[module]:
+        raise HTTPException(status_code=400, detail="Stadiu invalid pentru acest modul")
+    now = datetime.now(timezone.utc).isoformat()
+    await db[module].update_one({"id": item_id, "owner": current["owner"]}, {"$set": {"status": status, "updated_at": now, "updated_by": user.get("email")}})
+    await audit(user, "schimbare stadiu", module, item_id, [status])
+    return {"ok": True, "status": status, "updated_at": now}
+
 @api_router.delete("/data/{module}/{item_id}")
 async def delete_item(module: str, item_id: str, user: dict = Depends(get_current_user)):
     if module not in MODULES:
@@ -436,8 +462,78 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     mono = await db.mono.count_documents(scope_q(user, "mono"))
     pending = await db.diu.count_documents({**owner, "status": {"$in": ["În lucru", "Documente de completat", "În verificare"]}})
     recent = await db.diu.find(owner).sort("created_at", -1).to_list(5)
+    prosum = await db.prosumator.find(scope_q(user, "prosumator")).sort("updated_at", -1).to_list(2000)
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=183)).isoformat()
+    active_prosum = [item for item in prosum if str(item.get("updated_at") or item.get("created_at") or "") >= cutoff]
+    stages = ["Așteaptă depunere", "Dosar depus", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Finalizat"]
+    by_status, by_operator = {stage: 0 for stage in stages}, {}
+    legacy_status = {"În pregătire": "Așteaptă depunere", "Depus la operator": "Dosar depus", "ATR emis": "Factură ATR",
+                     "În execuție": "Așteaptă instalare", "Punere în funcțiune": "PV Teste / PIF", "Prosumator activ": "Finalizat"}
+    for item in active_prosum:
+        status = legacy_status.get(item.get("status"), item.get("status")) or "Așteaptă depunere"
+        operator_raw = item.get("operator") or "Operator neprecizat"
+        op_low = operator_raw.casefold()
+        if "rețele electrice" in op_low or "retele electrice" in op_low:
+            operator = "Rețele Electrice"
+        elif "deer" in op_low or "distribuție energie electrică" in op_low or "distributie energie electrica" in op_low:
+            operator = "DEER"
+        elif "delgaz" in op_low:
+            operator = "Delgaz"
+        elif "oltenia" in op_low or "deo" in op_low:
+            operator = "Oltenia (DEO)"
+        else:
+            operator = operator_raw
+        by_status[status] = by_status.get(status, 0) + 1
+        by_operator[operator] = by_operator.get(operator, 0) + 1
+    created_month = sum(1 for item in active_prosum if str(item.get("created_at") or "").startswith(month))
+    activated = sum(1 for item in active_prosum if item.get("status") in ("Prosumator activ", "Finalizat"))
+    submitted_month = sum(1 for item in active_prosum if legacy_status.get(item.get("status"), item.get("status")) == "Dosar depus" and str(item.get("date") or "").startswith(month))
+    activated_month = sum(1 for item in active_prosum if legacy_status.get(item.get("status"), item.get("status")) == "Finalizat" and str(item.get("pif_date") or item.get("updated_at") or "").startswith(month))
+    overdue = 0
+    for item in active_prosum:
+        if legacy_status.get(item.get("status"), item.get("status")) == "Dosar depus":
+            try:
+                overdue += (today - datetime.fromisoformat(str(item.get("date", "")).replace("Z", "+00:00")).date()).days >= 30
+            except (TypeError, ValueError):
+                pass
+    today = datetime.now(timezone.utc).date()
+    follow_up = []
+    for item in active_prosum:
+        status = legacy_status.get(item.get("status"), item.get("status")) or "Așteaptă depunere"
+        task = None
+        priority = 3
+        if status == "Așteaptă depunere":
+            task, priority = "Dosar generat, nedepus la operator", 2
+        elif status == "Dosar depus":
+            try:
+                submitted = datetime.fromisoformat(str(item.get("date", "")).replace("Z", "+00:00")).date()
+                days = (today - submitted).days
+                if days >= 30:
+                    task, priority = f"Operator peste termen ({days} zile de la depunere, termen 30)", 0
+                elif days >= 24:
+                    task, priority = f"Termen operator în {30 - days} zile", 1
+            except (TypeError, ValueError):
+                task, priority = "Completează data depunerii la operator", 1
+        elif status == "Factură ATR":
+            task, priority = "Verifică factura ATR și continuă dosarul", 1
+        elif status in ("Instalat", "PV Teste / PIF"):
+            task, priority = "Programează PV Teste / PIF", 1
+        if task:
+            entry = dict(item)
+            entry["status"] = status
+            entry["inbox_reason"] = task
+            entry["inbox_priority"] = priority
+            follow_up.append(entry)
+    follow_up.sort(key=lambda item: (item["inbox_priority"], item.get("date") or "9999-99-99", item.get("updated_at") or ""))
+    follow_up = follow_up[:18]
     return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
-            "recent": [clean(r) for r in recent]}
+            "recent": [clean(r) for r in recent], "prosum_total": len(active_prosum),
+            "prosum_created_month": created_month, "prosum_submitted_month": submitted_month,
+            "prosum_activated": activated, "prosum_activated_month": activated_month, "prosum_overdue": overdue,
+            "prosum_by_status": [{"name": k, "value": v} for k, v in by_status.items()],
+            "prosum_by_operator": sorted([{"name": k, "value": v} for k, v in by_operator.items()], key=lambda x: (-x["value"], x["name"])),
+            "prosum_follow_up": [clean(r) for r in follow_up]}
 
 # ---------------- Settings (singleton per owner) ----------------
 PRIVATE = ("staff", "instruments")
@@ -587,7 +683,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         raise HTTPException(status_code=409, detail="Există deja un dosar pentru acest client și acest POD")
     if not client:
         client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""), "email": d.get("email", ""),
-                             "address": d.get("address", ""), "hq_address": d.get("hq_address", ""), "county": d.get("county", ""),
+                             "address": d.get("address", ""), "hq_address": d.get("hq_address", ""), "county": d.get("county", ""), "locality": d.get("locality", ""),
                              "pod": d.get("pod", ""), "operator": d.get("operator", ""), "cadastral_nr": d.get("cadastral_nr", ""),
                              "cf_nr": d.get("cf_nr", ""), "supplier": d.get("supplier", ""), "rep_name": d.get("rep_name", ""),
                              "regcom": d.get("regcom", ""), "kind": d.get("kind", "")})
@@ -599,7 +695,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
             {"owner": user["id"], "number": {"$regex": f"^PROS-{year}-\\d+$"}}, {"number": 1}).to_list(5000)]
         d["number"] = f"PROS-{year}-{(max(nums) if nums else 0) + 1:03d}"
     if not d.get("status"):
-        d["status"] = "În pregătire"
+        d["status"] = "Așteaptă depunere"
     files = d.get("files") or []
     d = derive_cef(d)
     pros = _new(user, d)
@@ -972,6 +1068,7 @@ def catalog_ids(rec: dict) -> list:
     for i in c.get("inverters") or []:
         ids += [i.get("catalog_id"), i.get("panel_catalog_id"), (i.get("battery") or {}).get("catalog_id")]
     ids += [b.get("catalog_id") for b in c.get("shared_batteries") or []]
+    ids += [item.get("catalog_id") for item in c.get("auxiliary_equipment") or []]
     g = c.get("grid") or {}
     ids.append(g.get("meter_catalog_id"))
     return list(dict.fromkeys(x for x in ids if x))

@@ -6,7 +6,7 @@ import { api, formatApiErrorDetail } from "@/lib/api";
 import { BillingForm } from "@/components/billing/BillingForm";
 import { toast } from "sonner";
 
-export default function Login() {
+export default function Login({ allowRegister = true }) {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,8 +68,8 @@ export default function Login() {
           <Btn type="submit" data-testid="login-submit" className="w-full justify-center mt-4" disabled={loading}>
             {loading ? "Se verifică..." : reg ? "Trimite cererea de cont" : "Intră în cont"}
           </Btn>
-          <button type="button" className="text-xs font-bold mt-4 w-full" style={{ color: "var(--blue)" }} onClick={() => { setMode(reg ? "login" : "register"); setErr(""); }} data-testid="toggle-register">
-            {reg ? "Am deja cont — autentificare" : "Nu ai cont? Creează un cont nou"}</button>
+          {allowRegister && <button type="button" className="text-xs font-bold mt-4 w-full" style={{ color: "var(--blue)" }} onClick={() => { setMode(reg ? "login" : "register"); setErr(""); }} data-testid="toggle-register">
+            {reg ? "Am deja cont — autentificare" : "Nu ai cont? Creează un cont nou"}</button>}
         </form>
       </div>
     </div>

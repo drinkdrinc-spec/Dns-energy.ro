@@ -12,7 +12,7 @@ export function GridCard({ grid, set, catalog, res }) {
         <F label={`Protecție BMP (A)${gr?.main_proposal ? ` · propus ${gr.main_proposal} A` : ""}`} type="number" value={grid.bmp_a} onChange={s("bmp_a")} testid="grid-bmp" />
         <F label="Cablu coloană BMP → TG" value={grid.column_cable} onChange={s("column_cable")} testid="grid-column" />
         <F label="Raport TC (dacă măsură prin TC)" value={grid.ct_ratio} onChange={s("ct_ratio")} testid="grid-ct" />
-        <CatalogPick items={catalog} category="Smart meter" label="Smart meter (catalog)" onPick={(it) => set({ ...grid, meter: it.brand_model, meter_catalog_id: it.id })} testid="grid-meter-pick" />
+        <CatalogPick items={catalog} category="Smart meter" selectedId={grid.meter_catalog_id} label="Smart meter (catalog)" onPick={(it) => set({ ...grid, meter: it.brand_model, meter_catalog_id: it.id })} testid="grid-meter-pick" />
         <F label="Smart meter" value={grid.meter} onChange={s("meter")} testid="grid-meter" />
         <F label="Întreruptor general TG" value={grid.tg_breaker} onChange={s("tg_breaker")} testid="grid-tg" />
         <F label="SPD AC" value={grid.spd_ac} onChange={s("spd_ac")} options={["tip 1+2", "tip 2", "tip 1"]} testid="grid-spd" />

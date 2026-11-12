@@ -6,7 +6,10 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
-from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+except ImportError:  # The hosted Emergent SDK is optional in local development.
+    LlmChat = UserMessage = TextDelta = StreamDone = None
 
 import server as S
 import cef as CEF
@@ -23,6 +26,8 @@ now = lambda: datetime.now(timezone.utc).isoformat()
 
 
 def new_chat(system: str, history: list = None) -> LlmChat:
+    if LlmChat is None:
+        raise HTTPException(status_code=503, detail="Asistentul AI nu este configurat în această instalare locală.")
     init = [{"role": "system", "content": system}] + (history or [])
     return LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=str(uuid.uuid4()), system_message=system,
                    initial_messages=init).with_model(*MODEL)

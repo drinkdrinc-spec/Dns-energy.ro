@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /prosumator
+Disallow: /diu
+Disallow: /clienti
+Disallow: /documente
+Disallow: /setari
+Disallow: /api/

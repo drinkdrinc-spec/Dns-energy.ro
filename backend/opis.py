@@ -41,13 +41,19 @@ EXEC = ["company", "cui", "regcom", "address", "phone", "email", "anre_attest", 
 
 def catalog_refs(rec):
     c = rec.get("cef") or {}
-    inv, pan, bat = [], [], []
+    inv, pan, bat, gateways, optimizers = [], [], [], [], []
     for i in c.get("inverters") or []:
         inv.append((i.get("catalog_id"), i.get("brand_model")))
         pan.append((i.get("panel_catalog_id"), i.get("panel_model")))
         if i.get("battery_mode") == "own":
             bat.append(((i.get("battery") or {}).get("catalog_id"), (i.get("battery") or {}).get("model")))
     bat += [(b.get("catalog_id"), b.get("model")) for b in c.get("shared_batteries") or []]
+    for item in c.get("auxiliary_equipment") or []:
+        ref = (item.get("catalog_id"), item.get("model"))
+        if str(item.get("category") or "").lower() == "optimizator":
+            optimizers.append(ref)
+        else:
+            gateways.append(ref)
     g = c.get("grid") or {}
     met = [(g.get("meter_catalog_id"), g.get("meter"))] if g.get("meter") else []
     if not c.get("inverters"):
@@ -55,7 +61,7 @@ def catalog_refs(rec):
         pan = [(None, rec.get("panels"))] if rec.get("panels") else []
         bat = [(None, rec.get("battery"))] if rec.get("battery") else []
     dedup = lambda xs: list({(m or ""): (cid, m) for cid, m in xs if m}.values())
-    return dedup(inv), dedup(pan), dedup(bat), dedup(met)
+    return dedup(inv), dedup(pan), dedup(bat), dedup(met), dedup(gateways), dedup(optimizers)
 
 
 async def build_positions(db, owner, rec, client, settings):
@@ -107,7 +113,7 @@ async def build_positions(db, owner, rec, client, settings):
         pos.append({"key": key, "title": title, "source": "client", "slots": slots, "files": files,
                     "missing": [] if files else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
 
-    inv, pan, bat, met = catalog_refs(rec)
+    inv, pan, bat, met, gateways, optimizers = catalog_refs(rec)
 
     async def cat(cid, kind):
         it = await db.catalog.find_one({"owner": owner, "id": cid}, {"_id": 0}) if cid else None
@@ -115,7 +121,7 @@ async def build_positions(db, owner, rec, client, settings):
         return [f] if f and f.get("storage_path") else []
 
     groups = [("invertor", inv), ("panou", pan)]
-    extra = [("baterie", bat), ("smart meter", met)]
+    extra = [("baterie", bat), ("smart meter", met), ("gateway", gateways), ("optimizator", optimizers)]
     for label, items in groups + extra:
         for cid, model in items:
             for kind, prefix in (("datasheet", "Fișă tehnică"), ("conformity", "Declarație de conformitate")):

@@ -4,7 +4,10 @@ import json
 import re
 import uuid
 import tempfile
-from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType, ImageContent, TextDelta, StreamDone
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType, ImageContent, TextDelta, StreamDone
+except ImportError:  # The hosted Emergent SDK is optional in local development.
+    LlmChat = UserMessage = FileContentWithMimeType = ImageContent = TextDelta = StreamDone = None
 
 OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER — Muntenia Nord", "Delgaz Grid",
              "Distribuție Energie Oltenia", "Rețele Electrice România", "Alt operator"]
@@ -38,6 +41,8 @@ def _images(content: bytes, mime: str) -> list:
 
 
 async def extract_gpt(content: bytes, mime: str) -> dict:
+    if LlmChat is None:
+        raise RuntimeError("Importul AI nu este configurat în această instalare locală.")
     chat = LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=f"extract-{uuid.uuid4()}",
                    system_message="Extragi date structurate din documente tehnice românești. Răspunzi doar JSON.").with_model("openai", "gpt-6-sol")
     out = ""
@@ -50,6 +55,8 @@ async def extract_gpt(content: bytes, mime: str) -> dict:
 
 
 async def extract_pdf(content: bytes, mime: str) -> dict:
+    if LlmChat is None:
+        raise RuntimeError("Importul AI nu este configurat în această instalare locală.")
     suffix = ".pdf" if "pdf" in mime else ".jpg"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         f.write(content)

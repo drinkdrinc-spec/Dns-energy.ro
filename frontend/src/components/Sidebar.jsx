@@ -18,7 +18,7 @@ const NAV = [
     { to: "/contracte", icon: "FileCheck2", text: "Contracte", testid: "nav-contracts" },
   ]},
   { label: "Dosare", items: [
-    { to: "/prosumator", icon: "SunMedium", text: "Dosar de prosumator", testid: "nav-prosumator" },
+    { to: "/prosumator", icon: "SunMedium", text: "Dosare", testid: "nav-prosumator" },
     { to: "/diu", icon: "FolderOpen", text: "Dosar de utilizare (DI-U)", testid: "nav-diu" },
     { to: "/lucrari", icon: "Briefcase", text: "Gestionarea lucrărilor", testid: "nav-works" },
   ]},

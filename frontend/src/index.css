@@ -30,22 +30,22 @@
 }
 
 :root {
-  --navy: #101a2e;
+  --navy: #111a2c;
   --navy2: #172642;
-  --blue: #2878f0;
-  --cyan: #42c7d9;
-  --bg: #f3f6fb;
-  --ink: #172238;
-  --muted: #6b7890;
-  --line: #e0e7f1;
-  --green: #13866b;
+  --blue: #16834b;
+  --cyan: #64bd83;
+  --bg: #f8f6f1;
+  --ink: #1d2723;
+  --muted: #747a73;
+  --line: #e9e5dc;
+  --green: #16834b;
   --amber: #a86a0a;
 
   --background: 0 0% 100%;
   --foreground: 218 42% 15%;
   --card: 0 0% 100%;
   --card-foreground: 218 42% 15%;
-  --primary: 217 87% 55%;
+  --primary: 146 70% 30%;
   --primary-foreground: 0 0% 100%;
   --secondary: 214 33% 96%;
   --secondary-foreground: 218 42% 15%;
@@ -55,9 +55,9 @@
   --accent-foreground: 218 42% 15%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 214 38% 91%;
-  --input: 214 38% 91%;
-  --ring: 217 87% 55%;
+  --border: 40 23% 89%;
+  --input: 40 23% 89%;
+  --ring: 146 70% 30%;
   --radius: 0.6rem;
 }
 
@@ -83,6 +83,9 @@
 .den-input:focus { border-color:var(--blue); box-shadow:0 0 0 3px #2878f022; }
 .den-panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:22px; box-shadow:0 1px 2px #0f1b3708; }
 .den-notice { background:#fffaf0; border:1px solid #f2dfb7; color:#7c5a1c; border-radius:10px; padding:13px 15px; font-size:12.5px; line-height:1.55; }
+.den-mobile-nav { background:#fffefa; border-color:var(--line); box-shadow:0 -3px 14px #1d27230a; }
+.den-mobile-active { color:var(--green); }
+.den-mobile-inactive { color:#737a72; }
 
 ::-webkit-scrollbar { width:10px; height:10px; }
 ::-webkit-scrollbar-thumb { background:#cbd6e6; border-radius:8px; }
@@ -92,4 +95,8 @@
   main { padding: 0 !important; max-width: none !important; }
   .den-panel { box-shadow: none !important; border: 1px solid #ccc; break-inside: avoid; }
   body { background: #fff !important; }
+}
+
+@media (max-width: 767px) {
+  .den-panel { padding:18px; border-radius:13px; box-shadow:0 1px 2px #171b1608; }
 }

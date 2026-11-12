@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Layout from "@/components/Layout";
 import Login from "@/pages/Login";
+import ComingSoon from "@/pages/ComingSoon";
 import Dashboard from "@/pages/Dashboard";
 import ModulePage from "@/pages/ModulePage";
 import Documents from "@/pages/Documents";
@@ -30,10 +31,16 @@ import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
 
+const PRIVATE_LAUNCH = process.env.REACT_APP_PRIVATE_LAUNCH !== "false";
+
 function Protected({ children }) {
   const { user } = useAuth();
   if (user === null) return <div className="min-h-screen grid place-items-center text-sm text-slate-400">Se încarcă...</div>;
-  if (!user) { if (window.location.search) sessionStorage.setItem("den_next", window.location.pathname + window.location.search); return <Navigate to="/login" replace />; }
+  if (!user) {
+    if (PRIVATE_LAUNCH) return <ComingSoon />;
+    if (window.location.search) sessionStorage.setItem("den_next", window.location.pathname + window.location.search);
+    return <Navigate to="/login" replace />;
+  }
   return children;
 }
 
@@ -48,7 +55,7 @@ function AppRoutes() {
   const { user } = useAuth();
   return (
     <Routes>
-      <Route path="/login" element={user ? <AfterLogin /> : <Login />} />
+      <Route path="/login" element={user ? <AfterLogin /> : <Login allowRegister={!PRIVATE_LAUNCH} />} />
       <Route path="/semneaza/:token" element={<SignPage />} />
       <Route element={<Protected><Layout /></Protected>}>
         <Route path="/semnare" element={<Gate feat={ROUTE_FEATURE["/semnare"]}><RemoteSigning /></Gate>} />
@@ -83,7 +90,7 @@ function AppRoutes() {
         <Route path="/operatori-anre" element={<AdminOperators />} />
         <Route path="/contracte" element={<Gate feat="oferte"><Contracts /></Gate>} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={PRIVATE_LAUNCH && !user ? <ComingSoon /> : <Navigate to="/" replace />} />
     </Routes>
   );
 }

@@ -14,7 +14,7 @@ function SharedBatteries({ list, set, catalog }) {
       <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Folosește doar dacă arhitectura producătorului permite funcționarea în paralel pe aceeași baterie.</p>
       {list.map((b, i) => (
         <div key={b.id} className="grid sm:grid-cols-4 gap-3 mb-3 pb-3 border-b" style={{ borderColor: "var(--line)" }} data-testid={`shared-${i}`}>
-          <CatalogPick items={catalog} category="Baterie" testid={`shared-${i}-pick`} onPick={(it) => upd(i, { catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, coupling: it.coupling || "DC" })} />
+          <CatalogPick items={catalog} category="Baterie" selectedId={b.catalog_id} testid={`shared-${i}-pick`} onPick={(it) => upd(i, { catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, coupling: it.coupling || "DC" })} />
           <F label="Model" value={b.model} onChange={(v) => upd(i, { model: v })} testid={`shared-${i}-model`} />
           <F label="kWh / modul" type="number" value={b.kwh} onChange={(v) => upd(i, { kwh: v })} testid={`shared-${i}-kwh`} />
           <F label="Nr. module" type="number" value={b.modules} onChange={(v) => upd(i, { modules: v })} testid={`shared-${i}-modules`} />
@@ -31,6 +31,23 @@ function SharedBatteries({ list, set, catalog }) {
       <button onClick={() => set([...list, { id: uid(), coupling: "DC", modules: 1 }])} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="add-shared-battery"><Plus size={13} /> Adaugă baterie comună</button>
     </div>
   );
+}
+
+function AuxiliaryEquipment({ list, set, catalog }) {
+  const update = (idx, patch) => set(list.map((item, i) => i === idx ? { ...item, ...patch } : item));
+  return <section className="rounded-xl border bg-white p-4" style={{ borderColor: "var(--line)" }} data-testid="cef-auxiliary-equipment">
+    <div className="mb-3"><h4 className="text-sm font-bold">Gateways și optimizatoare</h4><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Alege echipamentele din catalog; fișele lor se pot include în dosarul PDF.</p></div>
+    <div className="space-y-3">
+      {list.map((item, idx) => <div key={item.id || idx} className="grid items-end gap-3 border-b pb-3 sm:grid-cols-[150px_minmax(0,1fr)_100px_auto]" style={{ borderColor: "var(--line)" }} data-testid={`cef-aux-item-${idx}`}>
+        <F label="Categorie" value={item.category} options={[["Gateway", "Gateway"], ["Optimizator", "Optimizator"]]} onChange={(category) => update(idx, { category, catalog_id: "", model: "" })} testid={`cef-aux-category-${idx}`} />
+        <CatalogPick items={catalog} category={item.category || "Gateway"} selectedId={item.catalog_id} label="Dispozitiv din catalog" testid={`cef-aux-pick-${idx}`} onPick={(device) => update(idx, { catalog_id: device.id, model: device.brand_model, datasheet: !!device.datasheet, conformity: !!device.conformity })} />
+        <F label="Cantitate" type="number" value={item.quantity || 1} onChange={(quantity) => update(idx, { quantity })} testid={`cef-aux-quantity-${idx}`} />
+        <button onClick={() => set(list.filter((_, i) => i !== idx))} className="mb-2 rounded p-2 hover:bg-red-50" aria-label="Elimină dispozitivul" data-testid={`cef-aux-remove-${idx}`}><Trash2 size={15} style={{ color: "#b33333" }} /></button>
+        {item.model && <div className="sm:col-start-2 sm:col-span-2 -mt-2 text-[10px]" style={{ color: item.datasheet && item.conformity ? "var(--green)" : "#b9770e" }}>{item.model} · {item.datasheet && item.conformity ? "documente complete" : "verifică fișa și conformitatea în catalog"}</div>}
+      </div>)}
+    </div>
+    <button onClick={() => set([...list, { id: uid(), category: "Gateway", quantity: 1 }])} className="mt-3 inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--green)" }} data-testid="cef-aux-add"><Plus size={14} /> Adaugă gateway sau optimizator</button>
+  </section>;
 }
 
 export function CefEditor({ value, onChange }) {
@@ -63,6 +80,7 @@ export function CefEditor({ value, onChange }) {
           set={(v) => set({ inverters: invs.map((x, j) => (j === i ? v : x)) })} remove={() => set({ inverters: invs.filter((_, j) => j !== i) })} />
       ))}
       <SharedBatteries list={cef.shared_batteries || []} set={(l) => set({ shared_batteries: l })} catalog={catalog} />
+      <AuxiliaryEquipment list={cef.auxiliary_equipment || []} set={(l) => set({ auxiliary_equipment: l })} catalog={catalog} />
       <Issues errors={(res?.errors || []).filter((e) => !invErrs.has(e))} warnings={(res?.warnings || []).filter((w) => !invErrs.has(w))} testid="cef-global-issues" />
       {res && <p className="text-[11px]" style={{ color: "var(--muted)" }}>{res.note}</p>}
     </div>
