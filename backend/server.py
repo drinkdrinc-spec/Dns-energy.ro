@@ -724,6 +724,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     activated = sum(1 for item in active_prosum if item.get("status") in ("Prosumator activ", "Finalizat"))
     submitted_month = sum(1 for item in active_prosum if legacy_status.get(item.get("status"), item.get("status")) == "Dosar depus" and str(item.get("date") or "").startswith(month))
     activated_month = sum(1 for item in active_prosum if legacy_status.get(item.get("status"), item.get("status")) == "Finalizat" and str(item.get("pif_date") or item.get("updated_at") or "").startswith(month))
+    today = datetime.now(timezone.utc).date()
     overdue = 0
     for item in active_prosum:
         if legacy_status.get(item.get("status"), item.get("status")) == "Dosar depus":
@@ -731,7 +732,6 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                 overdue += (today - datetime.fromisoformat(str(item.get("date", "")).replace("Z", "+00:00")).date()).days >= 30
             except (TypeError, ValueError):
                 pass
-    today = datetime.now(timezone.utc).date()
     follow_up = []
     for item in active_prosum:
         status = legacy_status.get(item.get("status"), item.get("status")) or "CER"
@@ -764,8 +764,9 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
             follow_up.append(entry)
     follow_up.sort(key=lambda item: (item["inbox_priority"], item.get("date") or "9999-99-99", item.get("updated_at") or ""))
     follow_up = follow_up[:18]
+    prosum_recent = sorted(active_prosum, key=lambda item: item.get("updated_at") or item.get("created_at") or "", reverse=True)[:5]
     return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
-            "recent": [clean(r) for r in recent], "prosum_total": len(active_prosum),
+            "recent": [clean(r) for r in recent], "prosum_recent": [clean(r) for r in prosum_recent], "prosum_total": len(active_prosum),
             "prosum_created_month": created_month, "prosum_submitted_month": submitted_month,
             "prosum_activated": activated, "prosum_activated_month": activated_month, "prosum_overdue": overdue,
             "prosum_by_status": [{"name": k, "value": v} for k, v in by_status.items()],
