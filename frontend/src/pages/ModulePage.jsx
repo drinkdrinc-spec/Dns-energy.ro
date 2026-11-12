@@ -50,6 +50,58 @@ function Field({ f, value, onChange, refOptions, ai, allowNewReference = false }
   );
 }
 
+const DOSSIER_SECTION_PAGE = {
+  "Client și loc de consum": "client",
+  "Date tehnice": "installation",
+  "Date documente dosar": "documents",
+  "Recepție la terminarea lucrărilor": "documents",
+  "Punere în funcțiune și teste": "documents",
+  "Buletin priză de pământ (valori măsurate)": "documents",
+  "Tablou general și alimentare": "documents",
+  "Recepție, punere în funcțiune și garanție": "documents",
+};
+
+function DossierFieldSections({ fields, page, form, setVal, refOptions, ai }) {
+  const sections = [];
+  let current = { label: "Date dosar", fields: [] };
+  fields.forEach((field) => {
+    if (field.type === "section") {
+      if (current.fields.length) sections.push(current);
+      current = { label: field.label, fields: [] };
+    } else current.fields.push(field);
+  });
+  if (current.fields.length) sections.push(current);
+
+  return <div className="space-y-4" data-testid="dossier-section-cards">
+    {sections.filter((section) => page === "all" || (["client", "installation", "documents"].includes(page) && (DOSSIER_SECTION_PAGE[section.label] || "client") === page)).map((section) => (
+      <section key={section.label} className="den-panel !p-0 overflow-hidden" data-testid={`dossier-section-${section.label}`}>
+        <div className="flex items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}>
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} aria-hidden="true" />
+          <h3 className="text-sm font-bold">{section.label}</h3>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4 p-4 sm:p-5">
+          {section.fields.map((field) => <Field key={field.name} f={field} value={form[field.name]} onChange={setVal} refOptions={refOptions} ai={ai} />)}
+        </div>
+      </section>
+    ))}
+  </div>;
+}
+
+function SummaryStrip({ form }) {
+  const metrics = [
+    ["Stadiu", displayStatus(form)], ["Operator", form.operator || "Neales"],
+    ["Putere CEF", form.power ? `${form.power} kW` : "Necompletată"],
+    ["Panouri", form.panel_count ? `${form.panel_count} buc.` : "Necompletat"],
+    ["Stocare", form.battery_kwh ? `${form.battery_kwh} kWh` : "Fără baterie"],
+  ];
+  return <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 rounded-xl border p-3 mb-5" style={{ borderColor: "var(--line)", background: "#fffefa" }} data-testid="dossier-live-summary">
+    {metrics.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg px-3 py-2" style={{ background: "var(--bg)" }}>
+      <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>{label}</div>
+      <div className="mt-1 truncate text-xs font-bold" title={value}>{value}</div>
+    </div>)}
+  </div>;
+}
+
 export default function ModulePage({ moduleKey }) {
   const params = useParams();
   const key = moduleKey || params.module;
@@ -199,7 +251,8 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && editId && <div className="mb-5 flex gap-2 overflow-x-auto border-b pb-2" role="tablist" aria-label="Pagini dosar">
             {[ ["all", "Dosar complet"], ["client", "Client"], ["installation", "Instalație"], ["documents", "Acte & documente"], ["equipment", "Echipamente"], ["team", "Echipă & semnături"], ["pif", "Teste și PIF"], ["timeline", "Jurnal"], ["other", "Mesaje & semnare"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
           </div>}
-          <div className="grid sm:grid-cols-2 gap-4">
+          {key === "prosumator" && editId && <SummaryStrip form={form} />}
+          {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} page={dossierPage} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} /> : <div className="grid sm:grid-cols-2 gap-4">
             {cfg.fields.map((f, i) => {
               if (key === "prosumator" && !editId) {
                 const steps = {
@@ -209,15 +262,9 @@ export default function ModulePage({ moduleKey }) {
                 };
                 if (!steps[prosumStep].includes(f.name)) return null;
               } else if (key === "prosumator" && !editId && f.type === "section") return null;
-              if (key === "prosumator" && editId) {
-                const pageBySection = { "Client și loc de consum": "client", "Date tehnice": "installation", "Date documente dosar": "documents", "Recepție la terminarea lucrărilor": "documents", "Punere în funcțiune și teste": "documents", "Buletin priză de pământ (valori măsurate)": "documents", "Tablou general și alimentare": "documents", "Recepție, punere în funcțiune și garanție": "documents" };
-                const section = cfg.fields.slice(0, i + 1).filter((field) => field.type === "section").at(-1)?.label;
-                const fieldPage = pageBySection[section] || "client";
-                if (dossierPage !== "all" && fieldPage !== dossierPage) return null;
-              }
               return <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} allowNewReference={key === "prosumator" && f.name === "client_name"} ai={can(user, "ai_gpt") ? { module: key, form } : null} />;
             })}
-          </div>
+          </div>}
 
           {key === "prosumator" && !editId && prosumStep === 3 && <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="new-dossier-equipment">
             <div className="mb-3">
@@ -342,3 +389,4 @@ export default function ModulePage({ moduleKey }) {
   );
 }
 
+warning: in the working copy of 'frontend/src/pages/Dashboard.jsx', LF will be replaced by CRLF the next time Git touches it
