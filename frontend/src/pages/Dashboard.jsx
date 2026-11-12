@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Btn, PageHeader } from "@/components/Layout";
 import { AtrDeadlines } from "@/components/AtrDeadlines";
 import {
-  Users, FolderOpen, GitBranch, AlertTriangle, Zap, ShieldAlert,
-  ArrowUpRight, Plus, ClipboardList, Clock3, CircleCheck, ChevronRight, MapPin,
+  Users, FolderOpen, GitBranch, AlertTriangle, Zap,
+  ArrowUpRight, Plus, Clock3, ChevronRight, MapPin,
 } from "lucide-react";
 
 const SHORTCUTS = [
@@ -42,13 +42,12 @@ function formatDate(value) {
 }
 
 export default function Dashboard() {
-  const [s, setS] = useState({ clients: 0, diu: 0, mono: 0, pending: 0, recent: [], prosum_total: 0, prosum_created_month: 0, prosum_submitted_month: 0, prosum_activated: 0, prosum_activated_month: 0, prosum_overdue: 0, prosum_by_status: [], prosum_by_operator: [], prosum_follow_up: [] });
+  const [s, setS] = useState({ clients: 0, prosum_recent: [], prosum_total: 0, prosum_submitted_month: 0, prosum_activated_month: 0, prosum_overdue: 0, prosum_by_status: [], prosum_by_operator: [], prosum_follow_up: [] });
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    api.get("/stats/dashboard").then((r) => setS({ ...r.data, recent: r.data.recent || [], prosum_by_status: r.data.prosum_by_status || [], prosum_by_operator: r.data.prosum_by_operator || [], prosum_follow_up: r.data.prosum_follow_up || [] })).catch(() => {})
+    api.get("/stats/dashboard").then((r) => setS({ ...r.data, prosum_recent: r.data.prosum_recent || [], prosum_by_status: r.data.prosum_by_status || [], prosum_by_operator: r.data.prosum_by_operator || [], prosum_follow_up: r.data.prosum_follow_up || [] })).catch(() => {})
       .finally(() => setLoaded(true));
   }, []);
-  const completion = useMemo(() => s.diu ? Math.max(0, Math.min(100, Math.round(((s.diu - s.pending) / s.diu) * 100))) : 0, [s.diu, s.pending]);
   const today = new Date().toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" });
 
   return <div data-testid="dashboard-page">
@@ -81,35 +80,6 @@ export default function Dashboard() {
 
     <AtrDeadlines />
 
-    <section className="grid lg:grid-cols-[1.55fr_1fr] gap-4 mb-6">
-      <div className="den-panel !p-5 sm:!p-6" data-testid="dossier-overview">
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div><h2 className="text-[17px] font-bold">Dosarele tale</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Progresul documentației DI-U</p></div>
-          <Link to="/diu" className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }}>Toate dosarele <ArrowUpRight size={14} /></Link>
-        </div>
-        <div className="flex items-end justify-between gap-4">
-          <div><div className="text-3xl font-extrabold">{s.diu}</div><div className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>total dosare</div></div>
-          <div className="text-right"><div className="text-xl font-bold" style={{ color: "var(--amber)" }}>{s.pending}</div><div className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>în lucru / de verificat</div></div>
-        </div>
-        <div className="mt-5 h-2.5 overflow-hidden rounded-full" style={{ background: "#edf1f7" }}>
-          <div className="h-full rounded-full transition-all" style={{ width: `${completion}%`, background: "linear-gradient(90deg, #2878f0, #42c7d9)" }} />
-        </div>
-        <div className="mt-2 flex justify-between text-[11px]" style={{ color: "var(--muted)" }}><span>{loaded ? `${completion}% fără status de atenționare` : "Se încarcă datele…"}</span><span>{s.pending} necesită atenție</span></div>
-      </div>
-
-      <div className="den-panel !p-5 sm:!p-6" data-testid="daily-actions">
-        <div className="flex items-center gap-2 mb-4"><span className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: "#fff6e8", color: "#b77918" }}><ClipboardList size={17} /></span><h2 className="text-[17px] font-bold">De urmărit</h2></div>
-        <Link to="/diu" className="flex items-center gap-3 rounded-xl border p-3.5 transition hover:bg-slate-50" data-testid="attention-diu-link">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ background: s.pending ? "#fff3df" : "#eaf8f2", color: s.pending ? "#b77918" : "#168468" }}>{s.pending ? <Clock3 size={17} /> : <CircleCheck size={17} />}</span>
-          <span className="min-w-0 flex-1"><b className="block text-[13px]">{s.pending ? `${s.pending} dosare au nevoie de atenție` : "Nicio atenționare pentru dosarele DI-U"}</b><span className="block text-[11px] mt-1" style={{ color: "var(--muted)" }}>{s.pending ? "Verifică documentele și statusul dosarelor." : "Dosarele de utilizare sunt la zi."}</span></span><ChevronRight size={16} style={{ color: "var(--muted)" }} />
-        </Link>
-        <Link to="/cerere-atr" className="mt-3 flex items-center gap-3 rounded-xl border p-3.5 transition hover:bg-slate-50" data-testid="attention-atr-link">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ background: "#edf4ff", color: "#2878f0" }}><ShieldAlert size={17} /></span>
-          <span className="min-w-0 flex-1"><b className="block text-[13px]">Termene și cereri ATR</b><span className="block text-[11px] mt-1" style={{ color: "var(--muted)" }}>Consultă lista de termene și cererile de racordare.</span></span><ChevronRight size={16} style={{ color: "var(--muted)" }} />
-        </Link>
-      </div>
-    </section>
-
     <section className="den-panel !p-5 sm:!p-6 mb-6" data-testid="quick-actions">
       <div className="flex items-center justify-between gap-3 mb-4"><div><h2 className="text-[17px] font-bold">Acces rapid</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Continuă activitatea în modulele folosite frecvent.</p></div></div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -120,12 +90,13 @@ export default function Dashboard() {
     </section>
 
     <section className="den-panel !p-5 sm:!p-6" data-testid="recent-dossiers">
-      <div className="flex items-center justify-between gap-3 mb-4"><div><h2 className="text-[17px] font-bold">Activitate recentă</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Ultimele dosare DI-U actualizate</p></div><Link to="/diu" className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }}>Vezi dosarele <ArrowUpRight size={14} /></Link></div>
-      {s.recent.length === 0 ? <div className="rounded-xl py-8 text-center" style={{ color: "var(--muted)", background: "var(--bg)" }}>
-        <FolderOpen size={24} className="mx-auto mb-2 opacity-50" /><div className="text-sm font-semibold">{loaded ? "Nu există încă dosare recente" : "Se încarcă activitatea…"}</div><p className="text-xs mt-1">Creează primul dosar pentru a începe documentația.</p><Link to="/diu" className="mt-3 inline-flex"><Btn variant="secondary"><Plus size={14} /> Dosar DI-U nou</Btn></Link>
-      </div> : <div className="divide-y" style={{ borderColor: "var(--line)" }}>{s.recent.map((r) => <Link key={r.id} to="/diu" className="flex items-center gap-3 py-3.5">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl" style={{ background: "#edf4ff", color: "var(--blue)" }}><FolderOpen size={17} /></span><span className="min-w-0 flex-1"><b className="block truncate text-[13px]">{r.number || "Fără număr"} · {r.client_name || "Beneficiar neprecizat"}</b><span className="text-[11px]" style={{ color: "var(--muted)" }}>{r.type || "Dosar DI-U"} · {formatDate(r.updated_at || r.created_at)}</span></span><span className="rounded-full px-2.5 py-1 text-[10px] font-bold" style={{ background: "#edf4ff", color: "var(--blue)" }}>{r.status || "În lucru"}</span><ChevronRight size={15} style={{ color: "var(--muted)" }} />
+      <div className="flex items-center justify-between gap-3 mb-4"><div><h2 className="text-[17px] font-bold">Dosare actualizate recent</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Revino rapid la documentația prosumatorului.</p></div><Link to="/prosumator" className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }}>Vezi dosarele <ArrowUpRight size={14} /></Link></div>
+      {s.prosum_recent.length === 0 ? <div className="rounded-xl py-8 text-center" style={{ color: "var(--muted)", background: "var(--bg)" }}>
+        <FolderOpen size={24} className="mx-auto mb-2 opacity-50" /><div className="text-sm font-semibold">{loaded ? "Nu există încă dosare recente" : "Se încarcă activitatea…"}</div><p className="text-xs mt-1">Creează primul dosar pentru a începe documentația.</p><Link to="/prosumator" className="mt-3 inline-flex"><Btn variant="secondary"><Plus size={14} /> Dosar prosumator nou</Btn></Link>
+      </div> : <div className="divide-y" style={{ borderColor: "var(--line)" }}>{s.prosum_recent.map((r) => <Link key={r.id} to={`/prosumator?edit=${r.id}`} className="flex items-center gap-3 py-3.5">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl" style={{ background: "#edf7f0", color: "var(--green)" }}><FolderOpen size={17} /></span><span className="min-w-0 flex-1"><b className="block truncate text-[13px]">{r.number || "Fără număr"} · {r.client_name || "Beneficiar neprecizat"}</b><span className="text-[11px]" style={{ color: "var(--muted)" }}>{[r.locality, r.county, r.operator].filter(Boolean).join(" · ") || "Datele locului de consum se completează în dosar"} · {formatDate(r.updated_at || r.created_at)}</span></span><span className="rounded-full px-2.5 py-1 text-[10px] font-bold" style={{ background: "#edf7f0", color: "var(--green)" }}>{r.status || "CER"}</span><ChevronRight size={15} style={{ color: "var(--muted)" }} />
       </Link>)}</div>}
     </section>
   </div>;
 }
+
