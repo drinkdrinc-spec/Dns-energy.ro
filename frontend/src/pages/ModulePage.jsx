@@ -52,6 +52,7 @@ function Field({ f, value, onChange, refOptions, ai, allowNewReference = false }
 
 const DOSSIER_SECTION_PAGE = {
   "Client și loc de consum": "client",
+  "Cererea": "request",
   "Date tehnice": "installation",
   "Date documente dosar": "documents",
   "Recepție la terminarea lucrărilor": "documents",
@@ -73,7 +74,7 @@ function DossierFieldSections({ fields, page, form, setVal, refOptions, ai }) {
   if (current.fields.length) sections.push(current);
 
   return <div className="space-y-4" data-testid="dossier-section-cards">
-    {sections.filter((section) => page === "all" || (["client", "installation", "documents"].includes(page) && (DOSSIER_SECTION_PAGE[section.label] || "client") === page)).map((section) => (
+    {sections.filter((section) => page === "all" || (["client", "request", "installation", "documents"].includes(page) && (DOSSIER_SECTION_PAGE[section.label] || "client") === page)).map((section) => (
       <section key={section.label} className="den-panel !p-0 overflow-hidden" data-testid={`dossier-section-${section.label}`}>
         <div className="flex items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}>
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} aria-hidden="true" />
@@ -163,12 +164,13 @@ export default function ModulePage({ moduleKey }) {
   });
   const continueProsum = () => {
     if (prosumStep === 1 && !form.client_name?.trim()) { toast.error("Introdu numele beneficiarului sau alege un client existent."); return; }
-    if (prosumStep === 2 && (!form.address?.trim() || !form.county?.trim())) { toast.error("Completează adresa locului de consum și județul."); return; }
-    if (prosumStep === 3 && !form.system_type) { toast.error("Alege tipul instalației."); return; }
+    if (prosumStep === 2 && !form.address?.trim() && !form.pod?.trim()) { toast.error("Completează adresa locului de consum sau codul POD."); return; }
+    if (prosumStep === 3 && !form.request_type) { toast.error("Alege tipul cererii."); return; }
     setProsumStep((s) => Math.min(3, s + 1));
   };
 
   const save = async () => {
+    if (key === "prosumator" && !editId && !form.request_type) { toast.error("Alege tipul cererii înainte de creare."); return; }
     const orig = items.find((i) => i.id === editId);
     if (key === "diu" && editId && form.status === "Predat beneficiarului" && orig?.status !== "Predat beneficiarului" && can(user, "ai_gpt")) { setDiuPre(true); return; }
     return doSave().catch(() => {});
@@ -249,29 +251,21 @@ export default function ModulePage({ moduleKey }) {
             </div>
           </> : <h2 className="text-lg font-bold mb-5">{editId ? (key === "prosumator" ? `Dosar ${form.number || "prosumator"} · documentație` : "Editează înregistrarea") : cfg.addLabel}</h2>}
           {key === "prosumator" && editId && <div className="mb-5 flex gap-2 overflow-x-auto border-b pb-2" role="tablist" aria-label="Pagini dosar">
-            {[ ["all", "Dosar complet"], ["client", "Client"], ["installation", "Instalație"], ["documents", "Acte & documente"], ["equipment", "Echipamente"], ["team", "Echipă & semnături"], ["pif", "Teste și PIF"], ["timeline", "Jurnal"], ["other", "Mesaje & semnare"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
+            {[ ["all", "Dosar complet"], ["client", "Client"], ["request", "Cererea"], ["installation", "Instalație"], ["documents", "Acte & documente"], ["equipment", "Echipamente"], ["team", "Echipă & semnături"], ["pif", "Teste și PIF"], ["timeline", "Jurnal"], ["other", "Mesaje & semnare"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
           </div>}
           {key === "prosumator" && editId && <SummaryStrip form={form} />}
           {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} page={dossierPage} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} /> : <div className="grid sm:grid-cols-2 gap-4">
             {cfg.fields.map((f, i) => {
               if (key === "prosumator" && !editId) {
                 const steps = {
-                  1: ["number", "client_name", "cnp", "phone", "email", "hq_address", "rep_name"],
+                  1: ["client_name", "cnp", "phone", "email", "hq_address", "rep_name"],
                   2: ["address", "county", "locality", "pod", "operator", "cadastral_nr", "cf_nr", "supplier"],
-                  3: ["system_type", "power", "supply", "bransament_kw", "inverter", "inverter_kw", "panels", "panel_count", "panel_w", "battery", "battery_kwh", "date", "doc_date"],
+                  3: ["request_type", "date", "supply", "afm", "doc_date"],
                 };
                 if (!steps[prosumStep].includes(f.name)) return null;
               } else if (key === "prosumator" && !editId && f.type === "section") return null;
               return <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} allowNewReference={key === "prosumator" && f.name === "client_name"} ai={can(user, "ai_gpt") ? { module: key, form } : null} />;
             })}
-          </div>}
-
-          {key === "prosumator" && !editId && prosumStep === 3 && <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="new-dossier-equipment">
-            <div className="mb-3">
-              <h3 className="font-bold text-base">Echipamente și configurare tehnică</h3>
-              <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează invertorul, panourile și bateria din catalog. Datele se salvează împreună cu dosarul și pot fi ajustate ulterior.</p>
-            </div>
-            <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />
           </div>}
 
           {key === "prosumator" && !editId && <div className="flex items-center justify-between gap-2 mt-6 border-t pt-4" style={{ borderColor: "var(--line)" }}>
@@ -389,4 +383,3 @@ export default function ModulePage({ moduleKey }) {
   );
 }
 
-warning: in the working copy of 'frontend/src/pages/Dashboard.jsx', LF will be replaced by CRLF the next time Git touches it
