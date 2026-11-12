@@ -217,6 +217,14 @@ export default function ModulePage({ moduleKey }) {
             })}
           </div>
 
+          {key === "prosumator" && !editId && prosumStep === 3 && <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="new-dossier-equipment">
+            <div className="mb-3">
+              <h3 className="font-bold text-base">Echipamente și configurare tehnică</h3>
+              <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează invertorul, panourile și bateria din catalog. Datele se salvează împreună cu dosarul și pot fi ajustate ulterior.</p>
+            </div>
+            <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />
+          </div>}
+
           {key === "prosumator" && !editId && <div className="flex items-center justify-between gap-2 mt-6 border-t pt-4" style={{ borderColor: "var(--line)" }}>
             <div className="flex gap-2"><Btn variant="secondary" onClick={() => setForm(null)}>Renunță</Btn>{prosumStep > 1 && <Btn variant="secondary" onClick={() => setProsumStep((s) => s - 1)}>Înapoi</Btn>}</div>
             {prosumStep < 3 ? <Btn onClick={continueProsum}>Continuă</Btn> : <Btn onClick={save} data-testid="save-btn"><Plus size={15} /> Creează dosarul</Btn>}
