@@ -120,6 +120,7 @@ export default function ModulePage({ moduleKey }) {
   const [savedAt, setSavedAt] = useState(0);
   const [diuPre, setDiuPre] = useState(false);
   const [prosumStep, setProsumStep] = useState(1);
+  const [newProsumClient, setNewProsumClient] = useState(false);
   const [dossierPage, setDossierPage] = useState("all");
   const [dossierView, setDossierView] = useState("kanban");
   const [operatorFilter, setOperatorFilter] = useState("");
@@ -148,14 +149,15 @@ export default function ModulePage({ moduleKey }) {
     // eslint-disable-next-line
   }, [key]);
 
-  const openNew = () => { setForm(key === "prosumator" ? { doc_date: new Date().toISOString().slice(0, 10), status: "CER" } : {}); setEditId(null); setChecks({}); setProsumStep(1); };
+  const openNew = () => { setForm(key === "prosumator" ? { doc_date: new Date().toISOString().slice(0, 10), status: "CER", kind: "Persoană fizică" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("all"); };
   const setVal = (name, value) => setForm((p) => {
     const next = { ...p, [name]: value };
     if (key === "prosumator" && name === "client_name") {
       const client = clientRecords.find((c) => c.name?.trim().toLocaleLowerCase() === value.trim().toLocaleLowerCase());
       if (client) Object.assign(next, {
-        cnp: client.idcode || "", phone: client.phone || "", email: client.email || "", address: client.address || "",
+        kind: client.kind || "Persoană fizică", cnp: client.idcode || "", ci_series: client.ci_series || "", regcom: client.regcom || "", bank: client.bank || "", iban: client.iban || "", rep_role: client.rep_role || "",
+        phone: client.phone || "", email: client.email || "", address: client.address || "",
         hq_address: client.hq_address || "", county: client.county || "", locality: client.locality || "", pod: client.pod || "", operator: client.operator || "",
         cadastral_nr: client.cadastral_nr || "", cf_nr: client.cf_nr || "", supplier: client.supplier || "", rep_name: client.rep_name || "",
       });
@@ -254,15 +256,24 @@ export default function ModulePage({ moduleKey }) {
             {[ ["all", "Dosar complet"], ["client", "Client"], ["request", "Cererea"], ["installation", "Instalație"], ["documents", "Acte & semnare"], ["equipment", "Echipamente"], ["team", "Echipă"], ["pif", "Teste și PIF"], ["other", "Mesaje & asignare"], ["timeline", "Jurnal"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
           </div>}
           {key === "prosumator" && editId && <SummaryStrip form={form} />}
+          {key === "prosumator" && !editId && prosumStep === 1 && <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="prosum-client-mode">
+            <button type="button" onClick={() => setNewProsumClient(false)} className="rounded-lg border px-3 py-2 text-xs font-bold" style={!newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client existent</button>
+            <button type="button" onClick={() => { setNewProsumClient(true); setVal("client_name", ""); }} className="rounded-lg border px-3 py-2 text-xs font-bold" style={newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client nou</button>
+            {newProsumClient && <div className="flex gap-2"><button type="button" onClick={() => setVal("kind", "Persoană fizică")} className="rounded-lg border px-3 py-2 text-xs font-bold" style={form.kind === "Persoană fizică" ? { background: "#edf7f0", color: "var(--green)", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Persoană fizică</button><button type="button" onClick={() => setVal("kind", "Persoană juridică")} className="rounded-lg border px-3 py-2 text-xs font-bold" style={form.kind === "Persoană juridică" ? { background: "#edf7f0", color: "var(--green)", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Persoană juridică</button></div>}
+          </div>}
           {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} page={dossierPage} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} /> : <div className="grid sm:grid-cols-2 gap-4">
             {cfg.fields.map((f, i) => {
               if (key === "prosumator" && !editId) {
                 const steps = {
-                  1: ["client_name", "cnp", "phone", "email", "hq_address", "rep_name"],
+                  1: ["client_name", "kind", "cnp", "ci_series", "regcom", "phone", "email", "hq_address", "bank", "iban", "rep_name", "rep_role"],
                   2: ["address", "county", "locality", "pod", "operator", "cadastral_nr", "cf_nr", "supplier"],
                   3: ["request_type", "date", "supply", "afm", "doc_date"],
                 };
                 if (!steps[prosumStep].includes(f.name)) return null;
+                if (prosumStep === 1 && !newProsumClient && f.name !== "client_name") return null;
+                if (prosumStep === 1 && newProsumClient && f.name === "kind") return null;
+                if (prosumStep === 1 && newProsumClient && f.name === "regcom" && form.kind !== "Persoană juridică") return null;
+                if (prosumStep === 1 && newProsumClient && f.name === "rep_role" && form.kind !== "Persoană juridică") return null;
               } else if (key === "prosumator" && !editId && f.type === "section") return null;
               return <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} allowNewReference={key === "prosumator" && f.name === "client_name"} ai={can(user, "ai_gpt") ? { module: key, form } : null} />;
             })}
