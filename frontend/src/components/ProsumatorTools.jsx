@@ -72,17 +72,17 @@ export function GeneratedDocs({ id, files }) {
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="generated-docs">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <h3 className="font-bold text-sm">Documente generate automat</h3>
+        <h3 className="font-bold text-sm">Documente generate</h3>
         {id && <a href={docUrl("all", id)} target="_blank" rel="noopener noreferrer" data-testid="doc-all">
           <Btn><FileDown size={15} /> Dosar complet (PDF)</Btn>
         </a>}
       </div>
       {!id ? <p className="text-xs" style={{ color: "var(--muted)" }}>Salvează dosarul pentru a genera documentele.</p> : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div className="divide-y rounded-lg border bg-white px-3" style={{ borderColor: "var(--line)" }}>
           {DOCS.map(([k, label]) => (
             <a key={k} href={docUrl(k, id)} target="_blank" rel="noopener noreferrer" data-testid={`doc-${k}`}
-              className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2.5 text-sm hover:border-[var(--blue)] transition-colors" style={{ borderColor: "var(--line)" }}>
-              <FileText size={15} style={{ color: "var(--blue)" }} /> {label}
+              className="flex items-center gap-2 py-2.5 text-sm font-medium hover:underline" style={{ color: "var(--green)", borderColor: "var(--line)" }}>
+              <FileDown size={15} /> {label}
             </a>
           ))}
         </div>
@@ -101,3 +101,4 @@ export function GeneratedDocs({ id, files }) {
     </div>
   );
 }
+
