@@ -251,7 +251,7 @@ export default function ModulePage({ moduleKey }) {
             </div>
           </> : <h2 className="text-lg font-bold mb-5">{editId ? (key === "prosumator" ? `Dosar ${form.number || "prosumator"} · documentație` : "Editează înregistrarea") : cfg.addLabel}</h2>}
           {key === "prosumator" && editId && <div className="mb-5 flex gap-2 overflow-x-auto border-b pb-2" role="tablist" aria-label="Pagini dosar">
-            {[ ["all", "Dosar complet"], ["client", "Client"], ["request", "Cererea"], ["installation", "Instalație"], ["documents", "Acte & documente"], ["equipment", "Echipamente"], ["team", "Echipă & semnături"], ["pif", "Teste și PIF"], ["timeline", "Jurnal"], ["other", "Mesaje & semnare"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
+            {[ ["all", "Dosar complet"], ["client", "Client"], ["request", "Cererea"], ["installation", "Instalație"], ["documents", "Acte & semnare"], ["equipment", "Echipamente"], ["team", "Echipă"], ["pif", "Teste și PIF"], ["other", "Mesaje & asignare"], ["timeline", "Jurnal"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
           </div>}
           {key === "prosumator" && editId && <SummaryStrip form={form} />}
           {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} page={dossierPage} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} /> : <div className="grid sm:grid-cols-2 gap-4">
@@ -290,13 +290,13 @@ export default function ModulePage({ moduleKey }) {
             </div>
           )}
 
-          {key === "prosumator" && editId && ["documents", "all"].includes(dossierPage) && <><DossierOpis id={editId} /><GeneratedDocs id={editId} files={form.files} /></>}
+          {key === "prosumator" && editId && ["documents", "all"].includes(dossierPage) && <><DossierOpis id={editId} /><GeneratedDocs id={editId} files={form.files} /><SignRequests dossierId={editId} /></>}
           {key === "prosumator" && editId && ["equipment", "all"].includes(dossierPage) && <><div className="mt-2"><h3 className="font-bold text-base">Echipamente și parametri instalației</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează modelul din catalog pentru a prelua datele tehnice și a verifica fișele disponibile.</p><CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} /></div><SldPanel id={editId} form={form} setVal={setVal} /></>}
-          {key === "prosumator" && editId && ["team", "all"].includes(dossierPage) && <DossierExtras form={form} setVal={setVal} view={dossierPage === "all" ? "all" : "team"} />}
+          {key === "prosumator" && editId && ["team", "all"].includes(dossierPage) && <DossierExtras form={form} setVal={setVal} view="team" />}
           {key === "prosumator" && editId && dossierPage === "pif" && <DossierExtras form={form} setVal={setVal} view="pif" />}
-          {key === "prosumator" && editId && ["pif", "all"].includes(dossierPage) && <PifPanel id={editId} />}
+          {key === "prosumator" && editId && ["pif", "all"].includes(dossierPage) && <><h3 className="mt-6 font-bold text-base">Reglaje și punere în funcțiune</h3>{dossierPage === "all" && <DossierExtras form={form} setVal={setVal} view="pif" />}<PifPanel id={editId} /></>}
+          {key === "prosumator" && editId && ["other", "all"].includes(dossierPage) && <><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierMessages id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /></>}
           {key === "prosumator" && editId && ["timeline", "all"].includes(dossierPage) && <DossierTimeline id={editId} />}
-          {key === "prosumator" && editId && ["other", "all"].includes(dossierPage) && <><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierMessages id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /><SignRequests dossierId={editId} /></>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
           {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} savedAt={savedAt} />}
