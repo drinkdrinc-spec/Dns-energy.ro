@@ -47,6 +47,20 @@ export default function SignPage() {
   if (err) return <Shell><p className="text-center font-bold" data-testid="sign-error">{err}</p></Shell>;
   if (!info) return <Shell><p className="text-center">Se încarcă…</p></Shell>;
   if (done) return <Shell><div className="text-center" data-testid="sign-done"><h2 className="text-xl font-extrabold mb-2">{done}</h2><p className="text-sm">Linkul nu mai poate fi folosit. Poți închide această pagină.</p></div></Shell>;
+  if (info.status === "Semnat" && info.portal) return <Shell>
+    <div className="mb-4" data-testid="client-dossier-portal">
+      <div className="text-[11px] uppercase tracking-wider font-bold" style={{ color: "#16834a" }}>{info.company} · portal client</div>
+      <h1 className="text-2xl font-extrabold">Document semnat</h1>
+      <p className="mt-1 text-sm" style={{ color: "#5a6b85" }}>Dosar {info.client_name} · semnat {info.signed_at ? new Date(info.signed_at).toLocaleString("ro-RO") : ""}</p>
+    </div>
+    <section className="rounded-xl border bg-white p-4" style={{ borderColor: "#dbe3ee" }}>
+      <h2 className="font-bold">Stadiul dosarului</h2>
+      <p className="mt-2 rounded-lg bg-[#f6f8fb] p-3 font-semibold">{info.portal.status}</p>
+      {!!info.portal.documents?.length && <div className="mt-4"><h3 className="mb-2 text-sm font-bold">Documente semnate</h3><div className="space-y-2">{info.portal.documents.map((d) => <a key={d.id} href={`${window.location.origin}${d.url}`} target="_blank" rel="noreferrer" className="block rounded-lg border p-3 text-sm font-semibold underline" style={{ borderColor: "#dbe3ee", color: "#16834a" }}>{d.title} · Descarcă PDF</a>)}</div></div>}
+      <p className="mt-4 text-xs" style={{ color: "#5a6b85" }}>Portal disponibil până la {info.portal.expires_at ? new Date(info.portal.expires_at).toLocaleDateString("ro-RO") : ""}.</p>
+    </section>
+    <ClientMessagePortal token={token} />
+  </Shell>;
   if (!info.pages) return <Shell><p className="text-center font-bold" data-testid="sign-closed">{info.status === "Semnat" ? `Documentul a fost deja semnat${info.signed_at ? ` la ${new Date(info.signed_at).toLocaleString("ro-RO")}` : ""}.` : info.status === "Refuzat" ? "Semnarea acestui document a fost refuzată." : "Acest link a expirat. Cere emitentului un link nou."}</p></Shell>;
   const ok = f.declared_name.trim() && f.intent && f.otp.length === 6 && f.signature;
   return (
@@ -73,7 +87,7 @@ export default function SignPage() {
           <span>Am citit integral documentul și îmi exprim explicit intenția de a-l semna electronic. Înțeleg că aceasta este o <b>semnătură electronică simplă</b> (eIDAS), cu înregistrarea datei, orei, adresei IP și a dispozitivului.</span></label>
         {msg && <p className="text-sm font-bold" style={{ color: msg.startsWith("Cod trimis") ? "#166534" : "#9b2c2c" }} data-testid="sign-msg">{msg}</p>}
         <button className="w-full rounded-xl py-3 font-extrabold text-white disabled:opacity-40" style={{ background: "#2878f0" }} disabled={!ok || busy}
-          onClick={() => call("sign", f, () => setDone("Document semnat. Mulțumim!"))} data-testid="sign-submit">Semnează documentul</button>
+          onClick={() => call("sign", f, () => axios.get(`${API}/${token}`).then((r) => setInfo(r.data)).catch(() => setDone("Document semnat. Mulțumim!")))} data-testid="sign-submit">Semnează documentul</button>
         {!refusing ? <button className="w-full text-sm" style={{ color: "#9b2c2c" }} onClick={() => setRefusing(true)} data-testid="sign-refuse-open">Refuz să semnez</button> : (
           <div className="space-y-2"><textarea className="den-input" placeholder="Motivul refuzului (opțional)" value={reason} onChange={(e) => setReason(e.target.value)} data-testid="sign-refuse-reason" />
             <button className="w-full rounded-xl py-2 font-bold border" style={{ color: "#9b2c2c", borderColor: "#9b2c2c" }} onClick={() => call("refuse", { reason }, () => setDone("Ai refuzat semnarea documentului."))} data-testid="sign-refuse-submit">Confirm refuzul</button></div>

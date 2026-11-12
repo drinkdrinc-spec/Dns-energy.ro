@@ -25,8 +25,8 @@ import { can } from "@/lib/plan";
 import { DossierTimeline } from "@/components/dossier/DossierTimeline";
 import { DossierMessages } from "@/components/dossier/DossierMessages";
 
-const PROSUM_STATUS_MAP = { "În pregătire": "Așteaptă depunere", "Depus la operator": "Dosar depus", "ATR emis": "Factură ATR", "În execuție": "Așteaptă instalare", "Punere în funcțiune": "PV Teste / PIF", "Prosumator activ": "Finalizat" };
-const displayStatus = (item) => PROSUM_STATUS_MAP[item.status] || item.status || "Așteaptă depunere";
+const PROSUM_STATUS_MAP = { "În pregătire": "CER", "Depus la operator": "Dosar depus", "ATR emis": "Factură ATR", "În execuție": "Așteaptă instalare", "Punere în funcțiune": "PV Teste / PIF", "Prosumator activ": "Finalizat" };
+const displayStatus = (item) => PROSUM_STATUS_MAP[item.status] || item.status || "CER";
 
 function Field({ f, value, onChange, refOptions, ai, allowNewReference = false }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -95,7 +95,7 @@ export default function ModulePage({ moduleKey }) {
     // eslint-disable-next-line
   }, [key]);
 
-  const openNew = () => { setForm(key === "prosumator" ? { doc_date: new Date().toISOString().slice(0, 10), status: "Așteaptă depunere" } : {}); setEditId(null); setChecks({}); setProsumStep(1); };
+  const openNew = () => { setForm(key === "prosumator" ? { doc_date: new Date().toISOString().slice(0, 10), status: "CER" } : {}); setEditId(null); setChecks({}); setProsumStep(1); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("client"); };
   const setVal = (name, value) => setForm((p) => {
     const next = { ...p, [name]: value };

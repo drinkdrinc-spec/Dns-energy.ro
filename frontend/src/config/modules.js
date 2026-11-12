@@ -132,7 +132,7 @@ export const MODULES = {
       { name: "soil", label: "Starea solului", type: "text" },
       { name: "soil_psi", label: "Coeficient Ѱ", type: "select", options: ["1.5", "1.3", "1.1"] },
       { name: "grounding_limit", label: "Valoare admisă Rd (Ω)", type: "number" },
-      { name: "status", label: "Stadiu dosar", type: "select", options: ["Așteaptă depunere", "Dosar depus", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Finalizat"] },
+      { name: "status", label: "Stadiu dosar", type: "select", options: ["CER", "Așteaptă depunere", "Dosar depus", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Finalizat"] },
       { name: "notes", label: "Observații", type: "textarea", full: true },
     ],
   },
@@ -375,3 +375,4 @@ export const MODULES = {
 };
 
 export const MODULE_ORDER = ["clients", "prosumator", "diu", "works", "mono", "panels", "anti", "pram", "equipment", "power"];
+

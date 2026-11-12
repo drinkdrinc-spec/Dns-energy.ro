@@ -8,7 +8,8 @@ load_dotenv(ROOT_DIR / '.env')
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadFile, File, Form, Response, Header, Query
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import ReturnDocument
+from pymongo import ReturnDocument, MongoClient
+from gridfs import GridFSBucket
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 import logging
@@ -21,7 +22,11 @@ from datetime import datetime, timezone, timedelta
 # ---------------- DB ----------------
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db_name = os.environ['DB_NAME']
+db = client[db_name]
+sync_client = MongoClient(mongo_url)
+sync_db = sync_client[db_name]
+GRIDFS_BUCKET = GridFSBucket(sync_db, bucket_name="d_energy_files")
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -172,6 +177,8 @@ def init_storage(force: bool = False):
     if LOCAL_STORAGE:
         LOCAL_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
         return "local"
+    if not EMERGENT_KEY:
+        return "gridfs"
     if storage_key and not force:
         return storage_key
     resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
@@ -184,6 +191,11 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
         target = local_storage_path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
+        return {"path": path, "content_type": content_type, "size": len(data)}
+    if not EMERGENT_KEY:
+        stream = GRIDFS_BUCKET.open_upload_stream(path, metadata={"logical_path": path, "content_type": content_type})
+        stream.write(data)
+        stream.close()
         return {"path": path, "content_type": content_type, "size": len(data)}
     key = init_storage()
     resp = requests.put(f"{STORAGE_URL}/objects/{path}",
@@ -201,6 +213,12 @@ def get_object(path: str):
     if LOCAL_STORAGE:
         target = local_storage_path(path)
         return target.read_bytes(), MIME_TYPES.get(target.suffix.lower().lstrip("."), "application/octet-stream")
+    if not EMERGENT_KEY:
+        stored = sync_db["d_energy_files.files"].find_one({"metadata.logical_path": path}, sort=[("uploadDate", -1)])
+        if not stored:
+            raise FileNotFoundError("Fișierul nu există în stocarea DNS Energy")
+        with GRIDFS_BUCKET.open_download_stream(stored["_id"]) as stream:
+            return stream.read(), (stored.get("metadata") or {}).get("content_type") or "application/octet-stream"
     key = init_storage()
     resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     if resp.status_code == 404:
@@ -429,7 +447,7 @@ async def update_item_status(module: str, item_id: str, request: Request, user: 
     body = await request.json()
     status = (body.get("status") or "").strip()
     allowed = {
-        "prosumator": ["Așteaptă depunere", "Dosar depus", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Finalizat"],
+        "prosumator": ["CER", "Așteaptă depunere", "Dosar depus", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Finalizat"],
         "diu": ["În lucru", "Documente de completat", "În verificare", "Pregătit pentru predare", "Predat beneficiarului"],
         "works": ["Ofertat", "Contractat", "În execuție", "În verificare", "Finalizat", "Facturat"],
         "atr": ["În pregătire", "Depus la operator", "ATR emis", "Respins", "Finalizat"],
@@ -458,6 +476,10 @@ PROSUMATOR_EVENTS = {
     "note": ("Notă în jurnal", None),
     "blocker_opened": ("Blocaj înregistrat", None),
     "blocker_resolved": ("Blocaj rezolvat", None),
+    "od_clarification": ("Clarificări cerute de OD", None),
+    "od_response": ("Răspuns trimis la OD", None),
+    "connection_certificate": ("Certificat de racordare emis", None),
+    "pif_signed": ("PIF semnat", None),
 }
 
 @api_router.get("/prosumator/{item_id}/timeline")
@@ -482,9 +504,9 @@ async def add_prosumator_timeline_event(item_id: str, request: Request, user: di
             datetime.strptime(due_date, "%Y-%m-%d")
         except ValueError:
             raise HTTPException(status_code=400, detail="Termenul blocajului trebuie să fie o dată validă")
-    if kind in ("note", "blocker_opened") and not note:
+    if kind in ("note", "blocker_opened", "od_clarification") and not note:
         raise HTTPException(status_code=400, detail="Completează detaliile evenimentului")
-    if kind == "blocker_opened" and (doc.get("blocker") or {}).get("active"):
+    if kind in ("blocker_opened", "od_clarification") and (doc.get("blocker") or {}).get("active"):
         raise HTTPException(status_code=409, detail="Există deja un blocaj activ. Rezolvă-l înainte de a înregistra altul.")
     if kind == "blocker_resolved" and not (doc.get("blocker") or {}).get("active"):
         raise HTTPException(status_code=409, detail="Dosarul nu are un blocaj activ")
@@ -494,9 +516,9 @@ async def add_prosumator_timeline_event(item_id: str, request: Request, user: di
     update = {"$push": {"events": event}, "$set": {"updated_at": now, "updated_by": user.get("email")}}
     if next_status:
         update["$set"]["status"] = next_status
-    if kind == "blocker_opened":
-        update["$set"]["blocker"] = {"active": True, "title": note, "due_date": due_date or None, "opened_at": now, "opened_by": user.get("email")}
-    elif kind == "blocker_resolved":
+    if kind in ("blocker_opened", "od_clarification"):
+        update["$set"]["blocker"] = {"active": True, "title": note, "due_date": due_date or None, "opened_at": now, "opened_by": user.get("email"), "source": "OD" if kind == "od_clarification" else "intern"}
+    elif kind in ("blocker_resolved", "od_response") and (doc.get("blocker") or {}).get("active"):
         update["$set"]["blocker"] = {"active": False, "title": (doc.get("blocker") or {}).get("title"), "resolved_at": now, "resolved_by": user.get("email")}
     await db.prosumator.update_one({"id": item_id, "owner": doc["owner"]}, update)
     await audit(user, "jurnal dosar", "prosumator", item_id, [kind, label])
@@ -534,7 +556,7 @@ async def add_prosumator_message(item_id: str, request: Request, user: dict = De
 @api_router.get("/public/sign/{token}/messages")
 async def public_sign_messages(token: str):
     req = await sign_by_token(token)
-    if (req.get("module") or "prosumator") != "prosumator" or sign_status(req) not in SIGN_ACTIVE:
+    if (req.get("module") or "prosumator") != "prosumator" or not public_portal_allowed(req):
         raise HTTPException(status_code=410, detail="Portalul de mesaje nu mai este activ")
     rec = await db.prosumator.find_one({"id": req["dossier_id"], "owner": req["owner"]}, {"_id": 0, "messages": 1})
     if not rec:
@@ -544,7 +566,7 @@ async def public_sign_messages(token: str):
 @api_router.post("/public/sign/{token}/messages")
 async def public_sign_message(token: str, request: Request):
     req = await sign_by_token(token)
-    if (req.get("module") or "prosumator") != "prosumator" or sign_status(req) not in SIGN_ACTIVE:
+    if (req.get("module") or "prosumator") != "prosumator" or not public_portal_allowed(req):
         raise HTTPException(status_code=410, detail="Portalul de mesaje nu mai este activ")
     body = await request.json()
     content = str(body.get("content") or "").strip()[:2000]
@@ -568,7 +590,7 @@ async def public_sign_message(token: str, request: Request):
 @api_router.post("/public/sign/{token}/messages/upload")
 async def public_sign_message_upload(token: str, file: UploadFile = File(...)):
     req = await sign_by_token(token)
-    if (req.get("module") or "prosumator") != "prosumator" or sign_status(req) not in SIGN_ACTIVE:
+    if (req.get("module") or "prosumator") != "prosumator" or not public_portal_allowed(req):
         raise HTTPException(status_code=410, detail="Portalul de mesaje nu mai este activ")
     data = await file.read()
     if not data or len(data) > 10 * 1024 * 1024:
@@ -583,6 +605,8 @@ async def public_sign_message_upload(token: str, file: UploadFile = File(...)):
 @api_router.get("/public/sign/{token}/messages/{message_id}/files/{file_index}")
 async def public_sign_message_file(token: str, message_id: str, file_index: int):
     req = await sign_by_token(token)
+    if (req.get("module") or "prosumator") != "prosumator" or not public_portal_allowed(req):
+        raise HTTPException(status_code=410, detail="Portalul clientului nu mai este activ")
     rec = await db.prosumator.find_one({"id": req.get("dossier_id"), "owner": req.get("owner")}, {"_id": 0, "messages": 1})
     msg = next((m for m in (rec or {}).get("messages") or [] if m.get("id") == message_id), None)
     files = (msg or {}).get("files") or []
@@ -676,12 +700,12 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     cutoff = (datetime.now(timezone.utc) - timedelta(days=183)).isoformat()
     active_prosum = [item for item in prosum if str(item.get("updated_at") or item.get("created_at") or "") >= cutoff]
-    stages = ["Așteaptă depunere", "Dosar depus", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Finalizat"]
+    stages = ["CER", "Așteaptă depunere", "Dosar depus", "Factură ATR", "Așteaptă instalare", "Instalat", "PV Teste / PIF", "Finalizat"]
     by_status, by_operator = {stage: 0 for stage in stages}, {}
-    legacy_status = {"În pregătire": "Așteaptă depunere", "Depus la operator": "Dosar depus", "ATR emis": "Factură ATR",
+    legacy_status = {"În pregătire": "CER", "Depus la operator": "Dosar depus", "ATR emis": "Factură ATR",
                      "În execuție": "Așteaptă instalare", "Punere în funcțiune": "PV Teste / PIF", "Prosumator activ": "Finalizat"}
     for item in active_prosum:
-        status = legacy_status.get(item.get("status"), item.get("status")) or "Așteaptă depunere"
+        status = legacy_status.get(item.get("status"), item.get("status")) or "CER"
         operator_raw = item.get("operator") or "Operator neprecizat"
         op_low = operator_raw.casefold()
         if "rețele electrice" in op_low or "retele electrice" in op_low:
@@ -710,7 +734,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     today = datetime.now(timezone.utc).date()
     follow_up = []
     for item in active_prosum:
-        status = legacy_status.get(item.get("status"), item.get("status")) or "Așteaptă depunere"
+        status = legacy_status.get(item.get("status"), item.get("status")) or "CER"
         task = None
         priority = 3
         blocker = item.get("blocker") or {}
@@ -1649,6 +1673,27 @@ def sign_status(r: dict) -> str:
         return "Expirat"
     return r["status"]
 
+def signed_portal_expiry(req: dict):
+    raw = req.get("portal_expires_at")
+    if raw:
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return datetime.min.replace(tzinfo=timezone.utc)
+    raw = req.get("signed_at")
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")) + timedelta(days=180) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+def public_portal_allowed(req: dict) -> bool:
+    if req.get("revoked"):
+        return False
+    if sign_status(req) in SIGN_ACTIVE:
+        return True
+    expiry = signed_portal_expiry(req) if req.get("status") == "Semnat" else None
+    return bool(expiry and expiry > datetime.now(timezone.utc))
+
 def sign_public(r: dict) -> dict:
     out = {k: r.get(k) for k in ("id", "group_id", "dossier_id", "module", "client_name", "pos_key", "doc_title", "signer_name", "signer_email",
                                  "signer_phone", "role", "expires_at", "created_at", "signed_at", "refused_reason", "doc_sha256", "signed_sha256", "revoked")}
@@ -1822,6 +1867,15 @@ async def pub_sign_info(token: str, request: Request):
         await db.sign_requests.update_one({"id": r["id"]}, upd)
         st = "Deschis"
     s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
+    portal = None
+    if (r.get("module") or "prosumator") == "prosumator" and public_portal_allowed(r):
+        dossier = await db.prosumator.find_one({"id": r["dossier_id"], "owner": r["owner"]}, {"_id": 0, "status": 1, "client_name": 1})
+        if dossier:
+            expiry = signed_portal_expiry(r) if st == "Semnat" else None
+            group = await db.sign_requests.find({"owner": r["owner"], "group_id": r.get("group_id"), "status": "Semnat"}, {"_id": 0, "id": 1, "doc_title": 1, "signed_at": 1, "signed_file": 1}).to_list(100)
+            portal = {"status": dossier.get("status") or "CER", "expires_at": expiry.isoformat() if expiry else None,
+                      "documents": [{"id": x["id"], "title": x.get("doc_title") or "Document semnat", "signed_at": x.get("signed_at"),
+                                     "url": f"/api/public/sign/{token}/files/{x['id']}"} for x in group if x.get("signed_file", {}).get("storage_path")]}
     pages = 0
     if st in SIGN_ACTIVE:
         import pymupdf
@@ -1829,7 +1883,19 @@ async def pub_sign_info(token: str, request: Request):
         pages = pymupdf.open(stream=data, filetype="pdf").page_count
     return {"status": st, "pages": pages, "doc_title": r["doc_title"], "signer_name": r["signer_name"], "role": r["role"], "client_name": r["client_name"],
             "company": s.get("company") or "DNS HOSTESS SRL", "email_masked": mask(r["signer_email"]), "expires_at": r["expires_at"],
-            "doc_sha256": r["doc_sha256"], "signed_at": r.get("signed_at")}
+            "doc_sha256": r["doc_sha256"], "signed_at": r.get("signed_at"), "portal": portal}
+
+@api_router.get("/public/sign/{token}/files/{request_id}")
+async def pub_sign_signed_file(token: str, request_id: str):
+    req = await sign_by_token(token)
+    if not public_portal_allowed(req) or req.get("status") != "Semnat":
+        raise HTTPException(status_code=410, detail="Documentul nu mai este disponibil în portal")
+    target = await db.sign_requests.find_one({"id": request_id, "owner": req["owner"], "group_id": req.get("group_id"), "status": "Semnat"}, {"_id": 0, "signed_file": 1, "doc_title": 1})
+    path = (target or {}).get("signed_file", {}).get("storage_path")
+    if not path:
+        raise HTTPException(status_code=404, detail="Documentul semnat nu există")
+    data, _ = get_object(path)
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": disp("inline", f"{target.get('doc_title') or 'document'}.pdf")})
 
 @api_router.get("/public/sign/{token}/document")
 async def pub_sign_doc(token: str):
@@ -1976,7 +2042,7 @@ async def pub_sign(token: str, request: Request):
         raise HTTPException(status_code=400, detail="Semnătura nu este validă")
     meta, at = client_meta(request), now_iso()
     claim = await db.sign_requests.update_one({"id": r["id"], "token_hash": r["token_hash"], "status": {"$in": list(SIGN_ACTIVE)}, "otp_hash": r["otp_hash"]},
-                                              {"$set": {"status": "Semnat", "signed_at": at, "otp_hash": None}})
+                                              {"$set": {"status": "Semnat", "signed_at": at, "portal_expires_at": (datetime.now(timezone.utc) + timedelta(days=180)).isoformat(), "otp_hash": None}})
     if claim.modified_count == 0:
         raise HTTPException(status_code=409, detail="Documentul a fost deja semnat")
     s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
@@ -2080,6 +2146,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
+    sync_client.close()
 
 import billing_routes  # noqa: E402
 import forms_routes  # noqa: E402

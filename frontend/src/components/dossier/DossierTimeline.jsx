@@ -12,6 +12,8 @@ const MILESTONES = [
   ["installation_completed", "Instalație montată"],
   ["pif_started", "Probe / PIF începute"],
   ["prosumer_active", "Prosumator activ"],
+  ["connection_certificate", "Certificat de racordare emis"],
+  ["pif_signed", "PIF semnat"],
 ];
 
 const localDateTime = (value) => {
@@ -43,8 +45,8 @@ export function DossierTimeline({ id }) {
     try {
       await api.post(`/prosumator/${id}/timeline`, { type, ...details });
       await load();
-      if (type === "note") setNote("");
-      if (type === "blocker_opened") { setBlocker(""); setDueDate(""); }
+      if (type === "note" || type === "od_response" || type === "od_clarification") setNote("");
+      if (type === "blocker_opened" || type === "od_clarification") { setBlocker(""); setDueDate(""); }
       toast.success(type === "blocker_resolved" ? "Blocaj rezolvat" : "Jurnal actualizat");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Evenimentul nu s-a putut salva");
@@ -69,7 +71,12 @@ export function DossierTimeline({ id }) {
         <div className="rounded-xl border p-4" style={{ borderColor: "var(--line)" }}>
           <h4 className="text-sm font-bold">Notă / apel / clarificare</h4>
           <textarea className="den-input mt-3" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Adaugă un detaliu util pentru echipă…" maxLength={1200} data-testid="timeline-note" />
-          <Btn className="mt-2" disabled={saving || !note.trim()} onClick={() => addEvent("note", { note: note.trim() })}><Plus size={14} /> Înregistrează nota</Btn>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Btn disabled={saving || !note.trim()} onClick={() => addEvent("note", { note: note.trim() })}><Plus size={14} /> Înregistrează nota</Btn>
+            <Btn variant="secondary" disabled={saving || !note.trim() || data.blocker?.active} onClick={() => addEvent("od_clarification", { note: note.trim(), due_date: dueDate })}><AlertTriangle size={14} /> Clarificări cerute de OD</Btn>
+            <Btn variant="secondary" disabled={saving} onClick={() => addEvent("od_response", { note: note.trim() })}><Check size={14} /> Răspuns trimis la OD</Btn>
+          </div>
+          <label className="mt-2 block text-xs" style={{ color: "var(--muted)" }}>Termen clarificare (opțional)<input className="den-input mt-1" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></label>
         </div>
         <div className="rounded-xl border p-4" style={{ borderColor: data.blocker?.active ? "#f1b8b8" : "var(--line)", background: data.blocker?.active ? "#fff8f7" : "white" }}>
           <h4 className="flex items-center gap-2 text-sm font-bold"><AlertTriangle size={15} style={{ color: data.blocker?.active ? "#b33333" : "var(--muted)" }} /> Blocaj</h4>
@@ -97,3 +104,4 @@ export function DossierTimeline({ id }) {
     </section>
   );
 }
+
