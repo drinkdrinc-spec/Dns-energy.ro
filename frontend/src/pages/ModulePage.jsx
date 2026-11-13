@@ -51,7 +51,8 @@ function Field({ f, value, onChange, refOptions, ai, allowNewReference = false }
 }
 
 const DOSSIER_SECTION_PAGE = {
-  "Client și loc de consum": "client",
+  "Client": "client",
+  "Loc de consum": "site",
   "Cererea": "request",
   "Date tehnice": "installation",
   "Date documente dosar": "documents",
@@ -65,16 +66,24 @@ const DOSSIER_SECTION_PAGE = {
 function DossierFieldSections({ fields, page, form, setVal, refOptions, ai }) {
   const sections = [];
   let current = { label: "Date dosar", fields: [] };
+  const pushSection = (section) => {
+    if (section.label !== "Client și loc de consum") { sections.push(section); return; }
+    const siteFields = new Set(["address", "county", "locality", "pod", "operator", "cadastral_nr", "cf_nr", "supplier"]);
+    const client = section.fields.filter((field) => !siteFields.has(field.name));
+    const site = section.fields.filter((field) => siteFields.has(field.name));
+    if (client.length) sections.push({ label: "Client", fields: client });
+    if (site.length) sections.push({ label: "Loc de consum", fields: site });
+  };
   fields.forEach((field) => {
     if (field.type === "section") {
-      if (current.fields.length) sections.push(current);
+      if (current.fields.length) pushSection(current);
       current = { label: field.label, fields: [] };
     } else current.fields.push(field);
   });
-  if (current.fields.length) sections.push(current);
+  if (current.fields.length) pushSection(current);
 
   return <div className="space-y-4" data-testid="dossier-section-cards">
-    {sections.filter((section) => page === "all" || (["client", "request", "installation", "documents"].includes(page) && (DOSSIER_SECTION_PAGE[section.label] || "client") === page)).map((section) => (
+    {sections.filter((section) => page === "all" || (["client", "site", "request", "installation", "documents"].includes(page) && (DOSSIER_SECTION_PAGE[section.label] || "client") === page)).map((section) => (
       <section key={section.label} className="den-panel !p-0 overflow-hidden" data-testid={`dossier-section-${section.label}`}>
         <div className="flex items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}>
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} aria-hidden="true" />
@@ -121,7 +130,7 @@ export default function ModulePage({ moduleKey }) {
   const [diuPre, setDiuPre] = useState(false);
   const [prosumStep, setProsumStep] = useState(1);
   const [newProsumClient, setNewProsumClient] = useState(false);
-  const [dossierPage, setDossierPage] = useState("all");
+  const [dossierPage, setDossierPage] = useState("client");
   const [dossierView, setDossierView] = useState("kanban");
   const [operatorFilter, setOperatorFilter] = useState("");
   const [countyFilter, setCountyFilter] = useState("");
@@ -131,9 +140,13 @@ export default function ModulePage({ moduleKey }) {
 
   const load = () => api.get(`/data/${key}`).then((r) => {
     setItems(r.data);
-    const eid = new URLSearchParams(window.location.search).get("edit");
+    const params = new URLSearchParams(window.location.search);
+    const eid = params.get("edit");
     const it = eid && r.data.find((x) => x.id === eid);
-    if (it) { setForm({ ...it }); setEditId(it.id); setChecks(it.checklist || {}); window.history.replaceState(null, "", window.location.pathname); }
+    const startNew = key === "prosumator" && params.get("new") === "1";
+    if (it) { setForm({ ...it }); setEditId(it.id); setChecks(it.checklist || {}); setDossierPage("client"); }
+    else if (startNew) { setForm({ doc_date: new Date().toISOString().slice(0, 10), status: "CER", kind: "Persoană fizică" }); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setDossierPage("site"); }
+    if (it || startNew) window.history.replaceState(null, "", window.location.pathname);
   }).catch(() => {});
 
   useEffect(() => {
@@ -149,8 +162,8 @@ export default function ModulePage({ moduleKey }) {
     // eslint-disable-next-line
   }, [key]);
 
-  const openNew = () => { setForm(key === "prosumator" ? { doc_date: new Date().toISOString().slice(0, 10), status: "CER", kind: "Persoană fizică" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); };
-  const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("all"); };
+  const openNew = () => { setForm(key === "prosumator" ? { doc_date: new Date().toISOString().slice(0, 10), status: "CER", kind: "Persoană fizică" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setDossierPage("site"); };
+  const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("client"); };
   const setVal = (name, value) => setForm((p) => {
     const next = { ...p, [name]: value };
     if (key === "prosumator" && name === "client_name") {
@@ -187,7 +200,7 @@ export default function ModulePage({ moduleKey }) {
       else if (key === "prosumator") {
         const created = await api.post("/import/prosumator", payload);
         toast.success("Dosar creat. Poți continua completarea documentației mai jos.");
-        setForm(created.data); setEditId(created.data.id); setChecks(created.data.checklist || {}); setProsumStep(1); load();
+        setForm(created.data); setEditId(created.data.id); setChecks(created.data.checklist || {}); setProsumStep(1); setDossierPage("site"); load();
         return;
       }
       else await api.post(`/data/${key}`, payload);
@@ -246,14 +259,14 @@ export default function ModulePage({ moduleKey }) {
         <div className="den-panel mb-6" data-testid="module-form">
           {key === "prosumator" && !editId ? <>
             <div className="flex items-start justify-between gap-4 mb-5">
-              <div className="mb-4"><h2 className="text-lg font-bold">Dosar nou</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>3 pași scurți — restul datelor se completează apoi în dosar.</p></div>
+              <div className="mb-4"><h2 className="text-lg font-bold">Dosar nou</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Alegi clientul, locul de consum și cererea; restul datelor le completezi după.</p></div>
             </div>
             <div className="grid grid-cols-3 gap-2 mb-5" aria-label={`Pasul ${prosumStep} din 3`}>
               {["Client", "Loc de consum", "Tip cerere"].map((step, idx) => <div key={step} className={`rounded-lg border px-2 py-2 text-center text-[10px] sm:text-[11px] font-semibold ${prosumStep === idx + 1 ? "den-wizard-active" : ""}`} style={{ borderColor: prosumStep === idx + 1 ? "var(--green)" : "var(--line)", color: prosumStep === idx + 1 ? "var(--green)" : "var(--muted)", background: prosumStep === idx + 1 ? "#edf7f0" : "transparent" }}><span className="mr-1 inline-grid h-4 w-4 place-items-center rounded-full" style={{ background: prosumStep > idx + 1 ? "var(--green)" : "#eeeae1", color: prosumStep > idx + 1 ? "white" : "var(--muted)" }}>{prosumStep > idx + 1 ? "✓" : idx + 1}</span>{step}</div>)}
             </div>
           </> : <h2 className="text-lg font-bold mb-5">{editId ? (key === "prosumator" ? `Dosar ${form.number || "prosumator"} · documentație` : "Editează înregistrarea") : cfg.addLabel}</h2>}
           {key === "prosumator" && editId && <div className="mb-5 flex gap-2 overflow-x-auto border-b pb-2" role="tablist" aria-label="Pagini dosar">
-            {[ ["all", "Dosar complet"], ["client", "Client"], ["request", "Cererea"], ["installation", "Instalație"], ["documents", "Acte & semnare"], ["equipment", "Echipamente"], ["team", "Echipă"], ["pif", "Teste și PIF"], ["other", "Mesaje & asignare"], ["timeline", "Jurnal"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
+            {[ ["all", "Dosar complet"], ["client", "Client"], ["site", "Loc de consum"], ["request", "Cererea"], ["installation", "Instalație"], ["documents", "Acte & semnare"], ["equipment", "Echipamente"], ["team", "Echipă"], ["pif", "Teste și PIF"], ["other", "Mesaje & asignare"], ["timeline", "Jurnal"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
           </div>}
           {key === "prosumator" && editId && <SummaryStrip form={form} />}
           {key === "prosumator" && !editId && prosumStep === 1 && <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="prosum-client-mode">
@@ -265,9 +278,9 @@ export default function ModulePage({ moduleKey }) {
             {cfg.fields.map((f, i) => {
               if (key === "prosumator" && !editId) {
                 const steps = {
-                  1: ["client_name", "kind", "cnp", "ci_series", "regcom", "phone", "email", "hq_address", "bank", "iban", "rep_name", "rep_role"],
-                  2: ["address", "county", "locality", "pod", "operator", "cadastral_nr", "cf_nr", "supplier"],
-                  3: ["request_type", "date", "supply", "afm", "doc_date"],
+                  1: ["client_name"],
+                  2: ["address", "county", "locality", "pod", "operator"],
+                  3: ["request_type", "supply", "afm"],
                 };
                 if (!steps[prosumStep].includes(f.name)) return null;
                 if (prosumStep === 1 && !newProsumClient && f.name !== "client_name") return null;

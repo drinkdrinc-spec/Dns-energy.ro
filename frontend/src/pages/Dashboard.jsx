@@ -53,7 +53,7 @@ export default function Dashboard() {
   return <div data-testid="dashboard-page">
     <PageHeader eyebrow={`D-ENERGY · ${today}`} title="Tablou de bord"
       sub="Activitatea și documentația instalațiilor tale, într-un singur loc."
-      action={<Link to="/prosumator" className="mt-1 inline-flex items-center gap-1 rounded-lg border bg-white px-3.5 py-2.5 text-xs font-bold transition hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid="new-diu-btn">Vezi toate dosarele <ArrowUpRight size={14} /></Link>} />
+      action={<div className="mt-1 flex flex-wrap items-center gap-2"><Link to="/prosumator?new=1" className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:brightness-95" style={{ background: "var(--blue)" }} data-testid="new-dossier-btn"><Plus size={14} /> Dosar nou</Link><Link to="/prosumator" className="inline-flex items-center gap-1 rounded-lg border bg-white px-3.5 py-2.5 text-xs font-bold transition hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid="all-dossiers-btn">Toate dosarele <ArrowUpRight size={14} /></Link></div>} />
 
     <section className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 mb-6" aria-label="Rezumat">
       <Stat label="Dosare active" value={s.prosum_total} note="Dosare de prosumator" icon={FolderOpen} tone="blue" to="/prosumator" />
