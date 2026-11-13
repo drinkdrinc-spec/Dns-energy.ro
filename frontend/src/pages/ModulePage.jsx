@@ -131,7 +131,7 @@ export default function ModulePage({ moduleKey }) {
   const [prosumStep, setProsumStep] = useState(1);
   const [newProsumClient, setNewProsumClient] = useState(false);
   const [dossierPage, setDossierPage] = useState("client");
-  const [dossierView, setDossierView] = useState("kanban");
+  const [dossierView, setDossierView] = useState("list");
   const [operatorFilter, setOperatorFilter] = useState("");
   const [countyFilter, setCountyFilter] = useState("");
   const [localityFilter, setLocalityFilter] = useState("");
@@ -348,8 +348,8 @@ export default function ModulePage({ moduleKey }) {
             <button onClick={() => setArchiveView(true)} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${archiveView ? "text-white" : ""}`} style={archiveView ? { background: "var(--navy)" } : { color: "var(--muted)" }} data-testid="view-archived-dossiers"><Archive size={13} /> Arhivate ({archiveCount})</button>
           </div>}
           {key === "prosumator" && <div className="flex rounded-lg border p-1" style={{ borderColor: "var(--line)" }}>
-            <button onClick={() => setDossierView("kanban")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${dossierView === "kanban" ? "text-white" : ""}`} style={dossierView === "kanban" ? { background: "var(--navy)" } : { color: "var(--muted)" }} data-testid="view-kanban"><LayoutGrid size={14} /> Kanban</button>
-            <button onClick={() => setDossierView("list")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${dossierView === "list" ? "text-white" : ""}`} style={dossierView === "list" ? { background: "var(--navy)" } : { color: "var(--muted)" }} data-testid="view-list"><List size={14} /> Listă</button>
+            <button onClick={() => setDossierView("kanban")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${dossierView === "kanban" ? "text-white" : ""}`} style={dossierView === "kanban" ? { background: "var(--green)" } : { color: "var(--muted)" }} data-testid="view-kanban"><LayoutGrid size={14} /> Kanban</button>
+            <button onClick={() => setDossierView("list")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${dossierView === "list" ? "text-white" : ""}`} style={dossierView === "list" ? { background: "var(--green)" } : { color: "var(--muted)" }} data-testid="view-list"><List size={14} /> Listă</button>
           </div>}
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
@@ -384,15 +384,15 @@ export default function ModulePage({ moduleKey }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="items-table">
               <thead>
-                <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
-                  {cfg.columns.map((c) => <th key={c.key} className="px-3 py-2.5 font-semibold text-[12px] whitespace-nowrap">{c.label}</th>)}
+                <tr className="text-left" style={{ background: "var(--green)", color: "#fff" }}>
+                  {cfg.columns.map((c) => <th key={c.key} className="px-3 py-2.5 font-extrabold uppercase tracking-wider text-[10px] whitespace-nowrap">{c.label}</th>)}
                   <th className="px-3 py-2.5 text-right"></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((it) => (
                   <tr key={it.id} className="border-t hover:bg-[#fafcff]" style={{ borderColor: "var(--line)" }}>
-                    {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{c.key === "status" && statusOptions.length ? <div className="inline-flex items-center gap-2"><select aria-label={`Stadiul ${key === "prosumator" ? "dosar" : "înregistrării"} ${it.number || it.title || ""}`} data-testid={`status-${it.id}`} className="cursor-pointer rounded-full border-0 px-2.5 py-1 text-[11px] font-bold focus:ring-2 focus:ring-blue-400" style={{ background: "#eef4ff", color: "#1d4ed8", maxWidth: "100%" }} value={(key === "prosumator" ? displayStatus(it) : it.status) || ""} onClick={(e) => e.stopPropagation()} onChange={(e) => changeStatus(it, e.target.value)}><option value="" disabled>Alege stadiul</option>{statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select>{key === "prosumator" && it.blocker?.active && <span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ color: "#9b2c2c", background: "#fff0f0" }}>Blocaj</span>}</div> : it[c.key] || "—"}</td>)}
+                    {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{c.key === "status" && statusOptions.length ? <div className="inline-flex items-center gap-2"><select aria-label={`Stadiul ${key === "prosumator" ? "dosar" : "înregistrării"} ${it.number || it.title || ""}`} data-testid={`status-${it.id}`} className="cursor-pointer rounded-full border-0 px-2.5 py-1 text-[11px] font-bold focus:ring-2 focus:ring-blue-400" style={{ background: "#edf7f0", color: "var(--green)", maxWidth: "100%" }} value={(key === "prosumator" ? displayStatus(it) : it.status) || ""} onClick={(e) => e.stopPropagation()} onChange={(e) => changeStatus(it, e.target.value)}><option value="" disabled>Alege stadiul</option>{statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select>{key === "prosumator" && it.blocker?.active && <span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ color: "#9b2c2c", background: "#fff0f0" }}>Blocaj</span>}</div> : c.key === "blocker" ? (it.blocker?.active ? <span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ color: "#9b2c2c", background: "#fff0f0" }}>{it.blocker.title || "Activ"}</span> : "—") : it[c.key] || "—"}</td>)}
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       <button onClick={() => openEdit(it)} data-testid={`edit-${it.id}`} className="p-1.5 rounded hover:bg-[#eef4ff]" title="Editează"><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
                       {canDelete && <button onClick={() => remove(it.id)} data-testid={`delete-${it.id}`} className="p-1.5 rounded hover:bg-[#fff0f0] ml-1" title="Șterge"><Trash2 size={15} style={{ color: "#b33333" }} /></button>}
