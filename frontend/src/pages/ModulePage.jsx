@@ -28,6 +28,8 @@ import { F } from "@/components/cef/F";
 
 const PROSUM_STATUS_MAP = { "În pregătire": "CER", "Depus la operator": "Dosar depus", "ATR emis": "Factură ATR", "În execuție": "Așteaptă instalare", "Punere în funcțiune": "PV Teste / PIF", "Prosumator activ": "Finalizat" };
 const displayStatus = (item) => PROSUM_STATUS_MAP[item.status] || item.status || "CER";
+const RO_COUNTIES = ["Alba", "Arad", "Argeș", "Bacău", "Bihor", "Bistrița-Năsăud", "Botoșani", "Brăila", "Brașov", "București", "Buzău", "Călărași", "Caraș-Severin", "Cluj", "Constanța", "Covasna", "Dâmbovița", "Dolj", "Galați", "Giurgiu", "Gorj", "Harghita", "Hunedoara", "Ialomița", "Iași", "Ilfov", "Maramureș", "Mehedinți", "Mureș", "Neamț", "Olt", "Prahova", "Sălaj", "Satu Mare", "Sibiu", "Suceava", "Teleorman", "Timiș", "Tulcea", "Vâlcea", "Vaslui", "Vrancea"];
+const LOCATION_FIELDS = ["address", "county", "locality", "pod", "operator", "supplier", "bransament_kw", "supply", "cadastral_nr", "cf_nr"];
 
 function Field({ f, value, onChange, refOptions, ai, allowNewReference = false }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
@@ -95,7 +97,7 @@ function QuickEquipment({ form, catalog, onChange }) {
   const byId = (id, category) => options(category).find((item) => item.id === id);
   const setInv = (patch, legacy = {}) => {
     const nextInv = { ...inv, ...patch };
-    const nextCef = { ...cef, inverters: [nextInv, ...(cef.inverters || []).slice(1)] };
+    const nextCef = { ...cef, grid: { ...(cef.grid || {}), ...(form.supply ? { supply: form.supply } : {}) }, inverters: [nextInv, ...(cef.inverters || []).slice(1)] };
     const number = (value) => Number(String(value ?? "").replace(",", ".")) || 0;
     const configured = nextCef.inverters.filter((item) => item.brand_model || item.catalog_id);
     const panelCount = configured.reduce((sum, item) => sum + (item.strings || []).reduce((n, string) => n + number(string.panels), 0), 0);
@@ -123,8 +125,8 @@ function QuickEquipment({ form, catalog, onChange }) {
     setInv({ catalog_id: item.id, brand_model: item.brand_model, type: item.type || "Hibrid", phases: item.phases || form.supply || "Trifazat",
       p_nom_kw: item.p_nom_kw, p_max_kw: item.p_max_kw || item.p_nom_kw, vdc_max: item.vdc_max, mppt_min: item.mppt_min,
       mppt_max: item.mppt_max, mppt_count: item.mppt_count || 1, imax_mppt: item.imax_mppt,
-      ac: { cable_type: "RVK", material: "Cu", install: "C", ...(inv.ac || {}) },
-      dc: { cable_type: "H1Z2Z2-K", material: "Cu", ...(inv.dc || {}) },
+      ac: { cable_type: "RVK", material: "Cu", install: "C", section: 6, ...(inv.ac || {}) },
+      dc: { cable_type: "H1Z2Z2-K", material: "Cu", section: 6, ...(inv.dc || {}) },
       strings: inv.strings || [], battery_mode: inv.battery_mode || "none" },
     { inverter: item.brand_model, inverter_kw: item.p_nom_kw || "", inverter_count: 1, supply: item.phases || form.supply || "Trifazat",
       system_type: inv.battery_mode === "own" || inv.battery_mode === "shared" ? "Hibrid cu baterie" : "On-grid", power: item.p_nom_kw || "" });
@@ -280,6 +282,7 @@ export default function ModulePage({ moduleKey }) {
   const [diuPre, setDiuPre] = useState(false);
   const [prosumStep, setProsumStep] = useState(1);
   const [newProsumClient, setNewProsumClient] = useState(false);
+  const [newProsumLocation, setNewProsumLocation] = useState(true);
   const [equipmentCatalog, setEquipmentCatalog] = useState([]);
   const [dossierPage, setDossierPage] = useState("all");
   const [dossierView, setDossierView] = useState("kanban");
@@ -310,10 +313,11 @@ export default function ModulePage({ moduleKey }) {
     // eslint-disable-next-line
   }, [key]);
 
-  const openNew = () => { const today = new Date().toISOString().slice(0, 10); setForm(key === "prosumator" ? { date: today, doc_date: today, status: "CER", kind: "Persoană fizică", afm: "Nu" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setDossierPage("all"); };
+  const openNew = () => { const today = new Date().toISOString().slice(0, 10); setForm(key === "prosumator" ? { date: today, doc_date: today, status: "CER", kind: "Persoană fizică", afm: "Nu" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setNewProsumLocation(true); setDossierPage("all"); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("all"); };
   const setVal = (name, value) => setForm((p) => {
     const next = { ...p, [name]: value };
+    if (key === "prosumator" && name === "supply") next.cef = { ...(p.cef || {}), grid: { ...(p.cef?.grid || {}), supply: value } };
     if (name === "address_same_as_hq" && value) next.address = p.hq_address || "";
     if (name === "hq_address" && p.address_same_as_hq) next.address = value;
     if (name === "address" && value !== p.hq_address) next.address_same_as_hq = false;
@@ -342,19 +346,13 @@ export default function ModulePage({ moduleKey }) {
   });
   const continueProsum = () => {
     if (prosumStep === 1 && !form.client_name?.trim()) { toast.error("Introdu numele beneficiarului sau alege un client existent."); return; }
-    if (prosumStep === 2 && !form.address?.trim() && !form.pod?.trim()) { toast.error("Completează adresa locului de consum; POD-ul salvat se completează automat."); return; }
+    if (prosumStep === 2 && (!form.address?.trim() || !form.county?.trim() || !form.locality?.trim())) { toast.error("Completează adresa, județul și localitatea locului de consum."); return; }
     if (prosumStep === 3 && !form.request_type) { toast.error("Alege tipul cererii."); return; }
     setProsumStep((s) => Math.min(3, s + 1));
   };
 
   const save = async () => {
     if (key === "prosumator" && !editId && !form.request_type) { toast.error("Alege tipul cererii înainte de creare."); return; }
-    if (key === "prosumator" && !editId) {
-      const inv = form.cef?.inverters?.[0] || {};
-      const panelCount = (inv.strings || []).reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
-      if (!inv.brand_model || !inv.p_nom_kw || !inv.panel_model || !inv.panel_w || panelCount < 1) { toast.error("Alege invertorul, panoul și numărul de panouri pe string."); return; }
-      if (inv.battery_mode === "own" && (!inv.battery?.model || !inv.battery?.modules)) { toast.error("Alege modelul bateriei și numărul de unități."); return; }
-    }
     const orig = items.find((i) => i.id === editId);
     if (key === "diu" && editId && form.status === "Predat beneficiarului" && orig?.status !== "Predat beneficiarului" && can(user, "ai_gpt")) { setDiuPre(true); return; }
     return doSave().catch(() => {});
@@ -363,18 +361,24 @@ export default function ModulePage({ moduleKey }) {
     const required = (cfg.fields || []).filter((f) => f.required);
     for (const f of required) { if (!form[f.name]) { toast.error(`Completează: ${f.label.replace(" *", "")}`); return; } }
     const payload = { ...form };
+    delete payload._location_key;
     if (cfg.checklist) payload.checklist = checks;
     try {
       if (editId) await api.put(`/data/${key}/${editId}`, payload);
       else if (key === "prosumator") {
         const created = await api.post("/import/prosumator", payload);
         let dossier = created.data;
-        try {
-          const applied = await api.post(`/sld/${created.data.id}/apply`, { cef: created.data.cef });
-          dossier = { ...created.data, cef: applied.data.cef };
-          toast.success("Dosar creat. Puterea, totalurile și propunerile tehnice disponibile au fost completate automat.");
-        } catch {
-          toast.warning("Dosarul a fost creat. Nu am putut aplica automat dimensionarea; o poți relua din schema monofilară.");
+        const hasEquipment = (created.data.cef?.inverters || []).some((inv) => inv.brand_model || inv.catalog_id);
+        if (hasEquipment) {
+          try {
+            const applied = await api.post(`/sld/${created.data.id}/apply`, { cef: created.data.cef });
+            dossier = { ...created.data, cef: applied.data.cef };
+            toast.success("Dosar creat. Valorile tehnice disponibile au fost calculate și pot fi verificate în dosar.");
+          } catch {
+            toast.warning("Dosarul a fost creat. Dimensionarea poate fi reluată după completarea echipamentelor.");
+          }
+        } else {
+          toast.success("Dosar creat. Alege echipamentele în secțiunea Instalație pentru a completa automat dimensionarea.");
         }
         setForm(dossier); setEditId(dossier.id); setChecks(dossier.checklist || {}); setProsumStep(1); setDossierPage("all"); load();
         return;
@@ -431,6 +435,17 @@ export default function ModulePage({ moduleKey }) {
   };
   const dragId = (e) => e.dataTransfer?.getData("text/plain");
   const optionValues = (key) => [...new Set(items.map((i) => i[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ro"));
+  const knownLocations = useMemo(() => {
+    if (key !== "prosumator" || !form?.client_name) return [];
+    const wanted = String(form.client_name).trim().toLocaleLowerCase("ro");
+    const seen = new Set();
+    return items.filter((item) => String(item.client_name || "").trim().toLocaleLowerCase("ro") === wanted && item.address)
+      .map((item) => {
+        const location = Object.fromEntries(LOCATION_FIELDS.map((field) => [field, item[field] || ""]));
+        const id = [location.address, location.county, location.locality, location.pod].join("|").toLocaleLowerCase("ro");
+        return { ...location, id };
+      }).filter((location) => { if (seen.has(location.id)) return false; seen.add(location.id); return true; });
+  }, [items, form?.client_name, key]);
 
   const checkedCount = cfg.checklist ? cfg.checklist.filter((c) => checks[c]).length : 0;
 
@@ -449,7 +464,7 @@ export default function ModulePage({ moduleKey }) {
               <div className="mb-4"><h2 className="text-lg font-bold">Dosar nou</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>3 pași scurți — restul datelor se completează apoi în dosar.</p></div>
             </div>
             <div className="grid grid-cols-3 gap-2 mb-5" aria-label={`Pasul ${prosumStep} din 3`}>
-              {["Client", "Adresă", "Sistem"].map((step, idx) => <div key={step} className={`rounded-lg border px-2 py-2 text-center text-[10px] sm:text-[11px] font-semibold ${prosumStep === idx + 1 ? "den-wizard-active" : ""}`} style={{ borderColor: prosumStep === idx + 1 ? "var(--green)" : "var(--line)", color: prosumStep === idx + 1 ? "var(--green)" : "var(--muted)", background: prosumStep === idx + 1 ? "#edf7f0" : "transparent" }}><span className="mr-1 inline-grid h-4 w-4 place-items-center rounded-full" style={{ background: prosumStep > idx + 1 ? "var(--green)" : "#eeeae1", color: prosumStep > idx + 1 ? "white" : "var(--muted)" }}>{prosumStep > idx + 1 ? "✓" : idx + 1}</span>{step}</div>)}
+              {["Client", "Loc de consum", "Tip cerere"].map((step, idx) => <div key={step} className={`rounded-lg border px-2 py-2 text-center text-[10px] sm:text-[11px] font-semibold ${prosumStep === idx + 1 ? "den-wizard-active" : ""}`} style={{ borderColor: prosumStep === idx + 1 ? "var(--green)" : "var(--line)", color: prosumStep === idx + 1 ? "var(--green)" : "var(--muted)", background: prosumStep === idx + 1 ? "#edf7f0" : "transparent" }}><span className="mr-1 inline-grid h-4 w-4 place-items-center rounded-full" style={{ background: prosumStep > idx + 1 ? "var(--green)" : "#eeeae1", color: prosumStep > idx + 1 ? "white" : "var(--muted)" }}>{prosumStep > idx + 1 ? "✓" : idx + 1}</span>{step}</div>)}
             </div>
           </> : <h2 className="text-lg font-bold mb-5">{editId ? (key === "prosumator" ? `Dosar ${form.number || "prosumator"} · documentație` : "Editează înregistrarea") : cfg.addLabel}</h2>}
           {key === "prosumator" && editId && <nav className="sticky top-[54px] z-20 mb-5 flex gap-2 overflow-x-auto border-b bg-white/95 pb-2 pt-1 backdrop-blur md:top-0" aria-label="Navigare în dosar">
@@ -466,15 +481,40 @@ export default function ModulePage({ moduleKey }) {
               <Field f={cfg.fields.find((field) => field.name === "client_name")} value={form.client_name} onChange={setVal} refOptions={refOptions} allowNewReference />
             </>}
             {prosumStep === 2 && <>
-              <Field f={cfg.fields.find((field) => field.name === "address")} value={form.address} onChange={setVal} refOptions={refOptions} />
-              <div className="sm:col-span-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>
-                {[form.pod, form.locality, form.county, form.operator].some(Boolean) ? <>Preluate automat: {[form.pod && `POD ${form.pod}`, form.locality, form.county, form.operator].filter(Boolean).join(" · ")}</> : "POD-ul, localitatea, județul, operatorul și datele clientului se preiau din aplicație când există; le poți corecta în dosar."}
+              <div className="sm:col-span-2 flex flex-wrap items-center gap-2" data-testid="prosum-location-mode">
+                <button type="button" onClick={() => setNewProsumLocation(false)} disabled={!knownLocations.length} className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-40" style={!newProsumLocation ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Loc de consum existent</button>
+                <button type="button" onClick={() => setNewProsumLocation(true)} className="rounded-lg border px-3 py-2 text-xs font-bold" style={newProsumLocation ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Loc de consum nou</button>
+                {!knownLocations.length && <span className="text-xs" style={{ color: "var(--muted)" }}>Nu există încă o locație salvată pentru acest client.</span>}
               </div>
+              {!newProsumLocation && <div className="den-field sm:col-span-2"><label>Alege locul de consum</label><select className="den-input" value={form._location_key || knownLocations.find((location) => location.address === form.address && location.county === form.county && location.locality === form.locality && location.pod === form.pod)?.id || ""} onChange={(e) => {
+                const found = knownLocations.find((location) => location.id === e.target.value);
+                if (found) setForm((current) => ({ ...current, ...Object.fromEntries(LOCATION_FIELDS.map((field) => [field, found[field]])), _location_key: found.id }));
+              }} data-testid="existing-location-select"><option value="">Alege locul de consum...</option>{knownLocations.map((location) => <option key={location.id} value={location.id}>{[location.address, location.locality, location.county, location.pod && `POD ${location.pod}`].filter(Boolean).join(" · ")}</option>)}</select></div>}
+              {newProsumLocation && <>
+                <Field f={cfg.fields.find((field) => field.name === "address")} value={form.address} onChange={setVal} refOptions={refOptions} />
+                <SameAddress form={form} setVal={setVal} />
+                <div className="den-field"><label htmlFor="new-dossier-county">Județ *</label><select id="new-dossier-county" className="den-input" value={form.county || ""} onChange={(e) => setVal("county", e.target.value)} data-testid="new-dossier-county"><option value="">Alege județul</option>{form.county && !RO_COUNTIES.includes(form.county) && <option value={form.county}>{form.county}</option>}{RO_COUNTIES.map((county) => <option key={county}>{county}</option>)}</select></div>
+                <Field f={cfg.fields.find((field) => field.name === "locality")} value={form.locality} onChange={setVal} refOptions={refOptions} />
+              </>}
+              <details className="sm:col-span-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
+                <summary className="cursor-pointer text-xs font-bold">Detalii opționale de pe factură sau ATR</summary>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <Field f={cfg.fields.find((field) => field.name === "pod")} value={form.pod} onChange={setVal} refOptions={refOptions} />
+                  <Field f={cfg.fields.find((field) => field.name === "operator")} value={form.operator} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "bransament_kw", label: "Putere aprobată (kW)", type: "number" }} value={form.bransament_kw} onChange={setVal} refOptions={refOptions} />
+                  <Field f={cfg.fields.find((field) => field.name === "supplier")} value={form.supplier} onChange={setVal} refOptions={refOptions} />
+                  <Field f={cfg.fields.find((field) => field.name === "cadastral_nr")} value={form.cadastral_nr} onChange={setVal} refOptions={refOptions} />
+                  <Field f={cfg.fields.find((field) => field.name === "cf_nr")} value={form.cf_nr} onChange={setVal} refOptions={refOptions} />
+                </div>
+              </details>
+              <div className="sm:col-span-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Datele cunoscute despre client și locul de consum se preiau din dosarele existente. Echipamentele se completează după creare.</div>
             </>}
             {prosumStep === 3 && <>
               <div className="sm:col-span-2"><Field f={cfg.fields.find((field) => field.name === "request_type")} value={form.request_type} onChange={setVal} refOptions={refOptions} /></div>
-              <QuickEquipment form={form} catalog={equipmentCatalog} onChange={(patch) => setForm((current) => ({ ...current, ...patch }))} />
-              <div className="sm:col-span-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Data și valorile disponibile din catalog se completează automat. Datele lipsă rămân editabile în dosar și se verifică înainte de generarea documentelor.</div>
+              <Field f={cfg.fields.find((field) => field.name === "supply")} value={form.supply} onChange={setVal} refOptions={refOptions} />
+              <Field f={cfg.fields.find((field) => field.name === "date")} value={form.date} onChange={setVal} refOptions={refOptions} />
+              <label className="sm:col-span-2 flex items-center gap-2 rounded-lg border px-3 py-3 text-sm" style={{ borderColor: "var(--line)" }}><input type="checkbox" checked={form.afm === "Da"} onChange={(e) => setVal("afm", e.target.checked ? "Da" : "Nu")} data-testid="new-dossier-afm" /> Finanțare AFM (Casa Verde)</label>
+              <div className="sm:col-span-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Invertorul, panourile, stringurile și bateria se aleg în dosar. Documentele și schema se generează din datele completate și se verifică înainte de semnare.</div>
             </>}
           </div> : <div className="grid sm:grid-cols-2 gap-4">
             {cfg.fields.map((f, i) => {
@@ -505,7 +545,7 @@ export default function ModulePage({ moduleKey }) {
           )}
 
           {key === "prosumator" && editId && <div id="dossier-section-documents" className="scroll-mt-24"><DossierOpis id={editId} /><GeneratedDocs id={editId} files={form.files} /><SignRequests dossierId={editId} /></div>}
-          {key === "prosumator" && editId && <div id="dossier-section-equipment" className="mt-6 scroll-mt-24"><div className="flex items-center justify-between gap-3"><h3 className="font-bold text-base">Echipamente și parametri instalației</h3><button type="button" onClick={() => saveDossierSection("Echipamente")} className="rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }}>Salvează</button></div><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează invertorul, panourile și bateria; verificările tehnice se actualizează odată cu alegerile.</p><CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} /><SldPanel id={editId} form={form} setVal={setVal} /></div>}
+          {key === "prosumator" && editId && <div id="dossier-section-equipment" className="mt-6 scroll-mt-24"><div className="flex items-center justify-between gap-3"><h3 className="font-bold text-base">Echipamente și parametri instalației</h3><button type="button" onClick={() => saveDossierSection("Echipamente")} className="rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }}>Salvează</button></div><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Alege modelul și puterea din catalog. Stringurile, bateriile, totalurile și dimensionarea se actualizează pe baza selecției; verifică datele înainte de generarea documentelor.</p><QuickEquipment form={form} catalog={equipmentCatalog} onChange={(patch) => setForm((current) => ({ ...current, ...patch }))} /><details className="mt-4 rounded-xl border bg-white p-4" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-sm font-bold">Configurator tehnic avansat</summary><div className="mt-4"><CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} /></div></details><SldPanel id={editId} form={form} setVal={setVal} /></div>}
           {key === "prosumator" && editId && <div id="dossier-section-team" className="mt-6 scroll-mt-24"><div className="flex items-center justify-between gap-3"><h3 className="font-bold text-base">Echipă & semnături</h3><button type="button" onClick={() => saveDossierSection("Echipă & semnături")} className="rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }}>Salvează</button></div><DossierExtras form={form} setVal={setVal} view="team" /></div>}
           {key === "prosumator" && editId && <div id="dossier-section-pif-tools" className="mt-6 scroll-mt-24"><div className="mb-3 flex items-center justify-between gap-3"><h3 className="font-bold text-base">Reglaje și punere în funcțiune</h3><button type="button" onClick={() => saveDossierSection("Teste și PIF")} className="rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }}>Salvează</button></div><DossierExtras form={form} setVal={setVal} view="pif" /><PifPanel id={editId} /></div>}
           {key === "prosumator" && editId && <div id="dossier-section-messages" className="mt-6 space-y-4 scroll-mt-24"><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierMessages id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /></div>}
