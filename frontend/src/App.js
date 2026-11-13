@@ -27,6 +27,7 @@ const OperatorAttest = lazy(() => import("@/pages/OperatorAttest"));
 const AdminOperators = lazy(() => import("@/pages/AdminOperators"));
 const AnreDossiers = lazy(() => import("@/pages/AnreDossiers"));
 const PramRegistry = lazy(() => import("@/pages/PramRegistry"));
+const Harta = lazy(() => import("@/pages/Harta"));
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -63,6 +64,7 @@ function AppRoutes() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/clienti" element={<Gate feat={ROUTE_FEATURE["/clienti"]}><ModulePage moduleKey="clients" /></Gate>} />
         <Route path="/prosumator" element={<Gate feat={ROUTE_FEATURE["/prosumator"]}><ModulePage moduleKey="prosumator" /></Gate>} />
+        <Route path="/harta" element={<Harta />} />
         <Route path="/diu" element={<Gate feat={ROUTE_FEATURE["/diu"]}><ModulePage moduleKey="diu" /></Gate>} />
         <Route path="/lucrari" element={<Gate feat={ROUTE_FEATURE["/lucrari"]}><ModulePage moduleKey="works" /></Gate>} />
         <Route path="/mono" element={<Gate feat={ROUTE_FEATURE["/mono"]}><ModulePage moduleKey="mono" /></Gate>} />
