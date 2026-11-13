@@ -123,8 +123,8 @@ function QuickEquipment({ form, catalog, onChange }) {
     setInv({ catalog_id: item.id, brand_model: item.brand_model, type: item.type || "Hibrid", phases: item.phases || form.supply || "Trifazat",
       p_nom_kw: item.p_nom_kw, p_max_kw: item.p_max_kw || item.p_nom_kw, vdc_max: item.vdc_max, mppt_min: item.mppt_min,
       mppt_max: item.mppt_max, mppt_count: item.mppt_count || 1, imax_mppt: item.imax_mppt,
-      ac: { cable_type: "RVK", material: "Cu", install: "C", section: 6, ...(inv.ac || {}) },
-      dc: { cable_type: "H1Z2Z2-K", material: "Cu", section: 6, ...(inv.dc || {}) },
+      ac: { cable_type: "RVK", material: "Cu", install: "C", ...(inv.ac || {}) },
+      dc: { cable_type: "H1Z2Z2-K", material: "Cu", ...(inv.dc || {}) },
       strings: inv.strings || [], battery_mode: inv.battery_mode || "none" },
     { inverter: item.brand_model, inverter_kw: item.p_nom_kw || "", inverter_count: 1, supply: item.phases || form.supply || "Trifazat",
       system_type: inv.battery_mode === "own" || inv.battery_mode === "shared" ? "Hibrid cu baterie" : "On-grid", power: item.p_nom_kw || "" });
@@ -368,8 +368,15 @@ export default function ModulePage({ moduleKey }) {
       if (editId) await api.put(`/data/${key}/${editId}`, payload);
       else if (key === "prosumator") {
         const created = await api.post("/import/prosumator", payload);
-        toast.success("Dosar creat. Poți continua completarea documentației mai jos.");
-        setForm(created.data); setEditId(created.data.id); setChecks(created.data.checklist || {}); setProsumStep(1); setDossierPage("all"); load();
+        let dossier = created.data;
+        try {
+          const applied = await api.post(`/sld/${created.data.id}/apply`, { cef: created.data.cef });
+          dossier = { ...created.data, cef: applied.data.cef };
+          toast.success("Dosar creat. Puterea, totalurile și propunerile tehnice disponibile au fost completate automat.");
+        } catch {
+          toast.warning("Dosarul a fost creat. Nu am putut aplica automat dimensionarea; o poți relua din schema monofilară.");
+        }
+        setForm(dossier); setEditId(dossier.id); setChecks(dossier.checklist || {}); setProsumStep(1); setDossierPage("all"); load();
         return;
       }
       else await api.post(`/data/${key}`, payload);
