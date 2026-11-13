@@ -24,6 +24,7 @@ import { AiPrecheck } from "@/components/ai/AiPrecheck";
 import { can } from "@/lib/plan";
 import { DossierTimeline } from "@/components/dossier/DossierTimeline";
 import { DossierMessages } from "@/components/dossier/DossierMessages";
+import { F } from "@/components/cef/F";
 
 const PROSUM_STATUS_MAP = { "În pregătire": "CER", "Depus la operator": "Dosar depus", "ATR emis": "Factură ATR", "În execuție": "Așteaptă instalare", "Punere în funcțiune": "PV Teste / PIF", "Prosumator activ": "Finalizat" };
 const displayStatus = (item) => PROSUM_STATUS_MAP[item.status] || item.status || "CER";
@@ -50,61 +51,191 @@ function Field({ f, value, onChange, refOptions, ai, allowNewReference = false }
   );
 }
 
-const DOSSIER_SECTION_PAGE = {
-  "Client": "client",
-  "Loc de consum": "site",
-  "Cererea": "request",
-  "Date tehnice": "installation",
-  "Date documente dosar": "documents",
-  "Recepție la terminarea lucrărilor": "documents",
-  "Punere în funcțiune și teste": "documents",
-  "Buletin priză de pământ (valori măsurate)": "documents",
-  "Tablou general și alimentare": "documents",
-  "Recepție, punere în funcțiune și garanție": "documents",
-};
+function RequestLoads({ form, setVal }) {
+  const rows = form.receptors || [];
+  const number = (value) => Number(String(value ?? "").replace(",", ".")) || 0;
+  const total = rows.reduce((sum, row) => sum + number(row.kw) * Math.max(0, number(row.qty)), 0);
+  const requested = number(form.requested_consumption_kw);
+  const complete = rows.length > 0 && requested > 0 && Math.abs(total - requested) < 0.01;
+  const update = (index, name, value) => setVal("receptors", rows.map((row, i) => i === index ? { ...row, [name]: value } : row));
+  return <section className="sm:col-span-2 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#fffefa" }} data-testid="request-loads">
+    <div className="grid sm:grid-cols-2 gap-3">
+      <div className="den-field"><label>Putere maximă cerută pentru consum (kW)</label><input className="den-input" type="number" min="0" step="any" value={form.requested_consumption_kw ?? ""} onChange={(e) => setVal("requested_consumption_kw", e.target.value)} data-testid="requested-consumption" /></div>
+      <div className="den-field"><label>Putere aprobată existentă (kW)</label><input className="den-input" type="number" min="0" step="any" value={form.approved_consumption_kw ?? ""} onChange={(e) => setVal("approved_consumption_kw", e.target.value)} data-testid="approved-consumption" /></div>
+    </div>
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+      <div className="text-xs font-bold">Receptoare electrice</div>
+      <div className="text-xs font-bold" style={{ color: rows.length && requested ? (complete ? "#15803d" : "#a16207") : "var(--muted)" }} data-testid="receptor-total">
+        Σ {total.toFixed(2).replace(".", ",")} / {requested ? requested.toFixed(2).replace(".", ",") : "—"} kW{rows.length && requested ? (complete ? " ✓" : " · verifică totalul") : ""}
+      </div>
+    </div>
+    <div className="mt-2 space-y-2">
+      {rows.map((row, index) => <div key={row.id || index} className="grid grid-cols-12 gap-2" data-testid={`request-receptor-${index}`}>
+        <input className="den-input col-span-12 sm:col-span-6 min-w-0" aria-label={`Denumire receptor ${index + 1}`} placeholder="Denumire receptor" value={row.name || ""} onChange={(e) => update(index, "name", e.target.value)} />
+        <input className="den-input col-span-5 sm:col-span-3 min-w-0" aria-label={`Putere kW receptor ${index + 1}`} type="number" min="0" step="any" placeholder="kW/buc." value={row.kw ?? ""} onChange={(e) => update(index, "kw", e.target.value)} />
+        <input className="den-input col-span-5 sm:col-span-2 min-w-0" aria-label={`Cantitate receptor ${index + 1}`} type="number" min="1" step="1" placeholder="Buc." value={row.qty ?? 1} onChange={(e) => update(index, "qty", e.target.value)} />
+        <button type="button" className="col-span-2 sm:col-span-1 grid min-h-10 place-items-center rounded-lg border" style={{ borderColor: "var(--line)" }} aria-label={`Șterge receptorul ${index + 1}`} onClick={() => setVal("receptors", rows.filter((_, i) => i !== index))}><Trash2 size={14} style={{ color: "#b33333" }} /></button>
+      </div>)}
+    </div>
+    <button type="button" className="mt-3 inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--green)" }} onClick={() => setVal("receptors", [...rows, { id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, qty: 1 }])} data-testid="add-request-receptor"><Plus size={14} /> Adaugă receptor</button>
+  </section>;
+}
 
-function DossierFieldSections({ fields, page, form, setVal, refOptions, ai }) {
+function SameAddress({ form, setVal }) {
+  return <label className="flex items-center gap-2 text-xs font-medium sm:col-span-2" style={{ color: "var(--muted)" }} data-testid="same-as-hq-toggle">
+    <input type="checkbox" checked={!!form.address_same_as_hq} onChange={(e) => setVal("address_same_as_hq", e.target.checked)} />
+    Adresa locului de consum este aceeași cu domiciliul / sediul clientului
+  </label>;
+}
+
+function QuickEquipment({ form, catalog, onChange }) {
+  const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] };
+  const inv = cef.inverters?.[0] || {};
+  const options = (category) => catalog.filter((item) => item.category === category);
+  const byId = (id, category) => options(category).find((item) => item.id === id);
+  const setInv = (patch, legacy = {}) => {
+    const nextInv = { ...inv, ...patch };
+    const nextCef = { ...cef, inverters: [nextInv, ...(cef.inverters || []).slice(1)] };
+    onChange({ cef: nextCef, ...legacy });
+  };
+  const chooseInverter = (id) => {
+    const item = byId(id, "Invertor");
+    if (!item) return;
+    setInv({ catalog_id: item.id, brand_model: item.brand_model, type: item.type || "Hibrid", phases: item.phases || form.supply || "Trifazat",
+      p_nom_kw: item.p_nom_kw, p_max_kw: item.p_max_kw || item.p_nom_kw, vdc_max: item.vdc_max, mppt_min: item.mppt_min,
+      mppt_max: item.mppt_max, mppt_count: item.mppt_count || 1, imax_mppt: item.imax_mppt,
+      ac: { cable_type: "RVK", material: "Cu", install: "C", section: 6, ...(inv.ac || {}) },
+      dc: { cable_type: "H1Z2Z2-K", material: "Cu", section: 6, ...(inv.dc || {}) },
+      strings: inv.strings || [], battery_mode: inv.battery_mode || "none" },
+    { inverter: item.brand_model, inverter_kw: item.p_nom_kw || "", inverter_count: 1, supply: item.phases || form.supply || "Trifazat",
+      system_type: inv.battery_mode === "own" || inv.battery_mode === "shared" ? "Hibrid cu baterie" : "On-grid", power: item.p_nom_kw || "" });
+  };
+  const choosePanel = (id) => {
+    const item = byId(id, "Panou");
+    if (!item) return;
+    setInv({ panel_catalog_id: item.id, panel_model: item.brand_model, panel_w: item.w, panel_voc: item.voc,
+      panel_vmp: item.vmp, panel_isc: item.isc, panel_coef_voc: item.coef_voc },
+    { panels: item.brand_model, panel_w: item.w || "" });
+  };
+  const setStrings = (value) => {
+    const old = inv.strings || [];
+    const counts = value.split(",").map((part) => part.trim()).filter(Boolean);
+    const mpptCount = Math.max(1, Number(inv.mppt_count) || 1);
+    const strings = counts.map((part, i) => ({ ...(old[i] || {}), panels: Number(part) || "", mppt: old[i]?.mppt || (i % mpptCount) + 1 }));
+    const count = strings.reduce((sum, item) => sum + (Number(item.panels) || 0), 0);
+    setInv({ strings_text: value, strings }, { panel_count: count || "" });
+  };
+  const chooseBattery = (id) => {
+    const item = byId(id, "Baterie");
+    if (!item) {
+      setInv({ battery_mode: "none", battery: undefined }, { battery: "", battery_kwh: "", battery_v: "", battery_ah: "", system_type: "On-grid" });
+      return;
+    }
+    const modules = Math.max(1, Number(inv.battery?.modules) || 1);
+    const battery = { ...(inv.battery || {}), catalog_id: item.id, model: item.brand_model, kwh: item.kwh,
+      ah: item.ah, voltage: item.voltage, coupling: item.coupling || "DC", modules };
+    setInv({ battery_mode: "own", battery }, { battery: item.brand_model, battery_kwh: (Number(item.kwh) || 0) * modules || "",
+      battery_v: item.voltage || "", battery_ah: item.ah || "", system_type: "Hibrid cu baterie" });
+  };
+  const setBatteryModules = (value) => {
+    const modules = Math.max(1, Number(value) || 1);
+    const battery = { ...(inv.battery || {}), modules };
+    setInv({ battery }, { battery_kwh: (Number(battery.kwh) || 0) * modules || "" });
+  };
+  const selectedBatteryId = inv.battery_mode === "own" ? (inv.battery?.catalog_id || "manual") : "none";
+  return <section className="sm:col-span-2 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#fffefa" }} data-testid="new-dossier-equipment">
+    <div className="mb-3"><h3 className="font-bold text-base">Instalație fotovoltaică</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Alegi invertorul, panoul, stringurile și bateria dacă există. Puterile și datele cunoscute vin din catalog; valorile care depind de proiect se completează în dosar și se verifică tehnic.</p></div>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <F label="Invertor · model și putere" value={inv.catalog_id || (inv.brand_model ? "manual" : "")} options={[["manual", "Introduc manual modelul"], ...options("Invertor").map((item) => [item.id, `${item.brand_model} · ${item.p_nom_kw ?? "—"} kW`])]} onChange={(id) => {
+        if (id === "manual") setInv({ catalog_id: "", brand_model: inv.brand_model || "", p_nom_kw: inv.p_nom_kw || "" }); else chooseInverter(id);
+      }} testid="quick-inverter" />
+      {(!inv.catalog_id || inv.catalog_id === "manual") && <><F label="Model invertor" value={inv.brand_model} onChange={(v) => setInv({ brand_model: v }, { inverter: v })} testid="quick-inverter-model" /><F label="Putere invertor (kW)" type="number" value={inv.p_nom_kw} onChange={(v) => setInv({ p_nom_kw: v }, { inverter_kw: v, power: v })} testid="quick-inverter-power" /></>}
+      {inv.catalog_id && <div className="rounded-lg px-3 py-2 text-xs self-end" style={{ background: "#edf7f0", color: "var(--green)" }}>Putere preluată din catalog: <b>{inv.p_nom_kw || "—"} kW</b></div>}
+      <F label="Panou · model și putere" value={inv.panel_catalog_id || (inv.panel_model ? "manual" : "")} options={[["manual", "Introduc manual modelul"], ...options("Panou").map((item) => [item.id, `${item.brand_model} · ${item.w ?? "—"} W`])]} onChange={(id) => {
+        if (id === "manual") setInv({ panel_catalog_id: "", panel_model: inv.panel_model || "", panel_w: inv.panel_w || "" }); else choosePanel(id);
+      }} testid="quick-panel" />
+      {(!inv.panel_catalog_id || inv.panel_catalog_id === "manual") && <><F label="Model panou" value={inv.panel_model} onChange={(v) => setInv({ panel_model: v }, { panels: v })} testid="quick-panel-model" /><F label="Putere panou (W)" type="number" value={inv.panel_w} onChange={(v) => setInv({ panel_w: v }, { panel_w: v })} testid="quick-panel-power" /></>}
+      {inv.panel_catalog_id && <div className="rounded-lg px-3 py-2 text-xs self-end" style={{ background: "#edf7f0", color: "var(--green)" }}>Putere preluată din catalog: <b>{inv.panel_w || "—"} W</b></div>}
+      <div className="sm:col-span-2"><F label="Panouri pe stringuri (ex.: 12, 12)" value={inv.strings_text ?? (inv.strings || []).map((item) => item.panels).filter(Boolean).join(", ")} onChange={setStrings} testid="quick-strings" /><p className="mt-1 text-[10px]" style={{ color: "var(--muted)" }}>Un număr pentru fiecare string; distribuția pe MPPT se face automat.</p></div>
+      <F label="Baterie" value={selectedBatteryId} options={[["none", "Fără baterie"], ["manual", "Baterie introdusă manual"], ...options("Baterie").map((item) => [item.id, `${item.brand_model} · ${item.kwh ?? "—"} kWh`])]} onChange={(id) => {
+        if (id === "none") chooseBattery("");
+        else if (id === "manual") setInv({ battery_mode: "own", battery: { ...(inv.battery || {}), modules: inv.battery?.modules || 1 } }, { system_type: "Hibrid cu baterie" });
+        else chooseBattery(id);
+      }} testid="quick-battery" />
+      {selectedBatteryId !== "none" && <>
+        {selectedBatteryId === "manual" && <><F label="Model baterie" value={inv.battery?.model} onChange={(v) => setInv({ battery: { ...(inv.battery || {}), model: v } }, { battery: v })} testid="quick-battery-model" /><F label="Capacitate (kWh/modul)" type="number" value={inv.battery?.kwh} onChange={(v) => setInv({ battery: { ...(inv.battery || {}), kwh: v } }, { battery_kwh: (Number(v) || 0) * Math.max(1, Number(inv.battery?.modules) || 1) })} testid="quick-battery-power" /></>}
+        <F label="Număr unități baterie" type="number" value={inv.battery?.modules || 1} onChange={setBatteryModules} testid="quick-battery-units" />
+      </>}
+    </div>
+    {inv.strings?.length > 0 && <div className="mt-3 text-xs font-semibold" style={{ color: "var(--green)" }}>Total automat: {inv.strings.reduce((sum, item) => sum + (Number(item.panels) || 0), 0)} panouri · {(inv.strings.reduce((sum, item) => sum + (Number(item.panels) || 0), 0) * (Number(inv.panel_w) || 0) / 1000).toFixed(2)} kWp</div>}
+  </section>;
+}
+
+function DossierFieldSections({ fields, form, setVal, refOptions, ai, onSaveSection }) {
   const sections = [];
   let current = { label: "Date dosar", fields: [] };
-  const pushSection = (section) => {
-    if (section.label !== "Client și loc de consum") { sections.push(section); return; }
-    const siteFields = new Set(["address", "county", "locality", "pod", "operator", "cadastral_nr", "cf_nr", "supplier"]);
-    const client = section.fields.filter((field) => !siteFields.has(field.name));
-    const site = section.fields.filter((field) => siteFields.has(field.name));
-    if (client.length) sections.push({ label: "Client", fields: client });
-    if (site.length) sections.push({ label: "Loc de consum", fields: site });
-  };
   fields.forEach((field) => {
     if (field.type === "section") {
-      if (current.fields.length) pushSection(current);
+      if (current.fields.length) sections.push(current);
       current = { label: field.label, fields: [] };
     } else current.fields.push(field);
   });
-  if (current.fields.length) pushSection(current);
+  if (current.fields.length) sections.push(current);
 
+  const equipmentFields = new Set(["inverter", "inverter_kw", "inverter_count", "panels", "panel_count", "panel_w", "battery", "battery_kwh", "battery_v", "battery_ah"]);
   return <div className="space-y-4" data-testid="dossier-section-cards">
-    {sections.filter((section) => page === "all" || (["client", "site", "request", "installation", "documents"].includes(page) && (DOSSIER_SECTION_PAGE[section.label] || "client") === page)).map((section) => (
-      <section key={section.label} className="den-panel !p-0 overflow-hidden" data-testid={`dossier-section-${section.label}`}>
-        <div className="flex items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}>
+    {sections.map((section) => {
+      const visibleFields = section.label === "Date tehnice" ? section.fields.filter((field) => !equipmentFields.has(field.name)) : section.fields;
+      if (!visibleFields.length) return null;
+      const sectionId = ({ Client: "dossier-section-client", "Loc de consum": "dossier-section-location", Cererea: "dossier-section-request", "Date tehnice": "dossier-section-installation", "Date documente dosar": "dossier-section-documents-data", "Recepție la terminarea lucrărilor": "dossier-section-reception", "Punere în funcțiune și teste": "dossier-section-pif", "Buletin priză de pământ (valori măsurate)": "dossier-section-pram", "Tablou general și alimentare": "dossier-section-panel", "Recepție, punere în funcțiune și garanție": "dossier-section-warranty" })[section.label] || `dossier-section-${section.label.toLocaleLowerCase("ro").replace(/[^a-z0-9]+/g, "-")}`;
+      return (
+      <section key={section.label} id={sectionId} className="den-panel !p-0 overflow-hidden scroll-mt-24" data-testid={`dossier-section-${section.label}`}>
+        <div className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}>
+          <div className="flex min-w-0 items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} aria-hidden="true" />
           <h3 className="text-sm font-bold">{section.label}</h3>
+          </div>
+          <button type="button" onClick={() => onSaveSection(section.label)} className="shrink-0 rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }} data-testid={`save-section-${sectionId}`}>Salvează</button>
         </div>
+        {section.label === "Loc de consum" && <div className="px-4 sm:px-5"><SameAddress form={form} setVal={setVal} /></div>}
         <div className="grid sm:grid-cols-2 gap-4 p-4 sm:p-5">
-          {section.fields.map((field) => <Field key={field.name} f={field} value={form[field.name]} onChange={setVal} refOptions={refOptions} ai={ai} />)}
+          {visibleFields.map((field) => <Field key={field.name} f={field} value={form[field.name]} onChange={setVal} refOptions={refOptions} ai={ai} />)}
+          {section.label === "Cererea" && <RequestLoads form={form} setVal={setVal} />}
         </div>
       </section>
-    ))}
+      );
+    })}
   </div>;
 }
 
 function SummaryStrip({ form }) {
+  const inverters = form.cef?.inverters || [];
+  const asNumber = (value) => Number(String(value ?? "").replace(",", ".")) || 0;
+  const cefPanels = inverters.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, s) => n + asNumber(s.panels), 0), 0);
+  const cefKwp = inverters.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, s) => n + asNumber(s.panels) * asNumber(inv.panel_w) / 1000, 0), 0);
+  const cefExport = inverters.reduce((sum, inv) => sum + asNumber(inv.p_limit_kw || inv.p_nom_kw), 0);
+  const ownStorage = inverters.reduce((sum, inv) => sum + (inv.battery_mode === "own" ? asNumber(inv.battery?.kwh) * Math.max(1, asNumber(inv.battery?.modules)) : 0), 0);
+  const sharedIds = new Set(inverters.filter((inv) => inv.battery_mode === "shared").map((inv) => inv.shared_battery_id));
+  const sharedStorage = (form.cef?.shared_batteries || []).reduce((sum, battery) => sum + (sharedIds.has(battery.id) ? asNumber(battery.kwh) * Math.max(1, asNumber(battery.modules)) : 0), 0);
+  const fmt = (value) => Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2))).replace(".", ",");
+  const power = cefExport || asNumber(form.power);
+  const panelCount = cefPanels || asNumber(form.panel_count);
+  const batteryKwh = ownStorage + sharedStorage || asNumber(form.battery_kwh);
+  const inverterCount = inverters.length || asNumber(form.inverter_count);
+  const inverterKw = inverters.reduce((sum, inv) => sum + asNumber(inv.p_nom_kw), 0) || asNumber(form.inverter_kw);
+  const receptors = form.receptors || [];
+  const receptorKw = receptors.reduce((sum, item) => sum + asNumber(item.kw) * Math.max(0, asNumber(item.qty ?? 1)), 0);
+  const topology = inverters.some((inv) => inv.backup?.enabled) ? "Cu back-up" : "Rețea (fără back-up)";
   const metrics = [
     ["Stadiu", displayStatus(form)], ["Operator", form.operator || "Neales"],
-    ["Putere CEF", form.power ? `${form.power} kW` : "Necompletată"],
-    ["Panouri", form.panel_count ? `${form.panel_count} buc.` : "Necompletat"],
-    ["Stocare", form.battery_kwh ? `${form.battery_kwh} kWh` : "Fără baterie"],
+    ["Putere CEF", power ? `${fmt(power)} kW` : "Necompletată"],
+    ["Invertoare", inverterCount ? `${fmt(inverterCount)} buc. · ${fmt(inverterKw)} kW` : "Necompletat"],
+    ["Panouri", panelCount ? `${fmt(panelCount)} buc.${(cefKwp || asNumber(form._kwp)) ? ` · ${fmt(cefKwp || asNumber(form._kwp))} kWp` : ""}` : "Necompletat"],
+    ["Stocare", batteryKwh ? `${fmt(batteryKwh)} kWh` : "Fără baterie"],
+    ["Topologie", topology],
+    ["Σ receptoare", receptors.length ? `${fmt(receptorKw)} / ${form.requested_consumption_kw ? `${fmt(asNumber(form.requested_consumption_kw))} ` : ""}kW` : "Necompletate"],
   ];
-  return <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 rounded-xl border p-3 mb-5" style={{ borderColor: "var(--line)", background: "#fffefa" }} data-testid="dossier-live-summary">
+  return <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 rounded-xl border p-3 mb-5" style={{ borderColor: "var(--line)", background: "#fffefa" }} data-testid="dossier-live-summary">
     {metrics.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg px-3 py-2" style={{ background: "var(--bg)" }}>
       <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>{label}</div>
       <div className="mt-1 truncate text-xs font-bold" title={value}>{value}</div>
@@ -130,8 +261,9 @@ export default function ModulePage({ moduleKey }) {
   const [diuPre, setDiuPre] = useState(false);
   const [prosumStep, setProsumStep] = useState(1);
   const [newProsumClient, setNewProsumClient] = useState(false);
-  const [dossierPage, setDossierPage] = useState("client");
-  const [dossierView, setDossierView] = useState("list");
+  const [equipmentCatalog, setEquipmentCatalog] = useState([]);
+  const [dossierPage, setDossierPage] = useState("all");
+  const [dossierView, setDossierView] = useState("kanban");
   const [operatorFilter, setOperatorFilter] = useState("");
   const [countyFilter, setCountyFilter] = useState("");
   const [localityFilter, setLocalityFilter] = useState("");
@@ -140,13 +272,9 @@ export default function ModulePage({ moduleKey }) {
 
   const load = () => api.get(`/data/${key}`).then((r) => {
     setItems(r.data);
-    const params = new URLSearchParams(window.location.search);
-    const eid = params.get("edit");
+    const eid = new URLSearchParams(window.location.search).get("edit");
     const it = eid && r.data.find((x) => x.id === eid);
-    const startNew = key === "prosumator" && params.get("new") === "1";
-    if (it) { setForm({ ...it }); setEditId(it.id); setChecks(it.checklist || {}); setDossierPage("all"); }
-    else if (startNew) { setForm({ doc_date: new Date().toISOString().slice(0, 10), status: "CER", kind: "Persoană fizică" }); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setDossierPage("site"); }
-    if (it || startNew) window.history.replaceState(null, "", window.location.pathname);
+    if (it) { setForm({ ...it }); setEditId(it.id); setChecks(it.checklist || {}); window.history.replaceState(null, "", window.location.pathname); }
   }).catch(() => {});
 
   useEffect(() => {
@@ -159,34 +287,55 @@ export default function ModulePage({ moduleKey }) {
         setRefOptions((prev) => ({ ...prev, [ref]: r.data.map((x) => ({ id: x.id, label: MODULES[ref].display(x) })) }));
       }).catch(() => {});
     });
+    if (key === "prosumator") api.get("/data/catalog").then((r) => setEquipmentCatalog(r.data || [])).catch(() => setEquipmentCatalog([]));
     // eslint-disable-next-line
   }, [key]);
 
-  const openNew = () => { setForm(key === "prosumator" ? { doc_date: new Date().toISOString().slice(0, 10), status: "CER", kind: "Persoană fizică" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setDossierPage("site"); };
+  const openNew = () => { const today = new Date().toISOString().slice(0, 10); setForm(key === "prosumator" ? { date: today, doc_date: today, status: "CER", kind: "Persoană fizică", afm: "Nu" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setDossierPage("all"); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("all"); };
   const setVal = (name, value) => setForm((p) => {
     const next = { ...p, [name]: value };
+    if (name === "address_same_as_hq" && value) next.address = p.hq_address || "";
+    if (name === "hq_address" && p.address_same_as_hq) next.address = value;
+    if (name === "address" && value !== p.hq_address) next.address_same_as_hq = false;
     if (key === "prosumator" && name === "client_name") {
       const client = clientRecords.find((c) => c.name?.trim().toLocaleLowerCase() === value.trim().toLocaleLowerCase());
-      if (client) Object.assign(next, {
-        kind: client.kind || "Persoană fizică", cnp: client.idcode || "", ci_series: client.ci_series || "", regcom: client.regcom || "", bank: client.bank || "", iban: client.iban || "", rep_role: client.rep_role || "",
-        phone: client.phone || "", email: client.email || "", address: client.address || "",
-        hq_address: client.hq_address || "", county: client.county || "", locality: client.locality || "", pod: client.pod || "", operator: client.operator || "",
-        cadastral_nr: client.cadastral_nr || "", cf_nr: client.cf_nr || "", supplier: client.supplier || "", rep_name: client.rep_name || "",
+      const normalized = value.trim().toLocaleLowerCase();
+      const previousName = String(p.client_name || "").trim().toLocaleLowerCase();
+      const changedClient = previousName !== normalized;
+      const lastDossier = items.filter((item) => String(item.client_name || "").trim().toLocaleLowerCase() === normalized)
+        .sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")))[0] || {};
+      const pick = (clientValue, dossierValue, oldValue) => clientValue || dossierValue || (changedClient ? "" : oldValue) || "";
+      Object.assign(next, {
+        kind: pick(client?.kind, lastDossier.kind, p.kind) || "Persoană fizică",
+        cnp: pick(client?.idcode, lastDossier.cnp, p.cnp), ci_series: pick(client?.ci_series, lastDossier.ci_series, p.ci_series),
+        regcom: pick(client?.regcom, lastDossier.regcom, p.regcom), bank: pick(client?.bank, lastDossier.bank, p.bank),
+        iban: pick(client?.iban, lastDossier.iban, p.iban), rep_role: pick(client?.rep_role, lastDossier.rep_role, p.rep_role),
+        phone: pick(client?.phone, lastDossier.phone, p.phone), email: pick(client?.email, lastDossier.email, p.email),
+        address: pick(client?.address, lastDossier.address, p.address), hq_address: pick(client?.hq_address, lastDossier.hq_address, p.hq_address),
+        county: pick(client?.county, lastDossier.county, p.county), locality: pick(client?.locality, lastDossier.locality, p.locality),
+        pod: pick(client?.pod, lastDossier.pod, p.pod), operator: pick(client?.operator, lastDossier.operator, p.operator),
+        cadastral_nr: pick(client?.cadastral_nr, lastDossier.cadastral_nr, p.cadastral_nr), cf_nr: pick(client?.cf_nr, lastDossier.cf_nr, p.cf_nr),
+        supplier: pick(client?.supplier, lastDossier.supplier, p.supplier), rep_name: pick(client?.rep_name, lastDossier.rep_name, p.rep_name),
       });
     }
     return next;
   });
   const continueProsum = () => {
     if (prosumStep === 1 && !form.client_name?.trim()) { toast.error("Introdu numele beneficiarului sau alege un client existent."); return; }
-    if (prosumStep === 1 && !newProsumClient && !clientRecords.some((client) => client.name?.trim().toLocaleLowerCase() === form.client_name.trim().toLocaleLowerCase())) { toast.error("Alege un client existent sau selectează Client nou."); return; }
-    if (prosumStep === 2 && !form.address?.trim() && !form.pod?.trim()) { toast.error("Completează adresa locului de consum sau codul POD."); return; }
+    if (prosumStep === 2 && !form.address?.trim() && !form.pod?.trim()) { toast.error("Completează adresa locului de consum; POD-ul salvat se completează automat."); return; }
     if (prosumStep === 3 && !form.request_type) { toast.error("Alege tipul cererii."); return; }
     setProsumStep((s) => Math.min(3, s + 1));
   };
 
   const save = async () => {
     if (key === "prosumator" && !editId && !form.request_type) { toast.error("Alege tipul cererii înainte de creare."); return; }
+    if (key === "prosumator" && !editId) {
+      const inv = form.cef?.inverters?.[0] || {};
+      const panelCount = (inv.strings || []).reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
+      if (!inv.brand_model || !inv.p_nom_kw || !inv.panel_model || !inv.panel_w || panelCount < 1) { toast.error("Alege invertorul, panoul și numărul de panouri pe string."); return; }
+      if (inv.battery_mode === "own" && (!inv.battery?.model || !inv.battery?.modules)) { toast.error("Alege modelul bateriei și numărul de unități."); return; }
+    }
     const orig = items.find((i) => i.id === editId);
     if (key === "diu" && editId && form.status === "Predat beneficiarului" && orig?.status !== "Predat beneficiarului" && can(user, "ai_gpt")) { setDiuPre(true); return; }
     return doSave().catch(() => {});
@@ -209,6 +358,17 @@ export default function ModulePage({ moduleKey }) {
       if (key === "diu" && editId) { setSavedAt(Date.now()); load(); return; }
       setForm(null); setEditId(null); setChecks({}); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Eroare la salvare"); throw e; }
+  };
+
+  const saveDossierSection = async (label) => {
+    if (!editId) return;
+    try {
+      await api.put(`/data/prosumator/${editId}`, { ...form, checklist: checks });
+      toast.success(`${label}: salvat`);
+      await load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || `Nu am putut salva secțiunea „${label}”`);
+    }
   };
 
   const remove = async (id) => {
@@ -257,38 +417,41 @@ export default function ModulePage({ moduleKey }) {
         </div>} />
 
       {form && (
-        <div className="den-panel mb-6" data-testid="module-form">
+        <div className="den-panel mb-6 scroll-mt-20" id={key === "prosumator" && editId ? "dossier-top" : undefined} data-testid="module-form">
           {key === "prosumator" && !editId ? <>
             <div className="flex items-start justify-between gap-4 mb-5">
-              <div className="mb-4"><h2 className="text-lg font-bold">Dosar nou</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Alegi clientul, locul de consum și cererea; restul datelor le completezi după.</p></div>
+              <div className="mb-4"><h2 className="text-lg font-bold">Dosar nou</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>3 pași scurți — restul datelor se completează apoi în dosar.</p></div>
             </div>
             <div className="grid grid-cols-3 gap-2 mb-5" aria-label={`Pasul ${prosumStep} din 3`}>
-              {["Client", "Loc de consum", "Tip cerere"].map((step, idx) => <div key={step} className={`rounded-lg border px-2 py-2 text-center text-[10px] sm:text-[11px] font-semibold ${prosumStep === idx + 1 ? "den-wizard-active" : ""}`} style={{ borderColor: prosumStep === idx + 1 ? "var(--green)" : "var(--line)", color: prosumStep === idx + 1 ? "var(--green)" : "var(--muted)", background: prosumStep === idx + 1 ? "#edf7f0" : "transparent" }}><span className="mr-1 inline-grid h-4 w-4 place-items-center rounded-full" style={{ background: prosumStep > idx + 1 ? "var(--green)" : "#eeeae1", color: prosumStep > idx + 1 ? "white" : "var(--muted)" }}>{prosumStep > idx + 1 ? "✓" : idx + 1}</span>{step}</div>)}
+              {["Client", "Adresă", "Sistem"].map((step, idx) => <div key={step} className={`rounded-lg border px-2 py-2 text-center text-[10px] sm:text-[11px] font-semibold ${prosumStep === idx + 1 ? "den-wizard-active" : ""}`} style={{ borderColor: prosumStep === idx + 1 ? "var(--green)" : "var(--line)", color: prosumStep === idx + 1 ? "var(--green)" : "var(--muted)", background: prosumStep === idx + 1 ? "#edf7f0" : "transparent" }}><span className="mr-1 inline-grid h-4 w-4 place-items-center rounded-full" style={{ background: prosumStep > idx + 1 ? "var(--green)" : "#eeeae1", color: prosumStep > idx + 1 ? "white" : "var(--muted)" }}>{prosumStep > idx + 1 ? "✓" : idx + 1}</span>{step}</div>)}
             </div>
           </> : <h2 className="text-lg font-bold mb-5">{editId ? (key === "prosumator" ? `Dosar ${form.number || "prosumator"} · documentație` : "Editează înregistrarea") : cfg.addLabel}</h2>}
-          {key === "prosumator" && editId && <div className="mb-5 flex gap-2 overflow-x-auto border-b pb-2" role="tablist" aria-label="Pagini dosar">
-            {[ ["all", "Dosar complet"], ["client", "Client"], ["site", "Loc de consum"], ["request", "Cererea"], ["installation", "Instalație"], ["documents", "Acte & semnare"], ["equipment", "Echipamente"], ["team", "Echipă"], ["pif", "Teste și PIF"], ["other", "Mesaje & asignare"], ["timeline", "Jurnal"] ].map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={dossierPage === id} onClick={() => setDossierPage(id)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
-          </div>}
+          {key === "prosumator" && editId && <nav className="sticky top-[54px] z-20 mb-5 flex gap-2 overflow-x-auto border-b bg-white/95 pb-2 pt-1 backdrop-blur md:top-0" aria-label="Navigare în dosar">
+            {[ ["all", "Dosar complet", "dossier-top"], ["client", "Client", "dossier-section-client"], ["location", "Loc de consum", "dossier-section-location"], ["request", "Cererea", "dossier-section-request"], ["installation", "Instalație", "dossier-section-installation"], ["documents", "Acte & semnare", "dossier-section-documents"], ["equipment", "Echipamente", "dossier-section-equipment"], ["team", "Echipă", "dossier-section-team"], ["pif", "Teste și PIF", "dossier-section-pif"], ["other", "Mesaje", "dossier-section-messages"], ["timeline", "Jurnal", "dossier-section-timeline"] ].map(([id, label, target]) => <button key={id} type="button" aria-current={dossierPage === id ? "location" : undefined} onClick={() => { setDossierPage(id); document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
+          </nav>}
           {key === "prosumator" && editId && <SummaryStrip form={form} />}
-          {key === "prosumator" && !editId && prosumStep === 1 && <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="prosum-client-mode">
-            <button type="button" onClick={() => setNewProsumClient(false)} className="rounded-lg border px-3 py-2 text-xs font-bold" style={!newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client existent</button>
-            <button type="button" onClick={() => { setNewProsumClient(true); setForm((prev) => ({ ...prev, client_name: "", kind: "Persoană fizică", cnp: "", ci_series: "", regcom: "", phone: "", email: "", hq_address: "", bank: "", iban: "", rep_name: "", rep_role: "", address: "", county: "", locality: "", pod: "", operator: "", cadastral_nr: "", cf_nr: "", supplier: "" })); }} className="rounded-lg border px-3 py-2 text-xs font-bold" style={newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client nou</button>
-            {newProsumClient && <div className="flex gap-2"><button type="button" onClick={() => setVal("kind", "Persoană fizică")} className="rounded-lg border px-3 py-2 text-xs font-bold" style={form.kind === "Persoană fizică" ? { background: "#edf7f0", color: "var(--green)", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Persoană fizică</button><button type="button" onClick={() => setVal("kind", "Persoană juridică")} className="rounded-lg border px-3 py-2 text-xs font-bold" style={form.kind === "Persoană juridică" ? { background: "#edf7f0", color: "var(--green)", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Persoană juridică</button></div>}
-          </div>}
-          {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} page={dossierPage} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} /> : <div className="grid sm:grid-cols-2 gap-4">
+          {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} onSaveSection={saveDossierSection} /> : key === "prosumator" && !editId ? <div className="grid sm:grid-cols-2 gap-4" data-testid="new-dossier-simple-step">
+            {prosumStep === 1 && <>
+              <div className="sm:col-span-2 flex flex-wrap items-center gap-2" data-testid="prosum-client-mode">
+                <button type="button" onClick={() => setNewProsumClient(false)} className="rounded-lg border px-3 py-2 text-xs font-bold" style={!newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client existent</button>
+                <button type="button" onClick={() => { setNewProsumClient(true); setVal("client_name", ""); }} className="rounded-lg border px-3 py-2 text-xs font-bold" style={newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client nou</button>
+                {newProsumClient && <span className="text-xs" style={{ color: "var(--muted)" }}>Datele cunoscute se vor prelua automat din aplicație.</span>}
+              </div>
+              <Field f={cfg.fields.find((field) => field.name === "client_name")} value={form.client_name} onChange={setVal} refOptions={refOptions} allowNewReference />
+            </>}
+            {prosumStep === 2 && <>
+              <Field f={cfg.fields.find((field) => field.name === "address")} value={form.address} onChange={setVal} refOptions={refOptions} />
+              <div className="sm:col-span-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>
+                {[form.pod, form.locality, form.county, form.operator].some(Boolean) ? <>Preluate automat: {[form.pod && `POD ${form.pod}`, form.locality, form.county, form.operator].filter(Boolean).join(" · ")}</> : "POD-ul, localitatea, județul, operatorul și datele clientului se preiau din aplicație când există; le poți corecta în dosar."}
+              </div>
+            </>}
+            {prosumStep === 3 && <>
+              <div className="sm:col-span-2"><Field f={cfg.fields.find((field) => field.name === "request_type")} value={form.request_type} onChange={setVal} refOptions={refOptions} /></div>
+              <QuickEquipment form={form} catalog={equipmentCatalog} onChange={(patch) => setForm((current) => ({ ...current, ...patch }))} />
+              <div className="sm:col-span-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Data și valorile disponibile din catalog se completează automat. Datele lipsă rămân editabile în dosar și se verifică înainte de generarea documentelor.</div>
+            </>}
+          </div> : <div className="grid sm:grid-cols-2 gap-4">
             {cfg.fields.map((f, i) => {
-              if (key === "prosumator" && !editId) {
-                const steps = {
-                  1: ["client_name"],
-                  2: ["address", "county", "locality", "pod", "operator"],
-                  3: ["request_type", "supply", "afm"],
-                };
-                if (!steps[prosumStep].includes(f.name)) return null;
-                if (prosumStep === 1 && !newProsumClient && f.name !== "client_name") return null;
-                if (prosumStep === 1 && newProsumClient && f.name === "kind") return null;
-                if (prosumStep === 1 && newProsumClient && f.name === "regcom" && form.kind !== "Persoană juridică") return null;
-                if (prosumStep === 1 && newProsumClient && f.name === "rep_role" && form.kind !== "Persoană juridică") return null;
-              } else if (key === "prosumator" && !editId && f.type === "section") return null;
               return <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={setVal} refOptions={refOptions} allowNewReference={key === "prosumator" && f.name === "client_name"} ai={can(user, "ai_gpt") ? { module: key, form } : null} />;
             })}
           </div>}
@@ -298,8 +461,8 @@ export default function ModulePage({ moduleKey }) {
             {prosumStep < 3 ? <Btn onClick={continueProsum}>Continuă</Btn> : <Btn onClick={save} data-testid="save-btn"><Plus size={15} /> Creează dosarul</Btn>}
           </div>}
 
-          {cfg.checklist && (key !== "prosumator" || (!!editId && ["documents", "all"].includes(dossierPage))) && (
-            <div className="mt-6">
+          {cfg.checklist && (key !== "prosumator" || !!editId) && (
+            <div className="mt-6 scroll-mt-24" id={key === "prosumator" ? "dossier-section-checklist" : undefined}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-sm">Checklist documente — {cfg.title}</h3>
                 <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{ background: "#eef4ff", color: "var(--blue)" }}>{checkedCount} / {cfg.checklist.length} bifate</span>
@@ -315,13 +478,12 @@ export default function ModulePage({ moduleKey }) {
             </div>
           )}
 
-          {key === "prosumator" && editId && ["documents", "all"].includes(dossierPage) && <><DossierOpis id={editId} /><GeneratedDocs id={editId} files={form.files} /><SignRequests dossierId={editId} /></>}
-          {key === "prosumator" && editId && ["equipment", "all"].includes(dossierPage) && <><div className="mt-2"><h3 className="font-bold text-base">Echipamente și parametri instalației</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează modelul din catalog pentru a prelua datele tehnice și a verifica fișele disponibile.</p><CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} /></div><SldPanel id={editId} form={form} setVal={setVal} /></>}
-          {key === "prosumator" && editId && ["team", "all"].includes(dossierPage) && <DossierExtras form={form} setVal={setVal} view="team" />}
-          {key === "prosumator" && editId && dossierPage === "pif" && <DossierExtras form={form} setVal={setVal} view="pif" />}
-          {key === "prosumator" && editId && ["pif", "all"].includes(dossierPage) && <><h3 className="mt-6 font-bold text-base">Reglaje și punere în funcțiune</h3>{dossierPage === "all" && <DossierExtras form={form} setVal={setVal} view="pif" />}<PifPanel id={editId} /></>}
-          {key === "prosumator" && editId && ["other", "all"].includes(dossierPage) && <><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierMessages id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /></>}
-          {key === "prosumator" && editId && ["timeline", "all"].includes(dossierPage) && <DossierTimeline id={editId} />}
+          {key === "prosumator" && editId && <div id="dossier-section-documents" className="scroll-mt-24"><DossierOpis id={editId} /><GeneratedDocs id={editId} files={form.files} /><SignRequests dossierId={editId} /></div>}
+          {key === "prosumator" && editId && <div id="dossier-section-equipment" className="mt-6 scroll-mt-24"><div className="flex items-center justify-between gap-3"><h3 className="font-bold text-base">Echipamente și parametri instalației</h3><button type="button" onClick={() => saveDossierSection("Echipamente")} className="rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }}>Salvează</button></div><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Selectează invertorul, panourile și bateria; verificările tehnice se actualizează odată cu alegerile.</p><CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} /><SldPanel id={editId} form={form} setVal={setVal} /></div>}
+          {key === "prosumator" && editId && <div id="dossier-section-team" className="mt-6 scroll-mt-24"><div className="flex items-center justify-between gap-3"><h3 className="font-bold text-base">Echipă & semnături</h3><button type="button" onClick={() => saveDossierSection("Echipă & semnături")} className="rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }}>Salvează</button></div><DossierExtras form={form} setVal={setVal} view="team" /></div>}
+          {key === "prosumator" && editId && <div id="dossier-section-pif-tools" className="mt-6 scroll-mt-24"><div className="mb-3 flex items-center justify-between gap-3"><h3 className="font-bold text-base">Reglaje și punere în funcțiune</h3><button type="button" onClick={() => saveDossierSection("Teste și PIF")} className="rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }}>Salvează</button></div><DossierExtras form={form} setVal={setVal} view="pif" /><PifPanel id={editId} /></div>}
+          {key === "prosumator" && editId && <div id="dossier-section-messages" className="mt-6 space-y-4 scroll-mt-24"><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierMessages id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /></div>}
+          {key === "prosumator" && editId && <div id="dossier-section-timeline" className="mt-6 scroll-mt-24"><DossierTimeline id={editId} /></div>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
           {key === "atr" && <AtrDossier id={editId} form={form} setVal={setVal} />}
           {key === "diu" && editId && <DiuDossier id={editId} form={form} setVal={setVal} setForm={setForm} savedAt={savedAt} />}
@@ -348,8 +510,8 @@ export default function ModulePage({ moduleKey }) {
             <button onClick={() => setArchiveView(true)} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${archiveView ? "text-white" : ""}`} style={archiveView ? { background: "var(--navy)" } : { color: "var(--muted)" }} data-testid="view-archived-dossiers"><Archive size={13} /> Arhivate ({archiveCount})</button>
           </div>}
           {key === "prosumator" && <div className="flex rounded-lg border p-1" style={{ borderColor: "var(--line)" }}>
-            <button onClick={() => setDossierView("kanban")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${dossierView === "kanban" ? "text-white" : ""}`} style={dossierView === "kanban" ? { background: "var(--green)" } : { color: "var(--muted)" }} data-testid="view-kanban"><LayoutGrid size={14} /> Kanban</button>
-            <button onClick={() => setDossierView("list")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${dossierView === "list" ? "text-white" : ""}`} style={dossierView === "list" ? { background: "var(--green)" } : { color: "var(--muted)" }} data-testid="view-list"><List size={14} /> Listă</button>
+            <button onClick={() => setDossierView("kanban")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${dossierView === "kanban" ? "text-white" : ""}`} style={dossierView === "kanban" ? { background: "var(--navy)" } : { color: "var(--muted)" }} data-testid="view-kanban"><LayoutGrid size={14} /> Kanban</button>
+            <button onClick={() => setDossierView("list")} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[11px] font-bold ${dossierView === "list" ? "text-white" : ""}`} style={dossierView === "list" ? { background: "var(--navy)" } : { color: "var(--muted)" }} data-testid="view-list"><List size={14} /> Listă</button>
           </div>}
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
@@ -360,11 +522,8 @@ export default function ModulePage({ moduleKey }) {
 
         {key === "prosumator" && <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl p-3" style={{ background: "var(--bg)" }} data-testid="dossier-filters">
           <span className="mr-1 inline-flex items-center gap-1.5 self-center text-[11px] font-bold" style={{ color: "var(--muted)" }}><Filter size={14} /> Filtre</span>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrează după operator">
-            {optionValues("operator").map((op) => <button key={op} type="button" aria-pressed={operatorFilter === op} onClick={() => setOperatorFilter(operatorFilter === op ? "" : op)} className="rounded-full border px-3 py-2 text-[11px] font-bold transition-colors" style={operatorFilter === op ? { background: "var(--green)", color: "#fff", borderColor: "var(--green)" } : { background: "#fff", color: "var(--ink)", borderColor: "var(--line)" }} data-testid={`filter-operator-${op}`}>{op}</button>)}
-          </div>
-          {[["Județ", "county", countyFilter, setCountyFilter], ["Localitate", "locality", localityFilter, setLocalityFilter]].map(([label, field, value, set]) => <label key={field} className="den-field min-w-[150px]"><span className="sr-only">{label}</span><select className="den-input !py-2" value={value} onChange={(e) => set(e.target.value)} aria-label={label}><option value="">Toate — {label.toLowerCase()}</option>{optionValues(field).map((v) => <option key={v} value={v}>{v}</option>)}</select></label>)}
-          <label className="den-field min-w-[170px]"><span className="sr-only">Client</span><input className="den-input !py-2" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} placeholder="Client…" aria-label="Client" data-testid="filter-client" /></label>
+          {[["Operator", "operator", operatorFilter, setOperatorFilter], ["Județ", "county", countyFilter, setCountyFilter], ["Localitate", "locality", localityFilter, setLocalityFilter]].map(([label, field, value, set]) => <label key={field} className="den-field min-w-[150px] flex-1"><span className="sr-only">{label}</span><select className="den-input !py-2" value={value} onChange={(e) => set(e.target.value)} aria-label={label}><option value="">Toate — {label.toLowerCase()}</option>{optionValues(field).map((v) => <option key={v} value={v}>{v}</option>)}</select></label>)}
+          <label className="den-field min-w-[170px] flex-1"><span className="sr-only">Client</span><input className="den-input !py-2" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} placeholder="Client…" aria-label="Client" data-testid="filter-client" /></label>
           {(operatorFilter || countyFilter || localityFilter || clientFilter) && <button className="px-2 py-2 text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => { setOperatorFilter(""); setCountyFilter(""); setLocalityFilter(""); setClientFilter(""); }}>Șterge filtrele</button>}
           <span className="ml-auto self-center text-[11px]" style={{ color: "var(--muted)" }}>{filtered.length} / {items.length} dosare</span>
         </div>}
@@ -388,15 +547,15 @@ export default function ModulePage({ moduleKey }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="items-table">
               <thead>
-                <tr className="text-left" style={{ background: "var(--green)", color: "#fff" }}>
-                  {cfg.columns.map((c) => <th key={c.key} className="px-3 py-2.5 font-extrabold uppercase tracking-wider text-[10px] whitespace-nowrap">{c.label}</th>)}
+                <tr className="text-left" style={{ background: "#f8fafd", color: "var(--muted)" }}>
+                  {cfg.columns.map((c) => <th key={c.key} className="px-3 py-2.5 font-semibold text-[12px] whitespace-nowrap">{c.label}</th>)}
                   <th className="px-3 py-2.5 text-right"></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((it) => (
                   <tr key={it.id} className="border-t hover:bg-[#fafcff]" style={{ borderColor: "var(--line)" }}>
-                    {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{c.key === "status" && statusOptions.length ? <div className="inline-flex items-center gap-2"><select aria-label={`Stadiul ${key === "prosumator" ? "dosar" : "înregistrării"} ${it.number || it.title || ""}`} data-testid={`status-${it.id}`} className="cursor-pointer rounded-full border-0 px-2.5 py-1 text-[11px] font-bold focus:ring-2 focus:ring-blue-400" style={{ background: "#edf7f0", color: "var(--green)", maxWidth: "100%" }} value={(key === "prosumator" ? displayStatus(it) : it.status) || ""} onClick={(e) => e.stopPropagation()} onChange={(e) => changeStatus(it, e.target.value)}><option value="" disabled>Alege stadiul</option>{statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select>{key === "prosumator" && it.blocker?.active && <span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ color: "#9b2c2c", background: "#fff0f0" }}>Blocaj</span>}</div> : c.key === "blocker" ? (it.blocker?.active ? <span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ color: "#9b2c2c", background: "#fff0f0" }}>{it.blocker.title || "Activ"}</span> : "—") : it[c.key] || "—"}</td>)}
+                    {cfg.columns.map((c) => <td key={c.key} className="px-3 py-3 whitespace-nowrap">{key === "prosumator" && c.key === "status" ? <span className="inline-flex items-center gap-2"><span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: "#eef4ff", color: "#1d4ed8" }}>{displayStatus(it)}</span>{it.blocker?.active && <span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ color: "#9b2c2c", background: "#fff0f0" }}>Blocaj</span>}</span> : it[c.key] || "—"}</td>)}
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       <button onClick={() => openEdit(it)} data-testid={`edit-${it.id}`} className="p-1.5 rounded hover:bg-[#eef4ff]" title="Editează"><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
                       {canDelete && <button onClick={() => remove(it.id)} data-testid={`delete-${it.id}`} className="p-1.5 rounded hover:bg-[#fff0f0] ml-1" title="Șterge"><Trash2 size={15} style={{ color: "#b33333" }} /></button>}
