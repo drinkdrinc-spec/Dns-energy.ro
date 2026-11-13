@@ -22,7 +22,7 @@ export default function Layout() {
           <Outlet />
         </main>
         <nav className="den-mobile-nav md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-4 border-t px-2 pt-1.5 pb-[max(.45rem,env(safe-area-inset-bottom))]" aria-label="Navigare principală">
-          {[["/", "Acasă", Home], ["/prosumator", "Dosare", FolderKanban], ["/clienti", "Contacte", ContactRound], ["/catalog", "Catalog", BookOpen]].map(([to, label, Icon]) => <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => `flex flex-col items-center justify-center gap-0.5 rounded-lg py-1 text-[10px] font-semibold transition-colors ${isActive ? "den-mobile-active" : "den-mobile-inactive"}`} data-testid={`mobile-nav-${label.toLowerCase()}`}><Icon size={18} strokeWidth={2.1} /><span>{label}</span></NavLink>)}
+          {[["/", "Acasă", Home], ["/prosumator", "Dosare", FolderKanban], ["/clienti", "Contacte", ContactRound], ["/catalog-echipamente", "Catalog", BookOpen]].map(([to, label, Icon]) => <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => `flex flex-col items-center justify-center gap-0.5 rounded-lg py-1 text-[10px] font-semibold transition-colors ${isActive ? "den-mobile-active" : "den-mobile-inactive"}`} data-testid={`mobile-nav-${label.toLowerCase()}`}><Icon size={18} strokeWidth={2.1} /><span>{label}</span></NavLink>)}
         </nav>
       </div>
     </div>
