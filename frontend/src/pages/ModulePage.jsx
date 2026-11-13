@@ -179,6 +179,7 @@ export default function ModulePage({ moduleKey }) {
   });
   const continueProsum = () => {
     if (prosumStep === 1 && !form.client_name?.trim()) { toast.error("Introdu numele beneficiarului sau alege un client existent."); return; }
+    if (prosumStep === 1 && !newProsumClient && !clientRecords.some((client) => client.name?.trim().toLocaleLowerCase() === form.client_name.trim().toLocaleLowerCase())) { toast.error("Alege un client existent sau selectează Client nou."); return; }
     if (prosumStep === 2 && !form.address?.trim() && !form.pod?.trim()) { toast.error("Completează adresa locului de consum sau codul POD."); return; }
     if (prosumStep === 3 && !form.request_type) { toast.error("Alege tipul cererii."); return; }
     setProsumStep((s) => Math.min(3, s + 1));
@@ -271,7 +272,7 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && editId && <SummaryStrip form={form} />}
           {key === "prosumator" && !editId && prosumStep === 1 && <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="prosum-client-mode">
             <button type="button" onClick={() => setNewProsumClient(false)} className="rounded-lg border px-3 py-2 text-xs font-bold" style={!newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client existent</button>
-            <button type="button" onClick={() => { setNewProsumClient(true); setVal("client_name", ""); }} className="rounded-lg border px-3 py-2 text-xs font-bold" style={newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client nou</button>
+            <button type="button" onClick={() => { setNewProsumClient(true); setForm((prev) => ({ ...prev, client_name: "", kind: "Persoană fizică", cnp: "", ci_series: "", regcom: "", phone: "", email: "", hq_address: "", bank: "", iban: "", rep_name: "", rep_role: "", address: "", county: "", locality: "", pod: "", operator: "", cadastral_nr: "", cf_nr: "", supplier: "" })); }} className="rounded-lg border px-3 py-2 text-xs font-bold" style={newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client nou</button>
             {newProsumClient && <div className="flex gap-2"><button type="button" onClick={() => setVal("kind", "Persoană fizică")} className="rounded-lg border px-3 py-2 text-xs font-bold" style={form.kind === "Persoană fizică" ? { background: "#edf7f0", color: "var(--green)", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Persoană fizică</button><button type="button" onClick={() => setVal("kind", "Persoană juridică")} className="rounded-lg border px-3 py-2 text-xs font-bold" style={form.kind === "Persoană juridică" ? { background: "#edf7f0", color: "var(--green)", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Persoană juridică</button></div>}
           </div>}
           {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} page={dossierPage} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} /> : <div className="grid sm:grid-cols-2 gap-4">
