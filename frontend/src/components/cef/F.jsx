@@ -21,7 +21,7 @@ export function Check({ label, value, onChange, testid }) {
   );
 }
 
-export function CatalogPick({ items, category, onPick, testid, label = "Alege din catalog", selectedId }) {
+export function CatalogPick({ items, category, onPick, onManual, testid, label = "Alege din catalog", selectedId, selectedLabel }) {
   const [query, setQuery] = useState("");
   const list = useMemo(() => items.filter((i) => i.category === category
     && (!query || `${i.brand_model} ${i.type || ""} ${i.phases || ""}`.toLowerCase().includes(query.toLowerCase()))), [items, category, query]);
@@ -31,11 +31,13 @@ export function CatalogPick({ items, category, onPick, testid, label = "Alege di
     <div className="den-field">
       <label>{label}</label>
       <input className="den-input mb-1" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Caută marcă sau model..." aria-label={`Caută ${category}`} data-testid={`${testid}-search`} />
+      {query.trim() && !list.some((item) => item.brand_model?.trim().toLocaleLowerCase() === query.trim().toLocaleLowerCase()) && <button type="button" onClick={() => { onManual ? onManual(query.trim()) : onPick({ id: "", category, brand_model: query.trim(), manual: true }); setQuery(""); }} className="mb-1 rounded-md px-2 py-1 text-left text-[11px] font-bold" style={{ color: "var(--blue)", background: "#edf4ff" }}>Folosește „{query.trim()}” ca model introdus manual</button>}
       <select className="den-input" value={selectedId || ""} data-testid={testid} onChange={(e) => { const it = list.find((x) => x.id === e.target.value) || items.find((x) => x.id === e.target.value); if (it) onPick(it); }}>
         <option value="">— {list.length} modele {category.toLowerCase()} —</option>
         {selected && !list.some((i) => i.id === selected.id) && <option value={selected.id}>{selected.brand_model} · selectat</option>}
         {list.map((i) => <option key={i.id} value={i.id}>{i.brand_model} · {meta(i)}{i.datasheet && i.conformity ? " · documente complete" : " · documente lipsă"}</option>)}
       </select>
+      {!selectedId && selectedLabel && <p className="mt-1 text-[10px]" style={{ color: "#8a5a00" }}>Model introdus manual: {selectedLabel}. Verifică fișa oficială și completează datele tehnice.</p>}
       {selected && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]" style={{ color: "var(--muted)" }}>
         <span>{meta(selected)}</span>
         {selected.datasheet ? <a className="font-bold" style={{ color: "var(--blue)" }} href={fileUrl(selected.datasheet.storage_path)} target="_blank" rel="noreferrer">Fișă tehnică</a> : <span>Fișă tehnică lipsă</span>}

@@ -29,7 +29,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
         <button onClick={remove} className="p-1.5 rounded hover:bg-[#fff0f0]" data-testid={`${t}-remove`} title="Elimină invertorul"><Trash2 size={15} style={{ color: "#b33333" }} /></button>
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
-        <CatalogPick items={catalog} category="Invertor" selectedId={inv.catalog_id} label="Model invertor" testid={`${t}-pick`} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt })} />
+        <CatalogPick items={catalog} category="Invertor" selectedId={inv.catalog_id} selectedLabel={inv.brand_model} label="Model invertor" testid={`${t}-pick`} onManual={(model) => set({ ...inv, catalog_id: "", brand_model: model, type: "", phases: "", p_nom_kw: "", p_max_kw: "", vdc_max: "", mppt_min: "", mppt_max: "", mppt_count: "", imax_mppt: "" })} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt })} />
         <F label="Putere invertor (kW)" type="number" value={inv.p_nom_kw} onChange={s("p_nom_kw")} testid={`${t}-pnom`} />
       </div>
       <details className="mt-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
@@ -57,7 +57,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
 
       <Section title="Panouri și stringuri">
         <div className="grid sm:grid-cols-2 gap-3">
-          <CatalogPick items={catalog} category="Panou" selectedId={inv.panel_catalog_id} label="Model panou" testid={`${t}-panel-pick`} onPick={(it) => set({ ...inv, panel_catalog_id: it.id, panel_model: it.brand_model, panel_w: it.w, panel_voc: it.voc, panel_vmp: it.vmp, panel_isc: it.isc, panel_coef_voc: it.coef_voc })} />
+          <CatalogPick items={catalog} category="Panou" selectedId={inv.panel_catalog_id} selectedLabel={inv.panel_model} label="Model panou" testid={`${t}-panel-pick`} onManual={(model) => set({ ...inv, panel_catalog_id: "", panel_model: model, panel_w: "", panel_voc: "", panel_vmp: "", panel_isc: "", panel_coef_voc: "" })} onPick={(it) => set({ ...inv, panel_catalog_id: it.id, panel_model: it.brand_model, panel_w: it.w, panel_voc: it.voc, panel_vmp: it.vmp, panel_isc: it.isc, panel_coef_voc: it.coef_voc })} />
           <F label="Putere panou (W)" type="number" value={inv.panel_w} onChange={s("panel_w")} testid={`${t}-panel-w`} />
         </div>
         <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
@@ -91,7 +91,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           <F label="Baterie" value={inv.battery_mode || "none"} onChange={(v) => set({ ...inv, battery_mode: v, ...(v === "shared" && !inv.shared_battery_id && shared.length === 1 ? { shared_battery_id: shared[0].id } : {}) })} options={[["none", "Nu"], ["own", "Da"], ["shared", "Baterie comună"]]} testid={`${t}-bat-mode`} />
           {inv.battery_mode === "shared" && <F label="Baterie comună" value={inv.shared_battery_id} onChange={s("shared_battery_id")} options={shared.map((b, i) => [b.id, b.model || `Baterie comună ${i + 1}`])} testid={`${t}-bat-shared`} />}
           {inv.battery_mode === "own" && <>
-          <CatalogPick items={catalog} category="Baterie" selectedId={inv.battery?.catalog_id} label="Model baterie" testid={`${t}-bat-pick`} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, coupling: it.coupling || "DC", modules: inv.battery?.modules || 1 } })} />
+          <CatalogPick items={catalog} category="Baterie" selectedId={inv.battery?.catalog_id} selectedLabel={inv.battery?.model} label="Model baterie" testid={`${t}-bat-pick`} onManual={(model) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: "", model, kwh: "", ah: "", voltage: "", coupling: "", modules: inv.battery?.modules || 1 } })} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, coupling: it.coupling || "DC", modules: inv.battery?.modules || 1 } })} />
             <F label="Număr unități" type="number" value={inv.battery?.modules} onChange={sub("battery", "modules")} testid={`${t}-bat-modules`} />
           </>}
         </div>
