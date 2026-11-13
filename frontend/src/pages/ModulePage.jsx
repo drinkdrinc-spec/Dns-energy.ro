@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, API } from "@/lib/api";
 import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
 import { Plus, Pencil, Trash2, Search, X, LayoutGrid, List, Filter, ChevronRight, Archive } from "lucide-react";
@@ -208,7 +208,7 @@ function DossierFieldSections({ fields, form, setVal, refOptions, ai, onSaveSect
     {sections.map((section) => {
       const visibleFields = section.label === "Date tehnice" ? section.fields.filter((field) => !equipmentFields.has(field.name)) : section.fields;
       if (!visibleFields.length) return null;
-      const sectionId = ({ Client: "dossier-section-client", "Loc de consum": "dossier-section-location", Cererea: "dossier-section-request", "Date tehnice": "dossier-section-installation", "Date documente dosar": "dossier-section-documents-data", "Recepție la terminarea lucrărilor": "dossier-section-reception", "Punere în funcțiune și teste": "dossier-section-pif", "Buletin priză de pământ (valori măsurate)": "dossier-section-pram", "Tablou general și alimentare": "dossier-section-panel", "Recepție, punere în funcțiune și garanție": "dossier-section-warranty" })[section.label] || `dossier-section-${section.label.toLocaleLowerCase("ro").replace(/[^a-z0-9]+/g, "-")}`;
+      const sectionId = ({ Client: "dossier-section-client", "Client & date de identitate": "dossier-section-client", "Loc de consum": "dossier-section-location", Cererea: "dossier-section-request", "Date tehnice": "dossier-section-installation", "Date documente dosar": "dossier-section-documents-data", "Recepție la terminarea lucrărilor": "dossier-section-reception", "Punere în funcțiune și teste": "dossier-section-pif", "Buletin priză de pământ (valori măsurate)": "dossier-section-pram", "Tablou general și alimentare": "dossier-section-panel", "Recepție, punere în funcțiune și garanție": "dossier-section-warranty" })[section.label] || `dossier-section-${section.label.toLocaleLowerCase("ro").replace(/[^a-z0-9]+/g, "-")}`;
       return (
       <section key={section.label} id={sectionId} className="den-panel !p-0 overflow-hidden scroll-mt-24" data-testid={`dossier-section-${section.label}`}>
         <div className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}>
@@ -216,6 +216,7 @@ function DossierFieldSections({ fields, form, setVal, refOptions, ai, onSaveSect
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} aria-hidden="true" />
           <h3 className="text-sm font-bold">{section.label}</h3>
           </div>
+          {section.label === "Loc de consum" && form.pod && <span className="min-w-0 truncate text-xs" style={{ color: "var(--muted)" }}>{form.pod}</span>}
           <button type="button" onClick={() => onSaveSection(section.label)} className="shrink-0 rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }} data-testid={`save-section-${sectionId}`}>Salvează</button>
         </div>
         <div className="grid sm:grid-cols-2 gap-4 p-4 sm:p-5">
@@ -247,15 +248,15 @@ function SummaryStrip({ form }) {
   const receptorKw = receptors.reduce((sum, item) => sum + asNumber(item.kw) * Math.max(0, asNumber(item.qty ?? 1)), 0);
   const topology = inverters.some((inv) => inv.backup?.enabled) ? "Cu back-up" : "Rețea (fără back-up)";
   const metrics = [
-    ["Stadiu", displayStatus(form)], ["Operator", form.operator || "Neales"],
-    ["Putere CEF", power ? `${fmt(power)} kW` : "Necompletată"],
-    ["Invertoare", inverterCount ? `${fmt(inverterCount)} buc. · ${fmt(inverterKw)} kW` : "Necompletat"],
-    ["Panouri", panelCount ? `${fmt(panelCount)} buc.${(cefKwp || asNumber(form._kwp)) ? ` · ${fmt(cefKwp || asNumber(form._kwp))} kWp` : ""}` : "Necompletat"],
-    ["Stocare", batteryKwh ? `${fmt(batteryKwh)} kWh` : "Fără baterie"],
+    ["FV", cefKwp || asNumber(form._kwp) ? `${fmt(cefKwp || asNumber(form._kwp))} kWp` : "0 kWp"],
+    ["Invertoare", inverterCount ? `${fmt(inverterKw)} kW` : "0 kW"],
+    ["Putere CEF", power ? `${fmt(power)} kW` : "0 kW"],
+    ["Stocare", `${fmt(batteryKwh)} kWh`],
+    ["Panouri", fmt(panelCount)],
     ["Topologie", topology],
-    ["Σ receptoare", receptors.length ? `${fmt(receptorKw)} / ${form.requested_consumption_kw ? `${fmt(asNumber(form.requested_consumption_kw))} ` : ""}kW` : "Necompletate"],
+    ["Receptoare", receptors.length ? `${fmt(receptorKw)} kW` : "0 kW"],
   ];
-  return <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 rounded-xl border p-3 mb-5" style={{ borderColor: "var(--line)", background: "#fffefa" }} data-testid="dossier-live-summary">
+  return <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2 rounded-xl border p-3 mb-4" style={{ borderColor: "var(--line)", background: "#fffefa" }} data-testid="dossier-live-summary">
     {metrics.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg px-3 py-2" style={{ background: "var(--bg)" }}>
       <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "var(--muted)" }}>{label}</div>
       <div className="mt-1 truncate text-xs font-bold" title={value}>{value}</div>
@@ -476,11 +477,30 @@ export default function ModulePage({ moduleKey }) {
             <div className="grid grid-cols-3 gap-2 mb-5" aria-label={`Pasul ${prosumStep} din 3`}>
               {["Client", "Loc de consum", "Tip cerere"].map((step, idx) => <div key={step} className={`rounded-lg border px-2 py-2 text-center text-[10px] sm:text-[11px] font-semibold ${prosumStep === idx + 1 ? "den-wizard-active" : ""}`} style={{ borderColor: prosumStep === idx + 1 ? "var(--green)" : "var(--line)", color: prosumStep === idx + 1 ? "var(--green)" : "var(--muted)", background: prosumStep === idx + 1 ? "#edf7f0" : "transparent" }}><span className="mr-1 inline-grid h-4 w-4 place-items-center rounded-full" style={{ background: prosumStep > idx + 1 ? "var(--green)" : "#eeeae1", color: prosumStep > idx + 1 ? "white" : "var(--muted)" }}>{prosumStep > idx + 1 ? "✓" : idx + 1}</span>{step}</div>)}
             </div>
-          </> : <h2 className="text-lg font-bold mb-5">{editId ? (key === "prosumator" ? `Dosar ${form.number || "prosumator"} · documentație` : "Editează înregistrarea") : cfg.addLabel}</h2>}
+          </> : editId && key === "prosumator" ? <div className="mb-4" data-testid="dossier-detail-heading">
+            <button type="button" onClick={() => { setForm(null); setEditId(null); }} className="mb-3 text-xs font-medium" style={{ color: "var(--muted)" }}>← Dosare</button>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0"><div className="flex flex-wrap items-baseline gap-x-3 gap-y-1"><h2 className="text-xl font-extrabold" style={{ color: "var(--green)" }}>Dosar {form.number || `#${editId}`}</h2><span className="text-lg font-bold">{form.client_name || "Beneficiar neprecizat"}</span></div>
+                <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>{[form.locality, form.county].filter(Boolean).join(", ")}{form.operator ? ` · ${form.operator}` : ""}</p>
+                <div className="mt-2 flex flex-wrap gap-2"><span className="rounded-full px-3 py-1 text-[11px] font-bold" style={{ background: "#edf7f0", color: "var(--green)" }}>{displayStatus(form)}</span>{form.request_type && <span className="rounded-full px-3 py-1 text-[11px] font-bold" style={{ background: "#fff5e8", color: "#9a5c12" }}>{form.request_type}</span>}</div>
+              </div>
+              <Btn variant="secondary" onClick={() => remove(editId)}><Trash2 size={14} /> Șterge dosarul</Btn>
+            </div>
+          </div> : <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>}
           {key === "prosumator" && editId && <nav className="sticky top-[54px] z-20 mb-5 flex gap-2 overflow-x-auto border-b bg-white/95 pb-2 pt-1 backdrop-blur md:top-0" aria-label="Navigare în dosar">
             {[ ["all", "Dosar complet", "dossier-top"], ["client", "Client", "dossier-section-client"], ["location", "Loc de consum", "dossier-section-location"], ["request", "Cererea", "dossier-section-request"], ["installation", "Instalație", "dossier-section-installation"], ["documents", "Acte & semnare", "dossier-section-documents"], ["equipment", "Echipamente", "dossier-section-equipment"], ["team", "Echipă", "dossier-section-team"], ["pif", "Teste și PIF", "dossier-section-pif"], ["other", "Mesaje", "dossier-section-messages"], ["timeline", "Jurnal", "dossier-section-timeline"] ].map(([id, label, target]) => <button key={id} type="button" aria-current={dossierPage === id ? "location" : undefined} onClick={() => { setDossierPage(id); document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
           </nav>}
           {key === "prosumator" && editId && <SummaryStrip form={form} />}
+          {key === "prosumator" && editId && <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="dossier-quick-actions">
+            {[
+              ["schema", "Schema monofilară (PDF)", `/sld/${editId}/pdf?auth=${localStorage.getItem("den_token")}`],
+              ["dossier", "Dosar prosumator (PDF)", `/docs/all/${editId}?auth=${localStorage.getItem("den_token")}`],
+              ["pram", "Buletin PRAM", `/docs/buletin_priza/${editId}?auth=${localStorage.getItem("den_token")}`],
+              ["pv", "PV probe", `/docs/pv_teste/${editId}?auth=${localStorage.getItem("den_token")}`],
+            ].map(([id, label, path]) => <a key={id} href={`${API}${path}`} target="_blank" rel="noopener noreferrer" className="rounded-lg border bg-white px-3 py-3 text-left text-xs font-bold" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid={`dossier-quick-${id}`}>{label}</a>)}
+            <button type="button" onClick={() => document.getElementById("dossier-section-equipment")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="rounded-lg border bg-white px-3 py-3 text-left text-xs font-bold" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="dossier-quick-equipment">Echipamente</button>
+            <button type="button" onClick={() => document.getElementById("dossier-section-documents")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="rounded-lg border bg-white px-3 py-3 text-left text-xs font-bold" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="dossier-quick-documents">Acte & semnare</button>
+          </div>}
           {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} onSaveSection={saveDossierSection} /> : key === "prosumator" && !editId ? <div className="grid sm:grid-cols-2 gap-4" data-testid="new-dossier-simple-step">
             {prosumStep === 1 && <>
               {!newProsumClient && <div className="sm:col-span-2" data-testid="prosum-client-existing"><Field f={{ ...cfg.fields.find((field) => field.name === "client_name"), label: "Client existent" }} value={form.client_name} onChange={setVal} refOptions={refOptions} /></div>}
