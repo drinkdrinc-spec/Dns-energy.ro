@@ -348,6 +348,7 @@ export default function ModulePage({ moduleKey }) {
     if (prosumStep === 1 && !form.client_name?.trim()) { toast.error("Introdu numele beneficiarului sau alege un client existent."); return; }
     if (prosumStep === 2 && (!form.address?.trim() || !form.county?.trim() || !form.locality?.trim())) { toast.error("Completează adresa, județul și localitatea locului de consum."); return; }
     if (prosumStep === 3 && !form.request_type) { toast.error("Alege tipul cererii."); return; }
+    if (key === "prosumator" && prosumStep === 2 && !form.request_type) setForm((current) => ({ ...current, request_type: "Fără spor de putere" }));
     setProsumStep((s) => Math.min(3, s + 1));
   };
 
@@ -636,4 +637,5 @@ export default function ModulePage({ moduleKey }) {
     </div>
   );
 }
+
 
