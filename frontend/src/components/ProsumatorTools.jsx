@@ -5,11 +5,21 @@ import { Sparkles, FileDown, FileText, Paperclip, BookOpen } from "lucide-react"
 import { toast } from "sonner";
 
 const DOCS = [
-  ["notificare", "Notificare Anexa 2 (OD)"], ["imputernicire", "Împuternicire"],
-  ["declaratie_beneficiar", "Declarație beneficiar"], ["declaratie_executant", "Declarație executant"],
-  ["declaratie_conformitate", "Declarație de conformitate"], ["pv_receptie", "PV recepție lucrări"],
-  ["pv_pif", "PV punere în funcțiune"], ["buletin_priza", "Buletin priză de pământ"],
-  ["buletin_reglaj", "Buletin reglaj invertor"], ["declaratie_autenticitate", "Declarație autenticitate"],
+  ["notificare", "Notificare Anexa 2 pentru operator"],
+  ["date_stocare", "Date despre instalația de stocare"],
+  ["schema_cef", "Schema monofilară CEF"],
+  ["declaratie_afm", "Declarație accesare fonduri AFM"],
+  ["buletin_reglaj", "Buletin reglaj invertor"],
+  ["buletin_priza", "Buletin priză de pământ"],
+  ["pv_pif", "Proces-verbal de punere în funcțiune"],
+  ["pv_teste", "Proces-verbal teste și verificări PIF"],
+  ["pv_receptie", "Proces-verbal recepție lucrări"],
+  ["serii", "Anexă cu seriile echipamentelor"],
+  ["declaratie_executant", "Declarația executantului"],
+  ["declaratie_conformitate", "Declarație de conformitate"],
+  ["imputernicire", "Împuternicire"],
+  ["declaratie_autenticitate", "Declarație de autenticitate a datelor"],
+  ["declaratie_beneficiar", "Declarație beneficiar"],
 ];
 
 const docUrl = (type, id) => `${API}/docs/${type}/${id}?auth=${localStorage.getItem("den_token")}`;
@@ -69,29 +79,35 @@ function CatalogFiles({ id }) {
 }
 
 export function GeneratedDocs({ id, files }) {
+  const [showIndividual, setShowIndividual] = useState(false);
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="generated-docs">
-      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <h3 className="font-bold text-sm">Documente generate</h3>
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <div><h3 className="font-bold text-sm">Dosar generat automat</h3>
+          <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>PDF-ul complet include documentele disponibile, schema CEF și fișele tehnice din catalog.</p></div>
         {id && <a href={docUrl("all", id)} target="_blank" rel="noopener noreferrer" data-testid="doc-all">
-          <Btn><FileDown size={15} /> Dosar complet (PDF)</Btn>
+          <Btn><FileDown size={15} /> Generează dosarul complet (PDF)</Btn>
         </a>}
       </div>
-      {!id ? <p className="text-xs" style={{ color: "var(--muted)" }}>Salvează dosarul pentru a genera documentele.</p> : (
-        <div className="divide-y rounded-lg border bg-white px-3" style={{ borderColor: "var(--line)" }}>
+      {!id ? <p className="text-xs" style={{ color: "var(--muted)" }}>Salvează datele dosarului și configurația echipamentelor pentru generare.</p> : <>
+        <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>Nu trebuie să creezi și să reîncarci manual șabloanele DNS. Completează valorile reale de măsurare la PIF; aplicația nu le estimează.</p>
+        <button type="button" className="text-xs font-bold underline" style={{ color: "var(--blue)" }} onClick={() => setShowIndividual((v) => !v)} data-testid="docs-individual-toggle">
+          {showIndividual ? "Ascunde documentele individuale" : "Alege un document individual"}
+        </button>
+        {showIndividual && <div className="mt-2 divide-y rounded-lg border bg-white px-3" style={{ borderColor: "var(--line)" }}>
           {DOCS.map(([k, label]) => (
-            <a key={k} href={docUrl(k, id)} target="_blank" rel="noopener noreferrer" data-testid={`doc-${k}`}
-              className="flex items-center gap-2 py-2.5 text-sm font-medium hover:underline" style={{ color: "var(--green)", borderColor: "var(--line)" }}>
-              <FileDown size={15} /> {label}
+            <a key={k} href={docUrl(k, id)} target="_blank" rel="noopener noreferrer" data-testid={"doc-" + k}
+              className="flex items-center gap-2 py-2 text-sm font-medium hover:underline" style={{ color: "var(--green)", borderColor: "var(--line)" }}>
+              <FileDown size={14} /> {label}
             </a>
           ))}
-        </div>
-      )}
+        </div>}
+      </>}
       {id && <CatalogFiles id={id} />}
       {files?.length > 0 && (
         <div className="mt-3 text-xs flex flex-wrap gap-2">
           {files.map((f) => (
-            <a key={f.storage_path} href={`${API}/files/${f.storage_path}?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer"
+            <a key={f.storage_path} href={API + "/files/" + f.storage_path + "?auth=" + localStorage.getItem("den_token")} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1 underline" style={{ color: "var(--blue)" }} data-testid="attached-file">
               <Paperclip size={12} /> {f.original_filename}
             </a>
@@ -101,4 +117,5 @@ export function GeneratedDocs({ id, files }) {
     </div>
   );
 }
+
 
