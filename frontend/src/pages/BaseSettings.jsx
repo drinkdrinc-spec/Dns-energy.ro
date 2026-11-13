@@ -27,7 +27,7 @@ function FileSlot({ label, file, onFile, testid }) {
   );
 }
 
-const CO = [["company", "Denumire firmă"], ["cui", "CUI"], ["regcom", "Nr. Registrul Comerțului"], ["phone", "Telefon"], ["email", "E-mail"], ["address", "Adresă sediu", true],
+const CO = [["company", "Denumire firmă"], ["brand", "Brand aplicație"], ["rep", "Reprezentant legal"], ["cui", "CUI"], ["regcom", "Nr. Registrul Comerțului"], ["phone", "Telefon"], ["email", "E-mail"], ["iban", "IBAN încasări"], ["bank", "Banca"], ["address", "Adresă sediu", true],
   ["anre_attest", "Atestat ANRE — număr"], ["anre_category", "Atestat ANRE — tip/categorie"], ["anre_issuer", "Emitent"], ["anre_issued", "Data emiterii", false, "date"],
   ["anre_valid", "Valabil până la", false, "date"], ["warranty_months", "Garanție lucrări (luni)"], ["kit_bmp", "Text standard kit BMP (PV recepție)", true], ["kit_structure", "Text standard kit structură (PV recepție)", true],
   ["test_email", "E-mail pentru teste (primește toate e-mailurile dosarelor TEST; gol = nu se trimit)"]];
@@ -152,7 +152,7 @@ export default function BaseSettings() {
   const [tab, setTab] = useState("firma");
   return (
     <div>
-      <PageHeader eyebrow="Configurare" title="Setări de bază — Firmă, Personal și Autorizații" sub="Datele de aici se preiau automat în dosarele de prosumator după selectarea persoanelor și a aparatului." />
+      <PageHeader eyebrow="Configurare" title="Setări — Firmă, echipă și aparate" sub="Completează o singură dată datele firmei, autorizațiile și aparatele de măsură. Informațiile selectate se preiau în dosare și documente." />
       <div className="flex gap-2 flex-wrap mb-4">{TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} data-testid={`base-tab-${k}`} className="rounded-full px-4 py-2 text-[12px] font-bold border"
         style={k === tab ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>{l}</button>)}</div>
       {tab === "firma" && <Company />}
