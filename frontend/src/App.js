@@ -1,33 +1,33 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Layout from "@/components/Layout";
-import Login from "@/pages/Login";
-import ComingSoon from "@/pages/ComingSoon";
-import Dashboard from "@/pages/Dashboard";
-import ModulePage from "@/pages/ModulePage";
-import Documents from "@/pages/Documents";
-import Catalog from "@/pages/Catalog";
-import Operators from "@/pages/Operators";
-import Simulare from "@/pages/Simulare";
-import Settings from "@/pages/Settings";
-import EquipmentCatalog from "@/pages/EquipmentCatalog";
-import BaseSettings from "@/pages/BaseSettings";
-import SignPage from "@/pages/SignPage";
-import RemoteSigning from "@/pages/RemoteSigning";
-import Users from "@/pages/Users";
-import Subscription from "@/pages/Subscription";
-import AdminBilling from "@/pages/AdminBilling";
-import FormsRegistry from "@/pages/FormsRegistry";
-import PlatformModules from "@/pages/PlatformModules";
-import AiAssistant from "@/pages/AiAssistant";
-import Offers from "@/pages/Offers";
-import Contracts from "@/pages/Contracts";
-import OperatorAttest from "@/pages/OperatorAttest";
-import AdminOperators from "@/pages/AdminOperators";
-import AnreDossiers from "@/pages/AnreDossiers";
-import PramRegistry from "@/pages/PramRegistry";
+const Login = lazy(() => import("@/pages/Login"));
+const ComingSoon = lazy(() => import("@/pages/ComingSoon"));
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const ModulePage = lazy(() => import("@/pages/ModulePage"));
+const Documents = lazy(() => import("@/pages/Documents"));
+const Catalog = lazy(() => import("@/pages/Catalog"));
+const Operators = lazy(() => import("@/pages/Operators"));
+const Simulare = lazy(() => import("@/pages/Simulare"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const EquipmentCatalog = lazy(() => import("@/pages/EquipmentCatalog"));
+const BaseSettings = lazy(() => import("@/pages/BaseSettings"));
+const SignPage = lazy(() => import("@/pages/SignPage"));
+const RemoteSigning = lazy(() => import("@/pages/RemoteSigning"));
+const Users = lazy(() => import("@/pages/Users"));
+const Subscription = lazy(() => import("@/pages/Subscription"));
+const AdminBilling = lazy(() => import("@/pages/AdminBilling"));
+const FormsRegistry = lazy(() => import("@/pages/FormsRegistry"));
+const PlatformModules = lazy(() => import("@/pages/PlatformModules"));
+const AiAssistant = lazy(() => import("@/pages/AiAssistant"));
+const Offers = lazy(() => import("@/pages/Offers"));
+const Contracts = lazy(() => import("@/pages/Contracts"));
+const OperatorAttest = lazy(() => import("@/pages/OperatorAttest"));
+const AdminOperators = lazy(() => import("@/pages/AdminOperators"));
+const AnreDossiers = lazy(() => import("@/pages/AnreDossiers"));
+const PramRegistry = lazy(() => import("@/pages/PramRegistry"));
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -55,6 +55,7 @@ function AfterLogin() {
 function AppRoutes() {
   const { user } = useAuth();
   return (
+    <Suspense fallback={<div className="min-h-screen grid place-items-center text-sm text-slate-400" data-testid="page-loading">Se încarcă pagina...</div>}>
     <Routes>
       <Route path="/login" element={user ? <AfterLogin /> : <Login allowRegister={!PRIVATE_LAUNCH} />} />
       <Route path="/semneaza/:token" element={<SignPage />} />
@@ -93,6 +94,7 @@ function AppRoutes() {
       </Route>
       <Route path="*" element={PRIVATE_LAUNCH && !user ? <ComingSoon /> : <Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 
