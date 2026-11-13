@@ -313,7 +313,7 @@ export default function ModulePage({ moduleKey }) {
     // eslint-disable-next-line
   }, [key]);
 
-  const openNew = () => { const today = new Date().toISOString().slice(0, 10); setForm(key === "prosumator" ? { date: today, doc_date: today, status: "CER", kind: "Persoană fizică", afm: "Nu" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setNewProsumLocation(true); setDossierPage("all"); };
+  const openNew = () => { const today = new Date().toISOString().slice(0, 10); setForm(key === "prosumator" ? { date: today, doc_date: today, status: "CER", kind: "Persoană fizică", request_type: "Fără spor de putere", afm: "Nu" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setNewProsumLocation(true); setDossierPage("all"); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("all"); };
   const setVal = (name, value) => setForm((p) => {
     const next = { ...p, [name]: value };
