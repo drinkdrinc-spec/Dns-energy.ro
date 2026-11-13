@@ -198,13 +198,13 @@ function DossierFieldSections({ fields, form, setVal, refOptions, ai, onSaveSect
   fields.forEach((field) => {
     if (field.type === "section") {
       if (current.fields.length) sections.push(current);
-  const orderedSections = sectionLabels
-    ? sectionLabels.map((label) => sections.find((section) => section.label === label)).filter(Boolean)
-    : sections;
       current = { label: field.label, fields: [] };
     } else current.fields.push(field);
   });
   if (current.fields.length) sections.push(current);
+  const orderedSections = sectionLabels
+    ? sectionLabels.map((label) => sections.find((section) => section.label === label)).filter(Boolean)
+    : sections;
 
   const equipmentFields = new Set(["inverter", "inverter_kw", "inverter_count", "panels", "panel_count", "panel_w", "battery", "battery_kwh", "battery_v", "battery_ah"]);
   return <div className="space-y-4" data-testid="dossier-section-cards">
