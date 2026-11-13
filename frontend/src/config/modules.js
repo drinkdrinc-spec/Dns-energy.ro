@@ -48,8 +48,15 @@ export const MODULES = {
     addLabel: "Dosar nou",
     display: (i) => i.number || i.client_name || "Dosar prosumator",
     columns: [
-      { key: "number", label: "Nr. dosar" }, { key: "client_name", label: "Beneficiar" },
-      { key: "power", label: "Putere PV (kW)" }, { key: "operator", label: "Operator" }, { key: "status", label: "Stadiu" },
+      { key: "number", label: "Nr." },
+      { key: "client_name", label: "Client" },
+      { key: "pod", label: "POD" },
+      { key: "operator", label: "Distribuitor" },
+      { key: "request_type", label: "Tip" },
+      { key: "power", label: "kWp" },
+      { key: "inverter_kw", label: "kW inv." },
+      { key: "status", label: "Status" },
+      { key: "blocker", label: "Blocaje" },
     ],
     checklist: [
       "Cerere de racordare (prosumator)", "Act de identitate / documente firmă", "Act de proprietate / folosință",
