@@ -29,14 +29,14 @@ import { F } from "@/components/cef/F";
 const PROSUM_STATUS_MAP = { "În pregătire": "CER", "Depus la operator": "Dosar depus", "ATR emis": "Factură ATR", "În execuție": "Așteaptă instalare", "Punere în funcțiune": "PV Teste / PIF", "Prosumator activ": "Finalizat" };
 const displayStatus = (item) => PROSUM_STATUS_MAP[item.status] || item.status || "CER";
 const RO_COUNTIES = ["Alba", "Arad", "Argeș", "Bacău", "Bihor", "Bistrița-Năsăud", "Botoșani", "Brăila", "Brașov", "București", "Buzău", "Călărași", "Caraș-Severin", "Cluj", "Constanța", "Covasna", "Dâmbovița", "Dolj", "Galați", "Giurgiu", "Gorj", "Harghita", "Hunedoara", "Ialomița", "Iași", "Ilfov", "Maramureș", "Mehedinți", "Mureș", "Neamț", "Olt", "Prahova", "Sălaj", "Satu Mare", "Sibiu", "Suceava", "Teleorman", "Timiș", "Tulcea", "Vâlcea", "Vaslui", "Vrancea"];
-const LOCATION_FIELDS = ["address", "county", "locality", "pod", "operator", "supplier", "bransament_kw", "supply", "cadastral_nr", "cf_nr"];
+const LOCATION_FIELDS = ["address", "county", "locality", "postal_code", "pod", "operator", "location_code", "supplier", "approved_kva", "existing_supply", "location_new", "cadastral_nr", "cf_nr"];
 
 function Field({ f, value, onChange, refOptions, ai, allowNewReference = false }) {
   if (f.type === "section") return <h3 className="sm:col-span-2 mt-3 pt-3 border-t text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)", borderColor: "var(--line)" }}>{f.label}</h3>;
   const common = { className: "den-input", value: value ?? "", onChange: (e) => onChange(f.name, e.target.value), placeholder: f.placeholder || "", "data-testid": `field-${f.name}` };
   return (
     <div className={`den-field ${f.full ? "sm:col-span-2" : ""}`}>
-      <label>{f.label}</label>
+      {f.type === "checkbox" ? <label className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm" style={{ borderColor: "var(--line)" }}><input type="checkbox" checked={!!value} onChange={(e) => onChange(f.name, e.target.checked)} data-testid={`field-${f.name}`} /><span>{f.label}</span></label> : <><label>{f.label}</label>
       {f.type === "textarea" ? (
         <><textarea {...common} rows={3} />{ai && <AiDraft module={ai.module} field={f.name} label={f.label} form={ai.form} onApply={onChange} />}</>
       ) : f.type === "select" ? (
@@ -48,7 +48,7 @@ function Field({ f, value, onChange, refOptions, ai, allowNewReference = false }
         <select {...common}><option value="">Alege...</option>{value && !(refOptions[f.ref] || []).some((o) => o.label === value) && <option value={value}>{value} (nou)</option>}{(refOptions[f.ref] || []).map((o) => <option key={o.id} value={o.label}>{o.label}</option>)}</select>
       ) : (
         <input {...common} type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"} step={f.type === "number" ? "any" : undefined} />
-      )}
+      )}</>}
     </div>
   );
 }
@@ -218,9 +218,8 @@ function DossierFieldSections({ fields, form, setVal, refOptions, ai, onSaveSect
           </div>
           <button type="button" onClick={() => onSaveSection(section.label)} className="shrink-0 rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: "var(--line)", color: "var(--green)" }} data-testid={`save-section-${sectionId}`}>Salvează</button>
         </div>
-        {section.label === "Loc de consum" && <div className="px-4 sm:px-5"><SameAddress form={form} setVal={setVal} /></div>}
         <div className="grid sm:grid-cols-2 gap-4 p-4 sm:p-5">
-          {visibleFields.map((field) => <Field key={field.name} f={field} value={form[field.name]} onChange={setVal} refOptions={refOptions} ai={ai} />)}
+          {visibleFields.map((field) => <div key={field.name} className={field.full ? "sm:col-span-2" : ""}><Field f={field} value={form[field.name]} onChange={setVal} refOptions={refOptions} ai={ai} />{section.label === "Loc de consum" && field.name === "address" && <div className="mt-2"><SameAddress form={form} setVal={setVal} /></div>}</div>)}
           {section.label === "Cererea" && <RequestLoads form={form} setVal={setVal} />}
         </div>
       </section>
@@ -313,7 +312,7 @@ export default function ModulePage({ moduleKey }) {
     // eslint-disable-next-line
   }, [key]);
 
-  const openNew = () => { const today = new Date().toISOString().slice(0, 10); setForm(key === "prosumator" ? { date: today, doc_date: today, status: "CER", kind: "Persoană fizică", request_type: "Fără spor de putere", afm: "Nu" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setNewProsumLocation(true); setDossierPage("all"); };
+  const openNew = () => { const today = new Date().toISOString().slice(0, 10); setForm(key === "prosumator" ? { date: today, doc_date: today, status: "CER", kind: "Persoană fizică", request_type: "Fără spor de putere", afm: "Nu", location_new: false } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setNewProsumLocation(true); setDossierPage("all"); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("all"); };
   const setVal = (name, value) => setForm((p) => {
     const next = { ...p, [name]: value };
@@ -336,10 +335,12 @@ export default function ModulePage({ moduleKey }) {
         iban: pick(client?.iban, lastDossier.iban, p.iban), rep_role: pick(client?.rep_role, lastDossier.rep_role, p.rep_role),
         phone: pick(client?.phone, lastDossier.phone, p.phone), email: pick(client?.email, lastDossier.email, p.email),
         address: pick(client?.address, lastDossier.address, p.address), hq_address: pick(client?.hq_address, lastDossier.hq_address, p.hq_address),
-        county: pick(client?.county, lastDossier.county, p.county), locality: pick(client?.locality, lastDossier.locality, p.locality),
-        pod: pick(client?.pod, lastDossier.pod, p.pod), operator: pick(client?.operator, lastDossier.operator, p.operator),
+        county: pick(client?.county, lastDossier.county, p.county), locality: pick(client?.locality, lastDossier.locality, p.locality), postal_code: pick(client?.postal_code, lastDossier.postal_code, p.postal_code),
+        pod: pick(client?.pod, lastDossier.pod, p.pod), operator: pick(client?.operator, lastDossier.operator, p.operator), location_code: pick(client?.location_code, lastDossier.location_code, p.location_code),
+        supplier: pick(client?.supplier, lastDossier.supplier, p.supplier), approved_kva: pick(client?.approved_kva, lastDossier.approved_kva, p.approved_kva),
+        existing_supply: pick(client?.existing_supply, lastDossier.existing_supply, p.existing_supply), location_new: pick(client?.location_new, lastDossier.location_new, p.location_new),
         cadastral_nr: pick(client?.cadastral_nr, lastDossier.cadastral_nr, p.cadastral_nr), cf_nr: pick(client?.cf_nr, lastDossier.cf_nr, p.cf_nr),
-        supplier: pick(client?.supplier, lastDossier.supplier, p.supplier), rep_name: pick(client?.rep_name, lastDossier.rep_name, p.rep_name),
+        rep_name: pick(client?.rep_name, lastDossier.rep_name, p.rep_name),
       });
     }
     return next;
@@ -529,19 +530,18 @@ export default function ModulePage({ moduleKey }) {
                 <SameAddress form={form} setVal={setVal} />
                 <div className="den-field"><label htmlFor="new-dossier-county">Județ *</label><select id="new-dossier-county" className="den-input" value={form.county || ""} onChange={(e) => setVal("county", e.target.value)} data-testid="new-dossier-county"><option value="">Alege județul</option>{form.county && !RO_COUNTIES.includes(form.county) && <option value={form.county}>{form.county}</option>}{RO_COUNTIES.map((county) => <option key={county}>{county}</option>)}</select></div>
                 <Field f={cfg.fields.find((field) => field.name === "locality")} value={form.locality} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "postal_code")} value={form.postal_code} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "pod")} value={form.pod} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "operator")} value={form.operator} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "location_code")} value={form.location_code} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "supplier")} value={form.supplier} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "approved_kva")} value={form.approved_kva} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "existing_supply")} value={form.existing_supply} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "cf_nr")} value={form.cf_nr} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "cadastral_nr")} value={form.cadastral_nr} onChange={setVal} refOptions={refOptions} />
+                <Field f={cfg.fields.find((field) => field.name === "location_new")} value={form.location_new} onChange={setVal} refOptions={refOptions} />
               </>}
-              <details className="sm:col-span-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-                <summary className="cursor-pointer text-xs font-bold">Detalii opționale de pe factură sau ATR</summary>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <Field f={cfg.fields.find((field) => field.name === "pod")} value={form.pod} onChange={setVal} refOptions={refOptions} />
-                  <Field f={cfg.fields.find((field) => field.name === "operator")} value={form.operator} onChange={setVal} refOptions={refOptions} />
-                  <Field f={{ name: "bransament_kw", label: "Putere aprobată (kW)", type: "number" }} value={form.bransament_kw} onChange={setVal} refOptions={refOptions} />
-                  <Field f={cfg.fields.find((field) => field.name === "supplier")} value={form.supplier} onChange={setVal} refOptions={refOptions} />
-                  <Field f={cfg.fields.find((field) => field.name === "cadastral_nr")} value={form.cadastral_nr} onChange={setVal} refOptions={refOptions} />
-                  <Field f={cfg.fields.find((field) => field.name === "cf_nr")} value={form.cf_nr} onChange={setVal} refOptions={refOptions} />
-                </div>
-              </details>
-              <div className="sm:col-span-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Datele cunoscute despre client și locul de consum se preiau din dosarele existente. Echipamentele se completează după creare.</div>
+              <div className="sm:col-span-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Datele cunoscute despre client și locul de consum se preiau din dosarele existente. Pentru POD, codul locului și puterea aprobată, folosește factura sau ATR-ul. Echipamentele se completează după creare.</div>
             </>}
             {prosumStep === 3 && <>
               <div className="sm:col-span-2"><Field f={cfg.fields.find((field) => field.name === "request_type")} value={form.request_type} onChange={setVal} refOptions={refOptions} /></div>
