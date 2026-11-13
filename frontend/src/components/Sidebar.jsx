@@ -5,16 +5,17 @@ import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert,
   FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X,
-  Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt, Sparkles, ChevronDown,
+  Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt, Sparkles, ChevronDown, MapPin,
 } from "lucide-react";
 import { can, isOff, ROUTE_FEATURE } from "@/lib/plan";
 
-const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles };
+const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles, MapPin };
 
 const MAIN_NAV = [
   { to: "/", icon: "LayoutDashboard", text: "Tablou de bord", testid: "nav-home" },
   { to: "/simulare", icon: "SunMedium", text: "Proiectare", testid: "nav-project", badge: "BETA" },
   { to: "/prosumator", icon: "FolderOpen", text: "Dosare", testid: "nav-prosumator" },
+  { to: "/harta", icon: "MapPin", text: "Hartă", testid: "nav-map" },
   { to: "/lucrari", icon: "Briefcase", text: "Lucrări", testid: "nav-works" },
   { to: "/clienti", icon: "Users", text: "Contacte", testid: "nav-clients" },
   { to: "/diu", icon: "FolderOpen", text: "Dosare DIU", testid: "nav-diu" },
