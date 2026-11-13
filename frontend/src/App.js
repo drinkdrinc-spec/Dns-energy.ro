@@ -11,7 +11,6 @@ const Documents = lazy(() => import("@/pages/Documents"));
 const Catalog = lazy(() => import("@/pages/Catalog"));
 const Operators = lazy(() => import("@/pages/Operators"));
 const Simulare = lazy(() => import("@/pages/Simulare"));
-const Settings = lazy(() => import("@/pages/Settings"));
 const EquipmentCatalog = lazy(() => import("@/pages/EquipmentCatalog"));
 const BaseSettings = lazy(() => import("@/pages/BaseSettings"));
 const SignPage = lazy(() => import("@/pages/SignPage"));
@@ -80,7 +79,7 @@ function AppRoutes() {
         <Route path="/simulare" element={<Gate feat={ROUTE_FEATURE["/simulare"]}><Simulare /></Gate>} />
         <Route path="/distribuitori" element={<Gate feat={ROUTE_FEATURE["/distribuitori"]}><Operators /></Gate>} />
         <Route path="/documente" element={<Gate feat={ROUTE_FEATURE["/documente"]}><Documents /></Gate>} />
-        <Route path="/setari" element={<Settings />} />
+        <Route path="/setari" element={<BaseSettings />} />
         <Route path="/utilizatori" element={<Users />} />
         <Route path="/abonament" element={<Subscription />} />
         <Route path="/abonamente-admin" element={<AdminBilling />} />
