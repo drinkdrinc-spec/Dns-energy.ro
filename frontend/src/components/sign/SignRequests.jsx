@@ -67,7 +67,9 @@ function CreateForm({ dossierId, module, onCreated }) {
   const [days, setDays] = useState(7);
   const diu = module === "diu";
   useEffect(() => { api.get(diu ? `/diu/${dossierId}/docs` : `/dossier/${dossierId}`).then((r) => {
-    setPositions(diu ? r.data.positions : r.data.positions.filter((p) => p.source === "generat" || p.files?.length));
+    const available = diu ? r.data.positions : r.data.positions.filter((p) => p.source === "generat" || p.files?.length);
+    setPositions(available);
+    setKeys(available.map((p) => p.key));
     const c = r.data.client || {};
     setSigners((cur) => [{ name: cur[0].name || c.name || "", email: cur[0].email || c.email || "", phone: cur[0].phone || c.phone || "", role: "Beneficiar" }]);
   }); }, [dossierId]); // eslint-disable-line
@@ -80,7 +82,7 @@ function CreateForm({ dossierId, module, onCreated }) {
   };
   return (
     <div className="rounded-lg border bg-white p-3 mb-3" style={{ borderColor: "var(--line)" }} data-testid="sign-create">
-      <div className="text-xs font-bold mb-2">Documente de semnat</div>
+      <div className="text-xs font-bold mb-2">Documente de semnat — toate cele generate sunt selectate automat</div>
       <div className="grid sm:grid-cols-2 gap-1 mb-3">{positions.map((p) => (
         <label key={p.key} className="text-xs flex gap-2 items-center"><input type="checkbox" checked={keys.includes(p.key)} onChange={(e) => setKeys(e.target.checked ? [...keys, p.key] : keys.filter((k) => k !== p.key))} data-testid={`sign-pick-${p.key}`} />{p.nr}. {p.title}</label>))}</div>
       <div className="text-xs font-bold mb-1">Semnatar: clientul (codul de verificare se trimite pe e-mail). Se generează câte un link separat pentru fiecare document ales; varianta semnată se salvează automat în dosar și în fișa clientului.</div>
