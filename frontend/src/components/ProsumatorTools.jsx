@@ -24,7 +24,7 @@ const DOCS = [
 
 const docUrl = (type, id) => `${API}/docs/${type}/${id}?auth=${localStorage.getItem("den_token")}`;
 
-export function AiImportButton({ onExtracted }) {
+export function AiImportButton({ onExtracted, label = "Import din PDF (AI)", disabled = false }) {
   const ref = useRef();
   const [busy, setBusy] = useState(false);
   const pick = async (e) => {
@@ -45,8 +45,8 @@ export function AiImportButton({ onExtracted }) {
   return (
     <>
       <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={pick} data-testid="ai-import-input" />
-      <Btn variant="secondary" disabled={busy} onClick={() => ref.current.click()} data-testid="ai-import-btn">
-        <Sparkles size={15} /> {busy ? "Se citește..." : "Import din PDF (AI)"}
+      <Btn variant="secondary" disabled={busy || disabled} onClick={() => ref.current.click()} data-testid="ai-import-btn">
+        <Sparkles size={15} /> {busy ? "Se citește..." : label}
       </Btn>
     </>
   );
@@ -117,5 +117,6 @@ export function GeneratedDocs({ id, files }) {
     </div>
   );
 }
+
 
 
