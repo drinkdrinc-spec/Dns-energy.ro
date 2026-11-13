@@ -80,11 +80,16 @@ export const MODULES = {
       { name: "address", label: "Adresă loc de consum", type: "text", full: true },
       { name: "county", label: "Județ", type: "text" },
       { name: "locality", label: "Localitate", type: "text" },
+      { name: "postal_code", label: "Cod poștal", type: "text" },
       { name: "pod", label: "POD — de pe factura de energie", type: "text" },
-      { name: "operator", label: "Operator de distribuție", type: "select", options: ["Distribuție Energie Electrică Romania Sucursala Transilvania Nord", "Distribuție Energie Electrică Romania Sucursala Transilvania Sud", "Distribuție Energie Electrică Romania Sucursala Muntenia Nord", "Delgaz Grid S.A.", "Distribuție Energie Oltenia S.A.", "Rețele Electrice Muntenia S.A.", "Rețele Electrice Banat S.A.", "Rețele Electrice Dobrogea S.A."], full: true },
-      { name: "cadastral_nr", label: "Număr cadastral", type: "text" },
-      { name: "cf_nr", label: "Carte funciară", type: "text" },
+      { name: "operator", label: "Distribuitor", type: "select", options: ["Distribuție Energie Electrică Romania Sucursala Transilvania Nord", "Distribuție Energie Electrică Romania Sucursala Transilvania Sud", "Distribuție Energie Electrică Romania Sucursala Muntenia Nord", "Delgaz Grid S.A.", "Distribuție Energie Oltenia S.A.", "Rețele Electrice Muntenia S.A.", "Rețele Electrice Banat S.A.", "Rețele Electrice Dobrogea S.A."] },
+      { name: "location_code", label: "Cod loc de consum", type: "text" },
       { name: "supplier", label: "Furnizor energie", type: "text" },
+      { name: "approved_kva", label: "Putere aprobată (kVA)", type: "number" },
+      { name: "existing_supply", label: "Racord existent", type: "select", options: ["Monofazat", "Trifazat"] },
+      { name: "location_new", label: "Loc de consum NOU (fără racord existent)", type: "checkbox", full: true },
+      { name: "cadastral_nr", label: "Nr. cadastral", type: "text" },
+      { name: "cf_nr", label: "Nr. carte funciară", type: "text" },
       { name: "rep_name", label: "Reprezentant legal", type: "text" },
       { name: "rep_role", label: "Calitate reprezentant legal", type: "text" },
       { type: "section", label: "Cererea" },
@@ -390,4 +395,5 @@ export const MODULES = {
 };
 
 export const MODULE_ORDER = ["clients", "prosumator", "diu", "works", "mono", "panels", "anti", "pram", "equipment", "power"];
+
 
