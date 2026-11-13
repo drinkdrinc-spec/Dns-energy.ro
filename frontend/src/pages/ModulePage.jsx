@@ -462,14 +462,14 @@ export default function ModulePage({ moduleKey }) {
 
   return (
     <div>
-      <PageHeader eyebrow={cfg.eyebrow} title={cfg.title} sub={cfg.sub}
+      {!(key === "prosumator" && editId) && <PageHeader eyebrow={cfg.eyebrow} title={cfg.title} sub={cfg.sub}
         action={<div className="flex gap-2 flex-wrap">
           {key === "prosumator" && <AiImportButton onExtracted={(d) => { setForm(d); setEditId(null); setChecks({}); }} />}
           <Btn data-testid="add-btn" onClick={form ? () => setForm(null) : openNew}>{form ? <><X size={15} /> Închide</> : <><Plus size={15} /> {cfg.addLabel}</>}</Btn>
-        </div>} />
+        </div>} />}
 
       {form && (
-        <div className="den-panel mb-6 scroll-mt-20" id={key === "prosumator" && editId ? "dossier-top" : undefined} data-testid="module-form">
+        <div className={`${key === "prosumator" && editId ? "mb-6 scroll-mt-20 space-y-4" : "den-panel mb-6 scroll-mt-20"}`} id={key === "prosumator" && editId ? "dossier-top" : undefined} data-testid="module-form">
           {key === "prosumator" && !editId ? <>
             <div className="flex items-start justify-between gap-4 mb-5">
               <div className="mb-4"><h2 className="text-lg font-bold">Dosar nou</h2><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>3 pași scurți — restul datelor se completează apoi în dosar.</p></div>
@@ -477,7 +477,7 @@ export default function ModulePage({ moduleKey }) {
             <div className="grid grid-cols-3 gap-2 mb-5" aria-label={`Pasul ${prosumStep} din 3`}>
               {["Client", "Loc de consum", "Tip cerere"].map((step, idx) => <div key={step} className={`rounded-lg border px-2 py-2 text-center text-[10px] sm:text-[11px] font-semibold ${prosumStep === idx + 1 ? "den-wizard-active" : ""}`} style={{ borderColor: prosumStep === idx + 1 ? "var(--green)" : "var(--line)", color: prosumStep === idx + 1 ? "var(--green)" : "var(--muted)", background: prosumStep === idx + 1 ? "#edf7f0" : "transparent" }}><span className="mr-1 inline-grid h-4 w-4 place-items-center rounded-full" style={{ background: prosumStep > idx + 1 ? "var(--green)" : "#eeeae1", color: prosumStep > idx + 1 ? "white" : "var(--muted)" }}>{prosumStep > idx + 1 ? "✓" : idx + 1}</span>{step}</div>)}
             </div>
-          </> : editId && key === "prosumator" ? <div className="mb-4" data-testid="dossier-detail-heading">
+          </> : editId && key === "prosumator" ? <div className="den-panel !p-4 sm:!p-5 mb-4" data-testid="dossier-detail-heading">
             <button type="button" onClick={() => { setForm(null); setEditId(null); }} className="mb-3 text-xs font-medium" style={{ color: "var(--muted)" }}>← Dosare</button>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0"><div className="flex flex-wrap items-baseline gap-x-3 gap-y-1"><h2 className="text-xl font-extrabold" style={{ color: "var(--green)" }}>Dosar {form.number || `#${editId}`}</h2><span className="text-lg font-bold">{form.client_name || "Beneficiar neprecizat"}</span></div>
@@ -487,9 +487,6 @@ export default function ModulePage({ moduleKey }) {
               <Btn variant="secondary" onClick={() => remove(editId)}><Trash2 size={14} /> Șterge dosarul</Btn>
             </div>
           </div> : <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>}
-          {key === "prosumator" && editId && <nav className="sticky top-[54px] z-20 mb-5 flex gap-2 overflow-x-auto border-b bg-white/95 pb-2 pt-1 backdrop-blur md:top-0" aria-label="Navigare în dosar">
-            {[ ["all", "Dosar complet", "dossier-top"], ["client", "Client", "dossier-section-client"], ["location", "Loc de consum", "dossier-section-location"], ["request", "Cererea", "dossier-section-request"], ["installation", "Instalație", "dossier-section-installation"], ["documents", "Acte & semnare", "dossier-section-documents"], ["equipment", "Echipamente", "dossier-section-equipment"], ["team", "Echipă", "dossier-section-team"], ["pif", "Teste și PIF", "dossier-section-pif"], ["other", "Mesaje", "dossier-section-messages"], ["timeline", "Jurnal", "dossier-section-timeline"] ].map(([id, label, target]) => <button key={id} type="button" aria-current={dossierPage === id ? "location" : undefined} onClick={() => { setDossierPage(id); document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="shrink-0 rounded-lg px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white" } : { background: "var(--bg)", color: "var(--muted)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
-          </nav>}
           {key === "prosumator" && editId && <SummaryStrip form={form} />}
           {key === "prosumator" && editId && <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="dossier-quick-actions">
             {[
@@ -501,6 +498,9 @@ export default function ModulePage({ moduleKey }) {
             <button type="button" onClick={() => document.getElementById("dossier-section-equipment")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="rounded-lg border bg-white px-3 py-3 text-left text-xs font-bold" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="dossier-quick-equipment">Echipamente</button>
             <button type="button" onClick={() => document.getElementById("dossier-section-documents")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="rounded-lg border bg-white px-3 py-3 text-left text-xs font-bold" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="dossier-quick-documents">Acte & semnare</button>
           </div>}
+          {key === "prosumator" && editId && <nav className="sticky top-[54px] z-20 -mx-1 flex gap-2 overflow-x-auto bg-[#f8f6f1]/95 px-1 pb-2 pt-1 backdrop-blur md:top-0" aria-label="Navigare în dosar">
+            {[ ["all", "Dosar complet", "dossier-top"], ["client", "Client", "dossier-section-client"], ["location", "Loc de consum", "dossier-section-location"], ["request", "Cererea", "dossier-section-request"], ["installation", "Instalație", "dossier-section-installation"], ["documents", "Acte & semnare", "dossier-section-documents"], ["equipment", "Echipamente", "dossier-section-equipment"], ["team", "Echipă", "dossier-section-team"], ["pif", "Teste și PIF", "dossier-section-pif"], ["other", "Mesaje", "dossier-section-messages"], ["timeline", "Jurnal", "dossier-section-timeline"] ].map(([id, label, target]) => <button key={id} type="button" aria-current={dossierPage === id ? "location" : undefined} onClick={() => { setDossierPage(id); document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="shrink-0 rounded-lg border px-3 py-2 text-xs font-bold" style={dossierPage === id ? { background: "var(--navy)", color: "white", borderColor: "var(--navy)" } : { background: "#fffefa", color: "var(--muted)", borderColor: "var(--line)" }} data-testid={`dossier-page-${id}`}>{label}</button>)}
+          </nav>}
           {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} onSaveSection={saveDossierSection} /> : key === "prosumator" && !editId ? <div className="grid sm:grid-cols-2 gap-4" data-testid="new-dossier-simple-step">
             {prosumStep === 1 && <>
               {!newProsumClient && <div className="sm:col-span-2" data-testid="prosum-client-existing"><Field f={{ ...cfg.fields.find((field) => field.name === "client_name"), label: "Client existent" }} value={form.client_name} onChange={setVal} refOptions={refOptions} /></div>}
