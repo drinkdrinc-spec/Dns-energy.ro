@@ -762,11 +762,27 @@ def _draft(c, doc):
     c.restoreState()
 
 
+def _page_chrome(c, doc, draft=False):
+    if draft:
+        _draft(c, doc)
+    c.saveState()
+    width, _ = c._pagesize
+    margin = 18 * mm if width < 260 * mm else 12 * mm
+    c.setStrokeColor(GRID)
+    c.setLineWidth(0.45)
+    c.line(margin, 9 * mm, width - margin, 9 * mm)
+    c.setFillColor(colors.HexColor("#667085"))
+    c.setFont("LS", 6.5)
+    c.drawString(margin, 5.4 * mm, "D-ENERGY · DOCUMENTAȚIE FOTOVOLTAICĂ")
+    c.drawRightString(width - margin, 5.4 * mm, f"Pagina {c.getPageNumber()}")
+    c.restoreState()
+
+
 def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
     ctx = Ctx(CEF.flatten(rec), settings, client, opis_titles)
     buf = io.BytesIO()
     pw, ph = A4
-    on = _draft if draft else (lambda c, d: None)
+    on = lambda c, d: _page_chrome(c, d, draft)
     port = PageTemplate("port", [Frame(18 * mm, 14 * mm, pw - 36 * mm, ph - 28 * mm, id="fp")], pagesize=A4, onPage=on)
     land = PageTemplate("land", [Frame(12 * mm, 10 * mm, ph - 24 * mm, pw - 20 * mm, id="fl")], pagesize=landscape(A4), onPage=on)
     first_land = bool(doc_keys) and doc_keys[0] in ("schema_cef", "schema")
