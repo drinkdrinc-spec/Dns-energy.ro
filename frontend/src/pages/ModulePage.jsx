@@ -96,7 +96,26 @@ function QuickEquipment({ form, catalog, onChange }) {
   const setInv = (patch, legacy = {}) => {
     const nextInv = { ...inv, ...patch };
     const nextCef = { ...cef, inverters: [nextInv, ...(cef.inverters || []).slice(1)] };
-    onChange({ cef: nextCef, ...legacy });
+    const number = (value) => Number(String(value ?? "").replace(",", ".")) || 0;
+    const configured = nextCef.inverters.filter((item) => item.brand_model || item.catalog_id);
+    const panelCount = configured.reduce((sum, item) => sum + (item.strings || []).reduce((n, string) => n + number(string.panels), 0), 0);
+    const pvKwp = configured.reduce((sum, item) => sum + (item.strings || []).reduce((n, string) => n + number(string.panels) * number(item.panel_w) / 1000, 0), 0);
+    const inverterKw = configured.reduce((sum, item) => sum + number(item.p_nom_kw) * Math.max(1, number(item.inverter_count) || 1), 0);
+    const exportLimits = configured.map((item) => number(item.p_limit_kw)).filter((value) => value > 0);
+    const power = pvKwp > 0 && inverterKw > 0 ? Math.min(pvKwp, inverterKw, ...exportLimits) : 0;
+    const batteries = configured.filter((item) => item.battery_mode === "own");
+    const batteryKwh = batteries.reduce((sum, item) => sum + number(item.battery?.kwh) * Math.max(1, number(item.battery?.modules) || 1), 0);
+    onChange({
+      cef: nextCef,
+      panel_count: panelCount || "",
+      _kwp: pvKwp || "",
+      inverter_count: configured.length || "",
+      inverter_kw: inverterKw || "",
+      ...(power ? { power } : {}),
+      battery_kwh: batteryKwh || "",
+      system_type: batteryKwh ? "Hibrid cu baterie" : "On-grid",
+      ...legacy,
+    });
   };
   const chooseInverter = (id) => {
     const item = byId(id, "Invertor");
@@ -144,7 +163,7 @@ function QuickEquipment({ form, catalog, onChange }) {
   };
   const selectedBatteryId = inv.battery_mode === "own" ? (inv.battery?.catalog_id || "manual") : "none";
   return <section className="sm:col-span-2 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#fffefa" }} data-testid="new-dossier-equipment">
-    <div className="mb-3"><h3 className="font-bold text-base">Instalație fotovoltaică</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Alegi invertorul, panoul, stringurile și bateria dacă există. Puterile și datele cunoscute vin din catalog; valorile care depind de proiect se completează în dosar și se verifică tehnic.</p></div>
+    <div className="mb-3"><h3 className="font-bold text-base">Instalație fotovoltaică</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Alegi invertorul, panoul, stringurile și bateria dacă există. Catalogul completează datele tehnice; puterea CEF și totalurile se calculează din echipamentele alese. Verifică valorile propuse în dosar înainte de generarea documentelor.</p></div>
     <div className="grid gap-3 sm:grid-cols-2">
       <F label="Invertor · model și putere" value={inv.catalog_id || (inv.brand_model ? "manual" : "")} options={[["manual", "Introduc manual modelul"], ...options("Invertor").map((item) => [item.id, `${item.brand_model} · ${item.p_nom_kw ?? "—"} kW`])]} onChange={(id) => {
         if (id === "manual") setInv({ catalog_id: "", brand_model: inv.brand_model || "", p_nom_kw: inv.p_nom_kw || "" }); else chooseInverter(id);
