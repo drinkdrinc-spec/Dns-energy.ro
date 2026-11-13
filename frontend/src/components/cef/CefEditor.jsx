@@ -74,14 +74,19 @@ export function CefEditor({ value, onChange }) {
           className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white" style={{ background: "var(--blue)" }} data-testid="add-inverter"><Plus size={15} /> Adaugă invertor</button>
       </div>
       <Totals res={res} />
-      <GridCard grid={cef.grid || {}} set={(g) => set({ grid: g })} catalog={catalog} res={res} />
       {invs.map((inv, i) => (
         <InverterCard key={inv.id || i} idx={i} inv={inv} catalog={catalog} shared={cef.shared_batteries || []} res={res?.inverters?.[i]}
           set={(v) => set({ inverters: invs.map((x, j) => (j === i ? v : x)) })} remove={() => set({ inverters: invs.filter((_, j) => j !== i) })} />
       ))}
-      <SharedBatteries list={cef.shared_batteries || []} set={(l) => set({ shared_batteries: l })} catalog={catalog} />
-      <AuxiliaryEquipment list={cef.auxiliary_equipment || []} set={(l) => set({ auxiliary_equipment: l })} catalog={catalog} />
-      <Issues errors={(res?.errors || []).filter((e) => !invErrs.has(e))} warnings={(res?.warnings || []).filter((w) => !invErrs.has(w))} testid="cef-global-issues" />
+      <details className="rounded-xl border bg-white px-4 py-3" style={{ borderColor: "var(--line)" }}>
+        <summary className="cursor-pointer text-sm font-bold">Alte detalii tehnice (opțional)</summary>
+        <div className="mt-3 space-y-4">
+          <GridCard grid={cef.grid || {}} set={(g) => set({ grid: g })} catalog={catalog} res={res} />
+          <SharedBatteries list={cef.shared_batteries || []} set={(l) => set({ shared_batteries: l })} catalog={catalog} />
+          <AuxiliaryEquipment list={cef.auxiliary_equipment || []} set={(l) => set({ auxiliary_equipment: l })} catalog={catalog} />
+          <Issues errors={(res?.errors || []).filter((e) => !invErrs.has(e))} warnings={(res?.warnings || []).filter((w) => !invErrs.has(w))} testid="cef-global-issues" />
+        </div>
+      </details>
       {res && <p className="text-[11px]" style={{ color: "var(--muted)" }}>{res.note}</p>}
     </div>
   );
