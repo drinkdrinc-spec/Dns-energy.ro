@@ -233,7 +233,7 @@ export default function ModulePage({ moduleKey }) {
       && (!operatorFilter || i.operator === operatorFilter)
       && (!countyFilter || i.county === countyFilter)
       && (!localityFilter || i.locality === localityFilter)
-      && (!clientFilter || i.client_name === clientFilter));
+      && (!clientFilter || String(i.client_name || "").toLocaleLowerCase("ro").includes(clientFilter.toLocaleLowerCase("ro"))));
   }, [activeItems, q, operatorFilter, countyFilter, localityFilter, clientFilter]);
 
   const changeStatus = async (item, status) => {
