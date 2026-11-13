@@ -144,7 +144,7 @@ export default function ModulePage({ moduleKey }) {
     const eid = params.get("edit");
     const it = eid && r.data.find((x) => x.id === eid);
     const startNew = key === "prosumator" && params.get("new") === "1";
-    if (it) { setForm({ ...it }); setEditId(it.id); setChecks(it.checklist || {}); setDossierPage("client"); }
+    if (it) { setForm({ ...it }); setEditId(it.id); setChecks(it.checklist || {}); setDossierPage("all"); }
     else if (startNew) { setForm({ doc_date: new Date().toISOString().slice(0, 10), status: "CER", kind: "Persoană fizică" }); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setDossierPage("site"); }
     if (it || startNew) window.history.replaceState(null, "", window.location.pathname);
   }).catch(() => {});
@@ -163,7 +163,7 @@ export default function ModulePage({ moduleKey }) {
   }, [key]);
 
   const openNew = () => { setForm(key === "prosumator" ? { doc_date: new Date().toISOString().slice(0, 10), status: "CER", kind: "Persoană fizică" } : {}); setEditId(null); setChecks({}); setProsumStep(1); setNewProsumClient(false); setDossierPage("site"); };
-  const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("client"); };
+  const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); setProsumStep(1); setDossierPage("all"); };
   const setVal = (name, value) => setForm((p) => {
     const next = { ...p, [name]: value };
     if (key === "prosumator" && name === "client_name") {
@@ -201,7 +201,7 @@ export default function ModulePage({ moduleKey }) {
       else if (key === "prosumator") {
         const created = await api.post("/import/prosumator", payload);
         toast.success("Dosar creat. Poți continua completarea documentației mai jos.");
-        setForm(created.data); setEditId(created.data.id); setChecks(created.data.checklist || {}); setProsumStep(1); setDossierPage("site"); load();
+        setForm(created.data); setEditId(created.data.id); setChecks(created.data.checklist || {}); setProsumStep(1); setDossierPage("all"); load();
         return;
       }
       else await api.post(`/data/${key}`, payload);
