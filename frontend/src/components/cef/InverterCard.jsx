@@ -1,4 +1,4 @@
-import { Trash2, Plus, Wand2 } from "lucide-react";
+import { Trash2, Wand2 } from "lucide-react";
 import { F, Check, CatalogPick, INSTALL, SECTIONS } from "./F";
 import { Issues } from "./CefResults";
 
@@ -11,6 +11,10 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   const sub = (obj, k) => (v) => set({ ...inv, [obj]: { ...(inv[obj] || {}), [k]: v } });
   const strings = inv.strings || [];
   const setStr = (i, k, v) => set({ ...inv, strings: strings.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
+  const setStringCount = (value) => {
+    const count = Math.max(0, Math.min(24, Number(value) || 0));
+    set({ ...inv, strings: Array.from({ length: count }, (_, i) => strings[i] || { panels: "", mppt: i + 1 }) });
+  };
   const t = `inv-${idx}`;
   const pa = res?.proposals?.ac || {}, pd = res?.proposals?.dc || {};
   const apply = () => set({
@@ -67,6 +71,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           </div>
         </details>
         <div className="mt-3 space-y-2">
+          <F label="Număr stringuri" type="number" value={strings.length} onChange={setStringCount} testid={`${t}-string-count`} />
           {strings.map((st, i) => {
             const r = res?.strings?.[i];
             return (
@@ -78,7 +83,6 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
               </div>
             );
           })}
-          <button onClick={() => set({ ...inv, strings: [...strings, { panels: "", mppt: strings.length + 1 }] })} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid={`${t}-add-string`}><Plus size={13} /> Adaugă string</button>
         </div>
       </Section>
 
