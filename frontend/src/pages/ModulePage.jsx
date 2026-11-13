@@ -345,9 +345,13 @@ export default function ModulePage({ moduleKey }) {
     return next;
   });
   const continueProsum = () => {
-    if (prosumStep === 1 && !form.client_name?.trim()) { toast.error("Introdu numele beneficiarului sau alege un client existent."); return; }
+    const newClientName = form.kind === "Persoană juridică"
+      ? String(form.new_company_name || "").trim()
+      : [form.new_client_last_name, form.new_client_first_name].map((part) => String(part || "").trim()).filter(Boolean).join(" ");
+    if (prosumStep === 1 && !(newProsumClient ? newClientName : String(form.client_name || "").trim())) { toast.error(newProsumClient ? "Completează numele clientului." : "Alege un client existent sau bifează Client nou."); return; }
     if (prosumStep === 2 && (!form.address?.trim() || !form.county?.trim() || !form.locality?.trim())) { toast.error("Completează adresa, județul și localitatea locului de consum."); return; }
     if (prosumStep === 3 && !form.request_type) { toast.error("Alege tipul cererii."); return; }
+    if (key === "prosumator" && prosumStep === 1 && newProsumClient) setForm((current) => ({ ...current, client_name: newClientName }));
     if (key === "prosumator" && prosumStep === 2 && !form.request_type) setForm((current) => ({ ...current, request_type: "Fără spor de putere" }));
     setProsumStep((s) => Math.min(3, s + 1));
   };
@@ -363,6 +367,10 @@ export default function ModulePage({ moduleKey }) {
     for (const f of required) { if (!form[f.name]) { toast.error(`Completează: ${f.label.replace(" *", "")}`); return; } }
     const payload = { ...form };
     delete payload._location_key;
+    delete payload.new_client_last_name;
+    delete payload.new_client_first_name;
+    delete payload.new_company_name;
+    delete payload.allow_id_scan;
     if (cfg.checklist) payload.checklist = checks;
     try {
       if (editId) await api.put(`/data/${key}/${editId}`, payload);
@@ -474,12 +482,37 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && editId && <SummaryStrip form={form} />}
           {key === "prosumator" && editId ? <DossierFieldSections fields={cfg.fields} form={form} setVal={setVal} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} onSaveSection={saveDossierSection} /> : key === "prosumator" && !editId ? <div className="grid sm:grid-cols-2 gap-4" data-testid="new-dossier-simple-step">
             {prosumStep === 1 && <>
-              <div className="sm:col-span-2 flex flex-wrap items-center gap-2" data-testid="prosum-client-mode">
-                <button type="button" onClick={() => setNewProsumClient(false)} className="rounded-lg border px-3 py-2 text-xs font-bold" style={!newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client existent</button>
-                <button type="button" onClick={() => { setNewProsumClient(true); setVal("client_name", ""); }} className="rounded-lg border px-3 py-2 text-xs font-bold" style={newProsumClient ? { background: "var(--green)", color: "white", borderColor: "var(--green)" } : { borderColor: "var(--line)" }}>Client nou</button>
-                {newProsumClient && <span className="text-xs" style={{ color: "var(--muted)" }}>Datele cunoscute se vor prelua automat din aplicație.</span>}
-              </div>
-              <Field f={cfg.fields.find((field) => field.name === "client_name")} value={form.client_name} onChange={setVal} refOptions={refOptions} allowNewReference />
+              {!newProsumClient && <div className="sm:col-span-2" data-testid="prosum-client-existing"><Field f={{ ...cfg.fields.find((field) => field.name === "client_name"), label: "Client existent" }} value={form.client_name} onChange={setVal} refOptions={refOptions} /></div>}
+              <label className="sm:col-span-2 flex items-center gap-2 text-sm" data-testid="prosum-client-mode"><input type="checkbox" checked={newProsumClient} onChange={(e) => { const checked = e.target.checked; setNewProsumClient(checked); if (checked) setForm((current) => ({ ...current, client_name: "", kind: current.kind || "Persoană fizică" })); }} /> Client nou (nu există în listă)</label>
+              {newProsumClient && <>
+                <div className="sm:col-span-2 grid grid-cols-2 gap-2 rounded-xl p-1" style={{ background: "var(--bg)" }} data-testid="prosum-client-kind">
+                  {["Persoană fizică", "Persoană juridică"].map((kind) => <button key={kind} type="button" onClick={() => setVal("kind", kind)} className="rounded-lg border px-3 py-2 text-xs font-bold" style={form.kind === kind ? { background: "white", color: "var(--green)", borderColor: "var(--line)", boxShadow: "0 1px 3px #00000010" } : { color: "var(--muted)", borderColor: "transparent" }}>{kind}</button>)}
+                </div>
+                {form.kind === "Persoană fizică" ? <>
+                  <div className="sm:col-span-2 rounded-lg border border-dashed px-3 py-2" style={{ borderColor: "var(--line)", background: "#fffefa" }}>
+                    <AiImportButton label="Scanează CI (poză sau PDF)" disabled={!form.allow_id_scan} onExtracted={(data) => {
+                      const parts = String(data.client_name || "").trim().split(/\s+/).filter(Boolean);
+                      setForm((current) => ({ ...current, ...data, client_name: "", new_client_last_name: parts[0] || current.new_client_last_name || "", new_client_first_name: parts.slice(1).join(" ") || current.new_client_first_name || "", kind: "Persoană fizică", files: [...(current.files || []), ...(data.file ? [data.file] : [])] }));
+                    }} />
+                    <label className="mt-2 flex items-start gap-2 text-[11px]" style={{ color: "var(--muted)" }}><input type="checkbox" checked={!!form.allow_id_scan} onChange={(e) => setVal("allow_id_scan", e.target.checked)} /> Sunt de acord ca poza/PDF-ul CI să fie trimis(ă) către serviciul AI configurat în DNS Energy pentru extragerea numelui și CNP-ului.</label>
+                  </div>
+                  <Field f={{ name: "new_client_last_name", label: "Nume", type: "text" }} value={form.new_client_last_name} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "new_client_first_name", label: "Prenume", type: "text" }} value={form.new_client_first_name} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "cnp", label: "CNP", type: "text" }} value={form.cnp} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "phone", label: "Telefon", type: "text" }} value={form.phone} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "hq_address", label: "Domiciliu (din CI)", type: "text", full: true }} value={form.hq_address} onChange={setVal} refOptions={refOptions} />
+                </> : <>
+                  <Field f={{ name: "new_company_name", label: "Denumire firmă", type: "text", full: true }} value={form.new_company_name} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "cnp", label: "CUI", type: "text" }} value={form.cnp} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "regcom", label: "Nr. Reg. Com.", type: "text" }} value={form.regcom} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "rep_name", label: "Administrator", type: "text" }} value={form.rep_name} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "phone", label: "Telefon", type: "text" }} value={form.phone} onChange={setVal} refOptions={refOptions} />
+                  <Field f={{ name: "hq_address", label: "Sediu social", type: "text", full: true }} value={form.hq_address} onChange={setVal} refOptions={refOptions} />
+                </>}
+                <Field f={{ name: "email", label: "Email", type: "text" }} value={form.email} onChange={setVal} refOptions={refOptions} />
+                <Field f={{ name: "bank", label: "Bancă", type: "text", placeholder: "pentru regularizarea de prosumator" }} value={form.bank} onChange={setVal} refOptions={refOptions} />
+                <Field f={{ name: "iban", label: "IBAN", type: "text", full: true }} value={form.iban} onChange={setVal} refOptions={refOptions} />
+              </>}
             </>}
             {prosumStep === 2 && <>
               <div className="sm:col-span-2 flex flex-wrap items-center gap-2" data-testid="prosum-location-mode">
