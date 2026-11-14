@@ -20,9 +20,9 @@ const FIELDS = {
 };
 const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || "faze neprecizate"} · ${i.type || "tip neprecizat"}`
   : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V`
-    : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.voltage ?? "—"} V`
+    : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.tech || "LV/HV nespecificat"}`
       : `${i.phases || i.protocol || "Specificații de completat"}`;
-const measuredKw = (i) => i.category === "Invertor" ? Number(i.p_nom_kw) : i.category === "Panou" ? Number(i.w) / 1000 : i.category === "Baterie" ? Number(i.kwh) : 0;
+const measuredAmount = (i) => i.category === "Invertor" ? Number(i.p_nom_kw) : i.category === "Panou" ? Number(i.w) : i.category === "Baterie" ? Number(i.kwh) : 0;
 
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
@@ -38,9 +38,9 @@ function DocSlot({ item, k, label, onUploaded }) {
   };
   return <span className="inline-flex items-center gap-1.5">
     <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={up} data-testid={`upload-${k}-${item.id}`} />
-    {f ? <a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-bold" style={{ color: "var(--green)" }} data-testid={`open-${k}-${item.id}`}><FileText size={13} /> {label}</a>
-      : <span className="text-[11px]" style={{ color: "#b9770e" }}>{label} lipsă</span>}
-    <button onClick={() => ref.current.click()} className="rounded p-1 hover:bg-[#eef4ff]" title={`${f ? "Înlocuiește" : "Încarcă"} ${label}`} data-testid={`btn-upload-${k}-${item.id}`}><Upload size={13} style={{ color: "var(--green)" }} /></button>
+    {f ? <a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 text-[11px] font-medium" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid={`open-${k}-${item.id}`}><FileText size={13} /> {label}</a>
+      : <button type="button" disabled className="inline-flex min-h-9 cursor-not-allowed items-center gap-1.5 rounded-lg border bg-white px-3 text-[11px] font-medium opacity-40" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid={`open-${k}-${item.id}`}><FileText size={13} /> {label}</button>}
+    <button onClick={() => ref.current.click()} className="rounded p-1 hover:bg-[#eef4ff]" title={`${f ? "Înlocuiește" : "Încarcă"} ${label}`} aria-label={`${f ? "Înlocuiește" : "Încarcă"} ${label}`} data-testid={`btn-upload-${k}-${item.id}`}><Upload size={13} style={{ color: "var(--green)" }} /></button>
   </span>;
 }
 
@@ -54,13 +54,14 @@ export default function EquipmentCatalog() {
   const [systemType, setSystemType] = useState("");
   const [docStatus, setDocStatus] = useState("all");
   const [form, setForm] = useState(null);
+  const filterUnit = cat === "Panou" ? "W" : cat === "Baterie" ? "kWh" : "kW";
   const load = () => api.get("/data/catalog").then((r) => setItems(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
   const rows = useMemo(() => items.filter((i) => {
     const docComplete = !!i.datasheet && !!i.conformity;
-    const kw = measuredKw(i);
+    const amount = measuredAmount(i);
     return i.category === cat && (!q || `${i.brand_model || ""} ${i.notes || ""}`.toLowerCase().includes(q.toLowerCase()))
-      && (!minKw || kw >= Number(minKw)) && (!maxKw || kw <= Number(maxKw))
+      && (!minKw || amount >= Number(minKw)) && (!maxKw || amount <= Number(maxKw))
       && (!phases || i.phases === phases) && (!systemType || i.type === systemType)
       && (docStatus === "all" || (docStatus === "complete" ? docComplete : !docComplete));
   }), [items, cat, q, minKw, maxKw, phases, systemType, docStatus]);
@@ -89,7 +90,7 @@ export default function EquipmentCatalog() {
         {(FIELDS[form.category || cat] || []).map(([k, l, opts, t]) => <F key={k} label={l} value={form[k]} options={opts || undefined} type={opts ? undefined : (t || "number")} onChange={(v) => setForm({ ...form, [k]: v })} testid={`cat-field-${k}`} />)}
         <F label="Observații" value={form.notes} onChange={(v) => setForm({ ...form, notes: v })} testid="cat-field-notes" className="sm:col-span-3" />
       </div>
-      <div className="mt-5 flex gap-2"><Btn onClick={save} data-testid="catalog-save-btn">Salvează</Btn><Btn variant="secondary" onClick={() => setForm(null)}>Anulează</Btn></div>
+      <div className="mt-5 flex flex-wrap gap-2"><Btn onClick={save} data-testid="catalog-save-btn">Salvează</Btn><Btn variant="secondary" onClick={() => setForm(null)}>Anulează</Btn>{form.id && <Btn variant="secondary" onClick={() => remove(form.id)} data-testid={`catalog-delete-${form.id}`}><Trash2 size={14} /> Șterge modelul</Btn>}</div>
       {!form.id && <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>După salvare poți atașa fișa tehnică și declarația de conformitate.</p>}
     </div>}
     <section className="den-panel" data-testid="equipment-catalog-list">
@@ -99,8 +100,8 @@ export default function EquipmentCatalog() {
       <div className="mb-4 rounded-xl p-3" style={{ background: "var(--bg)" }} data-testid="catalog-filters">
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
           <label className="relative lg:col-span-2"><span className="sr-only">Caută marcă sau model</span><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} /><input className="den-input pl-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Caută marcă, model..." data-testid="catalog-db-search" /></label>
-          <label className="flex items-center gap-1"><span className="sr-only">Putere minimă</span><input className="den-input" type="number" min="0" value={minKw} onChange={(e) => setMinKw(e.target.value)} placeholder="min" aria-label="Putere minimă kW" /><span className="text-[10px]">kW</span></label>
-          <label className="flex items-center gap-1"><span className="sr-only">Putere maximă</span><input className="den-input" type="number" min="0" value={maxKw} onChange={(e) => setMaxKw(e.target.value)} placeholder="max" aria-label="Putere maximă kW" /><span className="text-[10px]">kW</span></label>
+          <label className="flex items-center gap-1"><span className="sr-only">Putere minimă</span><input className="den-input" type="number" min="0" value={minKw} onChange={(e) => setMinKw(e.target.value)} placeholder="min" aria-label={`Putere minimă ${filterUnit}`} /><span className="text-[10px]">{filterUnit}</span></label>
+          <label className="flex items-center gap-1"><span className="sr-only">Putere maximă</span><input className="den-input" type="number" min="0" value={maxKw} onChange={(e) => setMaxKw(e.target.value)} placeholder="max" aria-label={`Putere maximă ${filterUnit}`} /><span className="text-[10px]">{filterUnit}</span></label>
           <label><span className="sr-only">Faze</span><select className="den-input" value={phases} onChange={(e) => setPhases(e.target.value)} aria-label="Faze"><option value="">Mono + trifazat</option><option value="Monofazat">Monofazat</option><option value="Trifazat">Trifazat</option></select></label>
           <label><span className="sr-only">Tip invertor</span><select className="den-input" value={systemType} onChange={(e) => setSystemType(e.target.value)} aria-label="Tip"><option value="">Hibrid + on-grid</option><option value="Hibrid">Hibrid</option><option value="On-grid">On-grid</option></select></label>
           <label className="lg:col-span-2"><span className="sr-only">Completitudine documente</span><select className="den-input" value={docStatus} onChange={(e) => setDocStatus(e.target.value)} aria-label="Documente"><option value="all">Toate documentele</option><option value="complete">Documente complete</option><option value="missing">Documente lipsă</option></select></label>
@@ -110,12 +111,13 @@ export default function EquipmentCatalog() {
       </div>
       <div className="space-y-2">
         {rows.map((i) => <article key={i.id} className="flex flex-col gap-3 rounded-xl border bg-white p-3 sm:flex-row sm:items-center" style={{ borderColor: "var(--line)" }} data-testid={`catalog-row-${i.id}`}>
-          <div className="min-w-0 flex-1"><b className="block truncate text-sm">{i.brand_model}</b><span className="mt-1 block text-[11px]" style={{ color: "var(--muted)" }}>{spec(i)}{i.notes ? ` · ${i.notes}` : ""}</span></div>
+          <div className="min-w-0 flex-1"><b className="block truncate text-sm">{i.brand_model}</b><span className="mt-1 block text-[11px]" style={{ color: "var(--muted)" }}>{spec(i)}{i.notes && i.notes !== "Date orientative — verificați fișa tehnică oficială a modelului exact." ? ` · ${i.notes}` : ""}</span></div>
           <div className="flex flex-wrap gap-x-3 gap-y-2"><DocSlot item={i} k="datasheet" label="Fișă tehnică" onUploaded={load} /><DocSlot item={i} k="conformity" label="Conformitate" onUploaded={load} /></div>
-          <div className="flex shrink-0 gap-1"><button onClick={() => setForm({ ...i })} className="rounded-lg p-2 hover:bg-slate-50" title="Editează modelul" data-testid={`catalog-edit-${i.id}`}><Pencil size={15} style={{ color: "var(--green)" }} /></button><button onClick={() => remove(i.id)} className="rounded-lg p-2 hover:bg-red-50" title="Șterge modelul" data-testid={`catalog-delete-${i.id}`}><Trash2 size={15} style={{ color: "#b33333" }} /></button></div>
+          <div className="flex shrink-0 gap-1"><button onClick={() => setForm({ ...i })} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 text-[11px] font-medium hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "var(--ink)" }} title="Corectează modelul" data-testid={`catalog-edit-${i.id}`}><Pencil size={13} /> Corectează</button></div>
         </article>)}
         {!rows.length && <div className="rounded-xl py-10 text-center text-sm" style={{ color: "var(--muted)", background: "var(--bg)" }}>Nu sunt modele care să corespundă filtrelor. Adaugă un model în catalog și completează-i fișele.</div>}
       </div>
     </section>
   </div>;
 }
+
