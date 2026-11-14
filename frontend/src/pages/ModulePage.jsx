@@ -327,8 +327,9 @@ function DossierFieldSections({ id, fields, form, setVal, refOptions, ai, onSave
   return <div className="space-y-4" data-testid="dossier-section-cards">
     {orderedSections.map((section) => {
       const visibleFields = section.label === "Date tehnice" ? section.fields.filter((field) => !equipmentFields.has(field.name)) : section.fields;
-      if (!visibleFields.length) return null;
-      const sectionDirty = !!baselineForm && visibleFields.some((field) => JSON.stringify(form[field.name] ?? null) !== JSON.stringify(baselineForm[field.name] ?? null));
+      const isTechnical = section.label === "Date tehnice";
+      if (!visibleFields.length && !isTechnical) return null;
+      const sectionDirty = !!baselineForm && section.fields.some((field) => JSON.stringify(form[field.name] ?? null) !== JSON.stringify(baselineForm[field.name] ?? null));
       const sectionId = ({ Client: "dossier-section-client", "Client & date de identitate": "dossier-section-client", "Loc de consum": "dossier-section-location", Cererea: "dossier-section-request", "Branșament & măsură": "dossier-section-connection", "Date tehnice": "dossier-section-installation", "Date documente dosar": "dossier-section-documents-data", "Recepție la terminarea lucrărilor": "dossier-section-reception", "Punere în funcțiune și teste": "dossier-section-pif", "Buletin priză de pământ (valori măsurate)": "dossier-section-pram", "Tablou general și alimentare": "dossier-section-panel", "Recepție, punere în funcțiune și garanție": "dossier-section-warranty" })[section.label] || `dossier-section-${section.label.toLocaleLowerCase("ro").replace(/[^a-z0-9]+/g, "-")}`;
       return (
       <section key={section.label} id={sectionId} className="den-panel !p-0 overflow-hidden scroll-mt-24" data-testid={`dossier-section-${section.label}`}>
@@ -343,7 +344,14 @@ function DossierFieldSections({ id, fields, form, setVal, refOptions, ai, onSave
         </div>
         {saveErrors[section.label] && <p className="mx-4 mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-800 sm:mx-5" role="alert">Salvarea a eșuat: {saveErrors[section.label]}</p>}
         {section.label === "Buletin priză de pământ (valori măsurate)" && <PramModePanel id={id} form={form} setVal={setVal} />}
-        {(section.label !== "Buletin priză de pământ (valori măsurate)" || (form.pram_mode || "self") === "self") && <div className="grid sm:grid-cols-2 gap-4 p-4 sm:p-5">
+        {isTechnical && <TechnicalEquipmentSummary form={form} />}
+        {isTechnical && <details className="mx-4 mb-4 rounded-xl border bg-white sm:mx-5" style={{ borderColor: "var(--line)" }} data-testid="technical-manual-overrides">
+          <summary className="cursor-pointer px-4 py-3 text-xs font-semibold" style={{ color: "var(--muted)" }}>Detalii tehnice și completare manuală (opțional)</summary>
+          <div className="grid gap-4 border-t p-4 sm:grid-cols-2" style={{ borderColor: "var(--line)" }}>
+            {section.fields.map((field) => <div key={field.name} className={field.full ? "sm:col-span-2" : ""}><Field f={field} value={form[field.name]} onChange={setField} refOptions={refOptions} ai={ai} /></div>)}
+          </div>
+        </details>}
+        {!isTechnical && (section.label !== "Buletin priză de pământ (valori măsurate)" || (form.pram_mode || "self") === "self") && <div className="grid sm:grid-cols-2 gap-4 p-4 sm:p-5">
           {visibleFields.map((field) => <div key={field.name} className={field.full ? "sm:col-span-2" : ""}><Field f={field} value={form[field.name]} onChange={setField} refOptions={refOptions} ai={ai} />
             {section.label === "Buletin priză de pământ (valori măsurate)" && field.name === "soil" && <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Alegerea stării solului completează coeficientul Ψ implicit. Verifică valoarea după condițiile măsurării.</p>}
             {section.label === "Buletin priză de pământ (valori măsurate)" && field.name === "bulletin_no" && form.bulletin_no && <p className="mt-1 inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ color: "#166534", background: "#edf7f0" }}>Buletin nr. {form.bulletin_no} · numerotare automată pe firmă</p>}
@@ -355,6 +363,38 @@ function DossierFieldSections({ id, fields, form, setVal, refOptions, ai, onSave
       </section>
       );
     })}
+  </div>;
+}
+
+function TechnicalEquipmentSummary({ form }) {
+  const inverters = (form.cef?.inverters || []).filter((item) => item.brand_model || item.catalog_id);
+  const number = (value) => Number(String(value ?? "").replace(",", ".")) || 0;
+  const sharedIds = new Set(inverters.filter((item) => item.battery_mode === "shared").map((item) => item.shared_battery_id));
+  const sharedBatteries = (form.cef?.shared_batteries || []).filter((item) => sharedIds.has(item.id));
+  const pvCount = inverters.reduce((sum, item) => sum + (item.no_panels ? 0 : (item.strings || []).reduce((n, row) => n + number(row.panels), 0)), 0);
+  const pvKwp = inverters.reduce((sum, item) => sum + (item.no_panels ? 0 : (item.strings || []).reduce((n, row) => n + number(row.panels) * number(item.panel_w) / 1000, 0)), 0);
+  const inverterKw = inverters.reduce((sum, item) => sum + number(item.p_nom_kw), 0);
+  const batteryKwh = inverters.filter((item) => item.battery_mode === "own").reduce((sum, item) => sum + number(item.battery?.kwh) * Math.max(1, number(item.battery?.modules) || 1), 0)
+    + sharedBatteries.reduce((sum, item) => sum + number(item.kwh) * Math.max(1, number(item.modules) || 1), 0);
+  const panelModels = [...new Set(inverters.map((item) => item.panel_model).filter(Boolean))];
+  const batteryModels = [...new Set([
+    ...inverters.filter((item) => item.battery_mode === "own").map((item) => item.battery?.model),
+    ...sharedBatteries.map((item) => item.model || item.brand_model),
+  ].filter(Boolean))];
+  const systemType = batteryKwh ? "Hibrid cu baterie" : "On-grid";
+  const exportKw = inverters.reduce((sum, item) => sum + Math.min(number(item.p_nom_kw), number(item.p_limit_kw) || number(item.p_nom_kw)), 0);
+  const items = [
+    ["Sistem", systemType],
+    ["Invertor(e)", inverters.map((item) => item.brand_model).filter(Boolean).join(", ") || "Neselectat"],
+    ["Panouri", `${panelModels.join(", ") || "Neselectate"}${pvCount ? ` · ${pvCount} buc. · ${pvKwp.toFixed(2)} kWp` : ""}`],
+    ["Putere invertor", inverterKw ? `${inverterKw.toFixed(2)} kW` : "—"],
+    ["Baterie", batteryKwh ? `${batteryModels.join(", ") || "Selectată"} · ${batteryKwh.toFixed(2)} kWh` : "Fără baterie selectată"],
+    ["Putere evacuată propusă", exportKw ? `${exportKw.toFixed(2)} kW` : "—"],
+    ["Branșament", [form.supply || form.cef?.grid?.supply, form.approved_kva && `${form.approved_kva} kVA aprobat`].filter(Boolean).join(" · ") || "Neselectat"],
+  ];
+  return <div className="px-4 pb-4 sm:px-5" data-testid="technical-equipment-summary">
+    <p className="mb-3 text-xs" style={{ color: "var(--muted)" }}>Datele echipamentelor se preiau din selecția folosită și în schema monofilară. Câmpurile tehnice suplimentare se completează doar dacă sunt cerute.</p>
+    <div className="grid gap-2 sm:grid-cols-2">{items.map(([label, value]) => <div key={label} className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)", background: "#fffefa" }}><div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{label}</div><div className="mt-0.5 text-sm font-medium">{value}</div></div>)}</div>
   </div>;
 }
 
