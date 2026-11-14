@@ -85,6 +85,13 @@ export function Sidebar({ open, onClose }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [expandedGroup, setExpandedGroup] = useState("");
+  const [guidedDossier, setGuidedDossier] = useState(() => localStorage.getItem("dns-dossier-interface") !== "classic");
+  const toggleGuidedDossier = () => {
+    const next = !guidedDossier;
+    setGuidedDossier(next);
+    localStorage.setItem("dns-dossier-interface", next ? "guided" : "classic");
+    window.dispatchEvent(new CustomEvent("dns-dossier-interface", { detail: next ? "guided" : "classic" }));
+  };
   const initials = (user?.name || user?.email || "A").slice(0, 2).toUpperCase();
   const visibleItems = (items) => items.filter((it) => (!it.admin || (user?.role || "admin") === "admin")
     && (!it.platform || user?.platform)
@@ -110,6 +117,9 @@ export function Sidebar({ open, onClose }) {
 
         <nav className="flex-1" aria-label="Navigare principală">
           {MAIN_NAV.map((item) => <NavItem key={item.to} item={item} onClose={onClose} user={user} />)}
+          <button type="button" onClick={toggleGuidedDossier} className="mt-1 flex w-full items-center gap-3 rounded-[9px] border border-white/10 px-3 py-[10px] text-left text-[12px] font-semibold text-[#bdc8da] hover:bg-[#1c2c48] hover:text-white" data-testid="sidebar-toggle-dossier-interface">
+            <FolderOpen size={16} /><span>{guidedDossier ? "Interfață clasică dosar" : "Interfață nouă dosar"}</span><span className="ml-auto rounded bg-[#e78c2f] px-1.5 py-0.5 text-[9px] font-extrabold text-white">BETA</span>
+          </button>
           <div className="mt-4 border-t border-white/10 pt-2">
             {GROUPS.map((group) => {
               const items = visibleItems(group.items);

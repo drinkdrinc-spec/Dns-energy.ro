@@ -174,6 +174,10 @@ def diagram(S, rec, res, client):
     base = res["base"]
     invs = cef.get("inverters") or []
     tri = base["grid"]["tri"]
+    branch_breaker = base["grid"].get("main_proposal")
+    bmp_value = n(grid.get("bmp_a")) or branch_breaker
+    tg_value = n(grid.get("tg_breaker_a")) or branch_breaker
+    spd_ac_value = grid.get("spd_ac") or f"{'4P' if tri else '2P'} · Tip 2 (propus)"
     anti = base["grid"]["anti"]
     A = 32 if anti else 0
     rows = []
@@ -185,7 +189,10 @@ def diagram(S, rec, res, client):
         hb = 30 if inv.get("battery_mode") == "own" else (12 if (inv.get("backup") or {}).get("enabled") else 4)
         rows.append((hs, hb + 2 * (hh - 13)))
     shared = cef.get("shared_batteries") or []
-    H = 12 + sum(a + b for a, b in rows) + (30 if shared else 0) + 18
+    circuits = grid.get("circuits") or [{"name": f"Circuit {i + 1}"} for i in range(4)]
+    circuit_count = max(1, len(circuits))
+    # Leave real drawing room in the TEG enclosure for each outgoing circuit.
+    H = 12 + sum(a + b for a, b in rows) + (30 if shared else 0) + 18 + max(0, circuit_count - 2) * 6
     W = 418 + A
     return W, H, lambda: _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, shared)
 
@@ -241,6 +248,8 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                     S.fuse(62, y)
                 S.wire(2, y - 4, 6, y - 4, "pe")
             S.text(6, min(ys) - 8.5, str(inv.get("panel_model") or "[model panou lipsă]"), 4.6, color=INK if inv.get("panel_model") else RED, w=48)
+            if (inv.get("optimizer") or {}).get("model"):
+                S.text(6, min(ys) - 10.6, f"Optimizator: {(inv.get('optimizer') or {}).get('model')}", 4.2, color=GREY, w=52)
             mppts = sorted(par)
             nm = len(mppts)
             for j, m in enumerate(mppts):
@@ -265,6 +274,8 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             by = min(ys) - 11.8
             S.text(58, by + 2.2, f"-W{i + 1}.DC  {dc.get('cable_type') or 'H1Z2Z2-K'}", 4.6, True, w=56)
             S.val(58, by, "1×", n(dc.get("section")), f" mm² {dc.get('material') or 'Cu'} (+/−), L=" + (gv(n(dc.get('length_m')), ' m') or "[lipsă]"), w=56, size=4.6)
+            if grid.get("solar_cable"):
+                S.text(58, by - 2.2, f"Conductor solar: {grid.get('solar_cable')}", 4.2, color=GREY, w=56)
             S.wire(2, min(ys) - 4, 2, pe_y, "pe")
         # inverter
         cx = 134
@@ -275,6 +286,11 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         ph = "trifazat" if r["tri"] else ("monofazat" + (f" {inv.get('phase')}" if inv.get("phase") else ""))
         S.text(cx, cy + 17.2 + 2 * dd, f"{inv.get('type') or 'Invertor'} · {ph}", 4.8, anchor="c", w=48)
         S.val(cx, cy + 14.8 + 2 * dd, "Pn ", n(inv.get("p_nom_kw")), " kW" + (f" · Pmax {gv(n(inv.get('p_max_kw')), ' kW')}" if n(inv.get("p_max_kw")) else ""), anchor="c", w=48, size=4.8)
+        mppt_currents = inv.get("imax_mppt_values") or []
+        current_label = "/".join(gv(n(value)) or "—" for value in mppt_currents) if mppt_currents else (gv(n(inv.get("imax_mppt"))) or "—")
+        isc_limits = inv.get("isc_mppt_max_values") or []
+        isc_label = "/".join(gv(n(value)) or "—" for value in isc_limits) if isc_limits else (gv(n(inv.get("isc_mppt_max"))) or "—")
+        S.text(cx, cy + 12.4 + 2 * dd, f"MPPT {gv(n(inv.get('mppt_min'))) or '—'}–{gv(n(inv.get('mppt_max')), ' V') or '—'} · Imax/Isc {current_label}/{isc_label} A", 4.0, anchor="c", w=48, color=GREY)
         S.wire(cx - 9, cy - 13, cx - 9, pe_y, "pe")
         S.text(cx - 12, cy - 16, "PE", 4.2, color=PEC, anchor="r")
         S.wire(2, pe_y, cx - 9, pe_y, "pe")
@@ -288,7 +304,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.text(cx + 6, cy - 23.2, f"-G{i + 1}", 4.8, True)
             S.val(cx + 6, cy - 25.6, "", bt.get("model"), size=4.6, w=28)
             kwh = r["battery_kwh"]
-            S.val(cx + 6, cy - 28, "", kwh, f" kWh · {gv(n(bt.get('voltage')), ' V') or '— V'} · {bt.get('coupling') or 'DC'}", size=4.4, w=28)
+            S.val(cx + 6, cy - 28, "", kwh, f" kWh · {gv(n(bt.get('voltage')), ' V') or '— V'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'}", size=4.4, w=28)
         if (inv.get("backup") or {}).get("enabled"):
             b = inv["backup"]
             S.wire(cx + hh, cy - 10, 152, cy - 10); S.wire(152, cy - 10, 152, cy - 16); S.wire(152, cy - 16, 182, cy - 16)
@@ -333,19 +349,49 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         ytop, ybot = max(cys), min(cys)
         S.lw(1.3); S.c.line(BUS, ytop + 5, BUS, ybot - 12); S.lw()
         y = ytop
-        S.enclosure(238, ybot - 22, 300, ytop + 15, "-TG  Tablou general", "existent / de completat")
+        circuits = grid.get("circuits") or [{"name": f"Circuit {i + 1}"} for i in range(4)]
+        circuit_step = min(5.6, 22 / max(1, len(circuits) - 1)) if len(circuits) > 1 else 0
+        circuit_ys = [ybot - 10 - i * circuit_step for i in range(len(circuits))]
+        tg_bottom = min(ybot - 22, circuit_ys[-1] - 10)
+        backup = any((inv.get("backup") or {}).get("enabled") for inv in invs)
+        feed_label = grid.get("teg_supply") if grid.get("teg_supply") not in (None, "", "Auto (derivat)") else ("Load (2× BMP)" if backup else "Rețea (fără back-up)")
+        S.enclosure(238, tg_bottom, 300, ytop + 15, "-TG  Tablou general", feed_label)
         S.text(BUS - 1.5, ytop + 6, "bară 0,4 kV", 4.2, anchor="r")
         S.wire(BUS, y, TGQ - 5, y); S.switch(TGQ, y, "Q"); S.wire(TGQ + 5, y, 352.5 + A, y)
         S.text(TGQ - 4, y + 6.4, "-Q0.TG", 4.6, True)
-        S.val(TGQ - 4, y - 3.4, "", n(grid.get("tg_breaker_a")), f" A {poles}", size=4.4)
+        S.val(TGQ - 4, y - 3.4, "", tg_value, f" A {poles}{' propus' if not n(grid.get('tg_breaker_a')) else ''}", size=4.4)
         S.spd(SPDX, y, y_pe)
-        S.val(SPDX + 2.4, y - 6, "-FA AC ", grid.get("spd_ac"), size=4.4, w=16)
-        yc = ybot - 10
-        S.node(BUS, yc); S.wire(BUS, yc, 255, yc); S.switch(260, yc, "Q"); S.wire(265, yc, 272, yc)
-        S.lw(0.3); S.c.line(272, yc, 270.6, yc + 1); S.c.line(272, yc, 270.6, yc - 1); S.lw()
-        S.text(255, yc - 4, "circuite consumatori existenți", 4.2, color=GREY)
-        S.text(240, ybot - 20.6, "Bară PE (TG)", 4.4, color=PEC)
-        S.wire(BUS, ybot - 12, BUS, ybot - 18, "pe")
+        S.val(274, y - 10, "-FA AC ", spd_ac_value, size=3.8, w=24)
+        if grid.get("inv_to_bmp_cable"):
+            S.text(274, y - 12.5, f"Cablu INV→BMP/TEG: {grid.get('inv_to_bmp_cable')}", 3.6, color=GREY, w=30)
+        # The general RCD is in series after the parallel SPD tap.
+        S.rcd(293, y)
+        rcd_ma = n(grid.get("rcd_ma")) or 30
+        rcd_note = "" if n(grid.get("rcd_ma")) else " propus"
+        S.text(274, y - 15, f"-F0.TG DDR {gv(rcd_ma, ' mA')}{rcd_note}", 3.8, color=INK, w=24)
+        # Individual outgoing TEG circuits, with their actual labels and device
+        # ratings when entered. Empty ratings remain explicitly unfilled.
+        for ci, circuit in enumerate(circuits):
+            yc = circuit_ys[ci]
+            S.node(BUS, yc)
+            S.wire(BUS, yc, 255, yc)
+            S.switch(260, yc, "Q")
+            S.wire(265, yc, 272, yc)
+            S.lw(0.3); S.c.line(272, yc, 270.6, yc + 1); S.c.line(272, yc, 270.6, yc - 1); S.lw()
+            label = circuit.get("name") or f"Circuit {ci + 1}"
+            rating = ((str(circuit.get("curve") or "C") if circuit.get("curve") else "") + (gv(n(circuit.get("breaker_a")), " A") or "")) or "protecție de stabilit"
+            poles_note = f" {circuit.get('poles')}" if circuit.get("poles") else ""
+            cable = (f" · {gv(n(circuit.get('cable_section')), ' mm²')}" if n(circuit.get("cable_section")) else "")
+            rcd = (f" · DDR {gv(n(circuit.get('rcd_ma')), ' mA')}" if n(circuit.get("rcd_ma")) else "")
+            S.text(274, yc - 1.5, f"{label}: {rating}{poles_note}{cable}{rcd}", 3.8, color=INK if circuit.get("breaker_a") else GREY, w=25)
+        S.text(240, tg_bottom + 1.5, "Tablou protecții · 10 module", 3.8, color=GREY, w=58)
+        # Keep the protective-earth bar electrically and graphically separate
+        # from the live AC busbar. It leaves the enclosure on its left edge.
+        pe_bar_y = tg_bottom + 4
+        S.wire(242, pe_bar_y, 296, pe_bar_y, "pe")
+        S.text(242, pe_bar_y + 1.2, "Bară PE (TG)", 4.0, color=PEC)
+        S.wire(236, pe_bar_y, 242, pe_bar_y, "pe")
+        S.wire(236, pe_bar_y, 236, y_pe, "pe")
         x = 300
         if anti:
             S.enclosure(302, y - 9, 330, y + 15, "-TAI  Antiinsularizare")
@@ -383,7 +429,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.wire(mx + 5.5, y, 374 + A, y)
         S.switch(379 + A, y, "Q")
         S.text(375 + A, y + 6.4, "-Q0", 4.6, True)
-        S.val(375 + A, y - 3.4, "", n(grid.get("bmp_a")), f" A {poles}", size=4.4)
+        S.val(375 + A, y - 3.4, "", bmp_value, f" A {poles}{' propus' if not n(grid.get('bmp_a')) else ''}", size=4.4)
         S.wire(384 + A, y, 402 + A, y)
         S.transformer(407 + A, y)
         S.text(402 + A, y + 7, "Rețea OD 0,4 kV", 4.8, True)
@@ -396,12 +442,11 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         # left PE collector & earthing
         S.wire(2, top - 2, 2, y_pe, "pe")
         S.wire(2, y_pe, 340, y_pe, "pe")
-        S.wire(BUS, ybot - 18, BUS, y_pe, "pe")
         S.lw(1.1, PEC); S.c.line(300, y_pe, 318, y_pe); S.lw()
         S.text(300, y_pe + 1.4, "-XPE bară principală de împământare", 4.4, color=PEC)
         S.earth(340, y_pe)
         S.text(344, y_pe - 1.6, "-E1 Priză de pământ", 4.8, True)
-        S.val(344, y_pe - 4.2, "R = ", n(grid.get("grounding_ohm") or rec.get("grounding_ohm")), " Ω (măsurat)", size=4.6)
+        S.val(344, y_pe - 4.2, "R = ", n(rec.get("grounding_ohm") or grid.get("grounding_ohm")), " Ω (măsurat)", size=4.6)
         S.val(344, y_pe - 6.6, "Sistem: ", grid.get("earthing"), size=4.6)
         S.text(4, y_pe + 1.2, "PE / echipotențializare rame PV: " + (gv(n(grid.get("bond_section")), " mm² Cu") or "≥ 6 mm² Cu"), 4.4, color=PEC)
 
@@ -536,6 +581,13 @@ def table_page(S, area, res, rec):
         _, h = p.wrapOn(c, (W - 190) * mm if y < y1 + 50 else (W - 4) * mm, 60 * mm)
         p.drawOn(c, (x1 + 2) * mm, max(y * mm - h, (y1 + 2) * mm))
         c.restoreState()
+    if res.get("verification_missing"):
+        labels = "; ".join(m["label"] for m in res["verification_missing"])
+        p = Paragraph("<font color='#8a5a00'><b>DE CONFIRMAT ÎNAINTE DE APROBARE:</b> " + escape(labels) + "</font>", CELL)
+        c.saveState(); c.scale(1 / mm, 1 / mm)
+        _, h = p.wrapOn(c, (W - 190) * mm if y < y1 + 50 else (W - 4) * mm, 60 * mm)
+        p.drawOn(c, (x1 + 2) * mm, max(y * mm - h - (4 if res["missing"] else 0), (y1 + 2) * mm))
+        c.restoreState()
 
 
 def report(rec, client, settings, res, approval) -> bytes:
@@ -590,7 +642,9 @@ def report(rec, client, settings, res, approval) -> bytes:
         out.append(Pp(f"<font color='#b9770e'><b>ATENȚIE:</b> {escape(w)}</font>", "li"))
     for m in res["missing"]:
         out.append(Pp(f"<font color='#b03a2e'><b>LIPSĂ:</b> {escape(m['label'])}</font>", "li"))
-    if not (res["errors"] or res["warnings"] or res["missing"]):
+    for m in res.get("verification_missing") or []:
+        out.append(Pp(f"<font color='#b9770e'><b>DE CONFIRMAT ÎNAINTE DE APROBARE:</b> {escape(m['label'])}</font>", "li"))
+    if not (res["errors"] or res["warnings"] or res["missing"] or res.get("verification_missing")):
         out.append(Pp("Nu au fost identificate erori sau date lipsă."))
     out.append(Pp("6. Standarde și surse tehnice", "b"))
     out.append(tbl([[C_("Referință", True), C_("Domeniu", True)]] + [[C_(a), C_(b)] for a, b in res["standards"]] +
@@ -641,26 +695,48 @@ def protections(rec, res):
     grid = cef.get("grid") or {}
     base = res["base"]
     tri = base["grid"]["tri"]
+    branch_breaker = base["grid"].get("main_proposal")
+    bmp_value = n(grid.get("bmp_a")) or branch_breaker
+    tg_value = n(grid.get("tg_breaker_a")) or branch_breaker
+    spd_ac_value = grid.get("spd_ac") or f"{'4P' if tri else '2P'} · Tip 2 (propus)"
+    tg_label = gv(tg_value, " A " + ("4P" if tri else "2P")) or "—"
+    bmp_label = gv(bmp_value, " A " + ("4P" if tri else "2P")) or "—"
     out = []
     for i, inv in enumerate(cef.get("inverters") or []):
         r = base["inverters"][i]
         ac, dc, bt = inv.get("ac") or {}, inv.get("dc") or {}, inv.get("battery") or {}
         if r["strings"]:
-            out.append((f"-Q{i + 1}.D", "Separator de sarcină DC (DC-PV2)", dc.get("switch"), f"-TDC{i + 1}"))
-            out.append((f"-FA{i + 1}.DC", "Descărcător SPD DC tip 2", gv(n(dc.get("spd_ucpv")), " V Ucpv"), f"-TDC{i + 1}"))
+            pv_switch = dc.get("switch") or inv.get("dc_switch_integrated") or f"DC-PV2 ≥ {r['voc_cold_max']:.0f} V / ≥ {1.25 * r['isc_mppt_max']:.1f} A (propus)"
+            spd_value = n(dc.get("spd_ucpv")) or r["proposals"]["dc"]["spd_ucpv"]
+            out.append((f"-Q{i + 1}.D", "Separator de sarcină DC (DC-PV2)", pv_switch, f"-TDC{i + 1}"))
+            out.append((f"-FA{i + 1}.DC", "Descărcător SPD DC tip 2", gv(spd_value, " V Ucpv") + (" (propus)" if not n(dc.get("spd_ucpv")) and spd_value else ""), f"-TDC{i + 1}"))
             if r["proposals"]["dc"]["fuse"]:
-                out.append((f"-F{i + 1}.S", "Siguranțe gPV pe stringuri", gv(n(dc.get("fuse_a")), " A gPV"), f"-TDC{i + 1}"))
-        out.append((f"-Q{i + 1}.1", "Întreruptor automat AC invertor", (f"C{gv(n(ac.get('breaker_a')))} A {r['proposals']['ac']['poles']}" + (f", Icu {gv(n(ac.get('icu_ka')))} kA" if n(ac.get("icu_ka")) else "")) if n(ac.get("breaker_a")) else None, "-TFV"))
+                fuse_value = n(dc.get("fuse_a")) or r["proposals"]["dc"]["fuse"]
+                out.append((f"-F{i + 1}.S", "Siguranțe gPV pe stringuri", gv(fuse_value, " A gPV") + (" (propus)" if not n(dc.get("fuse_a")) else ""), f"-TDC{i + 1}"))
+        ac_breaker = n(ac.get("breaker_a")) or r["proposals"]["ac"]["breaker_a"]
+        ac_rating = (f"C{gv(ac_breaker)} A {r['proposals']['ac']['poles']}" if ac_breaker else None)
+        if ac_rating and not n(ac.get("breaker_a")):
+            ac_rating += " (propus)"
+        if n(ac.get("icu_ka")):
+            ac_rating = (ac_rating or "") + f", Icu {gv(n(ac.get('icu_ka')))} kA"
+        out.append((f"-Q{i + 1}.1", "Întreruptor automat AC invertor", ac_rating, "-TFV"))
         out.append((f"-F{i + 1}.1", "Dispozitiv diferențial (DDR)", (f"{inv.get('rcd_type')} {gv(n(inv.get('rcd_ma')), ' mA') or ''}".strip()) if inv.get("rcd_type") else None, "-TFV"))
         if inv.get("battery_mode") == "own":
             out.append((f"-F{i + 1}.B", "Protecție DC baterie", gv(n(bt.get("fuse_a")), " A DC"), f"-G{i + 1}"))
         if (inv.get("backup") or {}).get("enabled"):
             out.append((f"-Q{i + 1}.EPS", "Întreruptor circuit backup / EPS", inv["backup"].get("breaker"), f"-TB{i + 1}"))
-    out.append(("-Q0.TG", "Întreruptor general TG", gv(n(grid.get("tg_breaker_a")), " A " + ("4P" if tri else "2P")), "-TG"))
-    out.append(("-FA AC", "Descărcător SPD AC", grid.get("spd_ac"), "-TG"))
+    out.append(("-Q0.TG", "Întreruptor general TG", tg_label + (" (propus)" if not n(grid.get("tg_breaker_a")) and tg_value else ""), "-TG"))
+    out.append(("-FA AC", "Descărcător SPD AC", spd_ac_value, "-TG"))
+    out.append(("-F0.TG", "Dispozitiv diferențial general TG", gv(n(grid.get("rcd_ma")) or 30, " mA") + (" (propus)" if not n(grid.get("rcd_ma")) else ""), "-TG"))
+    for i, circuit in enumerate(grid.get("circuits") or [{"name": f"Circuit {j + 1}"} for j in range(4)]):
+        circuit_rating = ((str(circuit.get("curve") or "C") if circuit.get("curve") else "") + gv(n(circuit.get("breaker_a")), " A")) if n(circuit.get("breaker_a")) else None
+        if circuit.get("poles") and circuit_rating:
+            circuit_rating += f" {circuit.get('poles')}"
+        out.append((f"-Q0.{i + 1}", f"Circuit TEG — {circuit.get('name') or f'Circuit {i + 1}'}",
+                    circuit_rating, "-TG"))
     if base["grid"]["anti"]:
         out.append(("-K1/-K2", "Element decuplare + releu protecție interfață", " / ".join(x for x in [grid.get("anti_breaker"), grid.get("anti_relay")] if x) or None, "-TAI"))
-    out.append(("-Q0", "Întreruptor BMP (OD)", gv(n(grid.get("bmp_a")), " A " + ("4P" if tri else "2P")), "-BMP"))
+    out.append(("-Q0", "Întreruptor BMP (OD)", bmp_label + (" (propus)" if not n(grid.get("bmp_a")) and bmp_value else ""), "-BMP"))
     return out
 
 
@@ -678,23 +754,43 @@ def sheet_data(rec, client, settings, res, approval):
     sec = [("1. Date generale", ["Câmp", "Valoare"], [
         ["Beneficiar", get("name")], ["Loc de producere / consum", loc or None], ["POD", get("pod")], ["Operator de distribuție", get("operator")],
         ["Număr proiect", get("project_no")],
+        ["Extindere CEF existentă", "Da — instalația veche rămâne în funcțiune" if cef.get("existing_extension") else "Nu"],
         ["Branșament", f"{grid.get('supply')}, putere aprobată {gv(n(grid.get('bransament_kw')), ' kW') or '[lipsă]'}" if grid.get("supply") else None],
         ["Putere instalată DC", gv(t["kwp"], " kWp")], ["Putere invertoare AC (nominal / maxim)", f"{t['inverters_kw']:g} / {t['inverters_kw_max']:g} kW" if t["inverters_kw"] else None],
         ["Putere maximă evacuată", gv(t["export_kw"], " kW")], ["Capacitate stocare", gv(t["storage_kwh"], " kWh") or "fără stocare"],
         ["Sistem de legare la pământ", grid.get("earthing")], ["Ik la punctul de racord", gv(n(grid.get("ik_ka")), " kA")],
-        ["Priză de pământ (măsurat / admis)", f"{gv(n(grid.get('grounding_ohm') or rec.get('grounding_ohm')), ' Ω') or '[nemăsurat]'} / {gv(n(grid.get('grounding_limit') or rec.get('grounding_limit')), ' Ω') or '[nestabilit]'}"]], [70, 112])]
+        ["Alimentare TEG", "Cu back-up / EPS" if any((i.get("backup") or {}).get("enabled") for i in cef.get("inverters") or []) else "Rețea (fără back-up)"],
+        ["SPD DC", "; ".join(f"INV {i + 1}: {gv(n((inv.get('dc') or {}).get('spd_ucpv')), ' V Ucpv') or '[lipsă]'}" for i, inv in enumerate(cef.get("inverters") or [])) or None],
+        ["SPD CC (TEG)", grid.get("spd_dc")], ["SPD AC", grid.get("spd_ac")],
+        ["Conductor solar", grid.get("solar_cable")], ["Cablu AC invertor → BMP/TEG", grid.get("inv_to_bmp_cable")],
+        ["Alimentare TEG", grid.get("teg_supply") or ("Load (2× BMP)" if any((i.get("backup") or {}).get("enabled") for i in cef.get("inverters") or []) else "Rețea (fără back-up)")],
+        ["Backup", grid.get("backup_mode") or ("Parțial/total" if any((i.get("backup") or {}).get("enabled") for i in cef.get("inverters") or []) else "—")],
+        ["Protecție generală TEG", grid.get("tg_general") or (gv(n(grid.get("tg_breaker_a")), " A") if n(grid.get("tg_breaker_a")) else None)],
+        ["Priză de pământ", grid.get("earth_socket")],
+        ["Circuite TEG", str(len(grid.get("circuits") or [{"name": f"Circuit {i + 1}"} for i in range(4)])) + " circuite; tablou protecții 10 module"],
+        ["Priză de pământ (măsurat / admis)", f"{gv(n(rec.get('grounding_ohm') or grid.get('grounding_ohm')), ' Ω') or '[nemăsurat]'} / {gv(n(rec.get('grounding_limit') or grid.get('grounding_limit')), ' Ω') or '≤ 4 Ω implicit'}"]], [70, 112])]
     eq = []
     for i, inv in enumerate(cef.get("inverters") or []):
         r = base["inverters"][i]
+        imax_values = inv.get("imax_mppt_values") or []
+        isc_values = inv.get("isc_mppt_max_values") or []
+        imax_text = "/".join(gv(n(x)) or "—" for x in imax_values) if imax_values else (gv(n(inv.get("imax_mppt"))) or "—")
+        isc_text = "/".join(gv(n(x)) or "—" for x in isc_values) if isc_values else (gv(n(inv.get("isc_mppt_max"))) or "—")
         eq.append([f"-U{i + 1}", f"Invertor {inv.get('type') or ''}".strip(), inv.get("brand_model"),
-                   f"Pn {gv(n(inv.get('p_nom_kw')), ' kW') or '—'} · Pmax {gv(n(inv.get('p_max_kw')), ' kW') or '—'} · {'3F' if r['tri'] else '1F'} · Udc max {gv(n(inv.get('vdc_max')), ' V') or '—'} · MPPT {gv(n(inv.get('mppt_min'))) or '—'}–{gv(n(inv.get('mppt_max')), ' V') or '—'} × {gv(n(inv.get('mppt_count'))) or '—'}", "1"])
+                   f"Pn {gv(n(inv.get('p_nom_kw')), ' kW') or '—'} · Pmax {gv(n(inv.get('p_max_kw')), ' kW') or '—'} · {'3F' if r['tri'] else '1F'} · Udc max {gv(n(inv.get('vdc_max')), ' V') or '—'} · MPPT {gv(n(inv.get('mppt_min'))) or '—'}–{gv(n(inv.get('mppt_max')), ' V') or '—'} × {gv(n(inv.get('mppt_count'))) or '—'} · Imax/Isc {imax_text}/{isc_text} A", "1"])
+        if (inv.get("optimizer") or {}).get("model"):
+            eq.append([f"-OPT{i + 1}", "Optimizator fotovoltaic", (inv.get("optimizer") or {}).get("model"), None, "1"])
         if r["strings"]:
             eq.append([f"-PV{i + 1}", "Module fotovoltaice", inv.get("panel_model"),
-                       f"{gv(n(inv.get('panel_w')), ' W') or '—'} · Voc {gv(n(inv.get('panel_voc')), ' V') or '—'} · Isc {gv(n(inv.get('panel_isc')), ' A') or '—'} · stringuri: " + " + ".join(f"{s['panels']} (MPPT{s['mppt']})" for s in r["strings"]),
+                       f"{gv(n(inv.get('panel_w')), ' W') or '—'} · Voc {gv(n(inv.get('panel_voc')), ' V') or '—'} · Vmp {gv(n(inv.get('panel_vmp')), ' V') or '—'} · Isc {gv(n(inv.get('panel_isc')), ' A') or '—'} · Imp {gv(n(inv.get('panel_imp')), ' A') or '—'} · stringuri: " + " + ".join(f"{s['panels']} (MPPT{s['mppt']})" for s in r["strings"]),
                        str(sum(s["panels"] for s in r["strings"]))])
         if inv.get("battery_mode") == "own":
             bt = inv.get("battery") or {}
-            eq.append([f"-G{i + 1}", "Baterie", bt.get("model"), f"{gv(r['battery_kwh'], ' kWh') or '—'} · {gv(n(bt.get('voltage')), ' V') or '—'} · cuplare {bt.get('coupling') or 'DC'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'}", str(int(n(bt.get("modules"), 1)) or 1)])
+            domains = bt.get("voltage_ranges") or []
+            domain_text = " / ".join(f"{gv(n(d.get('min'))) or '—'}–{gv(n(d.get('max')), ' V') or '—'} {d.get('phases') or ''}".strip() for d in domains if isinstance(d, dict))
+            if not domain_text and (n(bt.get("voltage_min")) or n(bt.get("voltage_max"))):
+                domain_text = f"{gv(n(bt.get('voltage_min'))) or '—'}–{gv(n(bt.get('voltage_max')), ' V') or '—'}"
+            eq.append([f"-G{i + 1}", "Baterie", bt.get("model"), f"{gv(r['battery_kwh'], ' kWh') or '—'} · {gv(n(bt.get('voltage')), ' V') or '—'} · domeniu {domain_text or '—'} · cuplare {bt.get('coupling') or 'DC'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'}", str(int(n(bt.get("modules"), 1)) or 1)])
     for k, b in enumerate(cef.get("shared_batteries") or []):
         eq.append([f"-GC{k + 1}", "Baterie comună", b.get("model"), f"{gv(n(b.get('kwh')), ' kWh/modul') or '—'} · Imax {gv(n(b.get('i_max')), ' A') or '—'}", str(int(n(b.get("modules"), 1)) or 1)])
     if grid.get("meter"):
@@ -705,7 +801,9 @@ def sheet_data(rec, client, settings, res, approval):
            gv(x.get("length")), f"{gv(x.get('ib')) or '—'} / {gv(x.get('iz')) or '—'}", gv(x.get("du")) or "0"] for x in res["cables"]]
     sec.append(("3. Lista cablurilor", ["Cod", "Traseu", "Tip", "Conductoare", "Secțiune", "L (m)", "Ib / Iz (A)", "ΔU %"], cb, [14, 36, 24, 28, 30, 14, 22, 14]))
     sec.append(("4. Aparate de protecție", ["Cod", "Aparat", "Valori nominale", "Amplasare"], [list(p) for p in protections(rec, res)], [22, 70, 60, 30]))
-    issues = [f"LIPSĂ: {m['label']}" for m in res["missing"]] + [f"EROARE: {e}" for e in res["errors"]]
+    issues = ([f"LIPSĂ: {m['label']}" for m in res["missing"]]
+              + [f"DE CONFIRMAT: {m['label']}" for m in res.get("verification_missing") or []]
+              + [f"EROARE: {e}" for e in res["errors"]])
     aps = [a for a in (approval.get("approvals") or {}).values() if a.get("valid")]
     appr = "; ".join(f"{a['name']} ({a['role_label']}, {a.get('auth') or ''}), {a['at'][:10]}" for a in aps) if aps else "neaprobat"
     return {"company": settings.get("company") or "DNS HOSTESS S.R.L.", "status": status, "sections": sec, "issues": issues, "approved_by": appr}

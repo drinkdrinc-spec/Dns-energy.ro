@@ -87,7 +87,8 @@ async def pif_get(item_id: str, user: dict = Depends(get_current_user)):
     rec = CEF.from_legacy(await S.check_access(user, "prosumator", item_id))
     return {"pif": rec.get("pif") or {}, "strings": pif_rows(rec), "checks": CHECKS, "results": RES,
             "inverters": [{"n": i + 1, "model": v.get("brand_model")} for i, v in enumerate((rec.get("cef") or {}).get("inverters") or [])],
-            "grounding_ohm": (rec.get("cef") or {}).get("grid", {}).get("grounding_ohm") or rec.get("grounding_ohm")}
+            "grounding_ohm": (rec.get("cef") or {}).get("grid", {}).get("grounding_ohm") or rec.get("grounding_ohm"),
+            "operator": rec.get("operator") or ""}
 
 
 @api.put("/dossier/{item_id}/pif")
@@ -98,10 +99,18 @@ async def pif_save(item_id: str, request: Request, user: dict = Depends(get_curr
     if not isinstance(b, dict) or any(not isinstance(b.get(k) or {}, dict) for k in ("strings", "inv", "checks")):
         raise HTTPException(status_code=400, detail="Format invalid")
     clean = lambda v: str(v)[:120] if v not in (None,) else ""
+    delgaz = b.get("delgaz") if isinstance(b.get("delgaz"), dict) else {}
+    functional = b.get("functional_checks") if isinstance(b.get("functional_checks"), dict) else {}
     pif = {"date": clean(b.get("date")), "operator": clean(b.get("operator")), "instruments": clean(b.get("instruments")), "notes": str(b.get("notes") or "")[:1000],
            "strings": {k: {f: clean(v.get(f)) for f in ("voc", "isc", "riso_p", "riso_n", "polarity")} for k, v in (b.get("strings") or {}).items() if isinstance(v, dict)},
            "inv": {k: {f: clean(v.get(f)) for f in ("u_ac", "f_hz", "p_kw", "anti_s", "rcd_ms", "rcd_ma")} for k, v in (b.get("inv") or {}).items() if isinstance(v, dict)},
            "checks": {str(k): v for k, v in (b.get("checks") or {}).items() if v in RES}, "grounding_measured": clean(b.get("grounding_measured")),
+           "functional_checks": {k: bool(functional.get(k)) for k in ("protection_settings", "anti_islanding", "serials_match", "grounding_ok")},
+           "delgaz": {"atr_no": clean(delgaz.get("atr_no")), "atr_date": clean(delgaz.get("atr_date")), "bmc_no": clean(delgaz.get("bmc_no")),
+                      "qu_curve": delgaz.get("qu_curve") if delgaz.get("qu_curve") in ("DA", "NU") else "",
+                      "qu_points_4": delgaz.get("qu_points_4") if delgaz.get("qu_points_4") in ("DA", "NU") else "",
+                      "cos_phi_09": delgaz.get("cos_phi_09") if delgaz.get("cos_phi_09") in ("DA", "NU") else "",
+                      "deficiencies": str(delgaz.get("deficiencies") or "")[:2000]},
            "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("email")}
     await db.prosumator.update_one({"id": item_id}, {"$set": {"pif": pif}})
     await S.audit(user, "update", "prosumator", item_id, ["proces-verbal PIF"])

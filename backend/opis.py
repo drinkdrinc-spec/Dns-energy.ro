@@ -1,4 +1,5 @@
 import io
+import zipfile
 from datetime import date
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas as rl_canvas
@@ -86,17 +87,30 @@ async def build_positions(db, owner, rec, client, settings):
         m += [EL.get(k, k) for k in ekeys if settings.get(k) in (None, "")]
         return list(dict.fromkeys(m))
 
-    res_sld = SZ.compute(rec, client)
+    res_sld = SZ.compute(rec, client, settings)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
+        pram_mode = rec.get("pram_mode") or "self"
+        if key == "priza" and pram_mode == "none":
+            if PIFDOC.filled(rec):
+                pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
+            continue
+        if key == "priza" and pram_mode == "third_party":
+            upload = (opis.get("priza") or {}).get("upload")
+            pos.append({"key": key, "title": title, "source": "third-party", "files": [],
+                        "missing": [] if upload else ["Atașează buletinul PRAM primit de la terț"]})
+            if PIFDOC.filled(rec):
+                pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
+            continue
         m = missing(keys, ekeys)
         if key == "notificare" and not docgen.inverters(ctx):
             m.append("Invertoare / panouri (configurare CEF)")
         if key in ("schema", "fisa_tehnica"):
             if not (rec.get("cef") or {}).get("inverters"):
                 m.append("Configurare CEF (invertoare, stringuri)")
-            if res_sld["missing"] or res_sld["errors"]:
-                m.append(f"Dimensionare tehnică incompletă: {len(res_sld['missing'])} date lipsă, {len(res_sld['errors'])} erori (secțiunea Schemă monofilară)")
+            verify_missing = res_sld.get("verification_missing") or []
+            if res_sld["missing"] or verify_missing or res_sld["errors"]:
+                m.append(f"Dimensionare tehnică incompletă: {len(res_sld['missing'])} date de bază lipsă, {len(verify_missing)} de confirmat, {len(res_sld['errors'])} erori (secțiunea Schemă monofilară)")
             m.append({"stale": "Aprobarea schemei a fost anulată — configurația s-a modificat; necesită o nouă verificare",
                       "draft": "Schema monofilară nu este aprobată de proiectant / verificator"}.get(st_sld["status"], "")) if st_sld["status"] != "approved" else None
             m[:] = [x for x in m if x]
@@ -236,7 +250,7 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
         data, ct = get_object(p["upload"]["storage_path"])
         return [file_pdf(data, p["upload"].get("content_type") or ct)]
     if p.get("key") in ("schema", "fisa_tehnica"):
-        res = SZ.compute(rec, client)
+        res = SZ.compute(rec, client, settings)
         st = SZ.state(rec, client, settings)
         if p["key"] == "fisa_tehnica":
             return [SLD.tech_sheet(rec, client, settings, res, st)]
@@ -261,26 +275,76 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
 
 async def export_bundle(positions_info, rec, client, settings, get_object, logger):
     titles = positions_info["titles"]
-    w = PdfWriter()
-    parts = [docgen.render(["declaratie_autenticitate"], rec, settings, client, titles)]
-    for p in positions_info["positions"]:
-        try:
-            parts += await position_pdf(p, rec, client, settings, titles, get_object)
-        except Exception as e:
-            logger.error(f"bundle skip {p['key']}: {e}")
-    for b in parts:
-        try:
-            for pg in PdfReader(io.BytesIO(b)).pages:
-                w.add_page(pg)
-        except Exception as e:
-            logger.error(f"bundle merge skip: {e}")
-    if not positions_info["complete"]:
-        watermark(w)
-    if rec.get("is_test"):
-        watermark(w, "DOSAR DE TEST — NEOFICIAL", 38)
-    out = io.BytesIO()
-    w.write(out)
-    return out.getvalue()
+    mode = settings.get("bundle_mode") or "one"
+    operator_modes = settings.get("bundle_operator_modes") or {}
+    operator = str(rec.get("operator") or "")
+    op_low = operator.lower()
+    for op_key, op_mode in operator_modes.items():
+        key_low = str(op_key).lower()
+        matches = key_low and (key_low in op_low or (key_low == "deer" and "energie electrică romania" in op_low))
+        if matches and op_mode:
+            mode = op_mode
+            break
+    mode = mode if mode in ("one", "four", "three", "two") else "one"
+
+    def category(p):
+        if p.get("source") == "client":
+            return "client"
+        if p.get("key") == "schema":
+            return "schema"
+        if p.get("source") == "catalog":
+            return "annexes"
+        return "dossier"
+
+    all_positions = positions_info["positions"]
+    if mode == "one":
+        groups = [("Dosar complet", all_positions, True)]
+    elif mode == "four":
+        groups = [("Acte client", [p for p in all_positions if category(p) == "client"], False),
+                  ("Dosar prosumator", [p for p in all_positions if category(p) == "dossier"], True),
+                  ("Schema monofilara", [p for p in all_positions if category(p) == "schema"], False),
+                  ("Anexe tehnice", [p for p in all_positions if category(p) == "annexes"], False)]
+    elif mode == "three":
+        groups = [("Acte client", [p for p in all_positions if category(p) == "client"], False),
+                  ("Dosar prosumator cu schema", [p for p in all_positions if category(p) in ("dossier", "schema")], True),
+                  ("Anexe tehnice", [p for p in all_positions if category(p) == "annexes"], False)]
+    else:
+        groups = [("Dosar complet cu schema", [p for p in all_positions if category(p) != "annexes"], True),
+                  ("Anexe tehnice", [p for p in all_positions if category(p) == "annexes"], False)]
+
+    def finish(parts, draft):
+        w = PdfWriter()
+        for b in parts:
+            try:
+                for pg in PdfReader(io.BytesIO(b)).pages:
+                    w.add_page(pg)
+            except Exception as e:
+                logger.error(f"bundle merge skip: {e}")
+        if draft:
+            watermark(w)
+        if rec.get("is_test"):
+            watermark(w, "DOSAR DE TEST — NEOFICIAL", 38)
+        out = io.BytesIO(); w.write(out)
+        return out.getvalue()
+
+    outputs = []
+    for title, positions, include_opis in groups:
+        parts = [docgen.render(["declaratie_autenticitate"], rec, settings, client, titles)] if include_opis else []
+        for p in positions:
+            try:
+                parts += await position_pdf(p, rec, client, settings, titles, get_object)
+            except Exception as e:
+                logger.error(f"bundle skip {p['key']}: {e}")
+        if parts:
+            outputs.append((title, finish(parts, not positions_info["complete"])))
+
+    if mode == "one" or len(outputs) <= 1:
+        return outputs[0][1] if outputs else finish([], not positions_info["complete"])
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for title, data in outputs:
+            zf.writestr(f"{title}.pdf", data)
+    return archive.getvalue()
 
 
 def mark_test(pdf: bytes) -> bytes:

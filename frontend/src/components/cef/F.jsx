@@ -40,6 +40,7 @@ export function CatalogPick({ items, category, onPick, onManual, testid, label =
       {!selectedId && selectedLabel && <p className="mt-1 text-[10px]" style={{ color: "#8a5a00" }}>Model introdus manual: {selectedLabel}. Verifică fișa oficială și completează datele tehnice.</p>}
       {selected && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]" style={{ color: "var(--muted)" }}>
         <span>{meta(selected)}</span>
+        {selected.spec_source_url && <a className="font-bold" style={{ color: "var(--blue)" }} href={selected.spec_source_url} target="_blank" rel="noreferrer">Sursa specificațiilor</a>}
         {selected.datasheet ? <a className="font-bold" style={{ color: "var(--blue)" }} href={fileUrl(selected.datasheet.storage_path)} target="_blank" rel="noreferrer">Fișă tehnică</a> : <span>Fișă tehnică lipsă</span>}
         {selected.conformity ? <a className="font-bold" style={{ color: "var(--blue)" }} href={fileUrl(selected.conformity.storage_path)} target="_blank" rel="noreferrer">Conformitate</a> : <span>Conformitate lipsă</span>}
       </div>}

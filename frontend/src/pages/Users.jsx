@@ -19,7 +19,7 @@ export default function Users() {
       <PageHeader eyebrow="Administrare" title="Utilizatori și roluri" sub="Aprobați, suspendați sau dezactivați conturile. Instalatorii văd doar dosarele create de ei sau atribuite lor." />
       <div className="den-panel overflow-x-auto" data-testid="users-table">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs" style={{ color: "var(--muted)" }}><th className="py-2">Nume / e-mail</th><th>Rol</th><th>Stare</th><th>Profil personal (autorizații)</th><th>Acțiuni</th></tr></thead>
+          <thead><tr className="text-left text-xs" style={{ color: "var(--muted)" }}><th className="py-2">Nume / e-mail</th><th>Rol</th><th>Profil personal (autorizații)</th><th>Inginer semnatar</th><th>Notificări semnare</th><th>Stare / acțiuni</th></tr></thead>
           <tbody>{d.users.map((u) => {
             const st = ST[u.status] || ST.active;
             const main = u.role === "admin" && !u.tenant && u.id === d.users[0]?.id;
@@ -28,10 +28,11 @@ export default function Users() {
                 <td className="py-2"><b>{u.name}</b><div className="text-xs" style={{ color: "var(--muted)" }}>{u.email}</div></td>
                 <td><select className="den-input" value={u.role} disabled={main} onChange={(e) => upd(u.id, { role: e.target.value })} data-testid={`user-role-${u.email}`}>
                   {Object.entries(d.roles).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></td>
-                <td><span className="text-xs font-bold rounded-full px-2 py-1" style={{ background: st[1], color: st[2] }} data-testid={`user-status-${u.email}`}>{st[0]}</span></td>
                 <td><select className="den-input" value={u.staff_id || ""} disabled={main} onChange={(e) => upd(u.id, { staff_id: e.target.value })} data-testid={`user-staff-${u.email}`}>
                   <option value="">— neasociat —</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></td>
-                <td className="whitespace-nowrap text-xs space-x-2">{!main && <>
+                <td><input type="checkbox" checked={!!u.is_engineer} disabled={main} onChange={(e) => upd(u.id, { is_engineer: e.target.checked })} aria-label={`Inginer semnatar: ${u.email}`} data-testid={`user-engineer-${u.email}`} /></td>
+                <td><input type="checkbox" checked={u.notify_signing !== false} disabled={main} onChange={(e) => upd(u.id, { notify_signing: e.target.checked })} aria-label={`Notificări semnare: ${u.email}`} data-testid={`user-notify-${u.email}`} /></td>
+                <td className="whitespace-nowrap text-xs space-x-2"><span className="mr-2 text-xs font-bold rounded-full px-2 py-1" style={{ background: st[1], color: st[2] }} data-testid={`user-status-${u.email}`}>{st[0]}</span>{!main && <>
                   {u.status !== "active" && <button className="font-bold" style={{ color: "#166534" }} onClick={() => upd(u.id, { status: "active" })} data-testid={`user-approve-${u.email}`}>Aprobă / activează</button>}
                   {u.status === "active" && <button className="font-bold" style={{ color: "#8a5a00" }} onClick={() => upd(u.id, { status: "suspended" })} data-testid={`user-suspend-${u.email}`}>Suspendă</button>}
                   {u.status !== "disabled" && <button className="font-bold" style={{ color: "#9b2c2c" }} onClick={() => upd(u.id, { status: "disabled" })} data-testid={`user-disable-${u.email}`}>Dezactivează</button>}

@@ -86,7 +86,7 @@ export function SldPanel({ id, form, setVal }) {
               </div>
             );
           })}
-          {d.source === "generated" && !d.ready && <p className="text-[11px] mt-1" style={{ color: "#9b2c2c" }}>Aprobarea este blocată până la completarea datelor lipsă și rezolvarea erorilor.</p>}
+          {d.source === "generated" && !d.ready && <p className="text-[11px] mt-1" style={{ color: "#8a5a00" }}>{d.can_preview ? "Previzualizarea este disponibilă ca ciornă. Aprobarea se activează după confirmarea datelor tehnice și rezolvarea erorilor." : "Completați datele de bază pentru a genera previzualizarea; aprobarea necesită și confirmarea tehnică."}</p>}
           {d.approval.status !== "approved" && (
             <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--line)" }}>
               <Btn variant="secondary" disabled={busy || (d.source === "generated" && !d.ready)} onClick={requestApproval} data-testid="sld-request-approval"><Send size={13} /> Cere aprobare pe e-mail</Btn>

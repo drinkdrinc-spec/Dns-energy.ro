@@ -85,9 +85,14 @@ class CefDrawing(Flowable):
         # TG bus
         ty, th = 104 * mm, 18 * mm
         self.line(91 * mm, y0, 91 * mm, ty + th, label=str(g.get("tg_cable") or ""))
+        ground = rec.get("grounding_ohm") or g.get("grounding_ohm")
+        supply = g.get("teg_supply") if g.get("teg_supply") not in (None, "", "Auto (derivat)") else ("Load (2× BMP)" if any((i.get("backup") or {}).get("enabled") for i in invs) else "Rețea (fără back-up)")
+        backup = g.get("backup_mode") or ("Total" if any((i.get("backup") or {}).get("type") == "total" for i in invs) else ("Parțial" if any((i.get("backup") or {}).get("enabled") for i in invs) else "—"))
         self.box(0, ty, 273 * mm, th, "TG — TABLOU GENERAL / TABLOU AC FOTOVOLTAIC",
-                 [f"Întreruptor general TG: {g.get('tg_breaker') or 'de completat'} · SPD AC {g.get('spd_ac') or 'tip 1+2'} · "
-                  f"Diferențial: {g.get('rcd') or 'conform proiect'} · Bară PE → priză de pământ R = {v(g.get('grounding_ohm') or rec.get('grounding_ohm'), ' Ω')}"], "tg")
+                 [f"Alimentare: {supply} · Back-up: {backup} · Întreruptor general: {g.get('tg_breaker') or 'de completat'}",
+                  f"SPD CC {g.get('spd_dc') or '—'} · SPD AC {g.get('spd_ac') or 'tip 1+2'} · Diferențial: {g.get('rcd') or 'conform proiect'}",
+                  f"Cablu solar: {g.get('solar_cable') or '—'} · Cablu invertor → BMP/TEG: {g.get('inv_to_bmp_cable') or g.get('tg_cable') or '—'}",
+                  f"Priză de pământ: {g.get('earth_socket') or '—'} · R măsurat: {v(ground, ' Ω')} · limită: {v(rec.get('grounding_limit') or g.get('grounding_limit'), ' Ω', '≤ 4 Ω')}"], "tg")
         cols = len(invs) + len(shared)
         if not cols:
             return
@@ -111,10 +116,10 @@ class CefDrawing(Flowable):
             self.line(mid, ty, mid, iy + ih, label=cable)
             ph = "3F" if r.get("tri") else ("1F" + (f" pe {inv.get('phase')}" if inv.get("phase") else ""))
             self.box(bx + 3 * mm, iy, lw, ih, f"INV {i + 1} — {inv.get('brand_model') or '—'}",
-                     [f"{inv.get('kind') or inv.get('type') or 'Invertor'} · {ph}",
+                     [f"{inv.get('kind') or inv.get('type') or 'Invertor'} · {ph}" + (" · existent" if inv.get("existing") else "") + (" · fără panouri" if inv.get("no_panels") else ""),
                       f"Pn {v(inv.get('p_nom_kw'), ' kW')} · Pmax {v(inv.get('p_max_kw'), ' kW')}",
                       f"Limitare: {v(inv.get('p_limit_kw'), ' kW')} · MPPT: {v(inv.get('mppt_count'))}",
-                      f"Udc max {v(inv.get('vdc_max'), ' V')} · MPPT {v(inv.get('mppt_min'))}-{v(inv.get('mppt_max'), ' V')}"], "inv",
+                      f"Udc max {v(inv.get('vdc_max'), ' V')} · MPPT {v(inv.get('mppt_min'))}-{v(inv.get('mppt_max'), ' V')}" + (f" · Opt.: {(inv.get('optimizer') or {}).get('model')}" if (inv.get("optimizer") or {}).get("model") else "")], "inv",
                      dashed=bool(inv.get("existing")))
             strings = r.get("strings") or []
             if strings:
@@ -132,7 +137,8 @@ class CefDrawing(Flowable):
                     self.line(sx + sw / 2, dy, sx + sw / 2, 30 * mm, dc=True)
                     self.box(sx, 2 * mm, sw, 28 * mm, f"S{k + 1} / MPPT{s['mppt']}",
                              [f"{s['panels']}× {v(inv.get('panel_w'), ' W')}", str(inv.get("panel_model") or "")[:30],
-                              f"Voc {s['voc_cold']:.0f} V@{res['tmin']:g}°C", f"Vmp {s['vmp_stc']:.0f} V", f"{s['kwp']:.2f} kWp"], "pv")
+                              f"Voc {s['voc_cold']:.0f} V@{res['tmin']:g}°C · Isc {n(inv.get('panel_isc')):g} A",
+                              f"Vmp {s['vmp_stc']:.0f} V · Imp {n(inv.get('panel_imp')):g} A", f"{s['kwp']:.2f} kWp"], "pv")
             rx = bx + 3 * mm + lw + 2 * mm
             rw = cw - lw - 7 * mm
             if inv.get("backup", {}).get("enabled"):
@@ -146,7 +152,7 @@ class CefDrawing(Flowable):
                 self.line(rx + rw / 2, iy + 4 * mm, rx + rw / 2, 66 * mm, dc=bt.get("coupling", "DC") == "DC")
                 self.box(rx, 42 * mm, rw, 24 * mm, f"BATERIE ({bt.get('coupling') or 'DC'})",
                          [str(bt.get("model") or "—"), f"{v(bt.get('modules'), ' mod.')} × {v(bt.get('kwh'), ' kWh')}",
-                          f"{v(bt.get('ah'), ' Ah')} · {v(bt.get('voltage'), ' V')}", f"Total {r.get('battery_kwh', 0):g} kWh",
+                          f"{v(bt.get('ah'), ' Ah')} · {v(bt.get('voltage'), ' V')} · Imax {v(bt.get('i_max'), ' A')}", f"Total {r.get('battery_kwh', 0):g} kWh",
                           f"Protecție: {bt.get('protection') or 'siguranță DC / BMS'}"], "bat")
         for k, b in enumerate(shared):
             bx = (len(invs) + k) * cw
@@ -169,23 +175,42 @@ class CefDrawing(Flowable):
 
 def story(ctx, P, table, S):
     rec = ctx.r
-    res = C.check(rec.get("cef") or {})
+    cef = rec.get("cef") or {}
+    g = cef.get("grid") or {}
+    invs = cef.get("inverters") or []
+    res = C.check(cef, (ctx.s or {}).get("sizing_rules"))
     t = res["totals"]
+    supply = g.get("teg_supply") if g.get("teg_supply") not in (None, "", "Auto (derivat)") else ("Load (2× BMP)" if any((i.get("backup") or {}).get("enabled") for i in invs) else "Rețea (fără back-up)")
+    backup = g.get("backup_mode") or ("Total" if any((i.get("backup") or {}).get("type") == "total" for i in invs) else ("Parțial" if any((i.get("backup") or {}).get("enabled") for i in invs) else "—"))
     out = [Paragraph(f"<b>{ctx.company}</b> · Atestat ANRE nr. {ctx.e('anre_attest')}", S["small"]), Spacer(1, 3),
            Paragraph(f"SCHEMĂ MONOFILARĂ — CEF {t['kwp']:g} kWp / {t['inverters_kw']:g} kW · {ctx.name}, {ctx.loc}", S["h"]),
            Spacer(1, 4), CefDrawing(dict(rec, operator=ctx.raw('operator'), pod=ctx.raw('pod'), grounding_ohm=ctx.raw('grounding_ohm')), res)]
-    rows = [["INV", "Model", "Pn/Pmax/Limit (kW)", "Stringuri (panouri)", "Voc rece max / Udc max", "Isc MPPT max / Imax", "Cablu AC / Q", "Cablu DC / SPD DC", "Stocare"]]
+    rows = [["INV", "Model", "Pn/Pmax/Limit (kW)", "Stringuri (panouri)", "Voc rece max / Udc max", "Isc calculat / Isc max (A)", "Cablu AC / Q", "Cablu DC / SPD DC", "Stocare"]]
     for i, inv in enumerate(rec.get("cef", {}).get("inverters") or []):
         r = res["inverters"][i]
         ac, dc, pa, pd = inv.get("ac") or {}, inv.get("dc") or {}, r["proposals"]["ac"], r["proposals"]["dc"]
+        mppt_limits = inv.get("imax_mppt_values") or []
+        isc_limits = inv.get("isc_mppt_max_values") or []
+        isc_max_text = "/".join(v(limit) for limit in isc_limits) if isc_limits else v(inv.get("isc_mppt_max"))
         rows.append([str(i + 1), inv.get("brand_model") or "—", f"{v(inv.get('p_nom_kw'))}/{v(inv.get('p_max_kw'))}/{v(inv.get('p_limit_kw'))}",
                      " + ".join(str(s["panels"]) for s in r["strings"]) or "—", f"{r['voc_cold_max']:g} / {v(inv.get('vdc_max'))} V" if r.get("voc_cold_max") else f"NECONFIRMAT / {v(inv.get('vdc_max'))} V",
-                     f"{r['isc_mppt_max']:g} / {v(inv.get('imax_mppt'))} A",
+                     f"{r['isc_mppt_max']:g} / {isc_max_text or '—'} A",
                      f"{v(ac.get('section') or pa.get('section'))} mm² {ac.get('material') or 'Cu'} {v(ac.get('length_m'), ' m')} / C{v(ac.get('breaker_a') or pa.get('breaker_a'))}",
                      f"{v(dc.get('section') or pd.get('section'))} mm² {v(dc.get('length_m'), ' m')} / {v(dc.get('spd_ucpv') or pd.get('spd_ucpv'), ' V')}",
                      f"{r['battery_kwh']:g} kWh" if r["battery_kwh"] else ("comună" if inv.get("battery_mode") == "shared" else "—")])
     tbl = [Spacer(1, 6), P("Date tehnice pentru verificare", "b"),
            table(rows, [10 * mm, 42 * mm, 26 * mm, 28 * mm, 30 * mm, 28 * mm, 40 * mm, 36 * mm, 26 * mm]),
+           Spacer(1, 4), P("Topologie TEG și protecții", "b"),
+           table([["Parametru", "Valoare"],
+                  ["Tip intervenție", "Extindere CEF existentă" if cef.get("existing_extension") else "Instalație nouă"],
+                  ["Alimentare / back-up", f"{supply} / {backup}"],
+                  ["Întreruptor general TEG", str(g.get("tg_breaker") or "—")],
+                  ["SPD CC / SPD AC", f"{g.get('spd_dc') or '—'} / {g.get('spd_ac') or '—'}"],
+                  ["Conductor solar", str(g.get("solar_cable") or "—")],
+                  ["Cablu invertor → BMP/TEG", str(g.get("inv_to_bmp_cable") or g.get("tg_cable") or "—")],
+                  ["Priză de pământ / RD măsurat / limită", f"{g.get('earth_socket') or '—'} / {v(rec.get('grounding_ohm') or g.get('grounding_ohm'), ' Ω')} / {v(rec.get('grounding_limit') or g.get('grounding_limit'), ' Ω', '≤ 4 Ω')}"]], [67 * mm, 97 * mm]),
+           Spacer(1, 4), P("Circuite TEG", "b"),
+           table([["Circuit", "Protecție", "Poli", "Cablu", "DDR"]] + [[str(c.get("name") or f"Circuit {i + 1}"), f"{c.get('curve') or 'C'}{v(c.get('breaker_a'), ' A')}", str(c.get("poles") or "—"), v(c.get("cable_section"), " mm²"), v(c.get("rcd_ma"), " mA")] for i, c in enumerate(g.get("circuits") or [])], [48 * mm, 28 * mm, 25 * mm, 31 * mm, 32 * mm]),
            Spacer(1, 4),
            P(f"Totaluri: {t['kwp']:g} kWp panouri · {t['inverters_kw']:g} kW invertoare (max {t['inverters_kw_max']:g} kW) · putere evacuată {t['export_kw']:g} kW · "
              f"stocare {t['storage_kwh']:g} kWh · {t['panels']} panouri · temperatură minimă de calcul {res['tmin']:g}°C.")]

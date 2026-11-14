@@ -1,4 +1,4 @@
-import { Trash2, Wand2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { F, Check, CatalogPick, INSTALL, SECTIONS } from "./F";
 import { Issues } from "./CefResults";
 
@@ -10,6 +10,9 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   const s = (k) => (v) => set({ ...inv, [k]: v });
   const sub = (obj, k) => (v) => set({ ...inv, [obj]: { ...(inv[obj] || {}), [k]: v } });
   const strings = inv.strings || [];
+  const optimizer = inv.optimizer || {};
+  const batteryAc = inv.battery_charger || String(inv.type || inv.kind || "").includes("Invertor de baterie");
+  const hasPv = !inv.no_panels && !batteryAc;
   const setStr = (i, k, v) => set({ ...inv, strings: strings.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
   const setStringCount = (value) => {
     const count = Math.max(0, Math.min(24, Number(value) || 0));
@@ -17,23 +20,24 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   };
   const t = `inv-${idx}`;
   const pa = res?.proposals?.ac || {}, pd = res?.proposals?.dc || {};
-  const apply = () => set({
-    ...inv,
-    ac: { ...(inv.ac || {}), breaker_a: inv.ac?.breaker_a || pa.breaker_a, section: inv.ac?.section || pa.section },
-    dc: { ...(inv.dc || {}), section: inv.dc?.section || pd.section, spd_ucpv: inv.dc?.spd_ucpv || pd.spd_ucpv, fuse_a: inv.dc?.fuse_a || pd.fuse || "" },
-  });
   return (
     <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid={t}>
       <div className="flex items-center justify-between gap-2 mb-2">
         <h4 className="font-bold text-sm">Invertor {idx + 1} {res && <span className="font-normal text-xs" style={{ color: "var(--muted)" }}>· {res.kwp} kWp · DC/AC {res.dc_ac_ratio}{res.battery_kwh ? ` · ${res.battery_kwh} kWh` : ""}</span>}</h4>
         <button onClick={remove} className="p-1.5 rounded hover:bg-[#fff0f0]" data-testid={`${t}-remove`} title="Elimină invertorul"><Trash2 size={15} style={{ color: "#b33333" }} /></button>
       </div>
+      <div className="mb-3 grid sm:grid-cols-2 gap-2">
+        <Check label="Existent (rămâne în funcțiune)" value={inv.existing} onChange={s("existing")} testid={`${t}-existing`} />
+        <Check label="Invertor-încărcător de baterie (ex. MultiPlus / Quattro)" value={inv.battery_charger} onChange={(value) => set({ ...inv, battery_charger: value, type: value ? "Invertor de baterie (AC)" : (inv.type === "Invertor de baterie (AC)" ? "Hibrid" : inv.type) })} testid={`${t}-battery-charger`} />
+        <Check label="Fără panouri (doar baterie)" value={inv.no_panels} onChange={s("no_panels")} testid={`${t}-no-panels`} />
+      </div>
       <div className="grid sm:grid-cols-2 gap-3">
-        <CatalogPick items={catalog} category="Invertor" selectedId={inv.catalog_id} selectedLabel={inv.brand_model} label="Model invertor" testid={`${t}-pick`} onManual={(model) => set({ ...inv, catalog_id: "", brand_model: model, type: "", phases: "", p_nom_kw: "", p_max_kw: "", vdc_max: "", mppt_min: "", mppt_max: "", mppt_count: "", imax_mppt: "" })} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt })} />
+        <CatalogPick items={catalog} category="Invertor" selectedId={inv.catalog_id} selectedLabel={inv.brand_model} label="Model invertor" testid={`${t}-pick`} onManual={(model) => set({ ...inv, catalog_id: "", brand_model: model, type: "", phases: "", p_nom_kw: "", p_max_kw: "", vdc_max: "", mppt_min: "", mppt_max: "", mppt_count: "", imax_mppt: "", imax_mppt_values: [], isc_mppt_max: "", isc_mppt_max_values: [], bat_v_min: "", bat_v_max: "", bat_i_max: "" })} onPick={(it) => set({ ...inv, catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, imax_mppt_values: it.imax_mppt_values || [], isc_mppt_max: it.isc_mppt_max, isc_mppt_max_values: it.isc_mppt_max_values || [], bat_v_min: it.bat_v_min, bat_v_max: it.bat_v_max, bat_i_max: it.bat_i_max })} />
         <F label="Putere invertor (kW)" type="number" value={inv.p_nom_kw} onChange={s("p_nom_kw")} testid={`${t}-pnom`} />
       </div>
       <details className="mt-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-        <summary className="cursor-pointer text-xs font-bold" style={{ color: "var(--muted)" }}>Alte date invertor (opțional)</summary>
+        <summary className="cursor-pointer text-xs font-bold" style={{ color: "var(--muted)" }}>Detalii tehnice invertor (opțional pentru previzualizare)</summary>
+        <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Selectați modelul din catalog pentru completare automată. Datele tehnice se confirmă la aprobarea finală.</p>
         <div className="grid sm:grid-cols-4 gap-3 mt-3">
         <F label="Model introdus manual" value={inv.brand_model} onChange={s("brand_model")} testid={`${t}-model`} />
         <F label="Tip" value={inv.type} onChange={s("type")} options={["Hibrid", "On-grid", "Invertor de baterie (AC)"]} testid={`${t}-type`} />
@@ -51,17 +55,17 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           <F label="Baterie: I max încărcare/descărcare invertor (A)" type="number" value={inv.bat_i_max} onChange={s("bat_i_max")} testid={`${t}-batimax`} />
         </>}
         <F label="Curent max/MPPT (A)" type="number" value={inv.imax_mppt} onChange={s("imax_mppt")} testid={`${t}-imax`} />
+        <F label="Isc maxim / MPPT (A)" type="number" value={inv.isc_mppt_max} onChange={s("isc_mppt_max")} testid={`${t}-iscmax`} />
       </div>
-        <div className="mt-2"><Check label="Echipament existent (extindere)" value={inv.existing} onChange={s("existing")} testid={`${t}-existing`} /></div>
       </details>
 
-      <Section title="Panouri și stringuri">
+      {hasPv && <Section title="Panouri și stringuri">
         <div className="grid sm:grid-cols-2 gap-3">
-          <CatalogPick items={catalog} category="Panou" selectedId={inv.panel_catalog_id} selectedLabel={inv.panel_model} label="Model panou" testid={`${t}-panel-pick`} onManual={(model) => set({ ...inv, panel_catalog_id: "", panel_model: model, panel_w: "", panel_voc: "", panel_vmp: "", panel_isc: "", panel_coef_voc: "" })} onPick={(it) => set({ ...inv, panel_catalog_id: it.id, panel_model: it.brand_model, panel_w: it.w, panel_voc: it.voc, panel_vmp: it.vmp, panel_isc: it.isc, panel_coef_voc: it.coef_voc })} />
+          <CatalogPick items={catalog} category="Panou" selectedId={inv.panel_catalog_id} selectedLabel={inv.panel_model} label="Model panou" testid={`${t}-panel-pick`} onManual={(model) => set({ ...inv, panel_catalog_id: "", panel_model: model, panel_w: "", panel_voc: "", panel_vmp: "", panel_isc: "", panel_imp: "", panel_coef_voc: "", panel_coef_vmp: "" })} onPick={(it) => set({ ...inv, panel_catalog_id: it.id, panel_model: it.brand_model, panel_w: it.w, panel_voc: it.voc, panel_vmp: it.vmp, panel_isc: it.isc, panel_imp: it.imp, panel_coef_voc: it.coef_voc, panel_coef_vmp: it.coef_vmp })} />
           <F label="Putere panou (W)" type="number" value={inv.panel_w} onChange={s("panel_w")} testid={`${t}-panel-w`} />
         </div>
         <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-          <summary className="cursor-pointer text-xs font-bold" style={{ color: "var(--muted)" }}>Date tehnice panou (opțional)</summary>
+          <summary className="cursor-pointer text-xs font-bold" style={{ color: "var(--muted)" }}>Detalii tehnice panou (opțional pentru previzualizare)</summary>
           <div className="grid sm:grid-cols-4 gap-3 mt-3">
           <F label="Model introdus manual" value={inv.panel_model} onChange={s("panel_model")} testid={`${t}-panel-model`} />
           <F label="Coef. Voc (%/°C)" type="number" value={inv.panel_coef_voc} onChange={s("panel_coef_voc")} testid={`${t}-panel-coef`} />
@@ -84,25 +88,34 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
             );
           })}
         </div>
-      </Section>
+      </Section>}
 
       <Section title="Baterie">
         <div className="grid sm:grid-cols-4 gap-3">
           <F label="Baterie" value={inv.battery_mode || "none"} onChange={(v) => set({ ...inv, battery_mode: v, ...(v === "shared" && !inv.shared_battery_id && shared.length === 1 ? { shared_battery_id: shared[0].id } : {}) })} options={[["none", "Nu"], ["own", "Da"], ["shared", "Baterie comună"]]} testid={`${t}-bat-mode`} />
           {inv.battery_mode === "shared" && <F label="Baterie comună" value={inv.shared_battery_id} onChange={s("shared_battery_id")} options={shared.map((b, i) => [b.id, b.model || `Baterie comună ${i + 1}`])} testid={`${t}-bat-shared`} />}
           {inv.battery_mode === "own" && <>
-          <CatalogPick items={catalog} category="Baterie" selectedId={inv.battery?.catalog_id} selectedLabel={inv.battery?.model} label="Model baterie" testid={`${t}-bat-pick`} onManual={(model) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: "", model, kwh: "", ah: "", voltage: "", coupling: "", modules: inv.battery?.modules || 1 } })} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, coupling: it.coupling || "DC", modules: inv.battery?.modules || 1 } })} />
-            <F label="Număr unități" type="number" value={inv.battery?.modules} onChange={sub("battery", "modules")} testid={`${t}-bat-modules`} />
+          <CatalogPick items={catalog} category="Baterie" selectedId={inv.battery?.catalog_id} selectedLabel={inv.battery?.model} label="Model baterie" testid={`${t}-bat-pick`} onManual={(model) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: "", model, kwh: "", ah: "", voltage: "", voltage_min: "", voltage_max: "", voltage_ranges: [], i_max: "", coupling: "", modules: inv.battery?.modules || 1 } })} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), catalog_id: it.id, model: it.brand_model, kwh: it.kwh, ah: it.ah, voltage: it.voltage, voltage_min: it.voltage_min, voltage_max: it.voltage_max, voltage_ranges: it.voltage_ranges || [], i_max: it.i_max, coupling: it.coupling || "DC", modules: inv.battery?.modules || 1 } })} />
+            <F label="Nr. module baterie" type="number" value={inv.battery?.modules} onChange={sub("battery", "modules")} testid={`${t}-bat-modules`} />
+            <F label="Cuplaj baterie" value={inv.battery?.coupling || "DC"} onChange={sub("battery", "coupling")} options={["DC", "AC"]} testid={`${t}-bat-coupling-visible`} />
           </>}
+          <div className="sm:col-span-2">
+            <F label="Optimizatoare" value={optimizer.mode === "manual" ? "manual" : optimizer.catalog_id || "none"} options={[["none", "Fără optimizatoare"], ["manual", "Introduc manual modelul"], ...catalog.filter((item) => item.category === "Optimizator").map((item) => [item.id, item.brand_model])]} onChange={(id) => {
+              if (id === "none") set({ ...inv, optimizer: { mode: "none", catalog_id: "", model: "" } });
+              else if (id === "manual") set({ ...inv, optimizer: { ...optimizer, mode: "manual", catalog_id: "", model: optimizer.model || "" } });
+              else { const item = catalog.find((entry) => entry.id === id); set({ ...inv, optimizer: { mode: "catalog", catalog_id: id, model: item?.brand_model || "" } }); }
+            }} testid={`${t}-optimizer`} />
+            {optimizer.mode === "manual" ? <F label="Model optimizator" value={optimizer.model} onChange={(model) => set({ ...inv, optimizer: { ...optimizer, mode: "manual", catalog_id: "", model } })} testid={`${t}-optimizer-model`} /> : null}
+          </div>
         </div>
       </Section>
 
       <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-        <summary className="cursor-pointer text-xs font-bold" style={{ color: "var(--muted)" }}>Alte detalii tehnice (opțional)</summary>
+        <summary className="cursor-pointer text-xs font-bold" style={{ color: "var(--muted)" }}>Detalii pentru verificarea tehnică (opțional pentru previzualizare)</summary>
+        <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Secțiunile și protecțiile se propun automat. Lungimile cablurilor și măsurătorile se confirmă înainte de aprobarea finală.</p>
         <Section title="Stocare și backup">
         <div className="grid sm:grid-cols-4 gap-3">
           {inv.battery_mode === "own" && <>
-            <F label="Cuplare" value={inv.battery?.coupling || "DC"} onChange={sub("battery", "coupling")} options={["DC", "AC"]} testid={`${t}-bat-coupling`} />
             <F label="kWh / modul" type="number" value={inv.battery?.kwh} onChange={sub("battery", "kwh")} testid={`${t}-bat-kwh`} />
             <F label="Ah" type="number" value={inv.battery?.ah} onChange={sub("battery", "ah")} testid={`${t}-bat-ah`} />
             <F label="Tensiune (V)" type="number" value={inv.battery?.voltage} onChange={sub("battery", "voltage")} testid={`${t}-bat-v`} />
@@ -145,7 +158,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           <F label="Separator DC" value={inv.dc?.switch} onChange={sub("dc", "switch")} testid={`${t}-dc-switch`} />
         </div>
         <div className="flex flex-wrap items-center gap-3 mt-3">
-          <button onClick={apply} className="text-xs font-bold inline-flex items-center gap-1 rounded-lg border px-3 py-2" style={{ color: "var(--blue)", borderColor: "var(--line)" }} data-testid={`${t}-apply`}><Wand2 size={13} /> Completează câmpurile goale cu valorile propuse</button>
+          <span className="text-xs font-bold" style={{ color: "var(--green)" }}>Valorile calculate se completează automat în câmpurile goale.</span>
           {pd.fuse_note && <span className="text-xs" style={{ color: "var(--muted)" }}>Siguranțe gPV: {pd.fuse_note}</span>}
         </div>
       </Section>

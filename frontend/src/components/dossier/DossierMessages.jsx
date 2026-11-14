@@ -15,18 +15,24 @@ export function DossierMessages({ id }) {
 
   const upload = async (e) => {
     const selected = [...(e.target.files || [])];
-    if (files.length + selected.length > 5) { toast.error("Poți atașa cel mult 5 fișiere"); e.target.value = ""; return; }
+    const available = Math.max(0, 5 - files.length);
+    const accepted = selected.slice(0, available);
+    const errors = selected.slice(available).map((file) => `${file.name}: poți atașa cel mult 5 fișiere`);
+    if (!accepted.length) { toast.error("Poți atașa cel mult 5 fișiere"); e.target.value = ""; return; }
     setBusy(true);
     try {
       const uploaded = [];
-      for (const file of selected) {
-        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name}: fișierul depășește 10 MB`);
-        const fd = new FormData(); fd.append("file", file);
-        const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } }); uploaded.push(data);
+      for (const file of accepted) {
+        try {
+          if (file.size > 10 * 1024 * 1024) throw new Error("depășește 10 MB");
+          const fd = new FormData(); fd.append("file", file);
+          const { data } = await api.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } }); uploaded.push(data);
+        } catch (err) { errors.push(`${file.name}: ${err.response?.data?.detail || err.message || "încărcare eșuată"}`); }
       }
-      setFiles((old) => [...old, ...uploaded]);
-    } catch (err) { toast.error(err.message || err.response?.data?.detail || "Fișierul nu s-a putut încărca"); }
-    finally { setBusy(false); e.target.value = ""; }
+      if (uploaded.length) setFiles((old) => [...old, ...uploaded]);
+      if (errors.length) toast.error(`Unele fișiere nu s-au încărcat: ${errors.join("; ")}`);
+      else if (uploaded.length) toast.success(`${uploaded.length} fișiere încărcate`);
+    } finally { setBusy(false); e.target.value = ""; }
   };
 
   const send = async () => {
@@ -69,16 +75,24 @@ export function ClientMessagePortal({ token }) {
   useEffect(() => { load(); }, [load]);
   const upload = async (e) => {
     const selected = [...(e.target.files || [])];
-    if (files.length + selected.length > 5) { setBusy(false); e.target.value = ""; return; }
+    const available = Math.max(0, 5 - files.length);
+    const accepted = selected.slice(0, available);
+    const errors = selected.slice(available).map((file) => `${file.name}: poți atașa cel mult 5 fișiere`);
+    if (!accepted.length) { toast.error("Poți atașa cel mult 5 fișiere"); e.target.value = ""; return; }
     setBusy(true);
     try {
       const uploaded = [];
-      for (const file of selected) {
-        const fd = new FormData(); fd.append("file", file);
-        const r = await fetch(`${url}/messages/upload`, { method: "POST", body: fd }); const d = await r.json(); if (!r.ok) throw new Error(d.detail || "Fișier invalid"); uploaded.push(d);
+      for (const file of accepted) {
+        try {
+          const fd = new FormData(); fd.append("file", file);
+          const r = await fetch(`${url}/messages/upload`, { method: "POST", body: fd }); const d = await r.json();
+          if (!r.ok) throw new Error(d.detail || "Fișier invalid"); uploaded.push(d);
+        } catch (err) { errors.push(`${file.name}: ${err.message || "încărcare eșuată"}`); }
       }
-      setFiles((old) => [...old, ...uploaded]);
-    } catch (err) { toast.error(err.message); }
+      if (uploaded.length) setFiles((old) => [...old, ...uploaded]);
+      if (errors.length) toast.error(`Unele fișiere nu s-au încărcat: ${errors.join("; ")}`);
+      else if (uploaded.length) toast.success(`${uploaded.length} fișiere încărcate`);
+    }
     finally { setBusy(false); e.target.value = ""; }
   };
   const send = async () => {

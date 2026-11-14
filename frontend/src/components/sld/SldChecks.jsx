@@ -25,8 +25,16 @@ export function SldChecks({ d }) {
     <div className="mt-4">
       {d.missing.length > 0 && (
         <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: "#fff0f0", color: "#9b2c2c" }} data-testid="sld-missing">
-          <b>Date obligatorii lipsă ({d.missing.length}) — schema rămâne CIORNĂ:</b>
+          <b>Date de bază necesare pentru previzualizare ({d.missing.length}):</b>
           <ul className="list-disc ml-5 mt-1 grid sm:grid-cols-2 gap-x-6">{d.missing.map((m) => <li key={m.path + m.label}>{m.label}</li>)}</ul>
+          <p className="mt-2">Completați branșamentul și echipamentele de bază pentru a genera schema.</p>
+        </div>
+      )}
+      {(d.verification_missing || []).length > 0 && (
+        <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: "#fff8e8", color: "#805400" }} data-testid="sld-verification-missing">
+          <b>Se confirmă înainte de aprobarea tehnică ({d.verification_missing.length}):</b>
+          <ul className="list-disc ml-5 mt-1 grid sm:grid-cols-2 gap-x-6">{d.verification_missing.map((m) => <li key={m.path + m.label}>{m.label}</li>)}</ul>
+          <p className="mt-2">Puteți previzualiza schema acum. Aplicația propune automat valorile calculabile din branșament și echipamentele alese.</p>
         </div>
       )}
       <Issues errors={d.errors} warnings={d.warnings} testid="sld-issues" />

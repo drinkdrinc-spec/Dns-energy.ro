@@ -42,14 +42,14 @@ function Row({ p, id, statuses, reload, preview }) {
   );
 }
 
-export function DossierOpis({ id }) {
+export function DossierOpis({ id, refreshKey }) {
   const [d, setD] = useState(null);
   const [pv, setPv] = useState(null);
   const [showReport, setShowReport] = useState(false);
   const [pre, setPre] = useState(false);
   const { user } = useAuth();
   const load = () => api.get(`/dossier/${id}`).then((r) => setD(r.data)).catch(() => {});
-  useEffect(() => { load(); }, [id]); // eslint-disable-line
+  useEffect(() => { load(); }, [id, refreshKey]); // eslint-disable-line
   if (!d) return null;
   const doLock = async () => {
     try { await api.post(`/dossier/${id}/${d.finalized ? "reopen" : "finalize"}`); toast.success(d.finalized ? "Dosar redeschis" : "Dosar finalizat — datele din setări sunt înghețate"); load(); }

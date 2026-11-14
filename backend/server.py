@@ -13,6 +13,7 @@ from gridfs import GridFSBucket
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 import logging
+import html
 import uuid
 import bcrypt
 import jwt
@@ -246,7 +247,8 @@ EDIT_ROLES = ("admin", "inginer", "electrician", "instalator")
 
 def pub_user(u: dict) -> dict:
     return {"id": u.get("uid") or u["id"], "email": u["email"], "name": u.get("name"), "role": u.get("role", "admin"), "status": u.get("status", "active"),
-            "phone": u.get("phone"), "function": u.get("function"), "staff_id": u.get("staff_id"), "account_type": u.get("account_type") or ("team" if u.get("tenant") else "owner"),
+            "phone": u.get("phone"), "function": u.get("function"), "staff_id": u.get("staff_id"), "is_engineer": bool(u.get("is_engineer")),
+            "notify_signing": u.get("notify_signing", True), "account_type": u.get("account_type") or ("team" if u.get("tenant") else "owner"),
             "plan": u.get("plan"), "platform": bool(PLATFORM["id"]) and (u.get("uid") or u["id"]) == PLATFORM["id"]}
 
 @api_router.post("/auth/register")
@@ -312,7 +314,7 @@ async def admin_user_update(uid: str, request: Request, user: dict = Depends(get
     u = await db.users.find_one({"id": uid, "tenant": user["id"]})
     if not u:
         raise HTTPException(status_code=404, detail="Utilizator inexistent (administratorul principal nu poate fi modificat aici)")
-    upd = {k: b[k] for k in ("name", "phone", "function", "staff_id") if k in b}
+    upd = {k: b[k] for k in ("name", "phone", "function", "staff_id", "is_engineer", "notify_signing") if k in b}
     if "role" in b:
         if b["role"] not in ROLES:
             raise HTTPException(status_code=400, detail="Rol invalid")
@@ -378,7 +380,15 @@ async def create_item(module: str, request: Request, user: dict = Depends(get_cu
     data["created_by_email"] = user.get("email")
     if not is_admin(user):
         data.pop("assigned_to", None)
+    if module == "pram":
+        seq = await db.dossier_number_counters.find_one_and_update(
+            {"owner": user["id"], "kind": "pram"},
+            {"$inc": {"value": 1}, "$setOnInsert": {"owner": user["id"], "kind": "pram"}},
+            upsert=True, return_document=ReturnDocument.AFTER)
+        data["number"] = str(seq["value"])
     await db[module].insert_one(dict(data))
+    if module == "prosumator":
+        data = await ensure_dossier_numbers(user, data["id"])
     await audit(user, "creare", module, data["id"], list(data.keys()))
     return clean(data)
 
@@ -390,6 +400,8 @@ async def get_item(module: str, item_id: str, user: dict = Depends(get_current_u
     doc = await db[module].find_one({**scope_q(user, module), "id": item_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă")
+    if module == "prosumator":
+        doc = await hydrate_catalog_cef(user["id"], CEF.from_legacy(doc))
     return clean(doc)
 
 @api_router.put("/data/{module}/{item_id}")
@@ -410,12 +422,19 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
         data.pop("events", None); data.pop("blocker", None)
     if module == "clients" and isinstance(data.get("docs"), dict):
         data["docs"]["semnate"] = (cur.get("docs") or {}).get("semnate") or []
+    if module == "pram" and str(cur.get("number") or "").strip():
+        data["number"] = cur["number"]
     data["updated_by"] = user.get("email")
     if not is_admin(user):
         data.pop("assigned_to", None)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     if module == "prosumator":
+        # Issued numbers are immutable: a form save cannot recycle or change them.
+        for field in DOSSIER_NUMBER_FIELDS:
+            if str(cur.get(field) or "").strip():
+                data[field] = cur[field]
         data = derive_cef(data)
+        data = await hydrate_catalog_cef(user["id"], data)
         data.pop("opis", None); data.pop("snapshot", None); data.pop("snapshot_history", None); data.pop("sld", None)
         check_inverters(user, {**cur, **data})
         if data.get("client_name"):
@@ -425,6 +444,8 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     res = await db[module].update_one({"id": item_id, "owner": user["id"]}, {"$set": data})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă")
+    if module == "prosumator":
+        await ensure_dossier_numbers(user, item_id)
     await audit(user, "modificare", module, item_id, list(data.keys()))
     if module == "prosumator":
         try:
@@ -638,12 +659,11 @@ async def create_individual_pram(request: Request, user: dict = Depends(get_curr
             raise HTTPException(status_code=400, detail=f"Completează {title}")
     instrument = await db.instruments.find_one({**scope_q(user, "instruments"), "id": body["instrument_id"]}, {"_id": 0})
     verifier = await db.staff.find_one({**scope_q(user, "staff"), "id": body["verifier_id"]}, {"_id": 0})
-    if not instrument or not verifier:
+    if not instrument or not verifier or instrument.get("active") is False or instrument.get("measures_grounding") is False or verifier.get("active") is False:
         raise HTTPException(status_code=400, detail="Aparatul sau verificatorul ales nu mai este disponibil")
-    year = datetime.now(timezone.utc).year
-    seq = await db.pram_counters.find_one_and_update({"owner": user["id"], "year": year},
-        {"$inc": {"value": 1}, "$setOnInsert": {"owner": user["id"], "year": year}}, upsert=True, return_document=ReturnDocument.AFTER)
-    rec = _new(user, {"number": f"PRAM-{year}-{seq['value']:04d}", "source": "Individual", "client_id": client_id,
+    seq = await db.dossier_number_counters.find_one_and_update({"owner": user["id"], "kind": "pram"},
+        {"$inc": {"value": 1}, "$setOnInsert": {"owner": user["id"], "kind": "pram"}}, upsert=True, return_document=ReturnDocument.AFTER)
+    rec = _new(user, {"number": str(seq["value"]), "source": "Individual", "client_id": client_id,
         "client_name": name, "address": address, "date": str(body["date"]), "soil": str(body.get("soil") or "mediu"),
         "soil_psi": {"uscat": 1.1, "mediu": 1.3, "foarte umed": 1.5}.get(str(body.get("soil") or "mediu"), 1.3),
         "earth_ohm": value, "earth_limit": float(body.get("earth_limit") or 4), "instrument_id": instrument["id"],
@@ -810,7 +830,10 @@ async def audit_log(module: Optional[str] = None, item_id: Optional[str] = None,
 async def get_settings(user: dict = Depends(get_current_user)):
     doc = await db.settings.find_one({"owner": user["id"]})
     if not doc:
-        return {"company": "DNS HOSTESS S.R.L.", "brand": "D-ENERGY", "rep": "", "phone": "", "address": ""}
+        doc = {"company": "DNS HOSTESS S.R.L.", "brand": "D-ENERGY", "rep": "", "phone": "", "address": ""}
+    doc["sizing_rules"] = doc.get("sizing_rules") or CEF.DEFAULT_SIZING_RULES
+    counter = await db.dossier_number_counters.find_one({"owner": user["id"], "kind": "pram"}, {"_id": 0, "value": 1})
+    doc["next_pram_number"] = max(int(doc.get("next_pram_number") or 1), int((counter or {}).get("value") or 0) + 1)
     return clean(doc)
 
 @api_router.put("/settings")
@@ -818,8 +841,19 @@ async def save_settings(request: Request, user: dict = Depends(get_current_user)
     require(user, "admin")
     data = await request.json()
     data.pop("_id", None)
+    if data.get("next_pram_number") not in (None, ""):
+        try:
+            next_pram = int(data["next_pram_number"])
+            if next_pram < 1:
+                raise ValueError()
+            data["next_pram_number"] = next_pram
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Următorul număr PRAM trebuie să fie un întreg mai mare ca zero")
     data["owner"] = user["id"]
     await db.settings.update_one({"owner": user["id"]}, {"$set": data}, upsert=True)
+    if data.get("next_pram_number"):
+        await db.dossier_number_counters.update_one({"owner": user["id"], "kind": "pram"},
+            {"$max": {"value": data["next_pram_number"] - 1}, "$setOnInsert": {"owner": user["id"], "kind": "pram"}}, upsert=True)
     await audit(user, "modificare", "settings", user["id"], list(data.keys()))
     doc = await db.settings.find_one({"owner": user["id"]})
     return clean(doc)
@@ -906,6 +940,32 @@ def _new(user, extra):
     return {"id": str(uuid.uuid4()), "owner": user["id"], "created_at": now, "updated_at": now,
             **({"created_by": user["uid"], "created_by_email": user.get("email")} if user.get("uid") else {}), **extra}
 
+DOSSIER_NUMBER_FIELDS = {"doc_no": "declaratie", "project_no": "proiect", "pif_no": "pif", "bulletin_no": "pram"}
+
+async def ensure_dossier_numbers(user: dict, item_id: str, requested=None) -> dict:
+    """Assign missing document numbers once; each document type has its own sequence."""
+    fields = requested or tuple(DOSSIER_NUMBER_FIELDS)
+    rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    for field in fields:
+        if field not in DOSSIER_NUMBER_FIELDS or str(rec.get(field) or "").strip():
+            continue
+        kind = DOSSIER_NUMBER_FIELDS[field]
+        if field == "bulletin_no" and rec.get("pram_mode") in ("third_party", "none"):
+            continue
+        seq = await db.dossier_number_counters.find_one_and_update(
+            {"owner": user["id"], "kind": kind},
+            {"$inc": {"value": 1}, "$setOnInsert": {"owner": user["id"], "kind": kind}},
+            upsert=True, return_document=ReturnDocument.AFTER)
+        number = str(seq["value"])
+        # Conditional write makes simultaneous saves keep the first number assigned.
+        await db.prosumator.update_one(
+            {"id": item_id, "owner": user["id"], "$or": [{field: {"$exists": False}}, {field: None}, {field: ""}]},
+            {"$set": {field: number, "updated_at": datetime.now(timezone.utc).isoformat()}})
+        rec = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0}) or rec
+    return rec
+
 @api_router.post("/import/prosumator")
 async def import_prosumator(request: Request, user: dict = Depends(get_current_user)):
     guard("prosumator", user, write=True)
@@ -933,11 +993,12 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
             {"owner": user["id"], "number": {"$regex": f"^PROS-{year}-\\d+$"}}, {"number": 1}).to_list(5000)]
         d["number"] = f"PROS-{year}-{(max(nums) if nums else 0) + 1:03d}"
     if not d.get("status"):
-        d["status"] = "Așteaptă depunere"
+        d["status"] = "CER"
     files = d.get("files") or []
     d = derive_cef(d)
     pros = _new(user, d)
     await db.prosumator.insert_one(dict(pros))
+    pros = await ensure_dossier_numbers(user, pros["id"])
     sz = docgen.sizing(d)
     await db.works.insert_one(_new(user, {"title": f"Sistem fotovoltaic {docgen.fmt(sz['kwp'] or docgen.num(d.get('power')))} kWp — {name}",
         "client_name": name, "type": "Sistem fotovoltaic", "status": "Finalizat" if d.get("status") == "Prosumator activ" else "În execuție",
@@ -966,6 +1027,7 @@ async def doc_sizing(item_id: str, user: dict = Depends(get_current_user)):
     rec = await check_access(user, "prosumator", item_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    rec = await hydrate_catalog_cef(user["id"], CEF.from_legacy(rec))
     return docgen.sizing(rec)
 
 @api_router.get("/docs/{doc_type}/{item_id}")
@@ -973,6 +1035,7 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
                        attach: int = Query(0)):
     user = await user_from_token(authorization, auth)
     rec = await check_access(user, "prosumator", item_id)
+    rec = await ensure_dossier_numbers(user, item_id)
     if doc_type == "all":
         # Dosarul complet include schema CEF o singură dată; varianta "schema"
         # rămâne disponibilă separat pentru descărcare individuală.
@@ -983,6 +1046,7 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
         raise HTTPException(status_code=404, detail="Tip document inexistent")
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    rec = await hydrate_catalog_cef(user["id"], CEF.from_legacy(rec))
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     settings, _ = await effective_settings(user["id"], rec, base)
     client = await get_client(user["id"], rec)
@@ -991,6 +1055,17 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     # conformitate încărcate în catalog pentru echipamentele selectate.
     if attach or doc_type == "all":
         pdf = merge_pdfs(pdf, await catalog_files(user["id"], rec))
+    # A dossier enters the filing stage only after the complete dossier PDF was
+    # generated successfully. Standalone schema and PRAM downloads do not move it.
+    if doc_type == "all" and rec.get("status") == "CER":
+        now = datetime.now(timezone.utc).isoformat()
+        event = {"id": str(uuid.uuid4()), "at": now, "by": user.get("email"), "type": "dossier_generated",
+                 "label": "Dosar generat", "from_status": "CER", "to_status": "Așteaptă depunere"}
+        changed = await db.prosumator.update_one(
+            {"id": item_id, "owner": rec["owner"], "status": "CER"},
+            {"$set": {"status": "Așteaptă depunere", "updated_at": now}, "$push": {"events": event}})
+        if changed.modified_count:
+            await audit(user, "dosar complet generat", "prosumator", item_id, ["Așteaptă depunere"])
     fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{fname}")})
 
@@ -1050,14 +1125,14 @@ async def sld_ctx(owner, item_id: str):
     rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
-    rec = CEF.from_legacy(rec)
+    rec = await hydrate_catalog_cef(owner, CEF.from_legacy(rec))
     client = await get_client(owner, rec)
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     s, warns = await effective_settings(owner, rec, base)
     if (rec.get("cef") or {}).get("from_legacy"):
         warns = list(warns) + ["Schema folosește datele din fișa dosarului (invertor, panouri, baterie). Repartizarea pe stringuri/MPPT nu este definită — "
                                "configurați stringurile în Configuratorul CEF pentru o schemă completă."]
-    res = SZ.compute(rec, client)
+    res = SZ.compute(rec, client, s)
     state = SZ.state(rec, client, s)
     return rec, client, s, res, state, warns
 
@@ -1078,8 +1153,10 @@ async def sld_status(item_id: str, user: dict = Depends(get_current_user)):
         sid = signers.get(role)
         p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
         people[role] = {"name": p.get("name"), "eligible": staff_eligible(p), "email": p.get("email")} if p else None
-    return {"items": res["items"], "missing": res["missing"], "errors": res["errors"], "warnings": res["warnings"], "cables": res["cables"],
-            "ready": res["ready"], "format": res["format"], "totals": res["base"]["totals"], "approval": state, "settings_warnings": warns,
+    return {"items": res["items"], "missing": res["missing"], "verification_missing": res.get("verification_missing") or [],
+            "errors": res["errors"], "warnings": res["warnings"], "cables": res["cables"],
+            "ready": res["ready"], "approval_ready": res["approval_ready"], "can_preview": res["can_preview"],
+            "format": res["format"], "totals": res["base"]["totals"], "approval": state, "settings_warnings": warns,
             "source": sld.get("source") or "generated", "upload": sld.get("upload"), "revision": sld.get("revision") or 0,
             "auto_filled": (rec.get("cef") or {}).get("auto_filled") or [], "people": people,
             "history": [{k: v for k, v in h.items() if k not in ("hash", "values")} | {"current": h.get("hash") == state["fingerprint"], "index": i, "has_values": bool(h.get("values"))}
@@ -1094,6 +1171,7 @@ async def sld_import_legacy(item_id: str, user: dict = Depends(get_current_user)
     new = CEF.from_legacy(rec)
     if not (new.get("cef") or {}).get("from_legacy"):
         raise HTTPException(status_code=400, detail="Dosarul are deja o configurație CEF sau nu are date de invertor/panouri")
+    new = await hydrate_catalog_cef(user["id"], new)
     cef = {k: v for k, v in new["cef"].items() if k != "from_legacy"}
     await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef}})
     await audit(user, "update", "prosumator", item_id, ["cef (preluat din fișa dosarului pentru schema monofilară)"])
@@ -1118,7 +1196,9 @@ async def sld_apply(item_id: str, request: Request, user: dict = Depends(get_cur
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     body = await request.json() if (await request.body()) else {}
-    cef, filled = SZ.apply(body.get("cef") or rec.get("cef") or {})
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    source_cef = await hydrate_catalog_equipment(user["id"], body.get("cef") or rec.get("cef") or {})
+    cef, filled = SZ.apply(source_cef, base)
     await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef}})
     await audit(user, "dimensionare automată", "prosumator", item_id, filled)
     return {"filled": filled, "cef": cef}
@@ -1172,7 +1252,7 @@ async def sld_approve(item_id: str, request: Request, user: dict = Depends(get_c
                                              "auth": f"{auth_doc.get('type', '')} nr. {auth_doc.get('number', '')}".strip(), "source": src,
                                              "at": datetime.now(timezone.utc).isoformat(), "by": user.get("email")}})
     rec["sld"] = sld
-    sld["approval"]["hash"] = SZ.fingerprint(rec, client)
+    sld["approval"]["hash"] = SZ.fingerprint(rec, client, s)
     aps[role] = sld["approval"]
     sld["approvals"] = aps
     await db.prosumator.update_one({"id": item_id}, {"$set": {"sld": sld}})
@@ -1311,6 +1391,67 @@ def catalog_ids(rec: dict) -> list:
     ids.append(g.get("meter_catalog_id"))
     return list(dict.fromkeys(x for x in ids if x))
 
+
+async def hydrate_catalog_equipment(owner: str, cef: dict) -> dict:
+    """Refresh technical fields from the selected catalog IDs before checks or exports."""
+    import copy
+    value = copy.deepcopy(cef or {})
+    ids = catalog_ids({"cef": value})
+    if not ids:
+        return value
+    found = await db.catalog.find({"owner": owner, "id": {"$in": ids}}, {"_id": 0}).to_list(len(ids))
+    items = {item.get("id"): item for item in found}
+
+    def apply(target: dict, item: dict, mapping: dict, source_key: str):
+        if not item or not isinstance(target, dict):
+            return
+        for target_key, catalog_key in mapping.items():
+            if catalog_key in item:
+                target[target_key] = item[catalog_key]
+        target[source_key] = item.get("spec_source_url") or ""
+        target[source_key.replace("source_url", "verified_at")] = item.get("spec_verified_at") or ""
+
+    inverter_fields = {k: k for k in (
+        "brand_model", "type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max",
+        "mppt_count", "imax_mppt", "imax_mppt_values", "battery_voltage", "bat_v_min", "bat_v_max", "bat_i_max")}
+    inverter_fields.update({"isc_mppt_max": "isc_mppt_max", "isc_mppt_max_values": "isc_mppt_max_values"})
+    panel_fields = {
+        "panel_model": "brand_model", "panel_w": "w", "panel_voc": "voc", "panel_vmp": "vmp",
+        "panel_isc": "isc", "panel_imp": "imp", "panel_coef_voc": "coef_voc", "panel_coef_vmp": "coef_vmp",
+        "panel_temp_noct": "temp_noct", "panel_temp_pmax": "temp_pmax",
+    }
+    battery_fields = {k: k for k in (
+        "kwh", "ah", "voltage", "voltage_min", "voltage_max", "voltage_ranges", "i_max", "tech", "coupling")}
+    battery_fields["model"] = "brand_model"
+
+    for inverter in value.get("inverters") or []:
+        apply(inverter, items.get(inverter.get("catalog_id")), inverter_fields, "inverter_spec_source_url")
+        apply(inverter, items.get(inverter.get("panel_catalog_id")), panel_fields, "panel_spec_source_url")
+        battery = inverter.get("battery") or {}
+        apply(battery, items.get(battery.get("catalog_id")), battery_fields, "spec_source_url")
+    for battery in value.get("shared_batteries") or []:
+        apply(battery, items.get(battery.get("catalog_id")), battery_fields, "spec_source_url")
+    for equipment in value.get("auxiliary_equipment") or []:
+        item = items.get(equipment.get("catalog_id"))
+        if item:
+            equipment["model"] = item.get("brand_model") or equipment.get("model")
+            equipment["spec_source_url"] = item.get("spec_source_url") or ""
+            equipment["spec_verified_at"] = item.get("spec_verified_at") or ""
+    grid = value.get("grid") or {}
+    meter = items.get(grid.get("meter_catalog_id"))
+    if meter:
+        grid["meter"] = meter.get("brand_model") or grid.get("meter")
+        grid["meter_spec_source_url"] = meter.get("spec_source_url") or ""
+        grid["meter_spec_verified_at"] = meter.get("spec_verified_at") or ""
+    return value
+
+
+async def hydrate_catalog_cef(owner: str, rec: dict) -> dict:
+    import copy
+    value = copy.deepcopy(rec or {})
+    value["cef"] = await hydrate_catalog_equipment(owner, value.get("cef") or {})
+    return value
+
 async def catalog_files(owner: str, rec: dict) -> list:
     out = []
     for cid in catalog_ids(rec):
@@ -1381,7 +1522,7 @@ async def dossier_ctx(owner, item_id: str):
     rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
-    rec = CEF.from_legacy(rec)
+    rec = await hydrate_catalog_cef(owner, CEF.from_legacy(rec))
     client = await get_client(owner, rec)
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     settings, warns = await effective_settings(owner, rec, base)
@@ -1400,7 +1541,7 @@ def doc_status(expires: str, has_file: bool) -> str:
     return "expirat" if expires < today else ("aproape de expirare" if expires <= soon else "valabil")
 
 def staff_eligible(p: dict) -> bool:
-    return any(doc_status(a.get("expires", ""), bool(a.get("file"))) in ("valabil", "aproape de expirare") and a.get("verified")
+    return p.get("active") is not False and any(doc_status(a.get("expires", ""), bool(a.get("file"))) in ("valabil", "aproape de expirare") and a.get("verified")
                for a in p.get("auths") or [])
 
 SIGN_ROLES = {"executant": "Reprezentant executant", "resp_tehnic": "Responsabil tehnic cu execuția", "electrician": "Electrician autorizat / inginer",
@@ -1434,7 +1575,7 @@ async def effective_settings(owner: str, rec: dict, base: dict):
     if iid:
         i = await db.instruments.find_one({"owner": owner, "id": iid}, {"_id": 0})
         st = doc_status((i or {}).get("expires", ""), bool((i or {}).get("file")))
-        if not i or st in ("expirat", "lipsă"):
+        if not i or i.get("active") is False or i.get("measures_grounding") is False or st in ("expirat", "lipsă"):
             warns.append("Aparat de măsură: certificat " + ("expirat" if st == "expirat" else "lipsă") + " — datele aparatului nu sunt completate.")
             s["meter_device"] = s["meter_serial"] = s["meter_valid"] = ""
         else:
@@ -1452,6 +1593,7 @@ async def dossier_finalize(item_id: str, user: dict = Depends(get_current_user))
     require(user, "admin", "inginer", "electrician")
     need(user, "prosumator", True)
     rec = await check_access(user, "prosumator", item_id)
+    rec = await hydrate_catalog_cef(user["id"], CEF.from_legacy(rec))
     check_inverters(user, rec)
     base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
     s, _ = await effective_settings(user["id"], {**rec, "snapshot": None}, base)
@@ -1515,7 +1657,7 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
     name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
     if fmt == "docx":
         if key == "fisa_tehnica":
-            docx = SLD.tech_sheet_docx(rec, client, settings, SZ.compute(rec, client), SZ.state(rec, client, settings))
+            docx = SLD.tech_sheet_docx(rec, client, settings, SZ.compute(rec, client, settings), SZ.state(rec, client, settings))
             return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                             headers={"Content-Disposition": disp('attachment', f"{name}.docx")})
         if key == "schema":
@@ -1544,8 +1686,10 @@ async def dossier_export(item_id: str, authorization: str = Header(None), auth: 
     user = await user_from_token(authorization, auth)
     rec, client, settings, info = await dossier_ctx(user, item_id)
     pdf = await OPIS.export_bundle(info, rec, client, settings, get_object, logger)
-    name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
+    name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}"
+    zipped = pdf.startswith(b"PK\x03\x04")
+    return Response(content=pdf, media_type="application/zip" if zipped else "application/pdf",
+                    headers={"Content-Disposition": disp('attachment' if zipped else 'inline', f"{name}.{'zip' if zipped else 'pdf'}")})
 
 SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "pif_pv", "schema", "fisa_tehnica")
 
@@ -1556,7 +1700,7 @@ async def dossier_simple(item_id: str, authorization: str = Header(None), auth: 
     pos = [p for p in info["positions"] if p["key"] in SIMPLE_KEYS or p.get("source") == "catalog"]
     sub = {**info, "positions": pos, "titles": [p["title"] for p in pos],
            "complete": not any(p.get("missing") for p in pos) and not any(p.get("status") == "de completat" for p in pos)}
-    pdf = await OPIS.export_bundle(sub, rec, client, settings, get_object, logger)
+    pdf = await OPIS.export_bundle(sub, rec, client, {**settings, "bundle_mode": "one", "bundle_operator_modes": {}}, get_object, logger)
     name = f"DOSAR_PROSUMATOR_SIMPLU_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not sub['complete'] else ''}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
 
@@ -1851,6 +1995,26 @@ async def sign_by_token(token: str) -> dict:
         raise HTTPException(status_code=404, detail="Link invalid sau revocat")
     return r
 
+async def notify_signing_team(req: dict, event: str):
+    members = await db.users.find({"$or": [{"tenant": req["owner"]}, {"id": req["owner"]}],
+                                   "status": "active", "notify_signing": {"$ne": False}},
+                                  {"_id": 0, "email": 1, "name": 1}).to_list(100)
+    sent = set()
+    title = req.get("doc_title") or "Document"
+    client = req.get("client_name") or "client"
+    for member in members:
+        to = str(member.get("email") or "").strip()
+        if not to or to.lower() in sent:
+            continue
+        sent.add(to.lower())
+        try:
+            await send_email(to=to, subject=f"Semnare: {event} — {title}",
+                             html=f"<div style='font-family:Arial,sans-serif'><p>{html.escape(member.get('name') or '')},</p>"
+                                  f"<p>Clientul {html.escape(client)} {event} documentul <b>{html.escape(title)}</b>.</p>"
+                                  f"<p>Dosar: {html.escape(req.get('dossier_id') or '')}</p></div>")
+        except Exception as exc:
+            logger.warning(f"Signing notification not sent to {to}: {exc}")
+
 def mask(e: str) -> str:
     u, _, d = e.partition("@")
     return (u[:2] + "***@" + d) if d else "***"
@@ -1863,9 +2027,12 @@ async def pub_sign_info(token: str, request: Request):
         await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Expirat"}, "$push": {"history": hist("Link expirat", client_meta(request))}})
     elif st in SIGN_ACTIVE:
         upd = {"$push": {"history": hist("Document deschis", client_meta(request))}}
+        first_open = st != "Deschis"
         if st != "Deschis":
             upd["$set"] = {"status": "Deschis", "opened_at": now_iso()}
         await db.sign_requests.update_one({"id": r["id"]}, upd)
+        if first_open:
+            await notify_signing_team(r, "a deschis")
         st = "Deschis"
     s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
     portal = None
@@ -2054,6 +2221,7 @@ async def pub_sign(token: str, request: Request):
         "evidence_path": evp["path"], "signature_path": sigp["path"], "sign_meta": meta, "otp_hash": None},
         "$push": {"history": hist("Semnat", meta, f"identitate declarată: {declared}; cod e-mail verificat; intenție confirmată")}})
     await rebuild_group(r["owner"], r["group_id"])
+    await notify_signing_team(r, "a semnat")
     return {"ok": True, "signed_at": at}
 
 @api_router.post("/public/sign/{token}/refuse")

@@ -68,7 +68,7 @@ export function DossierTimeline({ id }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border p-4" style={{ borderColor: "var(--line)" }}>
+        <div id="timeline-od-messages" className="rounded-xl border p-4 scroll-mt-24" style={{ borderColor: "var(--line)" }}>
           <h4 className="text-sm font-bold">Notă / apel / clarificare</h4>
           <textarea className="den-input mt-3" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Adaugă un detaliu util pentru echipă…" maxLength={1200} data-testid="timeline-note" />
           <div className="mt-2 flex flex-wrap gap-2">

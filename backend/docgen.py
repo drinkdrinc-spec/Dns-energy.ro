@@ -196,7 +196,7 @@ def inverters(ctx):
 def panel_rows(ctx):
     rows = []
     for inv in inverters(ctx):
-        n = sum(int(num(s.get("panels"))) for s in inv.get("strings") or [])
+        n = 0 if inv.get("no_panels") else sum(int(num(s.get("panels"))) for s in inv.get("strings") or [])
         w = num(inv.get("panel_w"))
         rows.append({"n": n, "model": inv.get("panel_model") or "", "w": w, "kw": n * w / 1000})
     return rows
@@ -255,8 +255,21 @@ def doc_notificare(ctx):
         tpi += pi; tpm += pm
         un = "400" if "mono" not in str(inv.get("phases") or ("Trifazat" if tri else "Monofazat")).lower() else "230"
         rows.append([str(i + 1), "1", escape(inv.get("brand_model") or ""), un, f"{pi:.2f}" if pi else "", f"{pm:.2f}" if pm else "", "", ""])
+    cef = ctx.r.get("cef") or {}
+    previous_installation = cef.get("previous_installation") or {}
+    removed = previous_installation.get("removed_inverters") or []
+    for i, inv in enumerate(removed):
+        model = escape(str(inv.get("model") or inv.get("brand_model") or "Invertor demontat"))
+        power = num(inv.get("power_kw"))
+        model_text = f"{model} · {power:g} kW" if power else model
+        rows.append([f"D{i + 1}", "1 demontat", model_text, "—", "", "", "", "Demontat / înlocuit; exclus din puterile totale"])
     rows.append(["TOTAL:", str(len(invs)) if invs else "", "", "", f"{tpi:.2f}" if tpi else "", f"{tpm:.2f}" if tpm else "", f"{tk:.2f}" if tk else "", ""])
-    out += [B("table", rows, [12, 16, 34, 20, 20, 26, 30, 16], True),
+    out += [B("table", rows, [12, 16, 34, 20, 20, 26, 30, 16], True)]
+    if removed:
+        certificate = previous_installation.get("certificate_no") or "—"
+        certificate_date = ro_date(previous_installation.get("certificate_date")) or "—"
+        out.append(B("small", f"Înlocuire echipament existent conform certificatului de racordare nr. {escape(str(certificate))} din {escape(certificate_date)}. Invertoarele marcate D au fost demontate și nu se includ în puterea instalată sau evacuată."))
+    out += [
             B("small", "NOTĂ:<br/>U.G. = unitate generatoare; panou = panou fotovoltaic; As - asincron; S - sincron; T - termo; H - hidro; E - eolian; "
                        "Qn - putere reactivă nominală; Qmax = putere reactivă maximă; Qmin = putere reactivă minimă; c.c. = curent continuu; c.a. = curent alternativ; "
                        "Pn = putere activă nominală; Pi = putere activă instalată; Pmax = putere activă maximă; Pmin = putere activă minimă; Sn = putere aparentă nominală; "
@@ -450,7 +463,7 @@ def doc_pv_pif(ctx):
     st = storage(ctx)
     invs = inverters(ctx)
     dec = ctx.raw("pif_decision")
-    pd = ro_date(ctx.raw("pif_date")) or M
+    pd = ro_date(ctx.raw("pif_pv_date")) or ro_date(ctx.raw("pif_date")) or M
     anti = ctx.raw("anti_relay_present")
     return hdr() + [
         B("title", "PROCES-VERBAL DE PUNERE ÎN FUNCȚIUNE FINALĂ"),
@@ -519,19 +532,27 @@ CHECKS = ["ROCOF — declarație producător", "Răspuns la variațiile de frecv
 
 def doc_pv_teste(ctx):
     invs = inverters(ctx)
+    inv_serials = ctx.raw("inverter_serials") or []
     st = storage(ctx)
     t = ctx.r.get("tests") or {}
-    pd = ro_date(ctx.raw("pif_date")) or M
+    pd = ro_date(ctx.raw("pif_pv_date")) or ro_date(ctx.raw("pif_date")) or M
     period = f"{ro_date(ctx.raw('test_from')) or M} — {ro_date(ctx.raw('test_to')) or M}"
+    test_signer = ctx.e("electrician", ctx.rep)
     out = [B("p", f"Nr. înregistrare OD …………………………………/…………………………………<br/>aferent cererii de punere sub tensiune nr. …………………………………<br/>POD <b>{ctx.v('pod')}</b>"),
            B("title", "PROCES VERBAL"), B("sub", f"de efectuare a testelor și verificărilor de punere în funcțiune a instalației de utilizare și producere<br/>situată în {ctx.loc}"),
            B("p", f"încheiat azi {pd} cu ocazia efectuării testelor și verificărilor de punere în funcțiune a instalației de utilizare/producere {ctx.cef_kw}"),
+           B("table", [["Date proces-verbal teste", "Valoare"], ["Nr. proces-verbal", escape(str(ctx.raw("pif_no") or ""))],
+                       ["Data procesului-verbal", pd if pd != M else ""], ["Data punerii sub tensiune", ro_date(ctx.raw("energization_date")) or ""],
+                       ["Început probe", ro_date(ctx.raw("test_from")) or ""], ["Sfârșit probe", ro_date(ctx.raw("test_to")) or ""],
+                       ["Reprezentant OD prezent", escape(str(ctx.raw("od_representative") or ""))],
+                       ["Tensiune măsurată (V)", escape(str(ctx.raw("measured_voltage") or ""))]], [72, 102], True),
            B("b", "Datele tehnice ale instalației de producere:"),
-           B("p", f"1. Seria invertorului: {'; '.join(escape(i.get('serial')) for i in invs if i.get('serial')) or M}<br/>tipul invertorului: "
+           B("p", f"1. Seria invertorului: {'; '.join(escape(str((inv_serials[n] if n < len(inv_serials) else '') or i.get('serial') or '')) for n, i in enumerate(invs) if ((inv_serials[n] if n < len(inv_serials) else '') or i.get('serial'))) or M}<br/>tipul invertorului: "
                   f"<b>{'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}</b>"),
-           B("p", f"2. Montajul CEF {ctx.cef_kw} este în conformitate cu ATR {ctx.v('atr')}"),
-           B("p", f"3. Tipul / seria contorului montat de prosumator pe partea de producere este {ctx.v('production_meter')}"),
-           B("p", f"4. Sistemul [ {'Da' if st else 'Nu'} ] are sistem de stocare"),
+           B("p", f"2. Serii panouri: {escape(str(ctx.raw('panel_serials') or '')) or M}<br/>Serii baterii: {escape(str(ctx.raw('battery_serials') or '')) or M}"),
+           B("p", f"3. Montajul CEF {ctx.cef_kw} este în conformitate cu ATR {ctx.v('atr')}"),
+           B("p", f"4. Tipul / seria contorului montat de prosumator pe partea de producere este {ctx.v('production_meter')}"),
+           B("p", f"5. Sistemul [ {'Da' if st else 'Nu'} ] are sistem de stocare"),
            B("p", f"În perioada {period} au fost efectuate testele și s-au verificat condițiile tehnice de racordare la RED pentru prosumatorul cu injecție de "
                   "putere activă în rețea, în conformitate cu Ord. ANRE 228/2018 cu modificările și completările ulterioare."),
            B("p", "S-au constatat următoarele:"),
@@ -539,16 +560,17 @@ def doc_pv_teste(ctx):
                          "2. S-a verificat nefuncționarea centralei în regim insularizat, aceasta realizându-se prin dotarea cu protecții/protecții integrate a echipamentului care să întrerupă injecția puterii active în rețea a prosumatorului la apariția unui asemenea regim;",
                          "3. S-a realizat protecția instalației de producere a energiei electrice, a invertorului/invertoarelor componente și a instalațiilor auxiliare, (după caz a sistemului de stocare a energiei) și a instalației electrice aferente locului de consum împotriva defectelor din instalațiile proprii și împotriva impactului rețelei electrice asupra acestora, la acționarea protecțiilor de declanșare a prosumatorului ori la incidente în rețea (supratensiuni tranzitorii, acționări ale protecțiilor în rețea, scurtcircuite cu și fără punere la pământ), cât și în cazul apariției unor condiții tehnice excepționale/anormale de funcționare;",
                          "4. Prosumatorul cu injecție de putere activă în rețea asigură în punctul de racordare/delimitare (după caz), calitatea energiei electrice în conformitate cu standardele în vigoare."], False),
-           B("p", f"Subsemnatul {ctx.rep}, reprezentant al firmei executante {ctx.company} (atestat ANRE {ctx.e('anre_attest')}, cu valabilitate până la "
-                  f"{ro_date(ctx.s.get('anre_valid')) or M}), declar că instalația de producere a fost realizată cu respectarea normativelor, reglementărilor, prescripțiilor și legislației în vigoare și se poate pune în funcțiune."),
+           B("table", [["Verificări funcționale", "Confirmat"]] + [[label, "DA" if ((ctx.r.get("pif") or {}).get("functional_checks") or {}).get(key) else ""] for key, label in (("protection_settings", "Reglaje protecții (buletin reglaj)"), ("anti_islanding", "Test anti-insularizare"), ("serials_match", "Serii echipamente montate"), ("grounding_ok", "Priză de pământ (PRAM ≤ 4 Ω)"))], [130, 44], True),
+           B("p", f"Subsemnatul {test_signer}, reprezentant al firmei executante {ctx.company} (atestat ANRE {ctx.e('anre_attest')}, cu valabilitate până la "
+                  f"{ro_date(ctx.s.get('anre_valid')) or M}), declar că instalația de producere a fost realizată cu respectarea normativelor, reglementărilor, prescripțiilor și legislației în vigoare. Verdictul recepției probelor este consemnat mai jos."),
            B("p", "<b>Atât Executantul cât și Prosumatorul au obligația ca, până la încheierea contractului de vânzare-cumpărare între Prosumator și Furnizorul de energie "
                   "electrică, SĂ NU INJECTEZE ENERGIE ELECTRICĂ în rețeaua operatorului de distribuție.</b> De asemenea, Prosumatorul și Executantul (cu drepturi de "
                   "parametrizare a invertorului) își asumă responsabilitatea pentru menținerea în funcțiune a tuturor protecțiilor, respectiv menținerea parametrilor testați aferenți unității de producție (inclusiv a invertorului)."),
-           sign(["Prosumator,", f"<b>{ctx.name}</b>", "semnătura"], ["Reprezentant firmă executantă<br/>care a verificat și efectuat testele,", ctx.rep, "semnătura și ștampila"]),
+           sign(["Prosumator,", f"<b>{ctx.name}</b>", "semnătura"], ["Reprezentant firmă executantă<br/>care a verificat și efectuat testele,", test_signer, "semnătura și ștampila"]),
            B("b", "Observații OD privind instalația de utilizare de la locul de consum și producere"),
            B("p", "OD a sigilat: [  ] contorul pe partea de producere, din instalația prosumatorului<br/>[  ] contorul pe sistemul de stocare<br/>[  ] contorul în punctul de delimitare"),
            B("p", "Observații (dacă este cazul)<br/>………………………………………………………………………………………………………<br/>………………………………………………………………………………………………………"),
-           B("p", "Data …………………………………<br/>Reprezentant OD,<br/>…………………………………"),
+           B("p", f"Data …………………………………<br/>Reprezentant OD: {escape(str(ctx.raw('od_representative') or ''))}<br/>…………………………………"),
            B("pagebreak")] + hdr() + [
            B("title", "Teste și Verificări"),
            B("sub", "aferente Normei Tehnice „Condiții tehnice de racordare la rețelele electrice de interes public pentru prosumatorii cu injecție de putere activă în rețea” — "
@@ -564,19 +586,31 @@ def doc_pv_teste(ctx):
              [[x, escape(str((t.get(f"c{i}") or {}).get("ok") or "")), escape(str((t.get(f"c{i}") or {}).get("obs") or ""))] for i, x in enumerate(CHECKS)],
              [110, 30, 34], True),
            B("b", "Notă"),
+           B("p", f"Verdict recepție probe: <b>{escape(str(ctx.raw('pif_decision') or ''))}</b>. {escape(str(ctx.raw('pif_observations') or ''))}"),
            B("p", f"Prezenta se anexează la Procesul Verbal nr. {ctx.v('pif_no', '—')} din data de {pd} de efectuare a probelor de punere în funcțiune a instalației de utilizare și producere situată în {ctx.loc}."),
            B("p", "Acolo unde verificarea conformității se bazează pe certificatele de echipamente ale unității generatoare, se vor anexa și acestea."),
            sign(["Prosumator,", f"<b>{ctx.name}</b>", "semnătura"], ["Reprezentant firmă executantă<br/>care a verificat și efectuat testele,", ctx.rep, "semnătura și ștampila"])]
+    if "delgaz" in str(ctx.raw("operator") or "").lower():
+        dz = (ctx.r.get("pif") or {}).get("delgaz") or {}
+        out += [B("pagebreak"), B("title", "FORMULAR DELGAZ GRID — DEGR. E P46–F50 + ANEXA 1 ORD. ANRE 228/2018"),
+                B("p", "Datele specifice operatorului se completează în formularul oficial la punerea în funcțiune. Câmpurile necompletate rămân necompletate."),
+                B("table", [["Câmp", "Valoare"], ["Nr. aviz tehnic de racordare (ATR)", escape(str(dz.get("atr_no") or ""))],
+                            ["Data ATR", ro_date(dz.get("atr_date")) or ""], ["Nr. BMC / BVGM", escape(str(dz.get("bmc_no") or ""))],
+                            ["Curbă Q-U (reactive power curve adjustment)", escape(str(dz.get("qu_curve") or ""))],
+                            ["Curba Q-U are 4 puncte", escape(str(dz.get("qu_points_4") or ""))], ["Factor de putere -0,9", escape(str(dz.get("cos_phi_09") or ""))],
+                            ["Deficiențe (dacă nu s-a pus în funcțiune)", escape(str(dz.get("deficiencies") or ""))]], [105, 69], True),
+                B("p", "Rezultatele și valorile se confirmă de executant la punerea în funcțiune; acest formular nu completează automat rezultate de testare.")]
     return out
 
 
 def doc_buletin_priza(ctx):
     meas, psi = num(ctx.raw("grounding_ohm"), None), num(ctx.raw("soil_psi"), None)
-    lim = num(ctx.raw("grounding_limit"), None)
+    lim = num(ctx.raw("grounding_limit"), 4)
     calc = meas * psi if meas is not None and psi is not None else None
     ok = ("DA" if calc <= lim else "NU") if calc is not None and lim is not None else M
     md = ctx.raw("measure_date")
     valid = (datetime.fromisoformat(str(md)[:10]) + timedelta(days=365)).strftime("%d.%m.%Y") if md else M
+    verifier = ctx.e("measurer", ctx.rep)
     return hdr() + [
         B("title", "BULETIN DE VERIFICARE ȘI MĂSURARE INSTALAȚII DE LEGARE LA PĂMÂNT"), B("sub", f"NR. {ctx.v('bulletin_no')} din {ro_date(md) or M}"),
         B("p", f"<b>Client:</b> {ctx.name} · <b>Adresa:</b> {ctx.loc}"),
@@ -588,7 +622,7 @@ def doc_buletin_priza(ctx):
                     [f"Concluzii — corespunde (da/nu){f' · valoare admisă ≤ {fmt(lim)} Ω' if lim is not None else ''}", f"<b>{ok}</b>"]], [140, 34], True),
         B("p", f"<b>Aparat de măsură folosit:</b> {ctx.e('meter_device')} · seria {ctx.e('meter_serial')} · buletin metrologic valabil până la {ro_date(ctx.s.get('meter_valid')) or M}"),
         B("small", f"Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la <b>{valid}</b>."),
-        sign(["Verificat,", f"<b>{ctx.company}</b>", ctx.rep, "semnătura și ștampila"], ben_sig(ctx))]
+        sign(["Verificat,", f"<b>{ctx.company}</b>", verifier, "semnătura și ștampila"], ben_sig(ctx))]
 
 
 REGLAJ = [("u1", "Funcția protecție tensiune maximală treapta I"), ("u2", "Funcția protecție tensiune minimală treapta II"),
@@ -658,7 +692,9 @@ DOCS = {
 def pdf_header(ctx):
     left = Paragraph(f"<b><font size=10>{ctx.company}</font></b><br/>{ctx.e('cui', '')} · {ctx.e('regcom', '')}<br/>Atestat ANRE {ctx.e('anre_attest', '')}", S["hdrl"])
     right = Paragraph(f"{ctx.e('phone', '')}<br/>{ctx.e('email', '')}<br/>{ctx.e('address', '')}", S["hdrr"])
-    t = Table([[left, right]], colWidths=[87 * mm, 87 * mm])
+    logo = (ctx.s.get("logo") or {}).get("storage_path")
+    logo_img = _img(logo, 22 * mm, 18 * mm) if logo and IMG_LOADER else None
+    t = Table([[logo_img, left, right]], colWidths=[25 * mm, 62 * mm, 87 * mm]) if logo_img else Table([[left, right]], colWidths=[87 * mm, 87 * mm])
     t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, 0), 0.6, GRID), ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
     return [t, Spacer(1, 10)]
 

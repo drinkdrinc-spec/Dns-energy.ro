@@ -11,13 +11,14 @@ const CATS = [
   { value: "Gateway", label: "Gateways" }, { value: "Optimizator", label: "Optimizatoare" },
 ];
 const FIELDS = {
-  Invertor: [["type", "Tip", ["Hibrid", "On-grid", "Invertor de baterie (AC)"]], ["phases", "Faze", ["Trifazat", "Monofazat"]], ["p_nom_kw", "Pn (kW)"], ["p_max_kw", "Pmax (kW)"], ["vdc_max", "Udc max (V)"], ["mppt_min", "MPPT min (V)"], ["mppt_max", "MPPT max (V)"], ["mppt_count", "Nr. MPPT"], ["imax_mppt", "Imax / MPPT (A)"], ["battery_voltage", "Tensiune baterie compatibilă", null, "text"]],
+  Invertor: [["type", "Tip", ["Hibrid", "On-grid", "Invertor de baterie (AC)"]], ["phases", "Faze", ["Trifazat", "Monofazat"]], ["p_nom_kw", "Pn (kW)"], ["p_max_kw", "Pmax (kW)"], ["vdc_max", "Udc max (V)"], ["mppt_min", "MPPT min (V)"], ["mppt_max", "MPPT max (V)"], ["mppt_count", "Nr. MPPT"], ["imax_mppt", "Imax / MPPT (A)"], ["isc_mppt_max", "Isc max / MPPT (A)"], ["battery_voltage", "Tensiune baterie compatibilă", null, "text"], ["bat_v_min", "Baterie: U min invertor (V)"], ["bat_v_max", "Baterie: U max invertor (V)"], ["bat_i_max", "Baterie: I max invertor (A)"]],
   Panou: [["w", "Putere (W)"], ["voc", "Voc (V)"], ["vmp", "Vmp (V)"], ["isc", "Isc (A)"], ["imp", "Imp (A)"], ["coef_voc", "Coef. Voc (%/°C)"], ["coef_vmp", "Coef. Vmp (%/°C)"], ["temp_noct", "NOCT (°C)"], ["temp_pmax", "Coef. Pmax (%/°C)"]],
-  Baterie: [["kwh", "kWh / modul"], ["ah", "Ah"], ["voltage", "Tensiune (V)"], ["tech", "Tehnologie", ["LV", "HV"]], ["coupling", "Cuplare", ["DC", "AC"]]],
+  Baterie: [["kwh", "kWh / modul"], ["ah", "Ah"], ["voltage", "Tensiune nominală (V)"], ["voltage_min", "Tensiune minimă operare (V)"], ["voltage_max", "Tensiune maximă operare (V)"], ["i_max", "Curent max. încărcare/descărcare (A)"], ["tech", "Tehnologie", ["LV", "HV"]], ["coupling", "Cuplare", ["DC", "AC"]]],
   "Smart meter": [["phases", "Faze", ["Trifazat", "Monofazat"]], ["protocol", "Protocol", null, "text"], ["ct_ratio", "Raport TC", null, "text"]],
   Gateway: [["protocol", "Protocol", null, "text"], ["compatible", "Echipamente compatibile", null, "text"]],
   Optimizator: [["p_nom_kw", "Putere modul (W)"], ["voltage", "Tensiune max. (V)"], ["compatible", "Compatibilitate", null, "text"]],
 };
+const SOURCE_FIELDS = [["spec_source_url", "URL fișă oficială", null, "text"], ["spec_verified_at", "Verificat la", null, "text"]];
 const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || "faze neprecizate"} · ${i.type || "tip neprecizat"}`
   : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V`
     : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.tech || "LV/HV nespecificat"}`
@@ -87,7 +88,7 @@ export default function EquipmentCatalog() {
       <h2 className="mb-4 text-lg font-bold">{form.id ? "Editează modelul" : `Model nou — ${CATS.find((c) => c.value === cat)?.label || cat}`}</h2>
       <div className="grid gap-3 sm:grid-cols-3">
         <F label="Marcă și model *" value={form.brand_model} onChange={(v) => setForm({ ...form, brand_model: v })} testid="cat-field-brand_model" className="sm:col-span-2" />
-        {(FIELDS[form.category || cat] || []).map(([k, l, opts, t]) => <F key={k} label={l} value={form[k]} options={opts || undefined} type={opts ? undefined : (t || "number")} onChange={(v) => setForm({ ...form, [k]: v })} testid={`cat-field-${k}`} />)}
+        {[...(FIELDS[form.category || cat] || []), ...SOURCE_FIELDS].map(([k, l, opts, t]) => <F key={k} label={l} value={form[k]} options={opts || undefined} type={opts ? undefined : (t || "number")} onChange={(v) => setForm({ ...form, [k]: v })} testid={`cat-field-${k}`} />)}
         <F label="Observații" value={form.notes} onChange={(v) => setForm({ ...form, notes: v })} testid="cat-field-notes" className="sm:col-span-3" />
       </div>
       <div className="mt-5 flex flex-wrap gap-2"><Btn onClick={save} data-testid="catalog-save-btn">Salvează</Btn><Btn variant="secondary" onClick={() => setForm(null)}>Anulează</Btn>{form.id && <Btn variant="secondary" onClick={() => remove(form.id)} data-testid={`catalog-delete-${form.id}`}><Trash2 size={14} /> Șterge modelul</Btn>}</div>
@@ -111,7 +112,7 @@ export default function EquipmentCatalog() {
       </div>
       <div className="space-y-2">
         {rows.map((i) => <article key={i.id} className="flex flex-col gap-3 rounded-xl border bg-white p-3 sm:flex-row sm:items-center" style={{ borderColor: "var(--line)" }} data-testid={`catalog-row-${i.id}`}>
-          <div className="min-w-0 flex-1"><b className="block truncate text-sm">{i.brand_model}</b><span className="mt-1 block text-[11px]" style={{ color: "var(--muted)" }}>{spec(i)}{i.notes && i.notes !== "Date orientative — verificați fișa tehnică oficială a modelului exact." ? ` · ${i.notes}` : ""}</span></div>
+          <div className="min-w-0 flex-1"><b className="block truncate text-sm">{i.brand_model}</b><span className="mt-1 block text-[11px]" style={{ color: "var(--muted)" }}>{spec(i)}{i.notes && i.notes !== "Date orientative — verificați fișa tehnică oficială a modelului exact." ? ` · ${i.notes}` : ""}</span>{i.spec_source_url && <a className="mt-1 inline-block text-[10px] font-bold" style={{ color: "var(--green)" }} href={i.spec_source_url} target="_blank" rel="noreferrer">Specificații verificate{i.spec_verified_at ? ` · ${i.spec_verified_at}` : ""} ↗</a>}</div>
           <div className="flex flex-wrap gap-x-3 gap-y-2"><DocSlot item={i} k="datasheet" label="Fișă tehnică" onUploaded={load} /><DocSlot item={i} k="conformity" label="Conformitate" onUploaded={load} /></div>
           <div className="flex shrink-0 gap-1"><button onClick={() => setForm({ ...i })} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 text-[11px] font-medium hover:bg-slate-50" style={{ borderColor: "var(--line)", color: "var(--ink)" }} title="Corectează modelul" data-testid={`catalog-edit-${i.id}`}><Pencil size={13} /> Corectează</button></div>
         </article>)}
@@ -120,4 +121,3 @@ export default function EquipmentCatalog() {
     </section>
   </div>;
 }
-

@@ -16,6 +16,8 @@ CHECKS = ["Inspecție vizuală: montaj panouri, structură, cleme, etanșări", 
           "Separator DC și protecții AC montate și etichetate conform schemei", "SPD DC/AC montate și conectate la PE", "Etichete de avertizare (dublă alimentare, DC) aplicate",
           "Funcționare invertor: pornire, sincronizare cu rețeaua, fără erori", "Protecție interfață / antiinsularizare: deconectare la lipsa tensiunii rețelei",
           "Limitare / zero-export configurată conform ATR (dacă e cazul)", "Baterie: comunicație BMS, încărcare/descărcare (dacă e cazul)"]
+FUNCTIONAL_CHECKS = [("protection_settings", "Reglaje protecții (buletin reglaj)"), ("anti_islanding", "Test anti-insularizare"),
+                     ("serials_match", "Serii = echipamente montate"), ("grounding_ok", "Priză de pământ (PRAM ≤ 4 Ω)")]
 RES = ("", "Conform", "Neconform", "Nu este cazul")
 
 
@@ -37,7 +39,11 @@ def fingerprint(rec: dict) -> str:
 def filled(rec: dict) -> bool:
     p = rec.get("pif") or {}
     vals = [v for grp in ("strings", "inv") for row in (p.get(grp) or {}).values() for v in row.values()]
-    return bool(p.get("date")) and (any(vals) or any((p.get("checks") or {}).values()) or bool(p.get("grounding_measured")))
+    functional = p.get("functional_checks") or {}
+    dz = p.get("delgaz") or {}
+    return bool(p.get("date")) and (any(vals) or any((p.get("checks") or {}).values()) or bool(p.get("grounding_measured"))
+                                     or any(functional.values()) or any(v for v in dz.values() if v not in ("DA", "NU"))
+                                     or any(v in ("DA", "NU") for v in dz.values()))
 
 
 def render(rec: dict, client: dict, s: dict) -> bytes:
@@ -53,7 +59,12 @@ def render(rec: dict, client: dict, s: dict) -> bytes:
              P(f"Beneficiar: <b>{e(client.get('name') or rec.get('client_name'))}</b> · Adresa: {e(client.get('address') or rec.get('address'))} · POD: {e(rec.get('pod')) or M} · "
                f"Executant: <b>{e(s.get('company'))}</b> (atestat ANRE {e(s.get('anre_attest')) or M}) · Data testelor: {e(D.ro_date(p.get('date'))) or M}"),
              P(f"Aparate de măsură utilizate (tip, serie, certificat metrologic): {e(p.get('instruments')) or M}"),
-             Spacer(1, 4), P("1. Măsurători pe partea de curent continuu (stringuri)", "b")]
+             Spacer(1, 4), P("Serii echipamente montate", "b")]
+    cef = rec.get("cef") or {}
+    serials = rec.get("inverter_serials") or []
+    serial_rows = [["Echipament", "Serie"], *[[f"Invertor {i + 1} — {e(inv.get('brand_model'))}", e(serials[i] if i < len(serials) and serials[i] else inv.get("serial"))] for i, inv in enumerate(cef.get("inverters") or [])]]
+    serial_rows += [["Panouri", e(rec.get("panel_serials"))], ["Baterii", e(rec.get("battery_serials"))]]
+    story += [T(serial_rows, [65, 35]), Spacer(1, 4), P("1. Măsurători pe partea de curent continuu (stringuri)", "b")]
     rows = [["String", "Voc STC calculat (V)", "Voc măsurat (V)", "Isc STC panou (A)", "Isc măsurat (A)", "Riso + (MΩ)", "Riso − (MΩ)", "Polaritate"]]
     for r in pif_rows(rec):
         m = (p.get("strings") or {}).get(r["key"]) or {}
@@ -73,8 +84,18 @@ def render(rec: dict, client: dict, s: dict) -> bytes:
               T([["Nr.", "Verificare", "Rezultat"]] + [[str(k + 1), c, e((p.get("checks") or {}).get(str(k)))] for k, c in enumerate(CHECKS)], [6, 74, 20])]
     if p.get("notes"):
         story.append(P(f"Observații: {e(p['notes'])}"))
-    story += [Spacer(1, 4), P("Rezultatele de mai sus sunt cele măsurate efectiv la data testelor; câmpurile necompletate nu au fost măsurate și nu constituie confirmare de conformitate.", "small"),
-              D.pdf_sign(["Executant (electrician autorizat ANRE),", f"<b>{e(s.get('company'))}</b>", e(p.get("operator") or s.get("rep")) or M, "(numele, prenumele și semnătura)", "(ștampilă)"],
+    functional = p.get("functional_checks") or {}
+    story += [Spacer(1, 4), P("Verificări funcționale", "b"),
+              T([["Verificare", "Confirmat"]] + [[label, "DA" if functional.get(key) else ""] for key, label in FUNCTIONAL_CHECKS], [78, 22]),
+              Spacer(1, 4), P("Rezultatele de mai sus sunt cele măsurate efectiv la data testelor; câmpurile necompletate nu au fost măsurate și nu constituie confirmare de conformitate.", "small")]
+    if "delgaz" in str(rec.get("operator") or "").lower():
+        dz = p.get("delgaz") or {}
+        story += [Spacer(1, 5), P("FORMULAR DELGAZ GRID — ANEXA 1 ORD. ANRE 228/2018", "b"),
+                  T([["Câmp", "Valoare"], ["Nr. aviz tehnic de racordare (ATR)", e(dz.get("atr_no"))], ["Data ATR", e(D.ro_date(dz.get("atr_date")))],
+                     ["Nr. BMC / BVGM", e(dz.get("bmc_no"))], ["Curbă Q-U", e(dz.get("qu_curve"))], ["Curba Q-U are 4 puncte", e(dz.get("qu_points_4"))],
+                     ["Factor de putere -0,9", e(dz.get("cos_phi_09"))], ["Deficiențe (dacă nu s-a pus în funcțiune)", e(dz.get("deficiencies"))]], [70, 30])]
+    story += [
+              D.pdf_sign(["Executant (electrician autorizat ANRE),", f"<b>{e(s.get('company'))}</b>", e(s.get("electrician") or p.get("operator") or s.get("rep")) or M, "(numele, prenumele și semnătura)", "(ștampilă)"],
                          ["Beneficiar,", f"<b>{e(client.get('name') or rec.get('client_name'))}</b>", "(numele, prenumele și semnătura)"], s)]
     doc.build(story)
     return buf.getvalue()

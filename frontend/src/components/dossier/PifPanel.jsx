@@ -6,6 +6,7 @@ import { ClipboardCheck } from "lucide-react";
 
 const SF = [["voc", "Voc măs. (V)"], ["isc", "Isc măs. (A)"], ["riso_p", "Riso + (MΩ)"], ["riso_n", "Riso − (MΩ)"], ["polarity", "Polaritate"]];
 const IF = [["u_ac", "U AC (V)"], ["f_hz", "f (Hz)"], ["p_kw", "P test (kW)"], ["anti_s", "Deconectare (s)"], ["rcd_ms", "DDR (ms)"], ["rcd_ma", "DDR (mA)"]];
+const FUNCTIONAL = [["protection_settings", "Reglaje protecții (buletin reglaj)"], ["anti_islanding", "Test anti-insularizare"], ["serials_match", "Serii = echipamente montate"], ["grounding_ok", "Priză de pământ (PRAM ≤ 4 Ω)"]];
 
 export function PifPanel({ id }) {
   const [d, setD] = useState(null);
@@ -13,6 +14,8 @@ export function PifPanel({ id }) {
   useEffect(() => { api.get(`/dossier/${id}/pif`).then((r) => { setD(r.data); setP(r.data.pif || {}); }).catch(() => {}); }, [id]);
   if (!d) return null;
   const setIn = (grp, key, f, v) => setP({ ...p, [grp]: { ...(p[grp] || {}), [key]: { ...((p[grp] || {})[key] || {}), [f]: v } } });
+  const setDelgaz = (key, value) => setP({ ...p, delgaz: { ...(p.delgaz || {}), [key]: value } });
+  const isDelgaz = /delgaz/i.test(d.operator || "");
   const save = async () => { try { const { data } = await api.put(`/dossier/${id}/pif`, p); setP(data.pif); toast.success("Proces-verbal PIF salvat"); } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Eroare"); } };
   const cell = (grp, key, f) => <input className="den-input !py-1 text-xs" value={((p[grp] || {})[key] || {})[f] || ""} onChange={(e) => setIn(grp, key, f, e.target.value)} data-testid={`pif-${grp}-${key}-${f}`} />;
   return (
@@ -20,9 +23,24 @@ export function PifPanel({ id }) {
       <div className="flex items-center gap-2 mb-2"><ClipboardCheck size={15} style={{ color: "var(--blue)" }} /><b className="text-sm">Proces-verbal de teste și verificări la punerea în funcțiune (PIF)</b></div>
       <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>Datele instalației se preiau automat. Rezultatele măsurătorilor se introduc doar după măsurare — câmpurile goale rămân goale în document.</p>
       <div className="grid sm:grid-cols-3 gap-2 mb-3">
-        {[["date", "Data testelor", "date"], ["operator", "Executant teste (nume)"], ["instruments", "Aparate (tip, serie, cert. metrologic)"], ["grounding_measured", `Priză de pământ măsurată (Ω)${d.grounding_ohm ? ` — din fișă: ${d.grounding_ohm}` : ""}`]].map(([k, l, t]) => (
+        {[["date", "Data testelor", "date"], ["instruments", "Aparate (tip, serie, cert. metrologic)"], ["grounding_measured", `Priză de pământ măsurată (Ω)${d.grounding_ohm ? ` — din fișă: ${d.grounding_ohm}` : ""}`]].map(([k, l, t]) => (
           <div key={k} className="den-field"><label>{l}</label><input type={t || "text"} className="den-input" value={p[k] || ""} onChange={(e) => setP({ ...p, [k]: e.target.value })} data-testid={`pif-${k}`} /></div>))}
       </div>
+      <section className="rounded-xl border p-3 mb-3" style={{ borderColor: "var(--line)", background: "#fbf7f0" }}>
+        <b className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Verificări funcționale</b>
+        <div className="mt-2 grid sm:grid-cols-2 gap-2">{FUNCTIONAL.map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={!!(p.functional_checks || {})[key]} onChange={(e) => setP({ ...p, functional_checks: { ...(p.functional_checks || {}), [key]: e.target.checked } })} data-testid={`pif-functional-${key}`} />{label}
+        </label>)}</div>
+      </section>
+      {isDelgaz && <section className="rounded-xl border p-3 mb-3" style={{ borderColor: "var(--line)", background: "#fbf7f0" }} data-testid="pif-delgaz-form">
+        <b className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Formular Delgaz — Anexa 1 Ord. ANRE 228/2018</b>
+        <p className="text-xs my-2" style={{ color: "var(--muted)" }}>Aceste date se includ în PV-ul de teste generat pentru Delgaz.</p>
+        <div className="grid sm:grid-cols-2 gap-2">
+          {[['atr_no','Nr. aviz tehnic de racordare (ATR)'],['atr_date','Data ATR'],['bmc_no','Nr. BMC / BVGM']].map(([key,label]) => <div className="den-field" key={key}><label>{label}</label><input type={key === 'atr_date' ? 'date' : 'text'} className="den-input" value={(p.delgaz || {})[key] || ''} onChange={(e) => setDelgaz(key,e.target.value)} data-testid={`pif-delgaz-${key}`} /></div>)}
+          {[['qu_curve','Curbă Q-U (reactive power curve adjustment)'],['qu_points_4','Curba Q-U are 4 puncte'],['cos_phi_09','Factor de putere -0,9']].map(([key,label]) => <fieldset className="den-field" key={key}><legend>{label}</legend><div className="mt-1 flex justify-end gap-4 text-xs font-bold"><span className="sr-only">{label}</span>{['DA','NU'].map((value) => <label key={value} className="inline-flex items-center gap-1.5"><input type="radio" name={`pif-delgaz-${key}`} value={value} checked={(p.delgaz || {})[key] === value} onChange={() => setDelgaz(key,value)} data-testid={`pif-delgaz-${key}-${value.toLowerCase()}`} />{value}</label>)}</div></fieldset>)}
+          <div className="den-field sm:col-span-2"><label>Deficiențe (dacă nu s-a pus în funcțiune)</label><textarea rows={2} className="den-input" value={(p.delgaz || {}).deficiencies || ''} onChange={(e) => setDelgaz('deficiencies',e.target.value)} data-testid="pif-delgaz-deficiencies" /></div>
+        </div>
+      </section>}
       <div className="overflow-x-auto"><table className="w-full text-xs" data-testid="pif-strings">
         <thead><tr className="text-left" style={{ color: "var(--muted)" }}><th>String</th><th>Voc STC calc.</th>{SF.map(([, l]) => <th key={l}>{l}</th>)}</tr></thead>
         <tbody>{d.strings.map((s) => <tr key={s.key}><td className="pr-2 py-1">{s.label}</td><td>{s.voc_stc ?? "—"} V</td>{SF.map(([f]) => <td key={f} className="pr-1">{cell("strings", s.key, f)}</td>)}</tr>)}

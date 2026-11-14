@@ -10,17 +10,28 @@ const ROLES = [["executant", "Reprezentant executant"], ["resp_tehnic", "Respons
   ["designer", "Proiectant schemă"], ["verifier", "Verificator schemă"], ["measurer", "Verificator măsurători"]];
 
 const status = (exp, file) => (!file ? "lipsă" : !exp ? "valabil" : exp < new Date().toISOString().slice(0, 10) ? "expirat" : "valabil");
-const eligible = (p) => (p.auths || []).some((a) => a.verified && status(a.expires, a.file) === "valabil");
+const eligible = (p) => p.active !== false && (p.auths || []).some((a) => a.verified && status(a.expires, a.file) === "valabil");
 
 export function DossierExtras({ form, setVal, view = "all" }) {
   const [staff, setStaff] = useState([]);
   const [inst, setInst] = useState([]);
   useEffect(() => { api.get("/data/staff").then((r) => setStaff(r.data)).catch(() => {}); api.get("/data/instruments").then((r) => setInst(r.data)).catch(() => {}); }, []);
   const rg = form.reglaj || {}, ts = form.tests || {}, sg = form.signers || {};
+  const panelSerialTotal = (form.cef?.inverters || []).reduce((sum, inv) => sum + (inv.no_panels ? 0 : (inv.strings || []).reduce((n, string) => n + (Number(string.panels) || 0), 0)), 0);
   const setR = (k, f, v) => setVal("reglaj", { ...rg, [k]: { ...(rg[k] || {}), [f]: v } });
   const setT = (k, f, v) => setVal("tests", { ...ts, [k]: { ...(ts[k] || {}), [f]: v } });
   return (
     <div className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
+      {view === "pram" && <div className="rounded-xl border p-4 bg-white sm:col-span-2" style={{ borderColor: "var(--line)" }} data-testid="pram-responsibles">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="den-field"><label>Inginer semnatar</label><select className="den-input" value={sg.measurer || ""} onChange={(e) => setVal("signers", { ...sg, measurer: e.target.value })} data-testid="pram-engineer-signer">
+            <option value="">— neselectat —</option>{staff.map((p) => <option key={p.id} value={p.id} disabled={!eligible(p)}>{p.name} · {p.qualification || ""}{eligible(p) ? "" : " (autorizație lipsă/expirată/neverificată)"}</option>)}
+          </select></div>
+          <div className="den-field"><label>Aparat de măsură (buletin priză)</label><select className="den-input" value={form.instrument_id || ""} onChange={(e) => setVal("instrument_id", e.target.value)} data-testid="pram-instrument-select">
+            <option value="">— neselectat —</option>{inst.map((i) => <option key={i.id} value={i.id} disabled={i.active === false || i.measures_grounding === false || status(i.expires, i.file) !== "valabil"}>{i.maker_model} · seria {i.serial} · {i.cert_name} până la {i.expires || "—"}{i.active === false || i.measures_grounding === false || status(i.expires, i.file) !== "valabil" ? " (indisponibil / expiră)" : ""}</option>)}
+          </select><p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Aparatul și valabilitatea metrologică se preiau din Setări.</p></div>
+        </div>
+      </div>}
       {(view === "all" || view === "team") && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <h4 className="font-bold text-sm mb-1">Semnatari și aparat de măsură</h4>
         <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>Pot fi alese doar persoanele cu cel puțin o autorizație valabilă, încărcată și marcată „verificată” în Setări de bază.</p>
@@ -34,11 +45,30 @@ export function DossierExtras({ form, setVal, view = "all" }) {
         <div className="den-field"><label>Aparat de măsură (buletin priză)</label>
           <select className="den-input" value={form.instrument_id || ""} onChange={(e) => setVal("instrument_id", e.target.value)} data-testid="instrument-select">
             <option value="">— neselectat —</option>
-            {inst.map((i) => <option key={i.id} value={i.id} disabled={status(i.expires, i.file) !== "valabil"}>{i.maker_model} · seria {i.serial} · {i.cert_name} până la {i.expires || "—"}{status(i.expires, i.file) !== "valabil" ? " (expirat / lipsă)" : ""}</option>)}
+            {inst.map((i) => <option key={i.id} value={i.id} disabled={i.active === false || i.measures_grounding === false || status(i.expires, i.file) !== "valabil"}>{i.maker_model} · seria {i.serial} · {i.cert_name} până la {i.expires || "—"}{i.active === false || i.measures_grounding === false || status(i.expires, i.file) !== "valabil" ? " (indisponibil / expiră)" : ""}</option>)}
           </select></div>
         <label className="mt-3 flex items-start gap-2 text-sm" data-testid="include-authorizations"><input type="checkbox" className="mt-1" checked={!!sg.include_authorizations} onChange={(e) => setVal("signers", { ...sg, include_authorizations: e.target.checked })} /><span>Include atestatul ANRE, autorizațiile selectate și documentele metrologice în opis și exportul dosarului.</span></label>
       </div>}
       {(view === "all" || view === "pif") && <>
+      {view === "pif" && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="pif-signer-card">
+        <div className="den-field"><label>Inginer semnatar</label>
+          <select className="den-input" value={sg.electrician || ""} onChange={(e) => setVal("signers", { ...sg, electrician: e.target.value })} data-testid="pif-engineer-signer">
+            <option value="">— neselectat —</option>
+            {staff.map((p) => <option key={p.id} value={p.id} disabled={!eligible(p)}>{p.name} · {p.qualification || ""}{eligible(p) ? "" : " (autorizație lipsă/expirată/neverificată)"}</option>)}
+          </select>
+        </div>
+      </div>}
+      {view === "pif" && <div className="rounded-xl border p-4 bg-white lg:col-span-2" style={{ borderColor: "var(--line)" }} data-testid="pif-equipment-serials">
+        <h4 className="font-bold text-sm mb-3">Serii echipamente (PIF)</h4>
+        {(form.cef?.inverters || []).map((inv, i) => <div className="den-field mb-3" key={i}>
+          <label>Invertor {i + 1} · {inv.brand_model || "model necompletat"} — serie invertor</label>
+          <input className="den-input" value={(form.inverter_serials || [])[i] ?? inv.serial ?? ""} onChange={(e) => { const values = [...(form.inverter_serials || [])]; values[i] = e.target.value; setVal("inverter_serials", values); }} placeholder="ex. SN-…" data-testid={`pif-inverter-serial-${i + 1}`} />
+        </div>)}
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="den-field"><label>Serii panouri (o serie pe linie)</label><textarea rows={3} className="den-input" value={form.panel_serials || ""} onChange={(e) => setVal("panel_serials", e.target.value)} placeholder="Introduceți seriile panourilor montate" data-testid="pif-panel-serials" /><p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>{(form.panel_serials || "").split(/\r?\n/).filter((line) => line.trim()).length}/{panelSerialTotal} serii</p></div>
+          <div className="den-field"><label>Serii baterii (o serie pe linie)</label><textarea rows={3} className="den-input" value={form.battery_serials || ""} onChange={(e) => setVal("battery_serials", e.target.value)} placeholder="Introduceți seriile modulelor de baterie" data-testid="pif-battery-serials" /></div>
+        </div>
+      </div>}
       <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between mb-2"><h4 className="font-bold text-sm">Buletin reglaj — valori setate în invertor</h4>
           <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("reglaj", Object.fromEntries(REGLAJ.map(([k]) => [k, { val: TYPICAL[k][0], t: TYPICAL[k][1] }])))} data-testid="reglaj-typical">Preia valorile tip Ord. ANRE 132/2020 (verifică în invertor)</button></div>

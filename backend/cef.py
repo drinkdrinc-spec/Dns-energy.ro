@@ -6,6 +6,14 @@ RHO = {"Cu": 0.0225, "Al": 0.036}
 SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120]
 BREAKERS = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250]
 GPV = [10, 12, 15, 16, 20, 25, 30, 32]
+DEFAULT_SIZING_RULES = {
+    "connection_mono": [[3.7, 16], [4.6, 20], [5.8, 25], [7.4, 32], [9.2, 40], [11.5, 50]],
+    "connection_tri": [[22.2, 32], [27.7, 40], [34.6, 50], [43.6, 63]],
+    "inverter_mono": [[3, 20], [5, 25], [6, 32], [8, 40]],
+    "inverter_tri": [[10, 25], [15, 32], [20, 40], [30, 63]],
+    "cable_cu": [[16, 2.5], [25, 4], [32, 6], [50, 10], [63, 16], [100, 25]],
+    "inverter_min_section": 6,
+}
 # IEC 60364-5-52, Cu PVC 70°C, 3 conductori încărcați, 30°C (A)
 IZ_AC = {
     "A1": [13.5, 18, 24, 31, 42, 56, 73, 89, 108, 136, 164, 188],
@@ -72,11 +80,25 @@ def string_calc(s, inv, tmin):
     voc_cold = cnt * voc * (1 + cv * (tmin - 25)) if voc and cv is not None else None
     vmp_hot = cnt * vmp * (1 + cvmp * (T_CELL_HOT - 25)) if vmp and cvmp is not None else None
     return {"panels": cnt, "mppt": int(n(s.get("mppt"), 1)) or 1, "voc_stc": cnt * voc, "voc_cold": voc_cold,
-            "vmp_stc": cnt * vmp, "vmp_hot": vmp_hot, "isc": isc, "kwp": cnt * n(inv.get("panel_w")) / 1000}
+            "vmp_stc": cnt * vmp, "vmp_hot": vmp_hot, "isc": isc, "imp": n(inv.get("panel_imp")), "kwp": cnt * n(inv.get("panel_w")) / 1000}
 
 
-def check(cef: dict) -> dict:
+def _configured_breaker(rows, power, fallback):
+    valid = []
+    for row in rows or []:
+        try:
+            limit, breaker = float(row[0]), float(row[1])
+            if limit > 0 and breaker > 0:
+                valid.append((limit, breaker))
+        except (TypeError, ValueError, IndexError):
+            continue
+    valid.sort()
+    return next((breaker for limit, breaker in valid if power <= limit), fallback)
+
+
+def check(cef: dict, recommendations: dict | None = None) -> dict:
     cef = cef or {}
+    recommendations = {**DEFAULT_SIZING_RULES, **(recommendations or cef.get("recommendations") or {})}
     grid = cef.get("grid") or {}
     tri_grid = "mono" not in str(grid.get("supply") or "Trifazat").lower()
     tmin = n(cef.get("tmin"), n(grid.get("tmin"), T_MIN_DEFAULT))
@@ -94,9 +116,18 @@ def check(cef: dict) -> dict:
         p_lim = n(inv.get("p_limit_kw")) or p_nom
         vdc_max, mmin, mmax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max"))
         mppt_count, imax = int(n(inv.get("mppt_count"))), n(inv.get("imax_mppt"))
-        strings = [string_calc(s, inv, tmin) for s in (inv.get("strings") or []) if n(s.get("panels")) > 0]
+        mppt_limits = [n(x) for x in (inv.get("imax_mppt_values") or [])]
+        isc_limits = [n(x) for x in (inv.get("isc_mppt_max_values") or [])]
+        isc_limit_default = n(inv.get("isc_mppt_max"))
+        def mppt_limit(mppt_no):
+            return (mppt_limits[mppt_no - 1] if 0 < mppt_no <= len(mppt_limits) and mppt_limits[mppt_no - 1] else imax)
+        def mppt_isc_limit(mppt_no):
+            return (isc_limits[mppt_no - 1] if 0 < mppt_no <= len(isc_limits) and isc_limits[mppt_no - 1] else isc_limit_default)
+        strings = [] if inv.get("no_panels") else [string_calc(s, inv, tmin) for s in (inv.get("strings") or []) if n(s.get("panels")) > 0]
         kwp = sum(s["kwp"] for s in strings)
-        tot_kwp += kwp; tot_kw += p_nom; tot_kwmax += p_max; tot_export += min(p_lim, p_max or p_lim)
+        tot_kwp += kwp
+        if not inv.get("no_panels"):
+            tot_kw += p_nom; tot_kwmax += p_max; tot_export += min(p_lim, p_max or p_lim)
         if p_lim > p_nom > 0:
             w.append(f"{tag}: limitarea configurată ({p_lim} kW) depășește puterea nominală ({p_nom} kW).")
         if tri and not tri_grid:
@@ -104,7 +135,7 @@ def check(cef: dict) -> dict:
         if not tri and tri_grid and grid.get("supply") and not inv.get("phase"):
             w.append(f"{tag}: invertor monofazat pe racord trifazat — specifică faza (L1/L2/L3).")
         if not strings:
-            if inv.get("kind") != "Invertor de baterie (AC)":
+            if not inv.get("no_panels") and not inv.get("battery_charger") and "Invertor de baterie" not in str(inv.get("kind") or inv.get("type") or ""):
                 w.append(f"{tag}: nu are stringuri definite.")
         if strings and not (n(inv.get("panel_voc")) and n(inv.get("panel_vmp"))):
             w.append(f"{tag}: lipsesc Voc/Vmp ale panoului — tensiunile stringurilor nu pot fi verificate.")
@@ -116,12 +147,12 @@ def check(cef: dict) -> dict:
             e.append(f"{tag}: invertorul de baterie (AC) nu are intrări PV — eliminați stringurile sau schimbați tipul.")
         if strings and mppt_count and len({s["mppt"] for s in strings}) < min(mppt_count, len(strings)):
             w.append(f"{tag}: stringurile folosesc {len({s['mppt'] for s in strings})} din {mppt_count} MPPT — verificați repartizarea.")
-        isc_p = n(inv.get("panel_isc"))
-        if isc_p and imax and isc_p > imax:
-            e.append(f"{tag}: Isc panou {isc_p:g} A depășește curentul maxim al intrării MPPT ({imax:g} A).")
         per_mppt = {}
         for si, s in enumerate(strings):
             st = f"{tag} / string {si + 1}"
+            input_limit = mppt_limit(s["mppt"])
+            if s["imp"] and input_limit and s["imp"] > input_limit:
+                e.append(f"{st}: Imp panou {s['imp']:g} A depășește curentul maxim de operare al MPPT {s['mppt']} ({input_limit:g} A).")
             if vdc_max and s["voc_cold"] is not None and s["voc_cold"] > vdc_max:
                 e.append(f"{st}: Voc la {tmin:g}°C = {s['voc_cold']:.0f} V depășește tensiunea maximă DC a invertorului ({vdc_max:g} V).")
             if mmax and s["vmp_stc"] > mmax:
@@ -133,10 +164,15 @@ def check(cef: dict) -> dict:
             per_mppt.setdefault(s["mppt"], []).append(s)
         for m, ss in per_mppt.items():
             i_sum = sum(x["isc"] for x in ss)
+            imp_sum = sum(x["imp"] for x in ss)
             if len({x["panels"] for x in ss}) > 1:
                 e.append(f"{tag} / MPPT {m}: stringuri în paralel cu număr diferit de panouri.")
-            if imax and i_sum > imax:
-                e.append(f"{tag} / MPPT {m}: Isc total {i_sum:.1f} A depășește curentul maxim de intrare ({imax:g} A).")
+            input_limit = mppt_limit(m)
+            if input_limit and imp_sum > input_limit:
+                e.append(f"{tag} / MPPT {m}: Imp total {imp_sum:.1f} A depășește curentul maxim de operare ({input_limit:g} A).")
+            isc_limit = mppt_isc_limit(m)
+            if isc_limit and i_sum > isc_limit:
+                e.append(f"{tag} / MPPT {m}: Isc total {i_sum:.1f} A depășește curentul maxim de scurtcircuit ({isc_limit:g} A).")
         ratio = kwp / p_nom if p_nom else 0
         if ratio > 1.5:
             w.append(f"{tag}: raport DC/AC {ratio:.2f} — supradimensionare mare, verifică fișa producătorului.")
@@ -152,10 +188,20 @@ def check(cef: dict) -> dict:
             tot_kwh += b_kwh
             if inv.get("type") == "On-grid" and bat.get("coupling", "DC") == "DC":
                 e.append(f"{tag}: invertor on-grid cu baterie cuplată DC — necesită invertor hibrid sau cuplare AC.")
-            bv, vmin_, vmax_ = n(bat.get("voltage")), n(inv.get("bat_v_min")), n(inv.get("bat_v_max"))
-            if bv and vmin_ and vmax_ and not (vmin_ <= bv <= vmax_):
+            bv, bmin, bmax = n(bat.get("voltage")), n(bat.get("voltage_min")), n(bat.get("voltage_max"))
+            vmin_, vmax_ = n(inv.get("bat_v_min")), n(inv.get("bat_v_max"))
+            ranges = bat.get("voltage_ranges") or []
+            if vmin_ and vmax_ and ranges:
+                overlaps = any(n(r.get("max")) >= vmin_ and n(r.get("min")) <= vmax_ for r in ranges if isinstance(r, dict))
+                if not overlaps:
+                    shown = ", ".join(f"{n(r.get('min')):g}–{n(r.get('max')):g} V" for r in ranges if isinstance(r, dict))
+                    e.append(f"{tag}: domeniile bateriei ({shown}) nu se intersectează cu domeniul acceptat de invertor ({vmin_:g}–{vmax_:g} V) — baterie incompatibilă (HV/LV).")
+            elif vmin_ and vmax_ and bmin and bmax:
+                if bmax < vmin_ or bmin > vmax_:
+                    e.append(f"{tag}: domeniul bateriei ({bmin:g}–{bmax:g} V) nu se intersectează cu domeniul acceptat de invertor ({vmin_:g}–{vmax_:g} V) — baterie incompatibilă (HV/LV).")
+            elif bv and vmin_ and vmax_ and not (vmin_ <= bv <= vmax_):
                 e.append(f"{tag}: tensiunea bateriei ({bv:g} V) este în afara domeniului acceptat de invertor ({vmin_:g}–{vmax_:g} V) — baterie incompatibilă (HV/LV).")
-            elif bv and not (vmin_ and vmax_) and bat.get("coupling", "DC") == "DC":
+            elif (bv or (bmin and bmax)) and not (vmin_ and vmax_) and bat.get("coupling", "DC") == "DC":
                 w.append(f"{tag}: introduceți domeniul de tensiune baterie al invertorului (fișa tehnică) pentru verificarea compatibilității bateriei.")
             bi, ii = n(bat.get("i_max")), n(inv.get("bat_i_max"))
             if bi and ii and bi > ii:
@@ -177,9 +223,19 @@ def check(cef: dict) -> dict:
         loaded = 3 if tri else 2
         cur_in, cur_s = n(ac.get("breaker_a")), n(ac.get("section"))
         p_in = up(BREAKERS, ib) if ib else None
+        rule_key = "inverter_tri" if tri else "inverter_mono"
+        p_in = _configured_breaker(recommendations.get(rule_key), p_max or p_nom, p_in)
+        min_cu_section = None
+        for row in recommendations.get("cable_cu") or []:
+            try:
+                if p_in and p_in <= float(row[0]):
+                    min_cu_section = float(row[1]); break
+            except (TypeError, ValueError, IndexError):
+                continue
+        min_cu_section = max(min_cu_section or 0, n(recommendations.get("inverter_min_section"))) or None
         p_s = None
         for sct in SECTIONS:
-            if p_in and iz(sct, mat, inst, loaded, k) >= p_in and (not L or vdrop_ac(ib, L, sct, mat, tri) <= 3):
+            if p_in and (min_cu_section is None or sct >= min_cu_section) and iz(sct, mat, inst, loaded, k) >= p_in and (not L or vdrop_ac(ib, L, sct, mat, tri) <= 3):
                 p_s = sct; break
         prop["ac"] = {"breaker_a": p_in, "section": p_s, "ib": round(ib, 1), "poles": "4P" if tri else "2P"}
         if cur_in and cur_s:
@@ -238,6 +294,19 @@ def check(cef: dict) -> dict:
         tot_kwh += kwh
         if len(users) > 1 and not b.get("parallel_supported"):
             errors.append(f"Baterie comună „{b.get('model') or sid}” folosită de invertoarele {users}: confirmă că producătorul permite funcționarea în paralel pe aceeași baterie.")
+        battery_ranges = b.get("voltage_ranges") or []
+        bmin, bmax = n(b.get("voltage_min")), n(b.get("voltage_max"))
+        current_need = 0.0
+        for user_no in users:
+            inv = invs[user_no - 1] if 0 < user_no <= len(invs) else {}
+            imin, imax = n(inv.get("bat_v_min")), n(inv.get("bat_v_max"))
+            compatible_range = any(n(r.get("max")) >= imin and n(r.get("min")) <= imax for r in battery_ranges if isinstance(r, dict)) if battery_ranges and imin and imax else bool(bmin and bmax and imin and imax and bmax >= imin and bmin <= imax)
+            if imin and imax and not (compatible_range or (not battery_ranges and not bmin and not bmax)):
+                errors.append(f"Baterie comună „{b.get('model') or sid}” și INV {user_no}: domeniul de tensiune al bateriei nu se intersectează cu domeniul invertorului ({imin:g}–{imax:g} V).")
+            current_need += n(inv.get("bat_i_max"))
+        battery_current = n(b.get("i_max")) * (int(n(b.get("modules"), 1)) or 1)
+        if battery_current and current_need > battery_current:
+            warnings.append(f"Baterie comună „{b.get('model') or sid}”: invertoarele pot solicita până la {current_need:g} A, bateria selectată admite {battery_current:g} A pentru configurația de module — verifică limitarea BMS și curenții simultani.")
     for sid, b in shared.items():
         if sid not in shared_users:
             warnings.append(f"Bateria comună „{b.get('model') or sid}” nu este asociată niciunui invertor.")
@@ -250,11 +319,15 @@ def check(cef: dict) -> dict:
     anti_auto = tot_kwp > 27 or tot_kw > 27
     anti = bool(grid.get("anti_required")) or anti_auto
     i_br = (br_kw * 1000 / (math.sqrt(3) * 400 * 0.95)) if tri_grid else (br_kw * 1000 / (230 * 0.95))
+    main_proposal = up(BREAKERS, i_br) if br_kw else None
+    if br_kw:
+        rule_key = "connection_tri" if tri_grid else "connection_mono"
+        main_proposal = _configured_breaker(recommendations.get(rule_key), br_kw, main_proposal)
     return {"totals": {"kwp": round(tot_kwp, 3), "inverters_kw": round(tot_kw, 2), "inverters_kw_max": round(tot_kwmax, 2),
                        "export_kw": round(tot_export, 2), "storage_kwh": round(tot_kwh, 2), "panels": sum(s["panels"] for i in out_inv for s in i["strings"]),
                        "inverters": len(invs)},
             "grid": {"tri": tri_grid, "bransament_kw": br_kw, "i_br": round(i_br, 1) if br_kw else 0,
-                     "main_proposal": up(BREAKERS, i_br) if br_kw else None, "anti": anti, "anti_auto": anti_auto},
+                     "main_proposal": main_proposal, "anti": anti, "anti_auto": anti_auto},
             "inverters": out_inv, "errors": errors, "warnings": warnings, "tmin": tmin,
             "note": "Valorile propuse sunt orientative (IEC 60364-5-52 / I7). Se validează de personal autorizat ANRE conform instrucțiunilor producătorului."}
 
