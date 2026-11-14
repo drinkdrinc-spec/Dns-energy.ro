@@ -148,7 +148,7 @@ export function CefEditor({ value, onChange, groundingOhm, groundingLimit, board
         <InverterCard key={inv.id || i} idx={i} inv={inv} catalog={catalog} shared={cef.shared_batteries || []} res={res?.inverters?.[i]}
           set={(v) => set({ inverters: invs.map((x, j) => (j === i ? v : x)) })} remove={() => set({ inverters: invs.filter((_, j) => j !== i) })} />
       ))}
-      <GridCard grid={cef.grid || {}} set={(g) => set({ grid: g })} catalog={catalog} res={res} inverters={invs} groundingOhm={groundingOhm} groundingLimit={groundingLimit} />
+      <GridCard grid={cef.grid || {}} set={(g) => set({ grid: g })} catalog={catalog} res={res} inverters={invs} groundingOhm={groundingOhm} groundingLimit={groundingLimit} showIntro={!boardsOnly} />
       <details className="rounded-xl border bg-white px-4 py-3" style={{ borderColor: "var(--line)" }}>
         <summary className="cursor-pointer text-sm font-bold">Alte detalii tehnice (opțional)</summary>
         <div className="mt-3 space-y-4">
@@ -161,3 +161,4 @@ export function CefEditor({ value, onChange, groundingOhm, groundingLimit, board
     </div>
   );
 }
+
