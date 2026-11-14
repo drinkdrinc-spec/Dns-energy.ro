@@ -322,7 +322,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.text(cx + hh + 1, cy + 6.6, f"-W{i + 1}.AC  {ac.get('cable_type') or ''}".strip(), 4.6, True, w=28)
         S.val(cx + hh + 1, cy + 4.4, "", n(ac.get("section")), f" mm² {ac.get('material') or 'Cu'}" + (f", PE {gv(n(ac.get('pe_section')))}" if n(ac.get("pe_section")) else ""), size=4.4, w=28)
         S.val(cx + hh + 1, cy + 2.2, "L=", n(ac.get("length_m")), " m", size=4.4, w=28)
-        S.enclosure(174, cy - 7, 230, cy + 13, f"-TFV  Tablou fotovoltaic (INV {i + 1})")
+        S.enclosure(174, cy - 7, 230, cy + 13, f"-TFV  Tablou CEF (INV {i + 1})", grid.get("pv_board_model") or "")
         S.switch(186, cy, "Q")
         S.wire(191, cy, 203, cy)
         S.text(182, cy + 6.4, f"-Q{i + 1}.1", 4.6, True)
@@ -355,7 +355,8 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         tg_bottom = min(ybot - 22, circuit_ys[-1] - 10)
         backup = any((inv.get("backup") or {}).get("enabled") for inv in invs)
         feed_label = grid.get("teg_supply") if grid.get("teg_supply") not in (None, "", "Auto (derivat)") else ("Load (2× BMP)" if backup else "Rețea (fără back-up)")
-        S.enclosure(238, tg_bottom, 300, ytop + 15, "-TG  Tablou general", feed_label)
+        tg_sub = " · ".join(x for x in [feed_label, grid.get("tg_board_model")] if x)
+        S.enclosure(238, tg_bottom, 300, ytop + 15, "-TG  Tablou general", tg_sub)
         S.text(BUS - 1.5, ytop + 6, "bară 0,4 kV", 4.2, anchor="r")
         S.wire(BUS, y, TGQ - 5, y); S.switch(TGQ, y, "Q"); S.wire(TGQ + 5, y, 352.5 + A, y)
         S.text(TGQ - 4, y + 6.4, "-Q0.TG", 4.6, True)
@@ -384,7 +385,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             cable = (f" · {gv(n(circuit.get('cable_section')), ' mm²')}" if n(circuit.get("cable_section")) else "")
             rcd = (f" · DDR {gv(n(circuit.get('rcd_ma')), ' mA')}" if n(circuit.get("rcd_ma")) else "")
             S.text(274, yc - 1.5, f"{label}: {rating}{poles_note}{cable}{rcd}", 3.8, color=INK if circuit.get("breaker_a") else GREY, w=25)
-        S.text(240, tg_bottom + 1.5, "Tablou protecții · 10 module", 3.8, color=GREY, w=58)
+        S.text(240, tg_bottom + 1.5, f"Tablou protecții · {grid.get('protection_modules') or 10} module DIN", 3.8, color=GREY, w=58)
         # Keep the protective-earth bar electrically and graphically separate
         # from the live AC busbar. It leaves the enclosure on its left edge.
         pe_bar_y = tg_bottom + 4
@@ -770,6 +771,9 @@ def sheet_data(rec, client, settings, res, approval):
         ["Circuite TEG", str(len(grid.get("circuits") or [{"name": f"Circuit {i + 1}"} for i in range(4)])) + " circuite; tablou protecții 10 module"],
         ["Priză de pământ (măsurat / admis)", f"{gv(n(rec.get('grounding_ohm') or grid.get('grounding_ohm')), ' Ω') or '[nemăsurat]'} / {gv(n(rec.get('grounding_limit') or grid.get('grounding_limit')), ' Ω') or '≤ 4 Ω implicit'}"]], [70, 112])]
     eq = []
+    eq.append(["-TG", "Tablou general", grid.get("tg_board_model") or "Tablou general", f"Tablou protecții · {grid.get('protection_modules') or 10} module DIN", "1"])
+    if grid.get("pv_board_model"):
+        eq.append(["-TFV", "Tablou CEF / fotovoltaic", grid.get("pv_board_model"), "Protecții DC și AC conform schemei", str(max(1, len(cef.get("inverters") or [])))])
     for i, inv in enumerate(cef.get("inverters") or []):
         r = base["inverters"][i]
         imax_values = inv.get("imax_mppt_values") or []
@@ -878,3 +882,4 @@ def snapshot(rec, res):
     for code, name, val, loc in protections(rec, res):
         v[f"Protecție {code} {name}"] = str(val or "—")
     return v
+

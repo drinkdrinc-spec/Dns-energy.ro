@@ -13,6 +13,11 @@ export function GridCard({ grid, set, catalog, res, inverters = [], groundingOhm
     <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="cef-grid-card">
       <h4 className="font-bold text-sm mb-1">Tablouri electrice și circuite</h4>
       <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Tablourile se propun din branșament și echipamente. Verifică detaliile electrice când ai ATR-ul sau proiectul.</p>
+      <div className="mb-3 grid gap-3 sm:grid-cols-3" data-testid="sld-board-selection">
+        <F label="Tablou CEF — model / descriere" value={grid.pv_board_model} onChange={s("pv_board_model")} placeholder="ex. tablou PV DC/AC" testid="grid-pv-board-model" />
+        <F label="Tablou general TG — model / descriere" value={grid.tg_board_model} onChange={s("tg_board_model")} placeholder="ex. tablou general 3F" testid="grid-tg-board-model" />
+        <F label="Tablou protecții — module DIN" type="number" value={grid.protection_modules ?? 10} onChange={s("protection_modules")} testid="grid-protection-modules" />
+      </div>
       <details className="mb-4 rounded-xl border bg-white px-3 py-3" style={{ borderColor: "var(--line)" }} data-testid="grid-advanced-details">
         <summary className="cursor-pointer text-sm font-bold">Protecții și dimensionare automată <span className="ml-1 text-xs font-normal" style={{ color: "var(--muted)" }}>· opțional</span></summary>
         <div className="mt-3">
@@ -102,3 +107,4 @@ export function GridCard({ grid, set, catalog, res, inverters = [], groundingOhm
     </div>
   );
 }
+

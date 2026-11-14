@@ -799,6 +799,11 @@ export default function ModulePage({ moduleKey }) {
                   {[ ["equipment", "Echipamente"], ["boards", "Tablouri & schemă"] ].map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={installationView === value} onClick={() => setInstallationView(value)} className="rounded-lg px-3 py-2.5 text-xs font-bold" style={installationView === value ? { background: "white", color: "var(--green)", boxShadow: "0 1px 3px #0001" } : { color: "var(--muted)" }} data-testid={`installation-tab-${value}`}>{label}</button>)}
                 </div>
                 {installationView === "equipment" ? <div role="tabpanel" data-testid="installation-panel-equipment"><QuickEquipment form={form} catalog={equipmentCatalog} onChange={(patch) => setForm((current) => ({ ...current, ...patch }))} /></div> : <div id="dossier-section-topology" className="scroll-mt-24" role="tabpanel" data-testid="installation-panel-boards">
+                  <section className="mb-4 rounded-xl border bg-white p-3 sm:p-4" style={{ borderColor: "var(--line)" }} data-testid="sld-equipment-selection">
+                    <h4 className="text-sm font-bold">Echipamente incluse în schema monofilară</h4>
+                    <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Alege invertorul, panourile și bateria aici. Schema și dimensionarea se actualizează din aceste selecții.</p>
+                    <QuickEquipment form={form} catalog={equipmentCatalog} onChange={(patch) => setForm((current) => ({ ...current, ...patch }))} />
+                  </section>
                   <div className="mb-4 grid gap-2 sm:grid-cols-3">
                     {(() => { const cef = form.cef || {}; const inverters = cef.inverters || []; const panels = inverters.reduce((sum, inv) => sum + (inv.no_panels ? 0 : (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0)), 0); const batteries = inverters.filter((inv) => inv.battery_mode === "own").length + (cef.shared_batteries || []).length; const circuits = cef.grid?.circuits?.length || 4; return [["Tablou general · TG", form.supply || cef.grid?.supply || "Branșament din dosar"], ["Tablou CEF · BMP", `${inverters.filter((inv) => inv.brand_model || inv.catalog_id).length} invertor(e) · ${panels} panouri`], ["Circuite și stocare", `${circuits} circuite · ${batteries} baterii`]].map(([title, detail]) => <div key={title} className="rounded-xl border bg-white p-3" style={{ borderColor: "var(--line)" }}><div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{title}</div><div className="mt-1 text-sm font-semibold">{detail}</div></div>); })()}
                   </div>
@@ -927,4 +932,5 @@ export default function ModulePage({ moduleKey }) {
     </div>
   );
 }
+
 
