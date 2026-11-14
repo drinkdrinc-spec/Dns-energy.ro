@@ -6,6 +6,7 @@ const REGLAJ = [["u1", "Tensiune maximală treapta I"], ["u2", "Tensiune minimal
 const TYPICAL = { u1: ["1,15 Un", "0,5"], u2: ["0,85 Un", "3,2"], f1: ["52 Hz", "0,5"], f2: ["47,5 Hz", "0,5"], u10: ["253 V", "603"], rec: ["—", "900"], hvrt: ["264,5 V", "Activată"], lvrt: ["184,5 V", "Activată"], droop: ["5 %", "—"] };
 const TESTS = [...Array(10).keys()].map((i) => `a${i}`).concat([...Array(4).keys()].map((i) => `f${i}`), [...Array(7).keys()].map((i) => `c${i}`));
 const TLABEL = { a: "Test categoria A", f: "Domeniu de frecvență", c: "Verificare" };
+const FREQ_REFERENCES = ["47,5–48,5 Hz · minimum 30 de minute", "48,5–49 Hz · minimum 30 de minute", "49–51 Hz · funcționare nelimitată", "51,0–51,5 Hz · 30 de minute"];
 const ROLES = [["executant", "Reprezentant executant"], ["resp_tehnic", "Responsabil tehnic cu execuția"], ["electrician", "Electrician autorizat / inginer"],
   ["designer", "Proiectant schemă"], ["verifier", "Verificator schemă"], ["measurer", "Verificator măsurători"]];
 
@@ -20,6 +21,33 @@ export function DossierExtras({ form, setVal, view = "all" }) {
   const panelSerialTotal = (form.cef?.inverters || []).reduce((sum, inv) => sum + (inv.no_panels ? 0 : (inv.strings || []).reduce((n, string) => n + (Number(string.panels) || 0), 0)), 0);
   const setR = (k, f, v) => setVal("reglaj", { ...rg, [k]: { ...(rg[k] || {}), [f]: v } });
   const setT = (k, f, v) => setVal("tests", { ...ts, [k]: { ...(ts[k] || {}), [f]: v } });
+  const inverterModels = (form.cef?.inverters || []).map((inv) => inv.brand_model).filter(Boolean);
+  const referenceForTest = (key) => {
+    if (key[0] === "f") return `Referință normativă: ${FREQ_REFERENCES[Number(key.slice(1))]}.`;
+    if (key === "c0") return "Referință normativă: ROCOF 2 Hz/s, fereastră de timp 500 ms; se confruntă cu declarația producătorului."; 
+    if (key === "c1") return `Referință normativă: răspuns 50,2–51,5 Hz, valoare de pornire 50,2 Hz${rg.droop?.val ? `; statism setat ${rg.droop.val}` : ""}.`;
+    if (key === "c2") return "Referință normativă: verificare reducere Pmax la frecvență sub 49 Hz."; 
+    if (key === "c3") return `Referință: reconectare după defect, în domeniul 47,5–50,2 Hz${form.reconnect_min ? `; întârziere setată ${form.reconnect_min} min` : ""}.`;
+    if (key === "c4") {
+      const vals = [rg.u1?.val && `U maximă ${rg.u1.val}`, rg.u2?.val && `U minimă ${rg.u2.val}`, rg.u10?.val && `U medie 10 min ${rg.u10.val}`].filter(Boolean);
+      return `Domeniu de tensiune conform certificatului de tip${vals.length ? `; setări introduse: ${vals.join(", ")}` : ""}.`;
+    }
+    if (key === "c5") {
+      const vals = [rg.u1?.val && `U max. ${rg.u1.val}/${rg.u1.t || "—"} s`, rg.u2?.val && `U min. ${rg.u2.val}/${rg.u2.t || "—"} s`, rg.f1?.val && `f max. ${rg.f1.val}/${rg.f1.t || "—"} s`, rg.f2?.val && `f min. ${rg.f2.val}/${rg.f2.t || "—"} s`].filter(Boolean);
+      return `Valori de protecție conform buletinului de reglaj${vals.length ? `: ${vals.join("; ")}` : "; completați din setările invertorului"}.`;
+    }
+    if (key === "c6") return "Capabilitatea LVRT se verifică în diagrama/certificatul de tip al invertorului (dacă este cazul).";
+    const models = inverterModels.length ? `Invertor(e): ${inverterModels.join(", ")}. ` : "";
+    return `${models}Conform certificatului de tip al echipamentului selectat; verificați documentul producătorului.`;
+  };
+  const confirmTest = (key, value) => {
+    const prior = ts[key] || {};
+    setVal("tests", { ...ts, [key]: { ...prior, ok: value, obs: value === "DA" && !prior.obs?.trim() ? referenceForTest(key) : (prior.obs || "") } });
+  };
+  const confirmEmptyTests = () => setVal("tests", Object.fromEntries(TESTS.map((k) => {
+    const prior = ts[k] || {};
+    return [k, { ...prior, ok: prior.ok || "DA", obs: prior.obs?.trim() ? prior.obs : referenceForTest(k) }];
+  })));
   return (
     <div className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
       {view === "pram" && <div className="rounded-xl border p-4 bg-white sm:col-span-2" style={{ borderColor: "var(--line)" }} data-testid="pram-responsibles">
@@ -80,11 +108,12 @@ export function DossierExtras({ form, setVal, view = "all" }) {
       </div>
       <div className="rounded-xl border p-4 bg-white lg:col-span-2" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2"><h4 className="font-bold text-sm">Teste și verificări PIF (Ord. ANRE 228/2018) — rezultate</h4>
-          <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("tests", Object.fromEntries(TESTS.map((k) => [k, { ...(ts[k] || {}), ok: ts[k]?.ok || "DA" }])))} data-testid="tests-all-da">Marchează DA pe rândurile necompletate (doar dacă e confirmat de certificatul de tip)</button></div>
+          <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={confirmEmptyTests} data-testid="tests-all-da">Marchează DA pe rânduri și preia reperele standard</button></div>
+        <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>La confirmarea „DA” se propun automat repere normative și setările introduse. Observațiile rămân editabile; măsurătorile efective se completează separat după măsurare.</p>
         <div className="grid sm:grid-cols-3 gap-2">
           {TESTS.map((k) => (
             <div key={k} className="flex items-center gap-2 text-xs"><span className="w-28 shrink-0">{TLABEL[k[0]]} {Number(k.slice(1)) + 1}</span>
-              <select className="den-input py-1 w-20" value={ts[k]?.ok || ""} onChange={(e) => setT(k, "ok", e.target.value)} data-testid={`test-${k}`}><option value="">—</option><option>DA</option><option>NU</option></select>
+              <select className="den-input py-1 w-20" value={ts[k]?.ok || ""} onChange={(e) => confirmTest(k, e.target.value)} data-testid={`test-${k}`}><option value="">—</option><option>DA</option><option>NU</option></select>
               <input className="den-input py-1" placeholder="observații / valori" value={ts[k]?.obs || ""} onChange={(e) => setT(k, "obs", e.target.value)} data-testid={`test-${k}-obs`} /></div>
           ))}
         </div>
