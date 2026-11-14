@@ -18,7 +18,7 @@ const FIELDS = {
   Gateway: [["protocol", "Protocol", null, "text"], ["compatible", "Echipamente compatibile", null, "text"]],
   Optimizator: [["p_nom_kw", "Putere modul (W)"], ["voltage", "Tensiune max. (V)"], ["compatible", "Compatibilitate", null, "text"]],
 };
-const SOURCE_FIELDS = [["spec_source_url", "URL fișă oficială", null, "text"], ["spec_verified_at", "Verificat la", null, "text"]];
+const SOURCE_FIELDS = [["datasheet_url", "URL fișă tehnică oficială", null, "url"], ["conformity_url", "URL conformitate oficială", null, "url"], ["spec_source_url", "URL pagină tehnică producător", null, "url"], ["spec_verified_at", "Verificat la", null, "text"]];
 const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || "faze neprecizate"} · ${i.type || "tip neprecizat"}`
   : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V`
     : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.tech || "LV/HV nespecificat"}`
@@ -28,6 +28,7 @@ const measuredAmount = (i) => i.category === "Invertor" ? Number(i.p_nom_kw) : i
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
   const f = item[k];
+  const externalUrl = item[`${k}_url`];
   const up = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     const fd = new FormData(); fd.append("file", file);
@@ -39,7 +40,7 @@ function DocSlot({ item, k, label, onUploaded }) {
   };
   return <span className="inline-flex items-center gap-1.5">
     <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" onChange={up} data-testid={`upload-${k}-${item.id}`} />
-    {f ? <a href={fileUrl(f.storage_path)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 text-[11px] font-medium" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid={`open-${k}-${item.id}`}><FileText size={13} /> {label}</a>
+    {f?.storage_path || externalUrl ? <a href={f?.storage_path ? fileUrl(f.storage_path) : externalUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-white px-3 text-[11px] font-medium" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid={`open-${k}-${item.id}`}><FileText size={13} /> {label} ↗</a>
       : <button type="button" disabled className="inline-flex min-h-9 cursor-not-allowed items-center gap-1.5 rounded-lg border bg-white px-3 text-[11px] font-medium opacity-40" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid={`open-${k}-${item.id}`}><FileText size={13} /> {label}</button>}
     <button onClick={() => ref.current.click()} className="rounded p-1 hover:bg-[#eef4ff]" title={`${f ? "Înlocuiește" : "Încarcă"} ${label}`} aria-label={`${f ? "Înlocuiește" : "Încarcă"} ${label}`} data-testid={`btn-upload-${k}-${item.id}`}><Upload size={13} style={{ color: "var(--green)" }} /></button>
   </span>;
@@ -59,14 +60,14 @@ export default function EquipmentCatalog() {
   const load = () => api.get("/data/catalog").then((r) => setItems(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
   const rows = useMemo(() => items.filter((i) => {
-    const docComplete = !!i.datasheet && !!i.conformity;
+    const docComplete = !!(i.datasheet?.storage_path || i.datasheet_url) && !!(i.conformity?.storage_path || i.conformity_url);
     const amount = measuredAmount(i);
     return i.category === cat && (!q || `${i.brand_model || ""} ${i.notes || ""}`.toLowerCase().includes(q.toLowerCase()))
       && (!minKw || amount >= Number(minKw)) && (!maxKw || amount <= Number(maxKw))
       && (!phases || i.phases === phases) && (!systemType || i.type === systemType)
       && (docStatus === "all" || (docStatus === "complete" ? docComplete : !docComplete));
   }), [items, cat, q, minKw, maxKw, phases, systemType, docStatus]);
-  const completeCount = rows.filter((i) => i.datasheet && i.conformity).length;
+  const completeCount = rows.filter((i) => (i.datasheet?.storage_path || i.datasheet_url) && (i.conformity?.storage_path || i.conformity_url)).length;
 
   const save = async () => {
     if (!form.brand_model?.trim()) return toast.error("Completează marca și modelul");

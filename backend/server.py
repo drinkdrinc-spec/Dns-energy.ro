@@ -1079,14 +1079,23 @@ async def seed_catalog(owner: str):
     # Seed idempotent: adaugă numai modelele lipsă și pentru conturile deja existente.
     await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
     await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
-    existing = await db.catalog.find({"owner": owner}, {"category": 1, "brand_model": 1, "_id": 0}).to_list(10000)
+    existing = await db.catalog.find({"owner": owner}, {"_id": 0}).to_list(10000)
     known = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()) for x in existing}
+    existing_by_key = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()): x for x in existing}
     missing = []
     for item in CATALOG_SEED:
         key = (item.get("category"), (item.get("brand_model") or "").strip().casefold())
         if key not in known:
             missing.append(_new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE}))
             known.add(key)
+        else:
+            # Backfill official document links without overwriting owner uploads or edits.
+            current = existing_by_key.get(key, {})
+            set_fields = {field: item[field] for field in ("datasheet_url", "conformity_url", "spec_source_url", "spec_verified_at")
+                          if item.get(field) and not current.get(field)}
+            if set_fields:
+                await db.catalog.update_one({"owner": owner, "category": key[0], "brand_model": current.get("brand_model")},
+                                            {"$set": set_fields})
     if missing:
         await db.catalog.insert_many(missing)
 

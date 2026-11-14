@@ -41,8 +41,8 @@ export function CatalogPick({ items, category, onPick, onManual, testid, label =
       {selected && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]" style={{ color: "var(--muted)" }}>
         <span>{meta(selected)}</span>
         {selected.spec_source_url && <a className="font-bold" style={{ color: "var(--blue)" }} href={selected.spec_source_url} target="_blank" rel="noreferrer">Sursa specificațiilor</a>}
-        {selected.datasheet ? <a className="font-bold" style={{ color: "var(--blue)" }} href={fileUrl(selected.datasheet.storage_path)} target="_blank" rel="noreferrer">Fișă tehnică</a> : <span>Fișă tehnică lipsă</span>}
-        {selected.conformity ? <a className="font-bold" style={{ color: "var(--blue)" }} href={fileUrl(selected.conformity.storage_path)} target="_blank" rel="noreferrer">Conformitate</a> : <span>Conformitate lipsă</span>}
+        {selected.datasheet?.storage_path || selected.datasheet_url ? <a className="font-bold" style={{ color: "var(--blue)" }} href={selected.datasheet?.storage_path ? fileUrl(selected.datasheet.storage_path) : selected.datasheet_url} target="_blank" rel="noreferrer">Fișă tehnică ↗</a> : <span>Fișă tehnică lipsă</span>}
+        {selected.conformity?.storage_path || selected.conformity_url ? <a className="font-bold" style={{ color: "var(--blue)" }} href={selected.conformity?.storage_path ? fileUrl(selected.conformity.storage_path) : selected.conformity_url} target="_blank" rel="noreferrer">Conformitate ↗</a> : <span>Conformitate lipsă</span>}
       </div>}
     </div>
   );
