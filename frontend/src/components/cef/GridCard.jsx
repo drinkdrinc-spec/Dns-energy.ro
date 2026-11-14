@@ -1,6 +1,6 @@
 import { F, Check, CatalogPick, INSTALL } from "./F";
 
-export function GridCard({ grid, set, catalog, res, inverters = [], groundingOhm, groundingLimit }) {
+export function GridCard({ grid, set, catalog, res, inverters = [], groundingOhm, groundingLimit, showIntro = true }) {
   const s = (k) => (v) => set({ ...grid, [k]: v });
   const gr = res?.grid;
   const circuits = grid.circuits?.length ? grid.circuits : Array.from({ length: 4 }, (_, i) => ({ name: `Circuit ${i + 1}` }));
@@ -11,8 +11,8 @@ export function GridCard({ grid, set, catalog, res, inverters = [], groundingOhm
   const measuredGround = groundingOhm || grid.grounding_ohm || "";
   return (
     <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="cef-grid-card">
-      <h4 className="font-bold text-sm mb-1">Tablouri electrice și circuite</h4>
-      <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Tablourile se propun din branșament și echipamente. Verifică detaliile electrice când ai ATR-ul sau proiectul.</p>
+      {showIntro && <><h4 className="font-bold text-sm mb-1">Tablouri electrice și circuite</h4>
+      <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Tablourile se propun din branșament și echipamente. Verifică detaliile electrice când ai ATR-ul sau proiectul.</p></>}
       <div className="mb-3 grid gap-3 sm:grid-cols-3" data-testid="sld-board-selection">
         <F label="Tablou CEF — model / descriere" value={grid.pv_board_model} onChange={s("pv_board_model")} placeholder="ex. tablou PV DC/AC" testid="grid-pv-board-model" />
         <F label="Tablou general TG — model / descriere" value={grid.tg_board_model} onChange={s("tg_board_model")} placeholder="ex. tablou general 3F" testid="grid-tg-board-model" />
