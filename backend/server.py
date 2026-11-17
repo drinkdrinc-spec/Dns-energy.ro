@@ -817,6 +817,8 @@ async def create_item(module: str, request: Request, user: dict = Depends(get_cu
         raise HTTPException(status_code=404, detail="Modul inexistent")
     data = await request.json()
     data = await apply_selected_client_defaults(user["id"], module, data)
+    if module == "prosumator":
+        data.setdefault("doc_date", datetime.now(ZoneInfo("Europe/Bucharest")).date().isoformat())
     data.pop("_id", None)
     data.pop("atr_track", None)
     data["id"] = str(uuid.uuid4())
@@ -1655,6 +1657,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     now = datetime.now(timezone.utc).isoformat()
     for k in ("_id", "id", "owner", "created_at", "updated_at"):
         d.pop(k, None)
+    d.setdefault("doc_date", datetime.now(ZoneInfo("Europe/Bucharest")).date().isoformat())
     name = (d.get("client_name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Lipsește numele beneficiarului")
@@ -2788,7 +2791,7 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         o = io.BytesIO(); w.write(o); pdf = o.getvalue()
     if rec.get("is_test") and key != "schema":
         pdf = OPIS.mark_test(pdf)
-    elif p.get("source") == "generat" and (p.get("missing") or info.get("common_missing")):
+    elif p.get("source") == "generat" and p.get("missing"):
         pdf = OPIS.mark_test(pdf, "CIORNĂ — DATE / MĂSURĂTORI DE COMPLETAT", 28)
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('attachment' if download else 'inline', f"{name}.pdf")})
 
