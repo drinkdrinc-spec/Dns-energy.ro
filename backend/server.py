@@ -2661,10 +2661,14 @@ SIGN_ROLES = {"executant": "Reprezentant executant", "resp_tehnic": "Responsabil
               "verifier": "Verificator schemă", "measurer": "Verificator măsurători (buletin priză)", "designer": "Proiectant schemă"}
 
 async def effective_settings(owner: str, rec: dict, base: dict):
-    if rec.get("snapshot"):
-        return {**base, **rec["snapshot"]["settings"]}, []
-    s, warns = dict(base), []
-    sg = rec.get("signers") or {}
+    snapshot = rec.get("snapshot")
+    s = {**base, **(snapshot.get("settings") or {})} if snapshot else dict(base)
+    warns = []
+    sg = (snapshot.get("signers") if snapshot else None) or rec.get("signers") or {}
+    if snapshot:
+        # Re-check signature authorization at render time; a frozen dossier must not
+        # keep using a signature after its owner withdraws permission.
+        s.pop("_sigs", None)
     for role, label in SIGN_ROLES.items():
         sid = sg.get(role)
         if not sid:
@@ -2674,16 +2678,21 @@ async def effective_settings(owner: str, rec: dict, base: dict):
             warns.append(f"{label}: persoana selectată nu mai există."); continue
         if not staff_eligible(p):
             warns.append(f"{label}: {p.get('name')} nu are o autorizație valabilă și verificată — nu este completat în documente.")
-            s[{"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]] = ""
+            if not snapshot:
+                s[{"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]] = ""
             continue
         key = {"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]
-        s[key] = p.get("name")
+        if not snapshot:
+            s[key] = p.get("name")
+        signature_name = (s.get(key) if snapshot else p.get("name")) or p.get("name")
         if (p.get("signature") or {}).get("storage_path") and p.get("signature_authorized"):
-            s.setdefault("_sigs", {})[p.get("name")] = p["signature"]["storage_path"]
+            s.setdefault("_sigs", {})[signature_name] = p["signature"]["storage_path"]
         elif role == "executant":
             warns.append(f"{label}: semnătura grafică a lui {p.get('name')} lipsește sau nu este autorizată — documentele rămân cu spațiu pentru semnătură olografă.")
         auth = next((a for a in p.get("auths") or [] if a.get("verified") and doc_status(a.get("expires", ""), bool(a.get("file"))) != "expirat"), {})
         s[key + "_auth"] = f"{auth.get('type', '')} nr. {auth.get('number', '')}".strip()
+    if not sg.get("executant"):
+        warns.append("Nu este selectat reprezentantul executantului — alege persoana în dosar pentru a folosi semnătura autorizată.")
     iid = rec.get("instrument_id")
     if iid:
         i = await db.instruments.find_one({"owner": owner, "id": iid}, {"_id": 0})
@@ -2695,10 +2704,11 @@ async def effective_settings(owner: str, rec: dict, base: dict):
             s["meter_device"], s["meter_serial"], s["meter_valid"] = i.get("maker_model"), i.get("serial"), i.get("expires")
     if base.get("anre_valid") and doc_status(base["anre_valid"], True) == "expirat":
         warns.append("Atestatul ANRE al firmei este expirat.")
-    if (base.get("stamp") or {}).get("storage_path") and (base["stamp"].get("content_type") or "").startswith("image/"):
-        s["_stamp_path"] = base["stamp"]["storage_path"]
-    elif sg.get("executant"):
-        warns.append("Ștampila firmei (imagine) nu este încărcată în Setări de bază — nu se aplică automat pe documente.")
+    stamp = base.get("stamp") or {}
+    if stamp.get("storage_path") and (stamp.get("content_type") or "").startswith("image/"):
+        s["_stamp_path"] = stamp["storage_path"]
+    elif not s.get("_stamp_path"):
+        warns.append("Ștampila firmei nu este încărcată în Setări de bază → Firmă.")
     return s, warns
 
 @api_router.post("/dossier/{item_id}/finalize")
