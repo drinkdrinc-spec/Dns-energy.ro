@@ -205,3 +205,29 @@
   .den-reenergy-dossier [data-testid="prosumer-dossier-summary"] { gap: 7px; }
   .den-reenergy-dossier [data-testid="prosumer-dossier-summary"] > div { padding: 9px; }
 }
+
+/* ReEnergy-style workflow details and compact client/equipment cards. */
+.den-reenergy-dossier details > summary { list-style: none; }
+.den-reenergy-dossier details > summary::-webkit-details-marker { display: none; }
+.den-reenergy-dossier details > summary::after {
+  content: "⌄"; margin-left: auto; color: #7d7b75; font-size: 17px; line-height: 1;
+}
+.den-reenergy-dossier details[open] > summary::after { content: "⌃"; }
+.den-reenergy-dossier [data-testid="prosumer-client-step"],
+.den-reenergy-dossier [data-testid="prosumer-quick-actions"] { padding: 0 !important; }
+.den-reenergy-dossier [data-testid="prosumer-client-step"] > :not(summary),
+.den-reenergy-dossier [data-testid="prosumer-quick-actions"] > :not(summary) {
+  margin-left: 17px; margin-right: 17px;
+}
+.den-reenergy-dossier [data-testid="prosumer-client-step"] > :last-child,
+.den-reenergy-dossier [data-testid="prosumer-quick-actions"] > :last-child { margin-bottom: 16px; }
+.den-reenergy-dossier [data-testid="prosumer-client-step"] > summary,
+.den-reenergy-dossier [data-testid="prosumer-quick-actions"] > summary {
+  min-height: 64px; border-bottom: 1px solid #e9e2d7; border-radius: 17px 17px 0 0;
+}
+.den-reenergy-dossier [data-testid="prosumer-legacy-equipment-card"] { display: none !important; }
+.den-reenergy-dossier [data-testid="prosumer-installation-card"],
+.den-reenergy-dossier [data-testid="prosumer-acts-card"],
+.den-reenergy-dossier [data-testid="prosumer-documents-card"],
+.den-reenergy-dossier [data-testid="prosumer-operator-progress"],
+.den-reenergy-dossier [data-testid="prosumer-commissioning-card"] { padding-bottom: 16px !important; }
