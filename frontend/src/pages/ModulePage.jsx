@@ -873,12 +873,12 @@ export default function ModulePage({ moduleKey }) {
               </nav>
             </section>}
 
-          {key === "prosumator" && editId && <section className="mb-5 rounded-xl border p-3 sm:p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="prosumer-quick-actions">
+          {key === "prosumator" && editId && <details className="mb-5 rounded-xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-quick-actions">
           
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">
               <div><div className="text-sm font-bold">{form.client_name || "Dosar prosumator"}</div><div className="text-xs" style={{ color: "var(--muted)" }}>{[form.operator, form.pod && `POD ${form.pod}`, form.status].filter(Boolean).join(" · ")}</div></div>
-              <span className="text-xs font-semibold" style={{ color: "var(--blue)" }}>Acțiuni rapide dosar</span>
-            </div>
+              <span className="text-xs font-semibold" style={{ color: "var(--blue)" }}>⋯ Alte documente și acțiuni</span>
+            </summary>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => setProsPre(true)} data-testid="quick-prosumer-ai-precheck">Verifică dosarul cu AI</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "var(--blue)" }} onClick={() => openAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`)} data-testid="quick-prosumer-pdf">Dosar complet PDF</button>
@@ -909,7 +909,7 @@ export default function ModulePage({ moduleKey }) {
                 </li>)}
               </ol>
             </details>}
-          </section>}
+          </details>}
           {key === "prosumator" ? <div id="dossier-section-client" className="scroll-mt-24"><ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} /></div> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
