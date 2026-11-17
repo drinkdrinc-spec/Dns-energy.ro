@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -11,16 +11,30 @@ const TLABEL = { a: "Test categoria A", f: "Domeniu de frecvență", c: "Verific
 export function DossierExtras({ form, setVal, compact = false, part = "all" }) {
   const pramInput = useRef(null);
   const [pramBusy, setPramBusy] = useState(false);
+  const [staff, setStaff] = useState([]);
+  useEffect(() => { api.get("/data/staff").then(({ data }) => setStaff(Array.isArray(data) ? data : [])).catch(() => setStaff([])); }, []);
+  const selectedExecutor = form.signers?.executant || "";
+  const today = new Date().toISOString().slice(0, 10);
+  const eligible = (person) => (person.auths || []).some((auth) => auth.verified && auth.file && (!auth.expires || auth.expires >= today));
+  const chooseExecutor = (id) => setVal("signers", { ...(form.signers || {}), executant: id || null });
   const rg = form.reglaj || {}, ts = form.tests || {};
   const setR = (k, f, v) => setVal("reglaj", { ...rg, [k]: { ...(rg[k] || {}), [f]: v }, verified_by_installer: false });
   const reglajValuesComplete = REGLAJ.every(([k]) => String(rg[k]?.val || "").trim() && String(rg[k]?.t || "").trim());
   const setT = (k, f, v) => setVal("tests", { ...ts, [k]: { ...(ts[k] || {}), [f]: v } });
   return (
     <div id={compact ? "diu-executant" : undefined} className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
-      {compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
-        <h4 className="font-bold text-sm mb-1">Semnătura reprezentantului firmei</h4>
-        <p className="text-xs" style={{ color: "var(--muted)" }}>Documentele au un singur semnatar: reprezentantul firmei executante. Semnătura și ștampila se preiau din setările firmei, dacă sunt configurate; aplicația nu inventează semnături.</p>
-      </div>}
+      <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="dossier-executant-signer">
+        <h4 className="font-bold text-sm mb-2">Semnătura și ștampila firmei</h4>
+        <label className="den-field block"><span className="text-xs">Reprezentant executant</span>
+          <select className="den-input" value={selectedExecutor} onChange={(event) => chooseExecutor(event.target.value)} data-testid="dossier-executant-select">
+            <option value="">Alege persoana din Setări → Personal</option>
+            {staff.map((person) => <option key={person.id} value={person.id} disabled={!eligible(person)}>
+              {person.name || "Persoană fără nume"}{eligible(person) ? "" : " — autorizație neconfirmată"}
+            </option>)}
+          </select>
+        </label>
+        <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Pentru aplicare: încarcă ștampila în Setări → Firmă și semnătura persoanei în Setări → Personal, confirmă autorizația și acordul pentru folosirea semnăturii. Salvează dosarul după selectare.</p>
+      </div>
       {!compact && (part === "all" || part === "pram") && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <h4 className="font-bold text-sm mb-2">Buletin PRAM</h4>
         <label className="den-field block mb-2"><span className="text-xs">Sursa buletinului</span>
