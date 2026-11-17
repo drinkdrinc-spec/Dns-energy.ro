@@ -20,13 +20,19 @@ function Row({ it, i }) {
 
 export function SldChecks({ d }) {
   const [all, setAll] = useState(false);
+  const [missingOpen, setMissingOpen] = useState(false);
   const items = all ? d.items : d.items.filter((x) => x.ok === false || x.source === "de confirmat");
   return (
     <div className="mt-4">
       {d.missing.length > 0 && (
-        <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: "#fff0f0", color: "#9b2c2c" }} data-testid="sld-missing">
-          <b>Date obligatorii lipsă ({d.missing.length}) — schema rămâne CIORNĂ:</b>
-          <ul className="list-disc ml-5 mt-1 grid sm:grid-cols-2 gap-x-6">{d.missing.map((m) => <li key={m.path + m.label}>{m.label}</li>)}</ul>
+        <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: "#fff8e8", color: "#76500a" }} data-testid="sld-missing">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><b>Schema este ciornă</b><span className="ml-2">Lipsesc {d.missing.length} date tehnice pentru verificarea și aprobarea schemei.</span></div>
+            <button type="button" className="font-bold underline" onClick={() => setMissingOpen(!missingOpen)} data-testid="sld-toggle-missing">
+              {missingOpen ? "Ascunde detaliile" : "Vezi ce lipsește"}
+            </button>
+          </div>
+          {missingOpen && <ul className="list-disc ml-5 mt-2 grid sm:grid-cols-2 gap-x-6">{d.missing.map((m) => <li key={m.path + m.label}>{m.label}</li>)}</ul>}
         </div>
       )}
       <Issues errors={d.errors} warnings={d.warnings} testid="sld-issues" />
