@@ -451,7 +451,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-5">
         <div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--green)" }}>1. Client și loc de consum</p>
           <h3 className="mt-1 text-lg font-bold">Client și loc de consum</h3>
-          <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>Alege clientul și modelele. Datele disponibile se preiau din dosarul clientului și din catalog.</p></div>
+          <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>Alege clientul și completează locul de consum. Datele disponibile se preiau din dosarul clientului.</p></div>
         <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Completare asistată</span>
       </summary>
       <div className="mx-4 mt-4 grid gap-3 pb-3 sm:mx-5 sm:grid-cols-2">
@@ -478,8 +478,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         {input("pod", "POD")}
         {input("power", "Putere solicitată (kW)", "number")}
       </div>
-      <details className="mt-3 rounded-xl border px-3" style={{ borderColor: "var(--line)" }}>
-        <summary className="cursor-pointer py-3 text-sm font-semibold">Date administrative și branșament</summary>
+      <div className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--line)" }}>
+        <h4 className="mb-3 text-sm font-semibold">Date administrative și branșament</h4>
         <div className="grid gap-3 pb-3 sm:grid-cols-2">
           {input("cnp", "CNP / CUI")}
           {input("phone", "Telefon")}
@@ -491,7 +491,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
           {input("bransament_kw", "Putere branșament (kW)", "number")}
           <label className="den-field sm:col-span-2"><span className="flex items-center gap-2"><input type="checkbox" checked={form.address_same_as_ci === true} onChange={(e) => { setVal("address_same_as_ci", e.target.checked); if (e.target.checked) setVal("address", form.hq_address || ""); }} /> Locul de consum are aceeași adresă ca în CI</span></label>
         </div>
-      </details>
+      </div>
       <p className="mx-4 mt-2 pb-4 text-xs sm:mx-5" style={{ color: "var(--muted)" }}>Importă CI, factura și actul de proprietate din zona de documente. Verifică datele extrase automat înainte de salvare.</p>
     </details>
 
