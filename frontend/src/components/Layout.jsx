@@ -4,12 +4,12 @@ import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
 import { QuickSearch } from "@/components/QuickSearch";
-import { Menu, Home, Users, FolderOpen, Cpu, MoreHorizontal, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity, Download, Mail } from "lucide-react";
+import { Menu, Home, Users, FolderOpen, Cpu, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity, Download, Mail } from "lucide-react";
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const workflowPaths = ["/clienti", "/prosumator", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/dosare-anre", "/mono", "/pram", "/portaluri-distribuitori", "/mesaje-od"];
+  const workflowPaths = ["/clienti", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/dosare-anre", "/mono", "/pram", "/portaluri-distribuitori", "/mesaje-od"];
   const showWorkflow = workflowPaths.some((path) => location.pathname.startsWith(path));
   return (
     <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
@@ -27,15 +27,11 @@ export default function Layout() {
           {showWorkflow && <DossierWorkflow pathname={location.pathname} />}
           <Outlet />
         </main>
-        <nav aria-label="Navigare rapidă" className="mobile-bottom-nav md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-5 border-t bg-white/95 backdrop-blur px-1 pt-2 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(20,35,70,0.08)]">
+        <nav aria-label="Navigare rapidă" className="mobile-bottom-nav md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-4 border-t bg-white/95 backdrop-blur px-1 pt-2 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(20,35,70,0.08)]">
           <MobileNavItem to="/" icon={Home} label="Acasă" />
-          <MobileNavItem to="/clienti" icon={Users} label="Clienți" />
           <MobileNavItem to="/prosumator" icon={FolderOpen} label="Dosare" />
           <MobileNavItem to="/catalog-echipamente" icon={Cpu} label="Catalog" />
-          <button type="button" onClick={() => setOpen(true)} aria-label="Mai multe module" className="flex min-h-[44px] flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={{ color: "var(--muted)" }}>
-            <MoreHorizontal size={20} />
-            <span>Mai mult</span>
-          </button>
+          <MobileNavItem to="/clienti" icon={Users} label="Contacte" />
         </nav>
       </div>
     </div>
@@ -126,10 +122,9 @@ function DossierWorkflow({ pathname }) {
 
 function MobileNavItem({ to, icon: Icon, label }) {
   return (
-    <Link to={to} className="flex min-h-[44px] flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={{ color: "var(--muted)" }}>
-      <Icon size={20} />
-      <span className="truncate max-w-full">{label}</span>
-    </Link>
+    <NavLink to={to} end={to === "/"} className="flex min-h-[44px] flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={({ isActive }) => ({ color: isActive ? "var(--green)" : "var(--muted)" })}>
+      {({ isActive }) => <><Icon size={20} /><span className="truncate max-w-full">{label}</span></>}
+    </NavLink>
   );
 }
 
