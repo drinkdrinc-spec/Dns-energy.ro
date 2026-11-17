@@ -794,7 +794,7 @@ export default function ModulePage({ moduleKey }) {
         </div>
       </section>}
 
-      {key === "prosumator" && <section className="mb-6 overflow-hidden rounded-2xl border shadow-sm" aria-label="Flux dosar prosumator" data-testid="prosumer-workflow" style={{ borderColor: "var(--line)", background: "#fff" }}>
+      {key === "prosumator" && !form && <section className="mb-6 overflow-hidden rounded-2xl border shadow-sm" aria-label="Flux dosar prosumator" data-testid="prosumer-workflow" style={{ borderColor: "var(--line)", background: "#fff" }}>
         <div className="grid lg:grid-cols-[1.35fr_1fr]">
           <div className="p-5 sm:p-7 lg:p-8" style={{ background: "linear-gradient(135deg, #f0f6ff 0%, #ffffff 72%)" }}>
             <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--blue)" }}>Dosar nou · prosumator</div>
@@ -848,11 +848,11 @@ export default function ModulePage({ moduleKey }) {
       {form && (
         <div className="den-panel mb-6" data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
-            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" data-testid="prosumer-dossier-summary">
+            {key === "prosumator" && editId && <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" data-testid="prosumer-dossier-summary">
               {dossierSummary.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }}>
                 <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{label}</div>
                 <div className="mt-1 truncate text-xs font-bold" title={String(value)} style={{ color: "#24364f" }}>{value}</div>
-              </div>)}
+              </div>})}
             </div>
 
             {key === "prosumator" && editId && <section className="mb-5 rounded-2xl border p-3 sm:p-4" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid="guided-dossier-steps">
