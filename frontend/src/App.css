@@ -231,3 +231,14 @@
 .den-reenergy-dossier [data-testid="prosumer-documents-card"],
 .den-reenergy-dossier [data-testid="prosumer-operator-progress"],
 .den-reenergy-dossier [data-testid="prosumer-commissioning-card"] { padding-bottom: 16px !important; }
+
+/* Keep the equipment summary and inner step cards compact on narrow screens. */
+.den-reenergy-dossier [data-testid="prosumer-dossier-summary"] {
+  display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+}
+.den-reenergy-dossier [data-testid="prosumer-dossier-summary"]::-webkit-scrollbar { display: none; }
+.den-reenergy-dossier [data-testid="prosumer-dossier-summary"] > div { flex: 0 0 auto; min-width: 120px; }
+.den-reenergy-dossier [data-testid="prosumer-acts-card"] > .space-y-4,
+.den-reenergy-dossier [data-testid="prosumer-operator-progress"] > .space-y-4 {
+  margin-left: 0; margin-right: 0;
+}
