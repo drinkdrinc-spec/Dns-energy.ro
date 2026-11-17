@@ -9,10 +9,11 @@ import { Menu, Home, Users, FolderOpen, Cpu, UserRound, FileCheck2, CircuitBoard
 export default function Layout() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const isProsumerDossier = location.pathname.startsWith("/prosumator");
   const workflowPaths = ["/clienti", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/dosare-anre", "/mono", "/pram", "/portaluri-distribuitori", "/mesaje-od"];
   const showWorkflow = workflowPaths.some((path) => location.pathname.startsWith(path));
   return (
-    <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
+    <div className={`flex min-h-screen ${isProsumerDossier ? "den-reenergy-dossier" : ""}`} style={{ background: "var(--bg)" }}>
       <Sidebar open={open} onClose={() => setOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="mobile-app-header md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 border-b">
@@ -22,8 +23,8 @@ export default function Layout() {
           <PwaInstallButton />
         </header>
         <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto pb-24 md:pb-8">
-          <QuickSearch />
-          <PlanBanner />
+          {!isProsumerDossier && <QuickSearch />}
+          {!isProsumerDossier && <PlanBanner />}
           {showWorkflow && <DossierWorkflow pathname={location.pathname} />}
           <Outlet />
         </main>
