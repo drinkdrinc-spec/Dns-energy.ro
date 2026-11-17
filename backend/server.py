@@ -1652,6 +1652,7 @@ def _new(user, extra):
 async def import_prosumator(request: Request, user: dict = Depends(get_current_user)):
     guard("prosumator", user, write=True)
     d = await request.json()
+    now = datetime.now(timezone.utc).isoformat()
     for k in ("_id", "id", "owner", "created_at", "updated_at"):
         d.pop(k, None)
     name = (d.get("client_name") or "").strip()
