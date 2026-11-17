@@ -42,6 +42,18 @@ GEN = [("notificare", "Anexa 2 — Notificare (Ord. ANRE 19/2022)", ["notificare
 COMMON = ["name", "idcode", "hq_address", "phone", "address", "county", "pod", "operator"]
 EXEC = ["company", "cui", "regcom", "address", "phone", "email", "anre_attest", "rep"]
 
+# Missing shared values should affect only documents that actually print them.
+DOC_COMMON = {
+    "notificare": (COMMON, EXEC), "schema": (["name", "address", "county", "pod", "operator"], ["company", "rep"]),
+    "fisa_tehnica": (["name", "address", "county", "pod", "operator"], ["company", "rep"]),
+    "afm": (["name", "idcode", "hq_address"], []), "reglaj": (["name", "address"], ["company", "rep"]),
+    "priza": (["name", "address", "county"], ["company", "rep"]),
+    "pif": (["name", "address", "county"], ["company", "rep"]),
+    "receptie": (["name", "address", "county"], ["company", "rep"]),
+    "executant": (["name", "address"], EXEC), "conformitate": (["name", "address"], EXEC),
+    "imputernicire": (["name", "idcode", "hq_address", "county"], EXEC),
+}
+
 
 def catalog_refs(rec):
     c = rec.get("cef") or {}
@@ -77,7 +89,8 @@ def catalog_refs(rec):
 
 
 async def build_positions(db, owner, rec, client, settings):
-    pj = "jurid" in str(client.get("kind") or "").lower()
+    kind = str(client.get("kind") or "").strip().casefold()
+    pj = "jurid" in kind or kind in ("pj", "company", "firmă", "firma")
     ctx = docgen.Ctx(docgen.CEF.flatten(rec), settings, client)
     opis = rec.get("opis") or {}
     req_common = COMMON + (["regcom", "rep_name", "rep_role"] if pj else [])
@@ -94,6 +107,9 @@ async def build_positions(db, owner, rec, client, settings):
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
         m = missing(keys, ekeys)
+        shared_keys, shared_exec = DOC_COMMON.get(key, ([], []))
+        m += missing(shared_keys, shared_exec)
+        m = list(dict.fromkeys(m))
         if key == "notificare" and not (ctx.raw("inverter") or ctx.raw("panels")):
             m.append("Invertoare / panouri (configurare CEF)")
         if key in ("schema", "fisa_tehnica"):
@@ -179,7 +195,7 @@ async def build_positions(db, owner, rec, client, settings):
             o = {k: v for k, v in o.items() if k not in ("status", "upload")}
         elif p["key"] in ("schema", "fisa_tehnica") and st_sld["status"] != "approved":
             o = {k: v for k, v in o.items() if k != "status"}
-        gen_missing = p["missing"] or (p["source"] == "generat" and common)
+        gen_missing = p["missing"]
         if p["source"] == "manual":
             auto = "atașat" if o.get("upload") else "de completat"
         else:
