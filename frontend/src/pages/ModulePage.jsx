@@ -852,8 +852,8 @@ export default function ModulePage({ moduleKey }) {
               {dossierSummary.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }}>
                 <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{label}</div>
                 <div className="mt-1 truncate text-xs font-bold" title={String(value)} style={{ color: "#24364f" }}>{value}</div>
-              </div>})}
-            </div>
+              </div>)}
+            </div>}
 
             {key === "prosumator" && editId && <section className="mb-5 rounded-2xl border p-3 sm:p-4" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid="guided-dossier-steps">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
