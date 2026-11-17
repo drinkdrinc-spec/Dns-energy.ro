@@ -95,7 +95,7 @@ def sizing(r):
             "bat_kwh": num(r.get("battery_kwh"))}
 
 
-ALIASES = {"idcode": ["cnp"], "name": ["client_name"]}
+ALIASES = {"idcode": ["cnp", "cui"], "ci_series": ["id_series"], "name": ["client_name"]}
 
 
 CLIENT_KEYS = {"name", "idcode", "kind", "regcom", "ci_series", "rep_name", "rep_role", "hq_address", "phone", "email", "iban", "bank",
