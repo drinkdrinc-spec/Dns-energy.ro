@@ -495,7 +495,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       <p className="mx-4 mt-2 pb-4 text-xs sm:mx-5" style={{ color: "var(--muted)" }}>Importă CI, factura și actul de proprietate din zona de documente. Verifică datele extrase automat înainte de salvare.</p>
     </details>
 
-    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
+    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--line)", background: "var(--panel)" }} data-testid="prosumer-legacy-equipment-card">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Configurare</p><h3 className="mt-1 text-lg font-bold">Echipamente și dimensionare</h3></div>
         {catalogLoading ? <span className="text-xs" style={{ color: "var(--muted)" }}>Se încarcă catalogul…</span> : <span className="text-xs" style={{ color: "var(--muted)" }}>{catalog.length} modele în catalog</span>}</div>
       {!!blockedSupplierModels.length && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status" data-testid="catalog-supplier-quality-warning">
