@@ -8,7 +8,7 @@ const TYPICAL = { u1: ["1,15 Un", "0,5"], u2: ["0,85 Un", "3,2"], f1: ["52 Hz", 
 const TESTS = [...Array(10).keys()].map((i) => `a${i}`).concat([...Array(4).keys()].map((i) => `f${i}`), [...Array(7).keys()].map((i) => `c${i}`));
 const TLABEL = { a: "Test categoria A", f: "Domeniu de frecvență", c: "Verificare" };
 
-export function DossierExtras({ form, setVal, compact = false }) {
+export function DossierExtras({ form, setVal, compact = false, part = "all" }) {
   const pramInput = useRef(null);
   const [pramBusy, setPramBusy] = useState(false);
   const rg = form.reglaj || {}, ts = form.tests || {};
@@ -21,7 +21,7 @@ export function DossierExtras({ form, setVal, compact = false }) {
         <h4 className="font-bold text-sm mb-1">Semnătura reprezentantului firmei</h4>
         <p className="text-xs" style={{ color: "var(--muted)" }}>Documentele au un singur semnatar: reprezentantul firmei executante. Semnătura și ștampila se preiau din setările firmei, dacă sunt configurate; aplicația nu inventează semnături.</p>
       </div>}
-      {!compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
+      {!compact && (part === "all" || part === "pram") && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <h4 className="font-bold text-sm mb-2">Buletin PRAM</h4>
         <label className="den-field block mb-2"><span className="text-xs">Sursa buletinului</span>
           <select className="den-input" value={form.pram_source || "internal"} onChange={(e) => setVal("pram_source", e.target.value)} data-testid="pram-source">
@@ -53,7 +53,7 @@ export function DossierExtras({ form, setVal, compact = false }) {
         </div>}
         <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Nu se generează și nu se completează automat nicio valoare măsurată. Un buletin terț se folosește ca PDF-ul încărcat.</p>
       </div>}
-      {!compact && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
+      {!compact && (part === "all" || part === "commissioning") && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2"><h4 className="font-bold text-sm">Reglaje invertor</h4>
           <button className="text-[11px] font-bold text-left" style={{ color: "var(--blue)" }} onClick={() => setVal("reglaj", Object.fromEntries(REGLAJ.map(([k]) => [k, { val: TYPICAL[k][0], t: TYPICAL[k][1] }])))} data-testid="reglaj-typical">Completează valori orientative (verifică în invertor)</button></div>
         <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Valorile orientative nu confirmă reglarea efectivă a invertorului.</p>
@@ -73,7 +73,7 @@ export function DossierExtras({ form, setVal, compact = false }) {
           <span>Confirm că valorile au fost verificate efectiv pe invertor de instalator. Fără această confirmare, PDF-ul rămâne fișă de lucru.</span>
         </label>
       </div>}
-      {!compact && <div className="rounded-xl border p-4 bg-white lg:col-span-2" style={{ borderColor: "var(--line)" }}>
+      {!compact && (part === "all" || part === "commissioning") && <div className="rounded-xl border p-4 bg-white lg:col-span-2" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2"><h4 className="font-bold text-sm">Teste și verificări PIF (Ord. ANRE 228/2018) — rezultate</h4>
           <button className="text-[11px] font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("tests", { ...ts, ...Object.fromEntries(TESTS.map((k) => [k, { ...(ts[k] || {}), ok: ts[k]?.ok || "DA" }])) })} data-testid="tests-all-da">Marchează DA pe rândurile necompletate (doar dacă e confirmat de certificatul de tip)</button></div>
         <div className="grid sm:grid-cols-3 gap-2">
