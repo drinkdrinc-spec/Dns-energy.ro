@@ -757,7 +757,8 @@ export default function ModulePage({ moduleKey }) {
 
   return (
     <div>
-      <PageHeader eyebrow={cfg.eyebrow} title={cfg.title} sub={cfg.sub}
+      <PageHeader eyebrow={cfg.eyebrow} title={key === "prosumator" ? (editId ? `Dosar #${form?.number || String(editId).slice(0, 6)} · ${form?.client_name || "Prosumator"}` : form ? "Dosar nou" : cfg.title) : cfg.title}
+        sub={key === "prosumator" && editId ? [form?.request_type, form?.pod, form?.operator].filter(Boolean).join(" · ") : cfg.sub}
         action={<div className="flex gap-2 flex-wrap">
           {form ? <Btn data-testid="add-btn" onClick={() => setForm(null)}><X size={15} /> Închide</Btn> : key === "atr"
             ? <a data-testid="add-btn" href="/cerere-atr?new=atr" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> {cfg.addLabel}</a>
