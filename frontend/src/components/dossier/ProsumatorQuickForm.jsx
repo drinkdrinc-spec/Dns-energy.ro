@@ -449,8 +449,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
   return <div className="space-y-4" data-testid="prosumator-quick-form">
     <div className="rounded-2xl border p-4" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Dosar prosumator</p>
-          <h3 className="mt-1 text-lg font-bold">Date esențiale și echipamente</h3>
+        <div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--green)" }}>1. Client și loc de consum</p>
+          <h3 className="mt-1 text-lg font-bold">Client și loc de consum</h3>
           <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>Alege clientul și modelele. Datele disponibile se preiau din dosarul clientului și din catalog.</p></div>
         <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Completare asistată</span>
       </div>
