@@ -2,7 +2,8 @@ import io
 import os
 import re
 import math
-from html import escape
+from html import escape, unescape
+import unicodedata
 from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
@@ -764,24 +765,37 @@ def _img(path, w, h):
         return None
 
 
-def sig_images(lines, s):
-    txt = " ".join(lines)
-    imgs = []
-    if not IMG_LOADER:
-        return imgs
-    for nm, p in (s.get("_sigs") or {}).items():
-        if nm and escape(nm) in txt:
-            i = _img(p, 34 * mm, 14 * mm)
-            if i:
-                imgs.append(i)
-            break
-    company = escape(str(s.get("company") or ""))
-    if s.get("_stamp_path") and "ștampil" in txt and company and company in txt:
-        i = _img(s["_stamp_path"], 24 * mm, 24 * mm)
-        if i:
-            imgs.append(i)
-    return imgs
+def _signature_paths(lines, s):
+    # Names in the document may be HTML-escaped or differ only by case/diacritics.
+    def norm(value):
+        value = unescape(str(value or ""))
+        value = unicodedata.normalize("NFKD", value)
+        return re.sub(r"\\s+", " ", "".join(ch for ch in value if not unicodedata.combining(ch))).casefold().strip()
 
+    txt = norm(" ".join(str(line) for line in lines))
+    paths = []
+    for name, path in (s.get("_sigs") or {}).items():
+        normalized_name = norm(name)
+        if normalized_name and normalized_name in txt and path:
+            paths.append(("signature", path))
+            break
+    company = norm(s.get("company"))
+    has_company_sign_block = company and company in txt and ("semnatura" in txt or "stampila" in txt)
+    if s.get("_stamp_path") and has_company_sign_block:
+        paths.append(("stamp", s["_stamp_path"]))
+    return paths
+
+
+def sig_images(lines, s):
+    if not IMG_LOADER:
+        return []
+    images = []
+    for kind, path in _signature_paths(lines, s):
+        width, height = (34, 14) if kind == "signature" else (24, 24)
+        image = _img(path, width * mm, height * mm)
+        if image:
+            images.append(image)
+    return images
 
 def pdf_sign(left, right, s=None):
     def col(lines):
@@ -990,7 +1004,18 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, c
                     if lines:
                         p = t.cell(0, j).paragraphs[0]; p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                         top, bot = split_sig(lines)
-                        runs(p, "\n".join(top) + "\n\n\n________________________\n" + "\n".join(bot), 9)
+                        runs(p, "\\n".join(top), 9)
+                        if IMG_LOADER:
+                            for kind, path in _signature_paths(lines, ctx.s):
+                                try:
+                                    raw_image = IMG_LOADER(path)
+                                    if raw_image:
+                                        width = Mm(34 if kind == "signature" else 24)
+                                        p.add_run().add_picture(io.BytesIO(raw_image), width=width)
+                                        p.add_run(" ")
+                                except Exception:
+                                    continue
+                        runs(p, "\\n\\n________________________\\n" + "\\n".join(bot), 9)
                 d.add_paragraph()
             elif k == "pagebreak":
                 d.add_page_break()
