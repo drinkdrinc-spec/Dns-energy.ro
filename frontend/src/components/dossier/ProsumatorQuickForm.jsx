@@ -447,14 +447,14 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
   };
 
   return <div className="space-y-4" data-testid="prosumator-quick-form">
-    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <details open className="rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-client-step">
+      <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-5">
         <div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--green)" }}>1. Client și loc de consum</p>
           <h3 className="mt-1 text-lg font-bold">Client și loc de consum</h3>
           <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>Alege clientul și modelele. Datele disponibile se preiau din dosarul clientului și din catalog.</p></div>
         <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Completare asistată</span>
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      </summary>
+      <div className="mx-4 mt-4 grid gap-3 pb-3 sm:mx-5 sm:grid-cols-2">
         <label className="den-field sm:col-span-2"><span>{title(field(cfg, "client_name"), "Beneficiar / client")} *</span>
           <select className="den-input" value={selectedClient?.id || (form.client_name && !clients.some((x) => x.label === form.client_name) ? "__document_import__" : "")} onChange={(e) => {
             const v = e.target.value;
@@ -492,8 +492,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
           <label className="den-field sm:col-span-2"><span className="flex items-center gap-2"><input type="checkbox" checked={form.address_same_as_ci === true} onChange={(e) => { setVal("address_same_as_ci", e.target.checked); if (e.target.checked) setVal("address", form.hq_address || ""); }} /> Locul de consum are aceeași adresă ca în CI</span></label>
         </div>
       </details>
-      <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Importă CI, factura și actul de proprietate din zona de documente. Verifică datele extrase automat înainte de salvare.</p>
-    </div>
+      <p className="mx-4 mt-2 pb-4 text-xs sm:mx-5" style={{ color: "var(--muted)" }}>Importă CI, factura și actul de proprietate din zona de documente. Verifică datele extrase automat înainte de salvare.</p>
+    </details>
 
     <div className="rounded-2xl border p-4" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Configurare</p><h3 className="mt-1 text-lg font-bold">Echipamente și dimensionare</h3></div>
