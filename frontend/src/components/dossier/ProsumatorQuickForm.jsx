@@ -197,6 +197,86 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     if (id === "") setVal("catalog_selection", { ...selected, [kind]: "" });
   };
 
+  // Older dossiers can contain the selected model names but no catalog IDs or
+  // copied technical values. Reconcile those records when the catalog loads,
+  // filling blanks only so engineer-entered values remain authoritative.
+  useEffect(() => {
+    if (!catalog.length) return;
+    const current = formRef.current;
+    const selection = current.catalog_selection || {};
+    const findItem = (kind, value) => options[kind].find((item) =>
+      (selection[kind] && item.id === selection[kind]) ||
+      (value && String(item.brand_model || "").trim().toLocaleLowerCase("ro-RO") === String(value).trim().toLocaleLowerCase("ro-RO"))
+    );
+    const inverterItem = findItem("inverter", current.inverter);
+    const panelItem = findItem("panel", current.panels);
+    const batteryItem = findItem("battery", current.battery);
+    if (!inverterItem && !panelItem && !batteryItem) return;
+
+    const nextCef = { ...(current.cef || {}), grid: { ...(current.cef?.grid || {}) }, inverters: [...(current.cef?.inverters || [])] };
+    const first = { ...(nextCef.inverters[0] || { id: "main", strings: [], ac: { material: "Cu", install: "C" }, dc: { material: "Cu", cable_type: "H1Z2Z2-K" }, battery_mode: "none" }) };
+    let changed = false;
+    const mergeMissing = (target, values) => {
+      for (const [key, value] of Object.entries(values)) {
+        if (value === undefined || value === null || value === "") continue;
+        const existing = target[key];
+        if (existing === undefined || existing === null || existing === "" || (existing === 0 && Number(value) > 0)) {
+          target[key] = value;
+          changed = true;
+        }
+      }
+    };
+    if (inverterItem) {
+      mergeMissing(first, {
+        catalog_id: inverterItem.id, brand_model: inverterItem.brand_model, type: inverterItem.type,
+        phases: inverterItem.phases, p_nom_kw: inverterItem.p_nom_kw, p_max_kw: inverterItem.p_max_kw,
+        vdc_max: inverterItem.vdc_max, mppt_min: inverterItem.mppt_min, mppt_max: inverterItem.mppt_max,
+        mppt_count: inverterItem.mppt_count, imax_mppt: inverterItem.imax_mppt,
+        isc_max_mppt: inverterItem.isc_max_mppt, bat_i_max: inverterItem.bat_i_max,
+        bat_v_min: inverterItem.bat_v_min, bat_v_max: inverterItem.bat_v_max,
+      });
+    }
+    if (panelItem) mergeMissing(first, {
+      panel_catalog_id: panelItem.id, panel_model: panelItem.brand_model, panel_w: panelItem.w,
+      panel_voc: panelItem.voc, panel_vmp: panelItem.vmp, panel_isc: panelItem.isc,
+      panel_imp: panelItem.imp, panel_coef_voc: panelItem.coef_voc, panel_coef_vmp: panelItem.coef_vmp,
+    });
+    if (batteryItem) {
+      const battery = { ...(first.battery || {}) };
+      mergeMissing(battery, batteryCatalogData(batteryItem, first.phases));
+      if (first.battery_mode !== "own") { first.battery_mode = "own"; changed = true; }
+      if (JSON.stringify(battery) !== JSON.stringify(first.battery || {})) changed = true;
+      first.battery = battery;
+    }
+    const hasStrings = (first.strings || []).some((row) => Number(row.panels) > 0);
+    if (!hasStrings && current.panel_count) {
+      const suggested = proposeStrings(first, current.panel_count);
+      if (suggested) { first.strings = suggested; changed = true; }
+    }
+    if (changed) {
+      nextCef.inverters = [first, ...nextCef.inverters.slice(1)];
+      setVal("cef", nextCef);
+    }
+
+    if (inverterItem && (!(Number(current.inverter_kw) > 0) || !current.inverter)) {
+      if (!current.inverter) setVal("inverter", inverterItem.brand_model);
+      if (!(Number(current.inverter_kw) > 0) && Number(inverterItem.p_nom_kw) > 0) setVal("inverter_kw", Number(inverterItem.p_nom_kw) * Math.max(1, Number(first.count || current.inverter_count) || 1));
+    }
+    if (panelItem) {
+      if (!current.panels) setVal("panels", panelItem.brand_model);
+      if (!(Number(current.panel_w) > 0) && Number(panelItem.w) > 0) setVal("panel_w", panelItem.w);
+    }
+    if (batteryItem) {
+      if (!current.battery) setVal("battery", batteryItem.brand_model);
+      if (!(Number(current.battery_kwh) > 0) && Number(batteryItem.kwh) > 0) setVal("battery_kwh", Number(batteryItem.kwh) * Math.max(1, Number(first.battery?.modules) || Number(current.battery_count) || 1));
+    }
+    const inferred = { ...selection };
+    if (inverterItem && !inferred.inverter) inferred.inverter = inverterItem.id;
+    if (panelItem && !inferred.panel) inferred.panel = panelItem.id;
+    if (batteryItem && !inferred.battery) inferred.battery = batteryItem.id;
+    if (JSON.stringify(inferred) !== JSON.stringify(selection)) setVal("catalog_selection", inferred);
+  }, [catalog.length, options, form.catalog_selection, form.inverter, form.panels, form.battery, form.panel_count]);
+
   const choose = (kind, id, providedItem = null) => {
     const currentForm = formRef.current;
     const item = providedItem || options[kind].find((x) => x.id === id);

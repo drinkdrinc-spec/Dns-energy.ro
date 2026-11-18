@@ -107,6 +107,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [operatorManuallySet, setOperatorManuallySet] = useState(false);
   const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
   const inputs = useRef({});
+  const createRequestId = useRef("");
 
   useEffect(() => { if (autoOpen) setOpen(true); }, [autoOpen]);
 
@@ -250,20 +251,27 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       doc_type: ({ ci: "Carte de identitate", factura: "Factură energie", cf: "Carte funciară", altele: "Document suplimentar" })[kind],
     })));
     const workflowBlockers = requiredDataMissing.map((field) => `Lipsește ${field}`);
-    const payload = { ...values, client_name: values.client_name.trim(), files: filesForDossier,
+    const requestId = createRequestId.current || (createRequestId.current = (globalThis.crypto?.randomUUID?.() || `intake-${Date.now()}-${Math.random().toString(36).slice(2)}`));
+    const payload = { ...values, intake_request_id: requestId, client_name: values.client_name.trim(), files: filesForDossier,
       workflow_status: requiredDataMissing.length ? "Date de completat" : "Dosar în pregătire",
       workflow_blockers: workflowBlockers,
       notes: [...Object.values(notes).flat(), values.notes].filter(Boolean).join("\n") };
     try {
       setBusy("create");
       const { data } = await api.post("/import/prosumator", payload);
-      toast.success(requiredDataMissing.length
+      if (data.intake_warnings?.length) toast.warning(`Dosarul a fost creat. ${data.intake_warnings.join(" ")}`);
+      else toast.success(requiredDataMissing.length
         ? `Ciornă creată. Completează: ${requiredDataMissing.join(", ")}.`
         : "Clientul și dosarul au fost create cu documentele în opis.");
       setOpen(false); setStep(0); onCreated(data);
+      createRequestId.current = "";
       setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
       setSelectedClient(null); setSelectedSiteId("new"); setClientSearch(""); setOperatorManuallySet(false);
-    } catch (e) { toast.error(e.response?.data?.detail || "Nu am putut crea dosarul"); }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || (e.request
+        ? "Conexiunea s-a întrerupt înainte de confirmare. Apasă din nou; dosarul nu se va duplica."
+        : e.message || "Nu am putut crea dosarul"));
+    }
     finally { setBusy(""); }
   };
 

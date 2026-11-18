@@ -770,7 +770,7 @@ def _signature_paths(lines, s):
     def norm(value):
         value = unescape(str(value or ""))
         value = unicodedata.normalize("NFKD", value)
-        return re.sub(r"\s+", " ", "".join(ch for ch in value if not unicodedata.combining(ch))).casefold().strip()
+        return re.sub(r"\\s+", " ", "".join(ch for ch in value if not unicodedata.combining(ch))).casefold().strip()
 
     txt = norm(" ".join(str(line) for line in lines))
     paths = []
