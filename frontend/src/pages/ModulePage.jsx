@@ -1341,10 +1341,13 @@ export default function ModulePage({ moduleKey }) {
                 const inverterNames = [...new Set(inverters.map((item) => item.brand_model).filter(Boolean))].map((name) => `Invertor: ${name}`);
                 const panelCounts = new Map();
                 for (const inverter of inverters) {
-                  const model = String(inverter.panel_model || "").trim();
-                  if (!model) continue;
-                  const count = (inverter.strings || []).reduce((sum, item) => sum + (Number(item.panels) || 0), 0) * Math.max(1, Number(inverter.count) || 1);
-                  panelCounts.set(model, (panelCounts.get(model) || 0) + count);
+                  if (inverter.battery_only || inverter.no_panels) continue;
+                  for (const string of inverter.strings || []) {
+                    const model = String(string.panel_model || inverter.panel_model || "").trim();
+                    if (!model) continue;
+                    const count = (Number(string.panels) || 0) * Math.max(1, Number(inverter.count) || 1);
+                    panelCounts.set(model, (panelCounts.get(model) || 0) + count);
+                  }
                 }
                 const panelNames = [...panelCounts].map(([model, count]) => `Panouri: ${model}${count ? ` (${count} buc.)` : ""}`);
                 const batteries = [
@@ -1431,7 +1434,7 @@ export default function ModulePage({ moduleKey }) {
                       const linked = exactLink || (locationMatches.length === 1 ? locationMatches[0] : null);
                       const ambiguous = !exactLink && (locationMatches.length > 1 || (!locationValue && candidates.length > 1));
                       const inverters = linked?.cef?.inverters || [];
-                      const panels = [...new Set(inverters.map((x) => x.panel_model).filter(Boolean))];
+                      const panels = [...new Set(inverters.flatMap((x) => x.battery_only || x.no_panels ? [] : (x.strings || []).map((row) => row.panel_model || x.panel_model)).filter(Boolean))];
                       const batteries = [
                         ...inverters.filter((x) => x.battery_mode === "own" && x.battery?.model).map((x) => x.battery.model),
                         ...(linked?.cef?.shared_batteries || []).map((x) => x.model).filter(Boolean),

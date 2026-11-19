@@ -115,7 +115,7 @@ class CefDrawing(Flowable):
             self.box(bx + 3 * mm, iy, lw, ih, f"{inv_label} — {inv.get('brand_model') or '—'}",
                      [f"{inv.get('kind') or inv.get('type') or 'Invertor'} · {ph}",
                       f"Pn {v(inv.get('p_nom_kw'), ' kW')} · Pmax {v(inv.get('p_max_kw'), ' kW')}",
-                      f"Limitare: {v(inv.get('p_limit_kw'), ' kW')} · MPPT: {v(inv.get('mppt_count'))}",
+                      ("Fără panouri · evacuare 0 kW" if inv.get("battery_only") or inv.get("no_panels") else f"Limitare: {v(inv.get('p_limit_kw'), ' kW')} · MPPT: {v(inv.get('mppt_count'))}"),
                       f"Udc max {v(inv.get('vdc_max'), ' V')} · MPPT {v(inv.get('mppt_min'))}-{v(inv.get('mppt_max'), ' V')}"], "inv",
                      dashed=bool(inv.get("existing")))
             strings = r.get("strings") or []
@@ -133,7 +133,7 @@ class CefDrawing(Flowable):
                     sx = bx + 3 * mm + k * (sw + 1.5 * mm)
                     self.line(sx + sw / 2, dy, sx + sw / 2, 30 * mm, dc=True)
                     self.box(sx, 2 * mm, sw, 28 * mm, f"S{k + 1} / MPPT{s['mppt']}",
-                             [f"{s['panels']}× {v(inv.get('panel_w'), ' W')}", str(inv.get("panel_model") or "")[:30],
+                             [f"{s['panels']}× {v(s.get('panel_w'), ' W')}", str(s.get("panel_model") or inv.get("panel_model") or "")[:30],
                               (f"Voc {s['voc_cold']:.0f} V@{res['tmin']:g}°C" if s.get("voc_cold") is not None else "Voc rece la Tmin: NECONFIRMAT"),
                              f"Vmp {s['vmp_stc']:.0f} V", f"{s['kwp']:.2f} kWp"], "pv")
             rx = bx + 3 * mm + lw + 2 * mm
@@ -240,7 +240,8 @@ def story(ctx, P, table, S):
     for i, inv in enumerate(rec.get("cef", {}).get("inverters") or []):
         r = res["inverters"][i]
         ac, dc, pa, pd = inv.get("ac") or {}, inv.get("dc") or {}, r["proposals"]["ac"], r["proposals"]["dc"]
-        rows.append([str(i + 1), inv.get("brand_model") or "—", f"{v(inv.get('p_nom_kw'))}/{v(inv.get('p_max_kw'))}/{v(inv.get('p_limit_kw'))}",
+        limit = "0" if r.get("battery_only") else v(inv.get("p_limit_kw"))
+        rows.append([str(i + 1), inv.get("brand_model") or "—", f"{v(inv.get('p_nom_kw'))}/{v(inv.get('p_max_kw'))}/{limit}",
                      " + ".join(str(s["panels"]) for s in r["strings"]) or "—", f"{r['voc_cold_max']:g} / {v(inv.get('vdc_max'))} V" if r.get("voc_cold_max") else f"NECONFIRMAT / {v(inv.get('vdc_max'))} V",
                      f"{r['isc_mppt_max']:g} / {v(inv.get('imax_mppt'))} A",
                      f"{v(ac.get('section') or pa.get('section'))} mm² {ac.get('material') or 'Cu'} {v(ac.get('length_m'), ' m')} / C{v(ac.get('breaker_a') or pa.get('breaker_a'))}",

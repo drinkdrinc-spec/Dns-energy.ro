@@ -286,6 +286,8 @@ def installed_pv_kwp_for_record(rec: dict = None, pros: dict = None):
     rec, pros = rec or {}, pros or {}
     cef = pros.get("cef") or {}
     if cef.get("inverters"):
+        if all(inv.get("battery_only") or inv.get("no_panels") for inv in cef.get("inverters") or []):
+            return 0
         try:
             calculated = CEF.check(cef).get("totals", {}).get("kwp")
             if D.num(calculated) > 0:
@@ -296,14 +298,30 @@ def installed_pv_kwp_for_record(rec: dict = None, pros: dict = None):
         complete = True
         for inv in cef.get("inverters") or []:
             count = max(1, int(D.num(inv.get("count")) or 1))
-            watts = D.num(inv.get("panel_w"))
-            panels = sum(D.num(item.get("panels")) for item in inv.get("strings") or [])
-            if panels <= 0 and len(cef.get("inverters") or []) == 1:
+            strings = inv.get("strings") or []
+            if inv.get("battery_only") or inv.get("no_panels"):
+                continue
+            if not strings and len(cef.get("inverters") or []) == 1:
                 panels = D.num(pros.get("panel_count"))
-            if watts <= 0 or panels <= 0:
-                complete = False
+                watts = D.num(pros.get("panel_w"))
+                if panels > 0 and watts > 0:
+                    panel_total += panels * watts * count
+                    continue
+            for item in strings:
+                panels = D.num(item.get("panels"))
+                watts = D.num(item.get("panel_w") if item.get("panel_w") not in (None, "") else inv.get("panel_w"))
+                if panels <= 0:
+                    continue
+                if watts <= 0:
+                    complete = False
+                    break
+                panel_total += panels * watts * count
+            if not strings and len(cef.get("inverters") or []) == 1:
+                panels = D.num(pros.get("panel_count"))
+                if panels <= 0:
+                    complete = False
+            if not complete:
                 break
-            panel_total += panels * watts * count
         if complete and panel_total > 0:
             return panel_total / 1000
     flat = CEF.flatten(pros) if pros else {}
@@ -679,11 +697,12 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         for idx, inv in enumerate(inverters, 1):
             model = inv.get("brand_model")
             rated = D.num(inv.get("p_nom_kw"))
-            unit_limit = D.num(inv.get("p_limit_kw"))
+            unit_limit = 0 if inv.get("battery_only") or inv.get("no_panels") else D.num(inv.get("p_limit_kw"))
             count = max(1, int(D.num(inv.get("count")) or 1))
-            limit = f"{unit_limit:g}" if unit_limit is not None and unit_limit > 0 else ""
+            limit = f"{unit_limit:g}" if inv.get("battery_only") or inv.get("no_panels") else (f"{unit_limit:g}" if unit_limit is not None and unit_limit > 0 else "")
             plant_max = rated * count if rated is not None and rated > 0 else ""
-            note = f"Limitare evacuare configurată: {unit_limit:g} kW/invertor" if unit_limit is not None and unit_limit > 0 else ""
+            note = ("Invertor hibrid doar cu baterie; putere evacuată 0 kW" if inv.get("battery_only") or inv.get("no_panels")
+                    else (f"Limitare evacuare configurată: {unit_limit:g} kW/invertor" if unit_limit is not None and unit_limit > 0 else ""))
             battery_descriptions = []
 
             def battery_description(battery, module_multiplier=1):
@@ -928,8 +947,10 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
     for inv in inverters:
         model = str(inv.get("brand_model") or "Invertor")
         unit_count = max(1, int(D.num(inv.get("count")) or 1))
-        unit_limit = D.num(inv.get("p_limit_kw"))
-        if unit_limit is None or unit_limit <= 0:
+        unit_limit = 0 if inv.get("battery_only") or inv.get("no_panels") else D.num(inv.get("p_limit_kw"))
+        if inv.get("battery_only") or inv.get("no_panels"):
+            limit_values.append(f"{model}: invertor hibrid doar cu baterie, 0 kW evacuat")
+        elif unit_limit is None or unit_limit <= 0:
             limit_values.append(f"{model}: limită nedeclarată")
         else:
             limit_values.append(f"{model}: {unit_limit:g} kW/buc. × {unit_count} buc.")

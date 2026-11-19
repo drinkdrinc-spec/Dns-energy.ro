@@ -371,12 +371,7 @@ def _annex_for_request(operator_key: str, rec: dict, pros: dict | None = None) -
     if request_type == "mod_fara":
         pros = pros or {}
         cef = pros.get("cef") or {}
-        panel_kwp = sum(
-            sum(float(str(string.get("panels") or 0).replace(",", ".")) for string in (inv.get("strings") or []))
-            * float(str(inv.get("panel_w") or 0).replace(",", ".")) / 1000
-            * max(1, int(float(str(inv.get("count") or 1).replace(",", "."))))
-            for inv in (cef.get("inverters") or [])
-        )
+        panel_kwp = ATR.installed_pv_kwp_for_record(rec, pros) or 0
         raw_kwp = panel_kwp or pros.get("_kwp") or pros.get("panel_kwp") or cef.get("total_kwp")
         try:
             kwp = float(str(raw_kwp).replace(",", ".")) if raw_kwp not in (None, "") else None
@@ -483,8 +478,19 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
     applicant_address = (c.get("hq_address") or c.get("address")) if is_company else (c.get("address") or c.get("hq_address"))
     cef = p.get("cef") or {}
     inverters = cef.get("inverters") or []
+    computed_export_kw = None
+    if inverters:
+        try:
+            computed_export_kw = ATR.CEF.check(cef).get("totals", {}).get("export_kw")
+        except Exception:
+            computed_export_kw = None
     batteries = ATR.storage_details(p, r)
-    panel_models = ", ".join(dict.fromkeys(str(x.get("panel_model")) for x in inverters if x.get("panel_model")))
+    panel_models = ", ".join(dict.fromkeys(
+        str(model) for inv in inverters
+        if not (inv.get("battery_only") or inv.get("no_panels"))
+        for model in ([inv.get("panel_model")] + [st.get("panel_model") for st in (inv.get("strings") or [])])
+        if model
+    ))
     inverter_models = ", ".join(dict.fromkeys(str(x.get("brand_model")) for x in inverters if x.get("brand_model")))
     battery_models = ", ".join(dict.fromkeys(str(x.get("model")) for x in batteries if x.get("model")))
 
@@ -498,6 +504,7 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         sum(int(number(st.get("panels"))) for st in (inv.get("strings") or []))
         * max(1, int(number(inv.get("count")) or 1))
         for inv in inverters
+        if not (inv.get("battery_only") or inv.get("no_panels"))
     )
     battery_kwh = sum(number(b.get("kwh")) * max(1, int(number(b.get("modules")) or 1)) for b in batteries)
     battery_ah = ", ".join(str(b.get("ah")) for b in batteries if b.get("ah") not in (None, ""))
@@ -522,7 +529,8 @@ def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict)
         (("pabsorbita", "putereabsorbita", "pabs", "pmaxabsorbita"), r.get("p_abs_kw")),
         (("putereinstalatapv", "putereinstalataproducere", "putereinstalatafotovoltaica", "puterepanouri", "kwpinstalat"), ATR.installed_pv_kwp_for_record(r, p)),
         (("putereevacuatakva", "pevackva", "pmaxevacuatakva"), r.get("p_evac_kva")),
-        (("putereevacuatakw", "pevackw", "pmaxevacuatakw", "putereevacuata", "pevacuare", "pmaxevacuata"), _first_present(r.get("p_evac_kw"), p.get("power"))),
+        (("putereevacuatakw", "pevackw", "pmaxevacuatakw", "putereevacuata", "pevacuare", "pmaxevacuata"), computed_export_kw if computed_export_kw is not None else _first_present(r.get("p_evac_kw"), p.get("power"))),
+        (("altemodificarisolicitate", "altamodificaresolicitata", "altecererisauobservatii", "observatiiadditional"), r.get("other_changes") or r.get("other_requested_changes")),
         (("modelpanou", "modelulinpanou", "tipmodelpanou", "tippanou", "tipulpanoului", "modulefotovoltaic"), panel_models or None),
         (("numarpanouri", "numardepanouri", "nrpanouri", "nrdetotalpanouri"), panel_count or None),
         (("modelinvertor", "modelulinvertorului", "tipmodelinvertor", "tipulinvertor", "tipulinvertoarelor", "marcainvertor", "producatorinvertor"), inverter_models or None),
@@ -842,9 +850,9 @@ async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
                 inv_model = str(inverter.get("brand_model") or "").strip()
                 if inv_model:
                     expected.append((inv_model, "invertor"))
-                panel_model = str(inverter.get("panel_model") or "").strip()
-                if panel_model:
-                    expected.append((panel_model, "panou"))
+                panel_models = [inverter.get("panel_model")] + [st.get("panel_model") for st in (inverter.get("strings") or [])]
+                if not (inverter.get("battery_only") or inverter.get("no_panels")):
+                    expected.extend((str(model).strip(), "panou") for model in panel_models if str(model or "").strip())
                 rsd = inverter.get("rsd") or {}
                 rsd_model = str(rsd.get("brand_model") or "").strip() if rsd.get("enabled") else ""
                 if rsd_model:

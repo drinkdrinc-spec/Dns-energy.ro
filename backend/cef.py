@@ -176,15 +176,26 @@ def battery_cable_proposal(battery: dict) -> dict:
 def string_calc(s, inv, tmin):
     """Calculate string values only from supplied model parameters; never invent temperature coefficients."""
     cnt = int(n(s.get("panels")))
-    voc, vmp, isc = n(inv.get("panel_voc")), n(inv.get("panel_vmp")), n(inv.get("panel_isc"))
-    cv_raw = inv.get("panel_coef_voc")
+    def panel_value(key):
+        value = s.get(f"panel_{key}")
+        return inv.get(f"panel_{key}") if value in (None, "") else value
+
+    panel_model = s.get("panel_model") or inv.get("panel_model")
+    panel_w = n(s.get("panel_w") if s.get("panel_w") not in (None, "") else inv.get("panel_w"))
+    voc, vmp, isc = n(panel_value("voc")), n(panel_value("vmp")), n(panel_value("isc"))
+    imp = n(panel_value("imp"))
+    cv_raw = panel_value("coef_voc")
     cv = (n(cv_raw) / 100) if cv_raw not in (None, "") else None
-    cvmp_raw = inv.get("panel_coef_vmp")
+    cvmp_raw = panel_value("coef_vmp")
     cvmp = (n(cvmp_raw) / 100) if cvmp_raw not in (None, "") else None
     voc_cold = cnt * voc * (1 + cv * (tmin - 25)) if voc and cv is not None else None
     vmp_hot = cnt * vmp * (1 + cvmp * (T_CELL_HOT - 25)) if vmp and cvmp is not None else None
-    return {"panels": cnt, "mppt": int(n(s.get("mppt"), 1)) or 1, "voc_stc": cnt * voc, "voc_cold": voc_cold,
-            "vmp_stc": cnt * vmp, "vmp_hot": vmp_hot, "isc": isc, "kwp": cnt * n(inv.get("panel_w")) / 1000}
+    return {"panels": cnt, "mppt": int(n(s.get("mppt"), 1)) or 1, "panel_model": panel_model,
+            "panel_w": panel_w, "panel_voc": voc, "panel_vmp": vmp, "panel_isc": isc, "panel_imp": imp,
+            "panel_coef_voc": cv_raw, "panel_coef_vmp": cvmp_raw,
+            "voc_stc": cnt * voc, "voc_cold": voc_cold,
+            "vmp_stc": cnt * vmp, "vmp_hot": vmp_hot, "isc": isc, "imp": imp,
+            "kwp": cnt * panel_w / 1000}
 
 
 def check(cef: dict) -> dict:
@@ -207,14 +218,15 @@ def check(cef: dict) -> dict:
         phase_known = bool(inv.get("phases") or grid.get("supply"))
         tri = "mono" not in str(inv.get("phases") or grid.get("supply") or "").lower() if phase_known else False
         p_nom, p_max = n(inv.get("p_nom_kw")), n(inv.get("p_max_kw")) or n(inv.get("p_nom_kw"))
-        p_lim = n(inv.get("p_limit_kw")) or p_nom
+        battery_only = bool(inv.get("battery_only") or inv.get("no_panels"))
+        p_lim = 0 if battery_only else (n(inv.get("p_limit_kw")) or p_nom)
         vdc_max, mmin, mmax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max"))
         mppt_count, imax = int(n(inv.get("mppt_count"))), n(inv.get("imax_mppt"))
         isc_mppt_limit = n(inv.get("isc_max_mppt"))
-        strings = [string_calc(s, inv, tmin) for s in (inv.get("strings") or []) if n(s.get("panels")) > 0]
+        strings = [] if battery_only else [string_calc(s, inv, tmin) for s in (inv.get("strings") or []) if n(s.get("panels")) > 0]
         kwp = sum(s["kwp"] for s in strings)
         tot_kwp += kwp * unit_count; tot_kw += p_nom * unit_count; tot_kwmax += p_max * unit_count
-        tot_export += min(p_lim, p_max or p_lim) * unit_count
+        tot_export += (0 if battery_only else min(p_lim, p_max or p_lim)) * unit_count
         if p_lim > p_nom > 0:
             w.append(f"{tag}: limitarea configurată ({p_lim} kW) depășește puterea nominală ({p_nom} kW).")
         if supply_known and tri and not tri_grid:
@@ -222,15 +234,19 @@ def check(cef: dict) -> dict:
         if not tri and tri_grid and grid.get("supply") and not inv.get("phase"):
             w.append(f"{tag}: invertor monofazat pe racord trifazat — specifică faza (L1/L2/L3).")
         is_battery_inverter = "invertor de baterie (ac)" in str(inv.get("kind") or inv.get("type") or "").lower()
+        if battery_only and (mode := (inv.get("battery_mode") or "none")) != "own":
+            e.append(f"{tag}: opțiunea «Doar baterie» cere o baterie proprie conectată la acest invertor.")
+        elif battery_only and not _battery_configured(inv.get("battery")):
+            e.append(f"{tag}: opțiunea «Doar baterie» cere modelul bateriei și datele ei din fișa tehnică.")
         if not strings:
-            if not is_battery_inverter:
+            if not is_battery_inverter and not battery_only:
                 w.append(f"{tag}: nu are stringuri definite.")
-        if strings and not (n(inv.get("panel_voc")) and n(inv.get("panel_vmp"))):
-            w.append(f"{tag}: lipsesc Voc/Vmp ale panoului — tensiunile stringurilor nu pot fi verificate.")
-        if strings and inv.get("panel_coef_voc") in (None, ""):
-            w.append(f"{tag}: lipsește coeficientul de temperatură Voc din fișa panoului — Voc la rece și verificarea Udc max nu se calculează.")
-        if strings and inv.get("panel_coef_vmp") in (None, ""):
-            w.append(f"{tag}: lipsește coeficientul de temperatură Vmp din fișa panoului — Vmp la cald și verificarea limitei MPPT min nu se calculează.")
+        if strings and any(not (s["panel_voc"] and s["panel_vmp"]) for s in strings):
+            w.append(f"{tag}: unele modele de panou nu au Voc/Vmp — tensiunile stringurilor respective nu pot fi verificate.")
+        if strings and any(s["panel_coef_voc"] in (None, "") for s in strings):
+            w.append(f"{tag}: lipsește coeficientul de temperatură Voc pentru unele modele — verificarea Voc la rece nu se calculează.")
+        if strings and any(s["panel_coef_vmp"] in (None, "") for s in strings):
+            w.append(f"{tag}: lipsește coeficientul de temperatură Vmp pentru unele modele — verificarea Vmp la cald nu se calculează.")
         if strings and "Invertor de baterie" in str(inv.get("kind") or inv.get("type") or ""):
             e.append(f"{tag}: invertorul de baterie (AC) nu are intrări PV — eliminați stringurile sau schimbați tipul.")
         if strings and mppt_count and len({s["mppt"] for s in strings}) < min(mppt_count, len(strings)):
@@ -251,8 +267,10 @@ def check(cef: dict) -> dict:
             per_mppt.setdefault(s["mppt"], []).append(s)
         for m, ss in per_mppt.items():
             i_sum = sum(x["isc"] for x in ss)
-            imp_panel = n(inv.get("panel_imp")) or (n(inv.get("panel_w")) / n(inv.get("panel_vmp")) if n(inv.get("panel_vmp")) else 0)
-            i_work = imp_panel * len(ss)
+            i_work = sum(x["imp"] or (x["panel_w"] / x["panel_vmp"] if x["panel_vmp"] else 0) for x in ss)
+            panel_models = {str(x.get("panel_model") or "").strip() for x in ss if x.get("panel_model")}
+            if len(panel_models) > 1:
+                e.append(f"{tag} / MPPT {m}: modele de panou diferite sunt conectate pe același MPPT; separă stringurile pe MPPT-uri distincte și confirmă limitele producătorului.")
             if len({x["panels"] for x in ss}) > 1:
                 e.append(f"{tag} / MPPT {m}: stringuri în paralel cu număr diferit de panouri.")
             if imax and i_work and i_work > imax:
@@ -375,7 +393,7 @@ def check(cef: dict) -> dict:
         if spd and voc_cold_max and spd < voc_cold_max:
             e.append(f"{tag}: SPD DC Ucpv {spd:g} V sub Voc la rece ({voc_cold_max:.0f} V).")
 
-        out_inv.append({"index": idx + 1, "count": unit_count, "tri": tri if phase_known else None, "phase_known": phase_known, "kwp": round(kwp, 3), "p_nom": p_nom, "p_max": p_max, "p_limit": p_lim,
+        out_inv.append({"index": idx + 1, "count": unit_count, "tri": tri if phase_known else None, "phase_known": phase_known, "battery_only": battery_only, "kwp": round(kwp, 3), "p_nom": p_nom, "p_max": p_max, "p_limit": p_lim,
                         "dc_ac_ratio": round(ratio, 2), "battery_kwh": round(b_kwh, 2), "strings": [{k2: (round(v, 1) if isinstance(v, float) else v) for k2, v in s.items()} for s in strings],
                         "isc_mppt_max": round(isc_max, 1), "voc_cold_max": round(voc_cold_max, 0), "proposals": prop, "errors": e, "warnings": w})
         errors += e; warnings += w
@@ -478,11 +496,18 @@ def flatten(rec: dict) -> dict:
     out = dict(rec)
     out["inverter"] = "; ".join(f"{i.get('brand_model') or '—'}" for i in invs)
     out["inverter_kw"] = t["inverters_kw"]
+    out["power"] = t["export_kw"]
     out["inverter_count"] = sum(max(1, min(100, int(n(i.get("count"), 1) or 1))) for i in invs)
-    models = {i.get("panel_model") for i in invs if i.get("panel_model")}
+    models = {i.get("panel_model") for i in invs if i.get("panel_model") and not (i.get("battery_only") or i.get("no_panels"))}
+    models.update(s.get("panel_model") or i.get("panel_model") for i in invs
+                  if not (i.get("battery_only") or i.get("no_panels"))
+                  for s in i.get("strings") or [] if s.get("panel_model") or i.get("panel_model"))
     out["panels"] = "; ".join(models)
-    out["panel_count"] = t["panels"] or rec.get("panel_count", 0)
-    ws = {n(i.get("panel_w")) for i in invs if n(i.get("panel_w"))}
+    only_battery = bool(invs) and all(i.get("battery_only") or i.get("no_panels") for i in invs)
+    out["panel_count"] = 0 if only_battery else (t["panels"] or rec.get("panel_count", 0))
+    ws = {n(s.get("panel_w") if s.get("panel_w") not in (None, "") else i.get("panel_w"))
+          for i in invs if not (i.get("battery_only") or i.get("no_panels")) for s in (i.get("strings") or [{}])
+          if n(s.get("panel_w") if s.get("panel_w") not in (None, "") else i.get("panel_w"))}
     out["panel_w"] = next(iter(ws)) if len(ws) == 1 else "/".join(f"{w:g}" for w in ws)
     out["_kwp"] = t["kwp"]
     bats = [i.get("battery", {}).get("model") for i in invs if i.get("battery_mode") == "own"] + \

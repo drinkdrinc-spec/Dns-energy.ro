@@ -94,13 +94,34 @@ def render(rec: dict, client: dict, s: dict) -> bytes:
     if isinstance(panel_serials, str):
         panel_serials = panel_serials.splitlines()
     panel_serials = [str(value).strip() for value in panel_serials if str(value).strip()]
-    panel_count = CEF.check(cef).get("totals", {}).get("panels") or rec.get("panel_count") or 0
-    panel_models = sorted({str(inv.get("panel_model")) for inv in cef.get("inverters") or [] if inv.get("panel_model")})
+    only_battery = bool(cef.get("inverters")) and all(inv.get("battery_only") or inv.get("no_panels") for inv in cef.get("inverters") or [])
+    panel_count = 0 if only_battery else (CEF.check(cef).get("totals", {}).get("panels") or rec.get("panel_count") or 0)
+    panel_models = sorted({
+        str(model)
+        for inv in cef.get("inverters") or []
+        if not (inv.get("battery_only") or inv.get("no_panels"))
+        for model in ([inv.get("panel_model")] + [st.get("panel_model") for st in (inv.get("strings") or [])])
+        if model
+    })
     panel_model = ", ".join(panel_models) or M
+    panel_models_by_serial = []
+    panel_counts_by_model = {}
+    for inv in cef.get("inverters") or []:
+        if inv.get("battery_only") or inv.get("no_panels"):
+            continue
+        quantity = max(1, min(100, int(CEF.n(inv.get("count") or inv.get("quantity"), 1) or 1)))
+        for string in inv.get("strings") or []:
+            model = string.get("panel_model") or inv.get("panel_model") or panel_model
+            count = max(0, int(CEF.n(string.get("panels")))) * quantity
+            panel_models_by_serial.extend([model] * count)
+            panel_counts_by_model[model] = panel_counts_by_model.get(model, 0) + count
     if panel_serials:
-        serial_rows.extend([[f"Panou {index + 1}", panel_model, e(value)] for index, value in enumerate(panel_serials)])
+        serial_rows.extend([[f"Panou {index + 1}", e(panel_models_by_serial[index] if index < len(panel_models_by_serial) else panel_model), e(value)] for index, value in enumerate(panel_serials)])
     elif panel_count:
-        serial_rows.append([f"Panouri ({panel_count} configurate)", panel_model, "Neînregistrate"])
+        if panel_counts_by_model:
+            serial_rows.extend([f"Panouri ({count} configurate)", e(model), "Neînregistrate"] for model, count in sorted(panel_counts_by_model.items()))
+        else:
+            serial_rows.append([f"Panouri ({panel_count} configurate)", panel_model, "Neînregistrate"])
     if len(serial_rows) == 1:
         serial_rows.append(["—", "Nu sunt echipamente declarate", ""])
     story += [T(serial_rows, [30, 48, 34]), Spacer(1, 4), P("Seriile se completează după citirea etichetelor echipamentelor. Lipsa unei serii nu reprezintă o măsurătoare și nu confirmă conformitatea.", "small"),
