@@ -604,6 +604,9 @@ def table_page(S, area, res, rec):
         okt = "conform" if it["ok"] else ("NECONFORM" if it["ok"] is False else "de confirmat")
         vr.append([P(it["group"]), P(it["label"]), P(it["value"]), P(it["source"]), P((it["formula"] + (" · " + it["note"] if it["note"] else "")).strip(" ·") or "—"), P(okt, it["ok"] is False)])
     blocks.append(("VERIFICĂRI ȘI APARATE DE PROTECȚIE", vr, [24, 52, 30, 18, 70, 18]))
+    pr = [[P(h, True) for h in ["Cod", "Aparat / circuit", "Valori nominale", "Amplasare"]]]
+    pr.extend([[P(code), P(label), P(value), P(location)] for code, label, value, location in protections(rec, res)])
+    blocks.append(("APARATE DE PROTECȚIE ȘI CIRCUITE TEG", pr, [22, 66, 64, 28]))
     y = y2 - 4
     for title, rows, ws in blocks:
         S.text(x1 + 2, y, title, 7, True)
@@ -814,6 +817,13 @@ def protections(rec, res):
         code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
         out.append((f"{code}{len(cef.get('inverters') or []) + k + 1}.B", battery_protection_text(protection), value, f"-GC{k + 1}"))
     out.append(("-Q0.TG", "Întreruptor general TG", gv(n(grid.get("tg_breaker_a")), " A " + ("4P" if tri else "2P")), "-TG"))
+    out.append(("-FA DC", "Descărcător SPD DC", grid.get("spd_dc"), "-TDC"))
+    for index, circuit in enumerate(grid.get("circuits") or []):
+        if not isinstance(circuit, dict):
+            continue
+        label = str(circuit.get("name") or f"Circuit {index + 1}")
+        rating = " · ".join(str(value) for value in (circuit.get("breaker"), circuit.get("poles"), circuit.get("rcd")) if value)
+        out.append((f"-QTEG-{index + 1}", f"Circuit TEG — {label}", rating or None, "-TEG"))
     out.append(("-FA AC", "Descărcător SPD AC", grid.get("spd_ac"), "-TG"))
     if base["grid"]["anti"]:
         anti_breaker = grid.get("anti_breaker") or base["grid"].get("anti_breaker_proposal")
@@ -839,6 +849,11 @@ def sheet_data(rec, client, settings, res, approval):
         ["Beneficiar", get("name")], ["Loc de producere / consum", loc or None], ["POD", get("pod")], ["Operator de distribuție", get("operator")],
         ["Număr proiect", get("project_no")],
         ["Branșament", f"{grid.get('supply')}, putere aprobată {gv(n(grid.get('bransament_kw')), ' kW') or '[lipsă]'}" if grid.get("supply") else None],
+        ["Măsură / smart meter", f"{grid.get('measure_mode') or ('prin TC' if grid.get('ct_ratio') else 'directă')} / {grid.get('smart_meter_mode') or grid.get('meter') or 'model neprecizat'}"],
+        ["Alimentare TEG / backup", f"{grid.get('teg_supply') or 'Auto (derivat)'} / {grid.get('backup_mode') or '—'}"],
+        ["Protecții TEG", f"SPD DC: {grid.get('spd_dc') or '[de completat]'} · SPD AC: {grid.get('spd_ac') or '[de completat]'} · generală: {grid.get('teg_main_protection') or gv(n(grid.get('tg_breaker_a')), ' A') or '[de completat]'}"],
+        ["Cabluri CEF", f"Solar: {grid.get('solar_conductor') or '[de completat]'} · AC invertor → BMP/TEG: {grid.get('inverter_ac_cable') or '[de completat]'}"],
+        ["Circuite TEG", "; ".join(f"{c.get('name') or f'Circuit {i + 1}'} — {c.get('breaker') or 'siguranță de completat'} {c.get('poles') or ''} {c.get('rcd') or ''}".strip() for i, c in enumerate(grid.get('circuits') or []) if isinstance(c, dict)) or None],
         ["Putere instalată DC", gv(t["kwp"], " kWp")], ["Putere invertoare AC (nominal / maxim)", f"{t['inverters_kw']:g} / {t['inverters_kw_max']:g} kW" if t["inverters_kw"] else None],
         ["Putere maximă evacuată", gv(t["export_kw"], " kW")], ["Capacitate stocare", gv(t["storage_kwh"], " kWh") or "fără stocare"],
         ["Sistem de legare la pământ", grid.get("earthing")], ["Ik la punctul de racord", gv(n(grid.get("ik_ka")), " kA")],
@@ -949,3 +964,4 @@ def snapshot(rec, res):
     for code, name, val, loc in protections(rec, res):
         v[f"Protecție {code} {name}"] = str(val or "—")
     return v
+
