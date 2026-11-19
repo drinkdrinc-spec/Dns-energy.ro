@@ -104,6 +104,7 @@ FIELD_UNITS = {
     "mppt_count": "count", "imax_mppt": "a", "w": "w", "voc": "v", "coef_voc": "percent_per_c",
     "coef_vmp": "percent_per_c", "temp_pmax": "percent_per_c", "vmp": "v", "isc": "a", "imp": "a",
     "kwh": "kwh", "ah": "ah", "voltage": "v", "i_max": "a", "p_max_w": "w", "max_devices": "count",
+    "current_max_a": "a", "isc_max_a": "a", "imax_output_a": "a", "vdc_output_max": "v",
 }
 
 
