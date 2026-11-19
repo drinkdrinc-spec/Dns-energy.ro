@@ -2035,14 +2035,9 @@ async def seed_catalog(owner: str):
     # Seed idempotent: adaugă numai modelele lipsă și pentru conturile deja existente.
     await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
     await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
-    existing = await db.catalog.find({"owner": owner}, {"id": 1, "category": 1, "brand_model": 1,
-        "datasheet_url": 1, "conformity_url": 1, "datasheet_source_url": 1, "conformity_source_url": 1,
-        "i_max": 1, "coupling": 1, "voltage_1ph": 1, "voltage_3ph": 1, "i_max_source_url": 1,
-        "string_count": 1, "poles": 1, "voltage_min_v": 1, "voltage_max_v": 1,
-        "current_300v_a": 1, "current_600v_a": 1, "current_800v_a": 1, "current_1000v_a": 1,
-        "current_1200v_a": 1, "current_1500v_a": 1, "ac_voltage_min_v": 1, "ac_voltage_max_v": 1,
-        "ip_rating": 1, "protection_class": 1,
-        "_id": 0}).to_list(10000)
+    seed_projection = {key: 1 for item in CATALOG_SEED for key in item}
+    seed_projection.update({"id": 1, "category": 1, "brand_model": 1, "_id": 0})
+    existing = await db.catalog.find({"owner": owner}, seed_projection).to_list(10000)
     by_key = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()): x for x in existing}
     missing = []
     for item in CATALOG_SEED:
