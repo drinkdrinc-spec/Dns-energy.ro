@@ -2197,10 +2197,130 @@ async def sld_apply(item_id: str, request: Request, user: dict = Depends(get_cur
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     body = await request.json() if (await request.body()) else {}
-    cef, filled = SZ.apply(body.get("cef") or rec.get("cef") or {})
+    cef = body.get("cef") or rec.get("cef") or {}
+    # Older dossiers may contain model names in the legacy fields (or a CEF
+    # row without catalog IDs). Resolve an exact, unique catalog match here so
+    # the technical sheet can hydrate missing manufacturer values before the
+    # sizing proposals are calculated. Never overwrite values entered by an
+    # engineer, and never guess ambiguous catalog matches.
+    cef, catalog_filled = await hydrate_cef_catalog_values(user["id"], cef, rec)
+    cef, calculated_filled = SZ.apply(cef)
+    filled = catalog_filled + calculated_filled
     await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef}})
     await audit(user, "dimensionare automată", "prosumator", item_id, filled)
     return {"filled": filled, "cef": cef}
+
+
+async def hydrate_cef_catalog_values(owner: str, cef: dict, rec: dict | None = None) -> tuple[dict, list[str]]:
+    """Fill blank CEF equipment data from an exact, unique owner catalog entry."""
+    cef = json.loads(json.dumps(cef or {}))
+    rec = rec or {}
+    filled: list[str] = []
+
+    async def catalog_item(category: str, catalog_id: str | None, model: str | None):
+        if catalog_id:
+            item = await db.catalog.find_one(
+                {"owner": owner, "id": str(catalog_id), "category": category}, {"_id": 0}
+            )
+            if item:
+                return item
+        target = " ".join(str(model or "").split()).casefold()
+        if not target:
+            return None
+        matches = await db.catalog.find(
+            {"owner": owner, "category": category}, {"_id": 0}
+        ).limit(2000).to_list(2000)
+        exact = [item for item in matches if " ".join(str(item.get("brand_model") or "").split()).casefold() == target]
+        return exact[0] if len(exact) == 1 else None
+
+    def merge(target: dict, values: dict, prefix: str):
+        for key, value in values.items():
+            if value is None or value == "":
+                continue
+            current = target.get(key)
+            blank = current is None or current == "" or (isinstance(current, (int, float)) and current == 0 and isinstance(value, (int, float)) and value > 0)
+            if blank:
+                target[key] = value
+                filled.append(f"{prefix}.{key}")
+
+    def panel_values(item: dict) -> dict:
+        return {"panel_catalog_id": item.get("id"), "panel_model": item.get("brand_model"), "panel_w": item.get("w"),
+                "panel_voc": item.get("voc"), "panel_vmp": item.get("vmp"), "panel_isc": item.get("isc"),
+                "panel_imp": item.get("imp"), "panel_coef_voc": item.get("coef_voc"), "panel_coef_vmp": item.get("coef_vmp")}
+
+    def battery_values(item: dict, phases: str | None) -> dict:
+        three_phase = "tri" in str(phases or "").casefold()
+        voltage = item.get("voltage_3ph") if three_phase else item.get("voltage_1ph") if phases else item.get("voltage")
+        voltage = voltage if voltage is not None else item.get("voltage")
+        breaker_current = item.get("breaker_a") if item.get("breaker_a") is not None else item.get("dc_switch_current_a")
+        breaker_voltage = item.get("breaker_voltage_dc") if item.get("breaker_voltage_dc") is not None else item.get("dc_switch_voltage_v")
+        return {"catalog_id": item.get("id"), "model": item.get("brand_model"), "kwh": item.get("kwh"), "ah": item.get("ah"),
+                "voltage": voltage, "voltage_1ph": item.get("voltage_1ph"), "voltage_3ph": item.get("voltage_3ph"),
+                "i_max": item.get("i_max"), "i_max_source_url": item.get("i_max_source_url"), "max_fuse_a": item.get("max_fuse_a"),
+                "coupling": item.get("coupling"), "breaker_a": breaker_current, "breaker_voltage_dc": breaker_voltage,
+                "breaker_integrated": item.get("breaker_integrated"), "breaker_poles": item.get("breaker_poles"),
+                "breaker_icu_ka": item.get("breaker_icu_ka"), "dc_switch_voltage_v": breaker_voltage,
+                "dc_switch_current_a": breaker_current, "breaker_source_url": item.get("breaker_source_url"),
+                "datasheet_url": item.get("datasheet_url"), "conformity_url": item.get("conformity_url")}
+
+    legacy = CEF.from_legacy(rec) if rec else {}
+    legacy_invs = ((legacy.get("cef") or {}).get("inverters") or []) if legacy else []
+    invs = cef.setdefault("inverters", [])
+    if not invs and legacy_invs:
+        # A legacy form can reach this endpoint before the browser has saved
+        # its converted CEF. Reuse the saved equipment/string configuration.
+        cef = {**legacy["cef"], **cef, "inverters": legacy_invs}
+        if not cef.get("grid"):
+            cef["grid"] = (legacy.get("cef") or {}).get("grid") or {}
+        invs = cef["inverters"]
+    for index, inv in enumerate(invs):
+        legacy_inv = legacy_invs[index] if index < len(legacy_invs) else {}
+        if not inv.get("brand_model") and legacy_inv.get("brand_model"):
+            inv["brand_model"] = legacy_inv["brand_model"]
+        item = await catalog_item("Invertor", inv.get("catalog_id"), inv.get("brand_model"))
+        if item:
+            if inv.get("catalog_id") != item.get("id"):
+                inv["catalog_id"] = item.get("id")
+                filled.append(f"cef.inverters.{index}.catalog_id")
+            merge(inv, {"catalog_id": item.get("id"), "brand_model": item.get("brand_model"), "type": item.get("type"),
+                        "phases": item.get("phases"), "p_nom_kw": item.get("p_nom_kw"), "p_max_kw": item.get("p_max_kw"),
+                        "vdc_max": item.get("vdc_max"), "mppt_min": item.get("mppt_min"), "mppt_max": item.get("mppt_max"),
+                        "mppt_count": item.get("mppt_count"), "imax_mppt": item.get("imax_mppt"), "isc_max_mppt": item.get("isc_max_mppt"),
+                        "bat_i_max": item.get("bat_i_max"), "bat_v_min": item.get("bat_v_min"), "bat_v_max": item.get("bat_v_max")},
+                  f"cef.inverters.{index}")
+        panel = await catalog_item("Panou", inv.get("panel_catalog_id"), inv.get("panel_model") or legacy_inv.get("panel_model"))
+        if panel:
+            if inv.get("panel_catalog_id") != panel.get("id"):
+                inv["panel_catalog_id"] = panel.get("id")
+                filled.append(f"cef.inverters.{index}.panel_catalog_id")
+            merge(inv, panel_values(panel), f"cef.inverters.{index}")
+        if inv.get("battery_mode") == "own":
+            battery = inv.setdefault("battery", {})
+            legacy_battery = legacy_inv.get("battery") or {}
+            if not battery.get("model") and legacy_battery.get("model"):
+                battery["model"] = legacy_battery["model"]
+            battery_item = await catalog_item("Baterie", battery.get("catalog_id"), battery.get("model"))
+            if battery_item:
+                if battery.get("catalog_id") != battery_item.get("id"):
+                    battery["catalog_id"] = battery_item.get("id")
+                    filled.append(f"cef.inverters.{index}.battery.catalog_id")
+                merge(battery, battery_values(battery_item, inv.get("phases")), f"cef.inverters.{index}.battery")
+    for index, battery in enumerate(cef.get("shared_batteries") or []):
+        item = await catalog_item("Baterie", battery.get("catalog_id"), battery.get("model"))
+        if item:
+            if battery.get("catalog_id") != item.get("id"):
+                battery["catalog_id"] = item.get("id")
+                filled.append(f"cef.shared_batteries.{index}.catalog_id")
+            merge(battery, battery_values(item, None), f"cef.shared_batteries.{index}")
+    grid = cef.get("grid") or {}
+    if grid.get("meter"):
+        meter = await catalog_item("Smart meter", grid.get("meter_catalog_id"), grid.get("meter"))
+        if meter and not grid.get("meter_catalog_id"):
+            grid["meter_catalog_id"] = meter.get("id")
+            filled.append("cef.grid.meter_catalog_id")
+        cef["grid"] = grid
+    cef["auto_filled"] = sorted(set((cef.get("auto_filled") or []) + filled))
+    return cef, filled
 
 @api_router.put("/sld/{item_id}/source")
 async def sld_source(item_id: str, request: Request, user: dict = Depends(get_current_user)):
