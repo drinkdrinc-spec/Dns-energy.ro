@@ -2119,6 +2119,38 @@ async def sld_demo(authorization: str = Header(None), auth: str = Query(None), f
     res = SZ.compute(DEMO_REC, DEMO_CLIENT)
     return pdf_resp(SLD.render(DEMO_REC, DEMO_CLIENT, s, res, {"status": "draft"}, fmt, demo=True), "schema_monofilara_DEMO.pdf")
 
+@api_router.post("/prosumator/{item_id}/pram-number")
+async def allocate_prosumer_pram_number(item_id: str, user: dict = Depends(get_current_user)):
+    guard("prosumator", user, write=True)
+    rec = await check_access(user, "prosumator", item_id)
+    if rec.get("pram_source") in ("none", "third_party"):
+        raise HTTPException(status_code=422, detail="Numărul firmei se alocă doar pentru un buletin PRAM întocmit intern.")
+    existing = str(rec.get("bulletin_no") or "").strip()
+    if existing:
+        return {"ok": True, "number": existing, "existing": True}
+
+    def numeric_tail(value):
+        match = re.search(r"(\d+)(?!.*\d)", str(value or ""))
+        return int(match.group(1)) if match else 0
+
+    prior = await db.prosumator.find({"owner": user["id"]}, {"_id": 0, "bulletin_no": 1}).to_list(10000)
+    prior += await db.pram.find({"owner": user["id"]}, {"_id": 0, "number": 1, "bulletin_no": 1}).to_list(10000)
+    floor = max((numeric_tail(row.get("bulletin_no") or row.get("number")) for row in prior), default=0)
+    counter_id = f"pram:{user['id']}"
+    await db.counters.update_one({"id": counter_id}, {"$max": {"next": floor}}, upsert=True)
+    counter = await db.counters.find_one_and_update({"id": counter_id}, {"$inc": {"next": 1}}, upsert=True, return_document=True)
+    allocated = str(counter["next"])
+    result = await db.prosumator.update_one(
+        {"id": item_id, "owner": user["id"], "$or": [{"bulletin_no": {"$exists": False}}, {"bulletin_no": None}, {"bulletin_no": ""}]},
+        {"$set": {"bulletin_no": allocated, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if not result.modified_count:
+        current = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0, "bulletin_no": 1})
+        allocated = str((current or {}).get("bulletin_no") or allocated)
+    else:
+        await audit(user, "alocare număr buletin PRAM", "prosumator", item_id, ["bulletin_no"])
+    return {"ok": True, "number": allocated, "existing": False}
+
 @api_router.get("/sld/{item_id}")
 async def sld_status(item_id: str, user: dict = Depends(get_current_user)):
     rec, client, s, res, state, warns = await sld_ctx(user, item_id)
