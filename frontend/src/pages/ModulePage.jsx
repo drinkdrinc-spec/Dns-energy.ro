@@ -264,6 +264,7 @@ export default function ModulePage({ moduleKey }) {
   const [diuPre, setDiuPre] = useState(false);
   const [prosPre, setProsPre] = useState(false);
   const [catalogImportsBusy, setCatalogImportsBusy] = useState(false);
+  const [sectionSaving, setSectionSaving] = useState(false);
   const [statusSavingId, setStatusSavingId] = useState("");
   const [draggedItemId, setDraggedItemId] = useState("");
   const [dropTargetStatus, setDropTargetStatus] = useState("");
@@ -567,6 +568,21 @@ export default function ModulePage({ moduleKey }) {
     if (key === "diu" && editId && form.status === "Predat beneficiarului" && orig?.status !== "Predat beneficiarului" && can(user, "ai_gpt")) { setDiuPre(true); return; }
     return doSave().catch(() => {});
   };
+  const saveSection = async (label = "Datele dosarului") => {
+    if (key !== "prosumator" || !editId || sectionSaving) return;
+    if (catalogImportsBusy) { toast.warning("Așteaptă să se termine preluarea fișelor și certificatelor din catalog."); return; }
+    setSectionSaving(true);
+    try {
+      const payload = { ...form };
+      const { data } = await api.put(`/data/prosumator/${encodeURIComponent(editId)}`, payload);
+      setForm((current) => ({ ...current, ...data }));
+      setItems((current) => current.map((item) => item.id === editId ? { ...item, ...data } : item));
+      setSavedAt(Date.now());
+      toast.success(`${label} salvată.`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || `Nu am putut salva ${label.toLowerCase()}.`);
+    } finally { setSectionSaving(false); }
+  };
   const doSave = async () => {
     const required = (cfg.fields || []).filter((f) => f.required);
     for (const f of required) { if (!form[f.name]) { toast.error(`Completează: ${f.label.replace(" *", "")}`); return; } }
@@ -847,7 +863,7 @@ export default function ModulePage({ moduleKey }) {
       </section>}
 
       {form && (
-        <div className="den-panel mb-6" data-testid="module-form">
+        <div className={`den-panel mb-6 ${key === "prosumator" ? "dns-prosumer-workflow" : ""}`} data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
             {editId && <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" data-testid="prosumer-dossier-summary">
               {dossierSummary.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }}>
@@ -954,13 +970,13 @@ export default function ModulePage({ moduleKey }) {
           {key === "prosumator" && <div className="mt-5 space-y-4" data-testid="prosumer-guided-sections">
             <details id="dossier-section-installation" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-installation-card">
               <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>2. Instalația</p><h3 className="text-sm font-bold">CEF — invertoare, panouri și baterii</h3></div></summary>
-              <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} />
+              <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} onSave={editId ? () => saveSection("Instalația") : undefined} saving={sectionSaving} />
               {editId && <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--line)" }}><h4 className="mb-2 text-sm font-bold">Schema monofilară</h4><SldPanel id={editId} form={form} setVal={setVal} /></div>}
             </details>
 
             <details id="dossier-section-acts" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-acts-card">
               <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>3. Acte și responsabili</p><h3 className="text-sm font-bold">Echipa dosarului</h3></div></summary>
-              <div className="space-y-4 px-4 py-4 sm:px-5"><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierExtras form={form} setVal={setVal} part="pram" /></div>
+              <div className="space-y-4 px-4 py-4 sm:px-5"><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierExtras form={form} setVal={setVal} part="pram" onSave={editId ? () => saveSection("Actele și PRAM") : undefined} saving={sectionSaving} /></div>
             </details>
 
             {editId && <details id="dossier-section-documents" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-documents-card">
@@ -1457,5 +1473,6 @@ export default function ModulePage({ moduleKey }) {
     </div>
   );
 }
+
 
 
