@@ -294,9 +294,23 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
         if st["status"] == "approved" and sld.get("source") == "uploaded" and sld.get("upload"):
             data, ct = get_object(sld["upload"]["storage_path"])
             return [file_pdf(data, sld["upload"].get("content_type") or ct)]
-        f = SZ.approved_file(rec, st["fingerprint"]) if st["status"] == "approved" else None
-        if f:
-            return [get_object(f["storage_path"])[0]]
+        if st["status"] == "approved":
+            # Re-render generated approvals with the current one-page template;
+            # the approval fingerprint remains tied to the saved engineering data.
+            stamp_path = settings.get("_stamp_path")
+            if stamp_path:
+                try:
+                    settings["_stamp_bytes"], _ = get_object(stamp_path)
+                except Exception:
+                    settings["_stamp_bytes"] = None
+            paths = settings.get("_sigs") or {}
+            designer_name = settings.get("designer_name") or ""
+            if designer_name and paths.get(designer_name):
+                try:
+                    signature, _ = get_object(paths[designer_name])
+                    settings["_sld_signature_bytes"] = {"designer": signature}
+                except Exception:
+                    settings["_sld_signature_bytes"] = {}
         return [SLD.render(rec, client, settings, res, st)]
     if p.get("key") == "pif_pv":
         return [PIFDOC.render(rec, client, settings)]
