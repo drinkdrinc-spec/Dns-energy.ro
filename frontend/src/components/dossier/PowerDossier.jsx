@@ -37,9 +37,10 @@ export function PowerDossier({ id, form, setVal }) {
   const operatorLabel = form.operator || selectedPros?.operator || "";
   const isDeer = /\bdeer\b|distributie energie|transilvania|muntenia nord/i.test(operatorLabel);
   const equipment = powerCef.inverters || [];
-  const totalPanels = equipment.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1), 0);
-  const panelKwp = equipment.reduce((sum, inv) => sum + (Number(inv.panel_w) || 0) * (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1) / 1000, 0)
+  const totalPanels = equipment.reduce((sum, inv) => sum + (inv.battery_only || inv.no_panels ? 0 : (inv.strings || []).reduce((n, row) => n + (Number(row.panels) || 0), 0) * Math.max(1, Number(inv.count || inv.quantity) || 1)), 0);
+  const panelKwp = equipment.reduce((sum, inv) => sum + (inv.battery_only || inv.no_panels ? 0 : (inv.strings || []).reduce((n, row) => n + (Number(row.panel_w || inv.panel_w) || 0) * (Number(row.panels) || 0), 0)) * Math.max(1, Number(inv.count || inv.quantity) || 1) / 1000, 0)
     || Number(selectedPros?._kwp || selectedPros?.panel_kwp) || 0;
+  const panelModels = [...new Set(equipment.flatMap((inv) => (inv.battery_only || inv.no_panels ? [] : (inv.strings || []).map((row) => row.panel_model || inv.panel_model))).filter(Boolean))];
   const inverterText = equipment.map((inv) => (inv.brand_model || "Invertor") + " × " + Math.max(1, Number(inv.count || inv.quantity) || 1) + " · " + (inv.p_nom_kw || "?") + " kW");
   const batteryItems = [
     ...equipment.filter((inv) => inv.battery_mode === "own" && inv.battery?.model)
@@ -48,6 +49,7 @@ export function PowerDossier({ id, form, setVal }) {
   ];
   const exportLimitKw = equipment.reduce((sum, inv) => {
     const count = Math.max(1, Number(inv.count || inv.quantity) || 1);
+    if (inv.battery_only || inv.no_panels) return sum;
     const limit = Number(inv.p_limit_kw) || 0;
     const max = Number(inv.p_max_kw || inv.p_nom_kw) || 0;
     return sum + (limit > 0 ? Math.min(limit, max || limit) * count : 0);
@@ -88,6 +90,7 @@ export function PowerDossier({ id, form, setVal }) {
         <div className="den-field"><label>Data cererii</label><input type="date" className="den-input" value={form.date || ""} onChange={(e) => setVal("date", e.target.value)} data-testid="power-date" /></div>
         {form.request_kind === "nou" && <div className="den-field"><label>Data estimată punere sub tensiune finală</label><input type="date" className="den-input" value={form.energize_date || ""} onChange={(e) => setVal("energize_date", e.target.value)} /></div>}
         <div className="den-field sm:col-span-2"><label>Descrierea modificărilor tehnice față de situația anterioară</label><textarea rows={2} className="den-input" value={form.changes || ""} onChange={(e) => setVal("changes", e.target.value)} data-testid="power-changes" /></div>
+        <div className="den-field sm:col-span-2"><label>Alte modificări solicitate (se preiau în cererea DEER)</label><textarea rows={2} className="den-input" value={form.other_changes || ""} onChange={(e) => setVal("other_changes", e.target.value)} data-testid="power-other-changes" /></div>
       </div>
       {!selectedPros && <details className="mt-3 rounded-xl border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="power-equipment-config">
         <summary className="cursor-pointer text-sm font-semibold">Echipamente pentru cererea de spor</summary>
@@ -98,8 +101,8 @@ export function PowerDossier({ id, form, setVal }) {
         <b className="text-xs">Echipamente incluse în Anexa 1</b>
         <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
           <span><b>Invertor:</b> {inverterText.length ? inverterText.join("; ") : "nespecificat"}</span>
-          <span><b>Panouri:</b> {selectedPros.panels || "nespecificat"}{totalPanels ? " · " + totalPanels + " buc. · " + panelKwp.toFixed(3) + " kWp DC" : panelKwp ? " · " + panelKwp.toFixed(3) + " kWp DC" : ""}</span>
-          <span><b>Limită injecție configurată:</b> {exportLimitKw > 0 ? exportLimitKw.toFixed(3) + " kW AC" : "nedeclarată în setările invertorului"}</span>
+          <span><b>Panouri:</b> {panelModels.join("; ") || selectedPros?.panels || "nespecificat"}{totalPanels ? " · " + totalPanels + " buc. · " + panelKwp.toFixed(3) + " kWp DC" : panelKwp ? " · " + panelKwp.toFixed(3) + " kWp DC" : ""}</span>
+          <span><b>Limită injecție configurată:</b> {equipment.length && equipment.every((inv) => inv.battery_only || inv.no_panels) ? "0 kW AC · invertor hibrid doar cu baterie" : exportLimitKw > 0 ? exportLimitKw.toFixed(3) + " kW AC" : "nedeclarată în setările invertorului"}</span>
           <span><b>Baterie / BESS:</b> {batteryItems.length ? batteryItems.map((item) => (item.model || "model nespecificat") + " × " + (item.modules || 1) + (item.kwh ? " · " + Number(item.kwh) * (Number(item.modules) || 1) + " kWh" : "") + (item.coupling ? " · cuplare " + item.coupling : "")).join("; ") : "nu este selectată"}</span>
         </div>
         <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Fișele, declarațiile, PV-ul de recepție, PRAM-ul și schema se atașează la generare când sunt disponibile și validate în dosarul sursă.</p>

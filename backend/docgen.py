@@ -206,10 +206,18 @@ def inverters(ctx):
 def panel_rows(ctx):
     rows = []
     for inv in inverters(ctx):
-        n = sum(int(num(s.get("panels"))) for s in inv.get("strings") or [])
-        w = num(inv.get("panel_w"))
         count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
-        rows.append({"n": n, "count": count, "model": inv.get("panel_model") or "", "w": w, "kw": n * w / 1000})
+        groups = {}
+        for string in inv.get("strings") or []:
+            panels = int(num(string.get("panels")))
+            if panels <= 0:
+                continue
+            model = string.get("panel_model") or inv.get("panel_model") or ""
+            watts = num(string.get("panel_w") if string.get("panel_w") not in (None, "") else inv.get("panel_w"))
+            key = (model, watts)
+            groups[key] = groups.get(key, 0) + panels
+        for (model, watts), panel_count in groups.items():
+            rows.append({"n": panel_count, "count": count, "model": model, "w": watts, "kw": panel_count * watts / 1000})
     return rows
 
 
@@ -269,13 +277,14 @@ def doc_notificare(ctx):
     for i, inv in enumerate(invs):
         count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
         pi = num(inv.get("p_nom_kw"))
-        pm = num(inv.get("p_limit_kw")) or num(inv.get("p_max_kw")) or pi
+        pm = 0 if inv.get("battery_only") or inv.get("no_panels") else (num(inv.get("p_limit_kw")) or num(inv.get("p_max_kw")) or pi)
         tpi += pi * count
         tpm += pm * count
         total_inverters += count
         un = "400" if "mono" not in str(inv.get("phases") or ("Trifazat" if tri else "Monofazat")).lower() else "230"
+        observation = "Invertor hibrid doar cu baterie; putere evacuată 0 kW" if inv.get("battery_only") or inv.get("no_panels") else ""
         rows.append([str(i + 1), str(count), escape(inv.get("brand_model") or ""), un, f"{pi:.2f}" if pi else "",
-                     f"{pm:.2f}" if pm else "", f"{pm * count:.2f}" if pm else "", ""])
+                     f"{pm:.2f}" if pm is not None else "", f"{pm * count:.2f}" if pm is not None else "", observation])
     rows.append(["TOTAL:", str(total_inverters) if total_inverters else "", "", "", f"{tpi:.2f}" if tpi else "", f"{tpm:.2f}" if tpm else "", f"{tpm:.2f}" if tpm else "", ""])
     out += [B("table", rows, [12, 16, 34, 20, 20, 26, 30, 16], True),
             B("small", "NOTĂ:<br/>U.G. = unitate generatoare; panou = panou fotovoltaic; As - asincron; S - sincron; T - termo; H - hidro; E - eolian; "

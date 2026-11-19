@@ -57,6 +57,24 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
   const sub = (obj, k) => (v) => set({ ...inv, [obj]: { ...(inv[obj] || {}), [k]: v } });
   const strings = inv.strings || [];
   const setStr = (i, k, v) => set({ ...inv, strings: strings.map((x, j) => (j === i ? { ...x, [k]: v, auto_generated: false } : x)) });
+  const setStringPanel = (i, item) => {
+    const models = new Set(strings.map((x, j) => j === i ? null : (x.panel_model || inv.panel_model)).filter(Boolean));
+    models.add(item.brand_model);
+    if (models.size > 3) return;
+    set({ ...inv, strings: strings.map((x, j) => j === i ? {
+      ...x, panel_catalog_id: item.id, panel_model: item.brand_model, panel_w: item.w,
+      panel_voc: item.voc, panel_vmp: item.vmp, panel_isc: item.isc, panel_imp: item.imp,
+      panel_coef_voc: item.coef_voc, panel_coef_vmp: item.coef_vmp,
+    } : x) });
+  };
+  const stringPanelQuery = (i, model) => {
+    const models = new Set(strings.map((x, j) => j === i ? null : (x.panel_model || inv.panel_model)).filter(Boolean));
+    if (model && !models.has(model) && models.size >= 3) return;
+    set({ ...inv, strings: strings.map((x, j) => j === i ? {
+      ...x, panel_model: model, panel_catalog_id: undefined, panel_w: undefined, panel_voc: undefined,
+      panel_vmp: undefined, panel_isc: undefined, panel_imp: undefined, panel_coef_voc: undefined, panel_coef_vmp: undefined,
+    } : x) });
+  };
   const t = `inv-${idx}`;
   const pa = res?.proposals?.ac || {}, pd = res?.proposals?.dc || {};
   const apply = () => set({
@@ -110,7 +128,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
       </div>
       <div className="mt-2"><Check label="Echipament existent (extindere)" value={inv.existing} onChange={s("existing")} testid={`${t}-existing`} /></div>
 
-      <Section title="Panouri și stringuri">
+      {!(inv.battery_only || inv.no_panels) && <Section title="Panouri și stringuri">
         <div className="grid sm:grid-cols-4 gap-3">
           <CatalogPick items={catalog} category="Panou" testid={`${t}-panel-pick`} onQueryChange={(model) => catalogModelText(model, "panel_catalog_id", ["panel_w", "panel_voc", "panel_vmp", "panel_isc", "panel_imp", "panel_coef_voc", "panel_coef_vmp"])} onPick={(it) => set({ ...inv, panel_catalog_id: it.id, panel_model: it.brand_model, panel_w: it.w, panel_voc: it.voc, panel_vmp: it.vmp, panel_isc: it.isc, panel_imp: it.imp, panel_coef_voc: it.coef_voc, panel_coef_vmp: it.coef_vmp })} />
           <F label="Model panou" value={inv.panel_model} onChange={(model) => catalogModelText(model, "panel_catalog_id", ["panel_w", "panel_voc", "panel_vmp", "panel_isc", "panel_imp", "panel_coef_voc", "panel_coef_vmp"])} testid={`${t}-panel-model`} />
@@ -128,6 +146,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
             return (
               <div key={i} className="flex flex-wrap items-end gap-2" data-testid={`${t}-string-${i}`}>
                 <span className="text-xs font-bold w-16 pb-3">String {i + 1}</span>
+                <CatalogPick items={catalog} category="Panou" testid={`${t}-string-${i}-panel-pick`} label="Model panou · gol = modelul invertorului" onQueryChange={(model) => stringPanelQuery(i, model)} onPick={(item) => setStringPanel(i, item)} />
                 <F label="Panouri în serie" type="number" value={st.panels} onChange={(v) => setStr(i, "panels", v)} testid={`${t}-string-${i}-panels`} />
                 <span className="text-xs pb-3" style={{ color: "var(--muted)" }}>MPPT {st.mppt || i + 1}{r?.kwp ? ` · ${r.kwp} kWp` : ""}</span>
                 <button onClick={() => set({ ...inv, strings: strings.filter((_, j) => j !== i) })} className="p-1.5 mb-1.5 rounded hover:bg-[#fff0f0]" data-testid={`${t}-string-${i}-remove`}><Trash2 size={14} style={{ color: "#b33333" }} /></button>
@@ -136,7 +155,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           })}
           <button onClick={() => set({ ...inv, strings: [...strings, { panels: "", mppt: strings.length + 1 }] })} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid={`${t}-add-string`}><Plus size={13} /> Adaugă string</button>
         </div>
-      </Section>
+      </Section>}
 
       <Section title="Stocare și backup">
         <div className="grid sm:grid-cols-4 gap-3">
@@ -165,6 +184,8 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
           </>}
         </div>
         <div className="mt-3"><Check label="Circuit de backup / EPS" value={inv.backup?.enabled} onChange={sub("backup", "enabled")} testid={`${t}-backup`} /></div>
+        {inv.battery_mode === "own" && <div className="mt-2"><Check label="Fără panouri (doar baterie)" value={inv.battery_only || inv.no_panels} onChange={(enabled) => set({ ...inv, battery_only: enabled, no_panels: enabled, ...(enabled ? { saved_pv_strings: inv.strings || [], strings: [] } : { strings: inv.strings?.length ? inv.strings : (inv.saved_pv_strings || []) }) })} testid={`${t}-battery-only`} /></div>}
+        {(inv.battery_only || inv.no_panels) && <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Invertorul rămâne desenat cu bateria, fără ramură PV; puterea evacuată în RED este 0 kW.</p>}
         {inv.backup?.enabled && (
           <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Setări avansate circuit backup</summary><div className="grid sm:grid-cols-3 gap-3 mt-3">
             <F label="Tip backup" value={inv.backup?.type} onChange={sub("backup", "type")} options={["parțial", "total"]} testid={`${t}-backup-type`} />
