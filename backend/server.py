@@ -2213,6 +2213,8 @@ async def sld_apply(item_id: str, request: Request, user: dict = Depends(get_cur
 
 async def hydrate_cef_catalog_values(owner: str, cef: dict, rec: dict | None = None) -> tuple[dict, list[str]]:
     """Fill blank CEF equipment data from an exact, unique owner catalog entry."""
+    import json
+
     cef = json.loads(json.dumps(cef or {}))
     rec = rec or {}
     filled: list[str] = []
