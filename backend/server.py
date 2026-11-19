@@ -2216,6 +2216,29 @@ async def sld_import_legacy(item_id: str, user: dict = Depends(get_current_user)
 async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("auto"), download: int = Query(0)):
     user = await user_from_token(authorization, auth)
     rec, client, s, res, state, _ = await sld_ctx(user, item_id)
+    # Include only the real company stamp and authorized project designer
+    # signature, and only on the currently approved configuration.
+    if state.get("status") == "approved":
+        stamp_path = s.get("_stamp_path")
+        if stamp_path:
+            try:
+                s["_stamp_bytes"], _ = get_object(stamp_path)
+            except Exception:
+                s["_stamp_bytes"] = None
+        selected = rec.get("signers") or {}
+        designer_id, verifier_id = selected.get("designer"), selected.get("verifier")
+        designer = await db.staff.find_one({"owner": user["id"], "id": designer_id}, {"_id": 0}) if designer_id else None
+        verifier = await db.staff.find_one({"owner": user["id"], "id": verifier_id}, {"_id": 0}) if verifier_id else None
+        if designer and staff_eligible(designer):
+            s["designer_name"] = designer.get("name") or ""
+        if verifier and staff_eligible(verifier):
+            s["verifier"] = verifier.get("name") or ""
+        if designer and staff_eligible(designer) and designer.get("signature_authorized") and (designer.get("signature") or {}).get("storage_path"):
+            try:
+                signature, _ = get_object(designer["signature"]["storage_path"])
+                s["_sld_signature_bytes"] = {"designer": signature}
+            except Exception:
+                s["_sld_signature_bytes"] = {}
     name = f"schema_monofilara_{rec.get('number') or item_id}.pdf"
     return Response(content=SLD.render(rec, client, s, res, state, fmt), media_type="application/pdf",
                     headers={"Content-Disposition": disp("attachment" if download else "inline", name)})
