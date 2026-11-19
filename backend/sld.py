@@ -799,7 +799,7 @@ def drawing_header(S, PW, PH, rec, client, settings, res, approval):
     S.text(PW / 2, y - 4.2, summary, 5, color=GREY, anchor="c")
     supply = "TRIFAZAT" if res["base"]["grid"]["tri"] else "MONOFAZAT"
     backup = str(grid.get("backup_mode") or "LOAD").upper()
-    badge = f"{backup} · {supply} · 2× BMP" if res["base"]["grid"]["tri"] and grid.get("backup_mode") else f"{backup} · {supply}"
+    badge = f"{backup} · {supply}"
     badge_w = 58
     bx = PW - 12 - badge_w
     S.lw(0.35, RED)
