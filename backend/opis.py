@@ -109,6 +109,18 @@ async def build_positions(db, owner, rec, client, settings):
     res_sld = SZ.compute(rec, client)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
+        if key == "priza" and rec.get("pram_source") == "none":
+            if PIFDOC.filled(rec):
+                pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
+            continue
+        if key == "priza" and rec.get("pram_source") == "third_party":
+            uploaded_pram = rec.get("pram_file") or {}
+            pos.append({"key": key, "title": title + " — document încărcat", "source": "manual",
+                        "files": [uploaded_pram] if uploaded_pram.get("storage_path") else [],
+                        "missing": [] if uploaded_pram.get("storage_path") else ["Încarcă PDF-ul buletinului PRAM emis de firma terță"]})
+            if PIFDOC.filled(rec):
+                pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
+            continue
         m = missing(keys, ekeys)
         shared_keys, shared_exec = DOC_COMMON.get(key, ([], []))
         m += missing(shared_keys, shared_exec)
@@ -155,22 +167,23 @@ async def build_positions(db, owner, rec, client, settings):
     pos.append({"key": "anre_firma", "title": "Atestat ANRE firmă — document justificativ", "source": "company",
                 "files": [anre_file] if anre_file.get("storage_path") else [], "missing": anre_missing})
 
-    instrument_id = rec.get("instrument_id")
-    instrument = await db.instruments.find_one({"owner": owner, "id": instrument_id}, {"_id": 0}) if instrument_id else None
-    meter_file = (instrument or {}).get("file") or {}
-    meter_missing = []
-    if not instrument:
-        meter_missing.append("Selectează aparatul PRAM și încarcă certificatul lui în Setări de bază → Aparatele de măsură")
-    else:
-        if not meter_file.get("storage_path"):
-            meter_missing.append("Încarcă certificatul metrologic / de etalonare al aparatului selectat")
-        if not instrument.get("expires"):
-            meter_missing.append("Completează valabilitatea metrologică a aparatului selectat")
-        elif instrument.get("expires") < datetime.date.today().isoformat():
-            meter_missing.append("Certificatul metrologic al aparatului selectat este expirat — încarcă unul valabil")
-    meter_title = "Metrologie aparat PRAM" + (f" — {instrument.get('maker_model')} / seria {instrument.get('serial')}" if instrument else "")
-    pos.append({"key": "metrologie_pram", "title": meter_title, "source": "instrument",
-                "files": [meter_file] if meter_file.get("storage_path") else [], "missing": meter_missing})
+    if rec.get("pram_source") not in ("third_party", "none"):
+        instrument_id = rec.get("instrument_id")
+        instrument = await db.instruments.find_one({"owner": owner, "id": instrument_id}, {"_id": 0}) if instrument_id else None
+        meter_file = (instrument or {}).get("file") or {}
+        meter_missing = []
+        if not instrument:
+            meter_missing.append("Selectează aparatul PRAM și încarcă certificatul lui în Setări de bază → Aparatele de măsură")
+        else:
+            if not meter_file.get("storage_path"):
+                meter_missing.append("Încarcă certificatul metrologic / de etalonare al aparatului selectat")
+            if not instrument.get("expires"):
+                meter_missing.append("Completează valabilitatea metrologică a aparatului selectat")
+            elif instrument.get("expires") < datetime.date.today().isoformat():
+                meter_missing.append("Certificatul metrologic al aparatului selectat este expirat — încarcă unul valabil")
+        meter_title = "Metrologie aparat PRAM" + (f" — {instrument.get('maker_model')} / seria {instrument.get('serial')}" if instrument else "")
+        pos.append({"key": "metrologie_pram", "title": meter_title, "source": "instrument",
+                    "files": [meter_file] if meter_file.get("storage_path") else [], "missing": meter_missing})
 
     # DEER requires the applicable personal-data information notice for natural-person cases.
     # Keep it as an official, user-attached document; never generate a fake consent form.
