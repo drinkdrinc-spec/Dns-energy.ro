@@ -1,4 +1,5 @@
 import io
+import datetime
 from html import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -97,6 +98,8 @@ async def build_positions(db, owner, rec, client, settings):
     pos = []
 
     common = [L.get(k, k) for k in req_common if ctx.raw(k) in (None, "")] + [EL.get(k, k) for k in EXEC if settings.get(k) in (None, "")]
+    if not settings.get("_stamp_path"):
+        common.append("Încarcă imaginea reală a ștampilei firmei în Setări de bază → Firmă")
 
     def missing(keys, ekeys):
         m = [L.get(k, k) for k in keys if ctx.raw(k) in (None, "")]
@@ -139,6 +142,36 @@ async def build_positions(db, owner, rec, client, settings):
         pos.append({"key": key, "title": title, "source": "client", "slots": slots, "files": files,
                     "missing": [] if files else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
 
+    # Include original company and PRAM evidence in the dossier packet.
+    # These documents must be uploaded by the company; never synthesize them.
+    anre_file = settings.get("anre_file") or {}
+    anre_missing = []
+    if not anre_file.get("storage_path"):
+        anre_missing.append("Încarcă atestatul ANRE al firmei în Setări de bază → Firmă")
+    if not settings.get("anre_valid"):
+        anre_missing.append("Completează valabilitatea atestatului ANRE în Setări de bază → Firmă")
+    elif settings.get("anre_valid") < datetime.date.today().isoformat():
+        anre_missing.append("Atestatul ANRE al firmei este expirat — încarcă atestatul valabil")
+    pos.append({"key": "anre_firma", "title": "Atestat ANRE firmă — document justificativ", "source": "company",
+                "files": [anre_file] if anre_file.get("storage_path") else [], "missing": anre_missing})
+
+    instrument_id = rec.get("instrument_id")
+    instrument = await db.instruments.find_one({"owner": owner, "id": instrument_id}, {"_id": 0}) if instrument_id else None
+    meter_file = (instrument or {}).get("file") or {}
+    meter_missing = []
+    if not instrument:
+        meter_missing.append("Selectează aparatul PRAM și încarcă certificatul lui în Setări de bază → Aparatele de măsură")
+    else:
+        if not meter_file.get("storage_path"):
+            meter_missing.append("Încarcă certificatul metrologic / de etalonare al aparatului selectat")
+        if not instrument.get("expires"):
+            meter_missing.append("Completează valabilitatea metrologică a aparatului selectat")
+        elif instrument.get("expires") < datetime.date.today().isoformat():
+            meter_missing.append("Certificatul metrologic al aparatului selectat este expirat — încarcă unul valabil")
+    meter_title = "Metrologie aparat PRAM" + (f" — {instrument.get('maker_model')} / seria {instrument.get('serial')}" if instrument else "")
+    pos.append({"key": "metrologie_pram", "title": meter_title, "source": "instrument",
+                "files": [meter_file] if meter_file.get("storage_path") else [], "missing": meter_missing})
+
     # DEER requires the applicable personal-data information notice for natural-person cases.
     # Keep it as an official, user-attached document; never generate a fake consent form.
     operator_name = str(rec.get("operator") or client.get("operator") or "").lower()
@@ -172,7 +205,8 @@ async def build_positions(db, owner, rec, client, settings):
         priority = {
             "notificare": 10, "certificat": 20, "factura": 22, "cf": 24, "gdpr": 30,
             "afm": 40, "schema": 50, "fisa_tehnica": 60, "reglaj": 80,
-            "priza": 90, "pif_pv": 100, "pif": 110, "receptie": 120,
+            "priza": 90, "metrologie_pram": 95, "pif_pv": 100, "pif": 110, "receptie": 120,
+            "anre_firma": 125,
             "executant": 130, "conformitate": 140, "imputernicire": 150,
         }
         if key.startswith("cat_"):
@@ -199,7 +233,7 @@ async def build_positions(db, owner, rec, client, settings):
         if p["source"] == "manual":
             auto = "atașat" if o.get("upload") else "de completat"
         else:
-            auto = "atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else ("de completat" if gen_missing else "generat")
+            auto = "de completat" if gen_missing else ("atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else "generat")
         p["auto_status"] = auto
         p["status"] = o.get("status") or auto
         if o.get("upload"):
@@ -327,4 +361,5 @@ def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int =
     watermark(w, text, size)
     o = io.BytesIO(); w.write(o)
     return o.getvalue()
+
 
