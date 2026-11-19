@@ -8,11 +8,13 @@ const TYPICAL = { u1: ["1,15 Un", "0,5"], u2: ["0,85 Un", "3,2"], f1: ["52 Hz", 
 const TESTS = [...Array(10).keys()].map((i) => `a${i}`).concat([...Array(4).keys()].map((i) => `f${i}`), [...Array(7).keys()].map((i) => `c${i}`));
 const TLABEL = { a: "Test categoria A", f: "Domeniu de frecvență", c: "Verificare" };
 
-export function DossierExtras({ form, setVal, compact = false, part = "all" }) {
+export function DossierExtras({ form, setVal, compact = false, part = "all", onSave, saving = false }) {
   const pramInput = useRef(null);
   const [pramBusy, setPramBusy] = useState(false);
   const [staff, setStaff] = useState([]);
+  const [instruments, setInstruments] = useState([]);
   useEffect(() => { api.get("/data/staff").then(({ data }) => setStaff(Array.isArray(data) ? data : [])).catch(() => setStaff([])); }, []);
+  useEffect(() => { api.get("/data/instruments").then(({ data }) => setInstruments(Array.isArray(data) ? data : [])).catch(() => setInstruments([])); }, []);
   const selectedExecutor = form.signers?.executant || "";
   const today = new Date().toISOString().slice(0, 10);
   const eligible = (person) => (person.auths || []).some((auth) => auth.verified && auth.file && (!auth.expires || auth.expires >= today));
@@ -36,13 +38,25 @@ export function DossierExtras({ form, setVal, compact = false, part = "all" }) {
         <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Pentru aplicare: încarcă ștampila în Setări → Firmă și semnătura persoanei în Setări → Personal, confirmă autorizația și acordul pentru folosirea semnăturii. Salvează dosarul după selectare.</p>
       </div>
       {!compact && (part === "all" || part === "pram") && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
-        <h4 className="font-bold text-sm mb-2">Buletin PRAM</h4>
-        <label className="den-field block mb-2"><span className="text-xs">Sursa buletinului</span>
-          <select className="den-input" value={form.pram_source || "internal"} onChange={(e) => setVal("pram_source", e.target.value)} data-testid="pram-source">
-            <option value="internal">Îl întocmim noi — numai cu măsurători reale</option>
-            <option value="third_party">Încarc buletin valabil de la firmă terță</option>
-          </select>
-        </label>
+        <div className="flex items-center justify-between gap-2"><h4 className="font-bold text-sm">PRAM — priza de pământ</h4><span className="text-xs" style={{ color: "var(--muted)" }}>{form.bulletin_no ? `Buletin nr. ${form.bulletin_no}` : "număr de completat"}</span></div>
+        <div className="mt-3 grid grid-cols-3 rounded-lg p-1 gap-1" style={{ background: "#f7f4ed" }} role="group" aria-label="Sursa buletinului PRAM">
+          {[["internal", "Îl fac eu"], ["third_party", "Buletin de la terț"], ["none", "Fără PRAM"]].map(([value, label]) => <button key={value} type="button" onClick={() => setVal("pram_source", value)} className="rounded-md px-2 py-2 text-xs font-semibold" style={{ background: (form.pram_source || "internal") === value ? "#fff" : "transparent", color: (form.pram_source || "internal") === value ? "var(--green)" : "var(--muted)", boxShadow: (form.pram_source || "internal") === value ? "0 1px 4px #0001" : "none" }} data-testid={`pram-mode-${value}`}>{label}</button>)}
+        </div>
+        {(!form.pram_source || form.pram_source === "internal") && <>
+          <div className="mt-3 rounded-lg px-3 py-2 text-xs font-semibold" style={{ background: "#edf7f0", color: "#287347" }}>Buletin nr. {form.bulletin_no || "—"} · completează valorile din măsurarea reală</div>
+          <div className="mt-3 grid sm:grid-cols-2 gap-3">
+            <label className="den-field"><span>Nr. buletin</span><input className="den-input" value={form.bulletin_no || ""} onChange={(e) => setVal("bulletin_no", e.target.value)} placeholder="Număr din registrul firmei" data-testid="pram-number" /></label>
+            <label className="den-field"><span>Data măsurătorii</span><input className="den-input" type="date" value={form.measure_date || ""} onChange={(e) => setVal("measure_date", e.target.value)} data-testid="pram-date" /></label>
+            <label className="den-field"><span>Starea solului</span><select className="den-input" value={form.soil || ""} onChange={(e) => { const psi = { "sol uscat": "1.5", "umiditate medie": "1.3", "sol umed": "1.1" }[e.target.value]; setVal("soil", e.target.value); if (psi) setVal("soil_psi", psi); }} data-testid="pram-soil"><option value="">Alege…</option><option>sol uscat</option><option>umiditate medie</option><option>sol umed</option></select></label>
+            <label className="den-field"><span>Coeficient Ψ</span><input className="den-input" type="number" step="0.001" value={form.soil_psi ?? ""} onChange={(e) => setVal("soil_psi", e.target.value)} data-testid="pram-psi" /></label>
+            <label className="den-field"><span>Rezistență măsurată (Ω)</span><input className="den-input" type="number" step="0.01" value={form.grounding_ohm ?? ""} onChange={(e) => setVal("grounding_ohm", e.target.value)} data-testid="pram-measured" /></label>
+            <label className="den-field"><span>Valoare admisă (Ω)</span><input className="den-input" type="number" step="0.01" value={form.grounding_limit ?? ""} onChange={(e) => setVal("grounding_limit", e.target.value)} data-testid="pram-limit" /></label>
+            <label className="den-field"><span>Obiectivul verificării</span><input className="den-input" value={form.measure_object || ""} onChange={(e) => setVal("measure_object", e.target.value)} placeholder="Priza de pământ a instalației" data-testid="pram-object" /></label>
+            <label className="den-field"><span>Aparat de măsură</span><select className="den-input" value={form.instrument_id || ""} onChange={(e) => setVal("instrument_id", e.target.value)} data-testid="pram-instrument"><option value="">Alege din Setări → Aparate de măsură</option>{instruments.map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.maker_model || instrument.name || instrument.model || "Aparat"}{instrument.serial ? ` · ${instrument.serial}` : ""}{instrument.expires ? ` · valabil până la ${instrument.expires}` : ""}</option>)}</select></label>
+          </div>
+          {form.grounding_ohm && form.soil_psi && <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Valoare corectată după coeficientul Ψ: <b>{(Number(String(form.grounding_ohm).replace(",", ".")) * Number(String(form.soil_psi).replace(",", "."))).toFixed(2)} Ω</b></p>}
+          <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Aparatul selectat aduce în dosar certificatul metrologic. Rezultatul și data se introduc numai după măsurare.</p>
+        </>}
         {form.pram_source === "third_party" && <div className="text-xs">
           <input ref={pramInput} type="file" accept="application/pdf,.pdf" className="hidden" data-testid="pram-upload-input"
             onChange={async (event) => {
@@ -65,7 +79,8 @@ export function DossierExtras({ form, setVal, compact = false, part = "all" }) {
           {form.pram_file?.storage_path && <button type="button" className="ml-2 underline" style={{ color: "var(--blue)" }}
             onClick={() => setVal("pram_file", null)} data-testid="pram-remove">Elimină</button>}
         </div>}
-        <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Nu se generează și nu se completează automat nicio valoare măsurată. Un buletin terț se folosește ca PDF-ul încărcat.</p>
+        {form.pram_source === "none" && <p className="mt-3 rounded-lg p-3 text-xs" style={{ background: "#f7f4ed", color: "var(--muted)" }}>Buletinul PRAM și metrologia nu vor fi incluse în pachetul generat. Verifică dacă operatorul le cere pentru acest dosar.</p>}
+        {onSave && <div className="mt-4 flex justify-end"><button type="button" className="rounded-lg px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60" style={{ background: "var(--green)" }} onClick={onSave} disabled={saving} data-testid="save-pram-card">{saving ? "Se salvează…" : "Salvează"}</button></div>}
       </div>}
       {!compact && (part === "all" || part === "commissioning") && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2"><h4 className="font-bold text-sm">Reglaje invertor</h4>
@@ -115,4 +130,5 @@ export function DossierExtras({ form, setVal, compact = false, part = "all" }) {
     </div>
   );
 }
+
 
