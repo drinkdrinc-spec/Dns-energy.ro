@@ -23,7 +23,7 @@ export function SldPanel({ id, form, setVal }) {
   const apply = () => run(async () => {
     const r = await api.post(`/sld/${id}/apply`, { cef: form.cef });
     setVal("cef", r.data.cef); await load();
-    toast.success(r.data.filled.length ? `${r.data.filled.length} câmpuri completate cu valori calculate — de confirmat` : "Nu există câmpuri goale de completat");
+    toast.success(r.data.filled.length ? `${r.data.filled.length} câmpuri completate din catalog și calcule — verifică propunerile` : "Nu există câmpuri goale care se pot completa din catalog sau calcula");
   });
   const open = (path) => run(async () => { await persist(); await openAuthenticatedFile(path); await load(); });
   const approve = (role) => run(async () => { await persist(); await api.post(`/sld/${id}/approve`, { role }); await load(); toast.success("Schema a fost aprobată"); });
