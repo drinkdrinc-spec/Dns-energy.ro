@@ -19,6 +19,8 @@ GREY = colors.HexColor("#666666")
 PV_ORANGE = colors.HexColor("#d9822b")
 BATTERY_GREEN = colors.HexColor("#26834a")
 BACKUP_BLUE = colors.HexColor("#3066c2")
+PAPER = colors.HexColor("#fbf8f2")
+GRID_LINE = colors.HexColor("#e8e2d8")
 CELL = ParagraphStyle("c", fontName="LS", fontSize=6.6, leading=8)
 CELLB = ParagraphStyle("cb", fontName="LSB", fontSize=6.6, leading=8)
 
@@ -62,6 +64,7 @@ class Sheet:
     def __init__(self, c):
         self.c = c
         self.miss = 0
+        self.mirror_x = False
 
     # ---------- primitives (units: mm after scaling) ----------
     def lw(self, w=0.25, color=INK, dash=None):
@@ -93,7 +96,16 @@ class Sheet:
             while s and c.stringWidth(s, f, fs) > w:
                 s = s[:-2]
         c.setFont(f, fs); c.setFillColor(color)
-        {"l": c.drawString, "c": c.drawCentredString, "r": c.drawRightString}[anchor](x, y, s)
+        if self.mirror_x:
+            # The electrical layout is reversed to run from utility/grid at
+            # the left to PV strings at the right. Counter-flip text locally so
+            # labels remain readable while following their equipment.
+            c.saveState(); c.translate(x, y); c.scale(-1, 1)
+            draw = {"l": c.drawRightString, "c": c.drawCentredString, "r": c.drawString}[anchor]
+            draw(0, 0, s)
+            c.restoreState()
+        else:
+            {"l": c.drawString, "c": c.drawCentredString, "r": c.drawRightString}[anchor](x, y, s)
 
     def val(self, x, y, label, value, unit="", size=5.2, anchor="l", w=None, bold=False):
         v = gv(value, unit)
@@ -195,8 +207,15 @@ class Sheet:
             self.lw(0.9, BATTERY_GREEN); self.c.line(x - 1.6, yy - 1.2, x + 1.6, yy - 1.2); self.lw(0.4, BATTERY_GREEN)
         self.text(x + 3.8, y - 0.6, "+", 5); self.text(x + 3.8, y - 5, "−", 5)
 
-    def enclosure(self, x1, y1, x2, y2, label, sub=""):
-        self.lw(0.25, GREY, ([3, 0.8, 0.5, 0.8], 0))
+    def bms(self, x, y):
+        """Battery management block, distinct from the battery enclosure."""
+        self.lw(0.4, BATTERY_GREEN)
+        self.c.setFillColor(colors.white)
+        self.c.roundRect(x - 12, y - 4, 24, 8, 1.2, stroke=1, fill=1)
+        self.text(x, y - 1.2, "BMS", 5.2, True, BATTERY_GREEN, "c")
+
+    def enclosure(self, x1, y1, x2, y2, label, sub="", color=GREY):
+        self.lw(0.25, color, ([3, 0.8, 0.5, 0.8], 0))
         self.c.rect(x1, y1, x2 - x1, y2 - y1, stroke=1, fill=0); self.lw()
         self.text(x1 + 1, y2 - 2.6, label, 5.4, True, w=x2 - x1 - 2)
         if sub:
@@ -226,7 +245,7 @@ def diagram(S, rec, res, client):
         nm = len({x["mppt"] for x in st}) or 1
         hh = max(13, 1.6 * (nm + 1))
         hs = max(len(st) * 14, 36, 2 * hh + 22) + 10
-        hb = 40 if inv.get("battery_mode") == "own" else (12 if (inv.get("backup") or {}).get("enabled") else 4)
+        hb = 50 if inv.get("battery_mode") == "own" else (12 if (inv.get("backup") or {}).get("enabled") else 4)
         rows.append((hs, hb + 2 * (hh - 13)))
     shared = cef.get("shared_batteries") or []
     H = 12 + sum(a + b for a, b in rows) + (46 if shared else 0) + 18
@@ -339,8 +358,10 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                 S.node(cx, cy - 16); S.node(cx, cy - 22)
             else:
                 S.wire(cx, cy - 16, cx, cy - 22, "bat")
-            S.wire(cx, cy - 22, cx, cy - 26, "bat")
-            S.battery(cx, cy - 26)
+            S.wire(cx, cy - 22, cx, cy - 24, "bat")
+            S.bms(cx, cy - 29)
+            S.wire(cx, cy - 33, cx, cy - 36, "bat")
+            S.battery(cx, cy - 36)
             device_code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
             rating = gv(protection.get("rating"), " A")
             switch_voltage = n(bt.get("breaker_voltage_dc") or bt.get("dc_switch_voltage_v"))
@@ -349,26 +370,26 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             else:
                 details = f"{device_code}{i + 1}.B {rating + ' · ' if rating else ''}{protection['source']}"
             color = RED if protection["kind"] == "missing" else (PV_ORANGE if protection["kind"] == "proposal" else INK)
-            S.text(cx + 6, cy - 17.2, details, 4.15, True, color, w=29)
+            S.text(cx + 10, cy - 17.2, details, 4.15, True, color, w=27)
             detail_y = cy - 22.4
             if protection["kind"] == "breaker":
                 voltage_color = RED if not switch_voltage else INK
-                S.text(cx + 6, detail_y, f"UdcQ {gv(switch_voltage, 'V') or '[lipsă]'}", 4.15, True, voltage_color, w=29)
+                S.text(cx + 10, detail_y, f"UdcQ {gv(switch_voltage, 'V') or '[lipsă]'}", 4.15, True, voltage_color, w=27)
                 detail_y -= 4.4
-            S.text(cx + 6, detail_y, f"-G{i + 1} {bt.get('model') or '[model baterie lipsă]'}", 4.4, True, w=29)
+            S.text(cx + 10, detail_y, f"-G{i + 1} {bt.get('model') or '[model baterie lipsă]'}", 4.4, True, w=27)
             detail_y -= 4.4
             cable_unit = " mm² DC"
             if n(bt.get("breaker_icu_ka")):
                 cable_unit += f" · Icu {gv(n(bt.get('breaker_icu_ka')), 'kA')}"
-            S.val(cx + 6, detail_y, "Cablu ", bt.get("cable_section") or bt.get("section") or r["proposals"]["battery"].get("section"), cable_unit, size=4.4, w=29)
+            S.val(cx + 10, detail_y, "Cablu ", bt.get("cable_section") or bt.get("section") or r["proposals"]["battery"].get("section"), cable_unit, size=4.4, w=27)
             detail_y -= 4.4
             battery_unit = f" A · Ubat {gv(n(bt.get('voltage')), 'V') or '[lipsă]'}"
-            S.val(cx + 6, detail_y, "I max ", bt.get("i_max"), battery_unit, size=4.4, w=29)
+            S.val(cx + 10, detail_y, "I max ", bt.get("i_max"), battery_unit, size=4.4, w=27)
         if (inv.get("backup") or {}).get("enabled"):
             b = inv["backup"]
             S.wire(cx + hh, cy - 10, 152, cy - 10, "backup"); S.wire(152, cy - 10, 152, cy - 16, "backup"); S.wire(152, cy - 16, 182, cy - 16, "backup")
             S.switch(187, cy - 16, "Q"); S.wire(192, cy - 16, 200, cy - 16, "backup")
-            S.enclosure(176, cy - 24, 228, cy - 9, f"-TB{i + 1}  Tablou backup / EPS")
+            S.enclosure(176, cy - 24, 228, cy - 9, "-BMP LOAD", "protecție backup / EPS", color=RED)
             S.val(202, cy - 16.8, "", b.get("breaker"), size=4.6, w=25)
             S.text(178, cy - 22.6, str(b.get("circuits") or "circuite EPS"), 4.2, color=GREY, w=48)
         # AC side
@@ -471,7 +492,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         if n(grid.get("column_length")):
             S.text(318 + A, y + 2.2, f"L={n(grid.get('column_length')):g} m", 4.4)
         # BMP
-        S.enclosure(346 + A, y - 10, 392 + A, y + 15, "-BMP  Bloc măsură și protecție", "proprietate OD")
+        S.enclosure(346 + A, y - 10, 392 + A, y + 15, "-BMP GRID", "măsură · proprietate OD", color=RED)
         mx = 358 + A
         if grid.get("ct_ratio"):
             S.ct(mx - 6, y); S.wire(mx - 6, y + 1.9, mx - 6, y + 4, "ctl"); S.wire(mx - 6, y + 4, mx - 5.5, y + 4, "ctl")
@@ -578,16 +599,18 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
 
 def legend(S, x, y, w, h):
     c = S.c
-    S.lw(0.3); c.rect(x, y, w, h, stroke=1, fill=0); S.lw()
     items = [(INK, "AC REȚEA"), (BACKUP_BLUE, "BACK-UP · TEG"), (PV_ORANGE, "DC FOTOVOLTAIC"),
              (BATTERY_GREEN, "BATERIE"), (GREY, "COMUNICAȚII")]
     cw = (w - 6) / len(items)
     for i, (color, label) in enumerate(items):
-        xx = x + 3 + i * cw
+        xx, yy = x + 2 + i * cw, y + 1
+        pill_w, pill_h = cw - 3, h - 2
+        c.setFillColor(colors.white); S.lw(0.25, GRID_LINE)
+        c.roundRect(xx, yy, pill_w, pill_h, pill_h / 2, stroke=1, fill=1)
         S.lw(0.7, color, ([1.0, 0.8], 0) if color == GREY else None)
-        c.line(xx, y + h / 2, xx + 7, y + h / 2)
+        c.line(xx + 2, yy + pill_h / 2, xx + 8, yy + pill_h / 2)
         S.lw()
-        S.text(xx + 9, y + h / 2 - 1.3, label, 4.1, True, color, w=cw - 10)
+        S.text(xx + 10, yy + pill_h / 2 - 1.3, label, 4.0, True, color, w=pill_w - 12)
 
 
 def protection_settings_table(S, x, y, w, h, rec):
@@ -650,6 +673,44 @@ def teg_schedule(S, area, rec):
         label = f"C{i + 1}  {name}" + (f"  ·  {rating}" if rating else "")
         S.text(x + 45, cy - 1.2, label, 4.15, w=w - 48)
     S.text(x + 2, y + 1.4, "Valorile necompletate nu sunt presupuse.", 3.7, color=GREY, w=w - 4)
+
+
+def execution_notes(S, area, rec):
+    """Show a compact note block using only values saved in the dossier."""
+    x1, y1, x2, y2 = area
+    cef = rec.get("cef") or {}
+    grid = cef.get("grid") or {}
+    inverters = cef.get("inverters") or []
+    notes = []
+    spd_dc = grid.get("spd_dc")
+    if not spd_dc:
+        spd_dc = next(((inv.get("dc") or {}).get("spd_ucpv") for inv in inverters
+                       if (inv.get("dc") or {}).get("spd_ucpv")), None)
+    if spd_dc:
+        notes.append(f"SPD CC: {spd_dc} — tablou DC / TDC")
+    if grid.get("spd_ac"):
+        notes.append(f"SPD AC: {grid['spd_ac']} — tablou general")
+    backups = [inv.get("backup") or {} for inv in inverters if (inv.get("backup") or {}).get("enabled")]
+    if backups:
+        for backup in backups[:2]:
+            notes.append("Backup: " + ", ".join(str(v) for v in (backup.get("type"), backup.get("circuits")) if v))
+    measured = grid.get("grounding_ohm") or rec.get("grounding_ohm")
+    if measured not in (None, ""):
+        limit = grid.get("grounding_limit") or rec.get("grounding_limit")
+        notes.append(f"Priză de pământ: R măsurat {measured} Ω" + (f" · limită {limit} Ω" if limit else ""))
+    notes.append("Seriile echipamentelor se completează la PV Teste / PIF.")
+    notes.append("Verifică schema pe teren și actualizeaz-o după modificări.")
+
+    w, h = min(132, x2 - x1 - 146), 48
+    x, y = x1 + 144, y1 + 4
+    if w < 80 or y + h > y2:
+        return
+    S.enclosure(x, y, x + w, y + h, "NOTE DE EXECUȚIE")
+    row_y = y + h - 9
+    for i, note in enumerate(notes[:6], 1):
+        S.text(x + 3, row_y, f"{i}.", 4.5, True, PV_ORANGE)
+        S.text(x + 9, row_y, note, 4.45, w=w - 12)
+        row_y -= 6.0
 
 
 def watermark(S, PW, PH, label):
@@ -816,16 +877,18 @@ def drawing_grid(S, x1, y1, x2, y2):
     c = S.c
     top = y2
     c.saveState()
+    c.setFillColor(PAPER)
+    c.rect(x1, y1, x2 - x1, top - y1, stroke=0, fill=1)
     S.lw(0.4, GREY)
     c.rect(x1, y1, x2 - x1, top - y1, stroke=1, fill=0)
     cols, rows = 7, 4
-    faint = colors.HexColor("#e7ebf0")
+    faint = GRID_LINE
     for i in range(1, cols):
         x = x1 + (x2 - x1) * i / cols
-        S.lw(0.15, faint); c.line(x, y1, x, top)
+        S.lw(0.15, faint, ([0.45, 1.4], 0)); c.line(x, y1, x, top)
     for j in range(1, rows):
         y = y1 + (top - y1) * j / rows
-        S.lw(0.15, faint); c.line(x1, y, x2, y)
+        S.lw(0.15, faint, ([0.45, 1.4], 0)); c.line(x1, y, x2, y)
     S.lw(0.25, GREY)
     for i, label in enumerate("ABCDEFG"):
         x = x1 + (x2 - x1) * (i + 0.5) / cols
@@ -843,6 +906,7 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     PW, PH = [x / mm for x in landscape(A3 if fmt == "A3" else A4)]
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(PW * mm, PH * mm))
+    c.setFillColor(PAPER); c.rect(0, 0, PW, PH, stroke=0, fill=1)
     c.setTitle(f"Schemă monofilară — {client.get('name') or rec.get('client_name') or ''}")
     c.setAuthor(settings.get("company") or "DNS HOSTESS S.R.L.")
     c.scale(mm, mm)
@@ -854,10 +918,16 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     W, H, draw = diagram(S, rec, res, client)
     s = min((x2 - x1 - 8) / W, (plot_y2 - y1 - 8) / H, 1.6)
     available_h, diagram_h = plot_y2 - y1 - 8, H * s
-    c.saveState(); c.translate(x1 + 4 + ((x2 - x1 - 8) - W * s) / 2, y1 + 4 + (available_h - diagram_h) * 0.70); c.scale(s, s)
+    dx = x1 + 4 + ((x2 - x1 - 8) - W * s) / 2
+    # Keep the main single-line diagram in the upper portion of the sheet,
+    # leaving a clear band below for the TEG schedule and execution notes.
+    dy = y1 + 4 + (available_h - diagram_h) * 0.92
+    c.saveState(); c.translate(dx + W * s, dy); c.scale(-s, s); S.mirror_x = True
     draw()
+    S.mirror_x = False
     c.restoreState()
     teg_schedule(S, (x1, y1, x2, plot_y2), rec)
+    execution_notes(S, (x1, y1, x2, plot_y2), rec)
     S.text(x1 + 2, y1 + 2, "DC fotovoltaic — portocaliu · stocare — verde · PE — verde întrerupt · valorile [lipsă] rămân de confirmat.", 4.1, color=GREY)
     if demo:
         watermark(S, PW, PH, "EXEMPLU DEMONSTRATIV")
@@ -1053,4 +1123,3 @@ def snapshot(rec, res):
     for code, name, val, loc in protections(rec, res):
         v[f"Protecție {code} {name}"] = str(val or "—")
     return v
-

@@ -102,4 +102,3 @@ export function GridCard({ grid, set, catalog, res }) {
     </div>
   );
 }
-

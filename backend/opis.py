@@ -389,4 +389,3 @@ def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int =
     o = io.BytesIO(); w.write(o)
     return o.getvalue()
 
-

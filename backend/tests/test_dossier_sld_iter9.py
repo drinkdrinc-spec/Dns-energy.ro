@@ -116,7 +116,7 @@ class TestDossierSld:
         r = s.get(f"{API}/dossier/{rid}/file/schema", params={"auth": s.token}, timeout=90)
         assert r.status_code == 200 and r.headers["content-type"].startswith("application/pdf")
         rd = pdf(r.content)
-        assert len(rd.pages) == 2
+        assert len(rd.pages) == 1
         assert all(float(p.mediabox.width) > float(p.mediabox.height) for p in rd.pages)
         r = s.get(f"{API}/dossier/{rid}/file/fisa_tehnica", params={"auth": s.token}, timeout=90)
         assert r.status_code == 200 and r.content[:4] == b"%PDF"
@@ -208,7 +208,7 @@ class TestDossierSld:
         finally:
             db.prosumator.update_one({"id": rid}, {"$set": {"sld.history.0.file.storage_path": ST["h0"]}})
         r = s.get(f"{API}/files/{ST['h0']}", params={"auth": s.token}, timeout=60)
-        assert r.status_code == 200 and len(pdf(r.content).pages) == 2
+        assert r.status_code == 200 and len(pdf(r.content).pages) == 1
 
     def test_08_finalize_after_approval(self, s, rid):
         r = s.post(f"{API}/dossier/{rid}/finalize", timeout=30)

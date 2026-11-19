@@ -87,7 +87,7 @@ class TestDemo:
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("application/pdf")
         assert r.content[:4] == b"%PDF"
-        assert pdf_pages(r.content) == 2, pdf_pages(r.content)
+        assert pdf_pages(r.content) == 1, pdf_pages(r.content)
 
     def test_demo_no_auth(self):
         r = requests.get(f"{API}/sld/demo/pdf", timeout=30)
