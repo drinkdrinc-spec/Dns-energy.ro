@@ -5,11 +5,18 @@ SEED_BACKFILL_FIELDS = (
     "string_count", "poles", "voltage_min_v", "voltage_max_v",
     "current_300v_a", "current_600v_a", "current_800v_a", "current_1000v_a", "current_1200v_a", "current_1500v_a",
     "ac_voltage_min_v", "ac_voltage_max_v", "ip_rating", "protection_class",
+    "type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max",
+    "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "battery_voltage",
+    "w", "voc", "vmp", "isc", "imp", "coef_voc", "coef_vmp", "temp_pmax",
+    "kwh", "ah", "voltage", "tech",
 )
 NUMERIC_SEED_FIELDS = {
     "i_max", "voltage_1ph", "voltage_3ph", "string_count", "poles", "voltage_min_v", "voltage_max_v",
     "current_300v_a", "current_600v_a", "current_800v_a", "current_1000v_a", "current_1200v_a", "current_1500v_a",
     "ac_voltage_min_v", "ac_voltage_max_v",
+    "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count",
+    "imax_mppt", "isc_max_mppt", "bat_i_max", "w", "voc", "vmp", "isc", "imp",
+    "coef_voc", "coef_vmp", "temp_pmax", "kwh", "ah", "voltage",
 }
 
 
@@ -24,6 +31,26 @@ def missing_seed_values(existing: dict, seed: dict) -> dict:
     return updates
 
 SEED = [
+    {"category": "Invertor", "brand_model": "Invertor Hibrid Trifazat Solis 15 kW LV - S6-EH3P15K02-NV-YD-L",
+     "manufacturer": "Solis", "type": "Hibrid", "phases": "Trifazat", "p_nom_kw": 15, "p_max_kw": 15,
+     "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850, "mppt_count": 2, "bat_i_max": 290,
+     "battery_voltage": "LV 40–60 V",
+     "datasheet_url": "https://www.solisinverters.com/uploads/file/S6-EH3P%288-18%29K-IN-Flyer-V2%2C3.pdf",
+     "conformity_url": "https://www.solisinverters.com/uploads/file/Solis_certificate_EN_18031_EN_IEC_61000-1(-2)(-3)(-4)_EN_55011_EN_62920_EN_300328_EN_62479_EN_301489_EN_62109-1(-2)_EN_62477_S6-EH3P(5-18)K02-NV-YD-L_S6-EH3P(7-10)K02-LV-YD-L_RED_V03.pdf",
+     "source_url": "https://www.solisinverters.com/uk/energy_storage_inverters22/S6-EH3P%288-18%29K02-NV-YD-L_uk.html",
+     "notes": "Fișă oficială Solis pentru familia 8–18 kW; certificatul TÜV RED listează modelul S6-EH3P15K02-NV-YD-L. Curentul MPPT și Isc/MPPT nu sunt precompletate aici deoarece trebuie corelate cu varianta/regiunea și revizia exactă a manualului european."},
+    {"category": "Panou", "brand_model": "AIKO-A500-MAH60Mb", "manufacturer": "AIKO",
+     "w": 500, "voc": 45.02, "vmp": 37.90, "isc": 14.05, "imp": 13.20,
+     "coef_voc": -0.22, "temp_pmax": -0.26,
+     "datasheet_url": "https://aikosolar.com/wp-content/uploads/2025/12/Neostar-2S60_AIKO-A-MAH60Mb_500-520W-1954x1134x30mm_DsDr_DE_20251215.pdf",
+     "source_url": "https://aikosolar.com/wp-content/uploads/2025/12/Neostar-2S60_AIKO-A-MAH60Mb_500-520W-1954x1134x30mm_DsDr_DE_20251215.pdf",
+     "notes": "Parametri STC pentru SKU-ul AIKO-A500-MAH60Mb din fișa oficială. Certificatul aplicabil acestui cod exact nu este atașat în sursa oficială consultată; nu este marcat ca document de conformitate verificat."},
+    {"category": "Baterie", "brand_model": "Dyness 16.07KWH POWERBRICK PLUS", "manufacturer": "Dyness",
+     "kwh": 16.07, "ah": 314, "voltage": 51.2, "tech": "LV", "i_max": 200, "coupling": "DC",
+     "i_max_source_url": "https://www.dyness.com/Public/Uploads/uploadfile/files/20251226/DynessPowerBrickPlusDatasheetEN20251210.pdf",
+     "datasheet_url": "https://www.dyness.com/Public/Uploads/uploadfile/files/20251226/DynessPowerBrickPlusDatasheetEN20251210.pdf",
+     "source_url": "https://www.dyness.com/Public/Uploads/uploadfile/files/20251226/DynessPowerBrickPlusDatasheetEN20251210.pdf",
+     "notes": "Fișa oficială PowerBrick Plus din 10.12.2025 declară 16,07 kWh, 314 Ah și 51,2 V; recomandă 140 A și declară 200 A continuu. Folosesc 200 A ca limită maximă, nu ca valoare recomandată. O revizie ulterioară a fișei indică 16,08 kWh; verificați eticheta și revizia livrată pentru codul exact. Certificatul IEC 62619 separat nu este atașat aici."},
     {"category": "RSD", "brand_model": "PROJOY PEFS-EL40H-4(P2) 2-STRING", "manufacturer": "PROJOY", "string_count": 2, "poles": 4,
      "voltage_min_v": 300, "voltage_max_v": 1500, "current_300v_a": 40, "current_600v_a": 40, "current_800v_a": 40,
      "current_1000v_a": 40, "current_1200v_a": 30, "current_1500v_a": 20,
