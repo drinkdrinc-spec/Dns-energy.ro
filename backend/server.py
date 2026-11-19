@@ -1918,12 +1918,16 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     if doc_type == "all":
         # Dosarul complet include schema CEF o singură dată.
         keys = [k for k in docgen.DOCS if k != "schema"]
+        if rec.get("pram_source") == "none":
+            keys = [k for k in keys if k != "buletin_priza"]
         if is_power_increase:
             keys = [k for k in keys if k != "notificare"]
     else:
         keys = [doc_type]
     if any(k not in docgen.DOCS for k in keys):
         raise HTTPException(status_code=404, detail="Tip document inexistent")
+    if doc_type == "buletin_priza" and rec.get("pram_source") == "none":
+        raise HTTPException(status_code=422, detail="Dosarul este setat «Fără PRAM»; buletinul nu se generează.")
 
     third_party_pram = None
     if rec.get("pram_source") == "third_party" and doc_type in ("buletin_priza", "all"):
@@ -4464,6 +4468,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
+
 
 
 
