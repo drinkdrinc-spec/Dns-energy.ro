@@ -65,7 +65,7 @@ function SharedBatteries({ list, set, catalog }) {
   );
 }
 
-export function CefEditor({ value, onChange }) {
+export function CefEditor({ value, onChange, onSave, saving = false }) {
   const cef = value || { grid: {}, inverters: [], shared_batteries: [] };
   const [catalog, setCatalog] = useState([]);
   const [res, setRes] = useState(null);
@@ -191,7 +191,9 @@ export function CefEditor({ value, onChange }) {
       <SharedBatteries list={cef.shared_batteries || []} set={(l) => set({ shared_batteries: l })} catalog={catalog} />
       <Issues errors={(res?.errors || []).filter((e) => !invErrs.has(e))} warnings={(res?.warnings || []).filter((w) => !invErrs.has(w))} testid="cef-global-issues" />
       {res && <p className="text-[11px]" style={{ color: "var(--muted)" }}>{res.note}</p>}
+      {onSave && <div className="flex justify-end"><button type="button" className="rounded-lg px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60" style={{ background: "var(--green)" }} onClick={onSave} disabled={saving} data-testid="save-cef-card">{saving ? "Se salvează…" : "Salvează"}</button></div>}
     </div>
   );
 }
+
 
