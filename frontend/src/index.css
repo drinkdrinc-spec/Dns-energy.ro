@@ -84,6 +84,13 @@
 .den-panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:22px; box-shadow:0 1px 2px #0f1b3708; }
 .den-notice { background:#fffaf0; border:1px solid #f2dfb7; color:#7c5a1c; border-radius:10px; padding:13px 15px; font-size:12.5px; line-height:1.55; }
 
+/* Keep the prosumer dossier's warm paper surface and green section hierarchy. */
+.dns-prosumer-workflow { background:#fbf7f0; border-color:#ece2d4; box-shadow:none; }
+.dns-prosumer-workflow [data-testid="prosumer-guided-sections"] > details { border-color:#ece2d4 !important; }
+.dns-prosumer-workflow [data-testid="prosumer-guided-sections"] > details > summary { border-color:#ece2d4 !important; }
+.dns-prosumer-workflow [data-testid="cef-grid-card"] { border-radius:12px; }
+.dns-prosumer-workflow [data-testid="cef-grid-card"] button[style*="--blue"] { color:var(--green) !important; }
+
 ::-webkit-scrollbar { width:10px; height:10px; }
 ::-webkit-scrollbar-thumb { background:#cbd6e6; border-radius:8px; }
 
@@ -106,3 +113,4 @@
     padding: 16px;
   }
 }
+
