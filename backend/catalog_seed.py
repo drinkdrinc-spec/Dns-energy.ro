@@ -49,8 +49,25 @@ SEED = [
      "kwh": 16.07, "ah": 314, "voltage": 51.2, "tech": "LV", "i_max": 200, "coupling": "DC",
      "i_max_source_url": "https://www.dyness.com/Public/Uploads/uploadfile/files/20251226/DynessPowerBrickPlusDatasheetEN20251210.pdf",
      "datasheet_url": "https://www.dyness.com/Public/Uploads/uploadfile/files/20251226/DynessPowerBrickPlusDatasheetEN20251210.pdf",
-     "source_url": "https://www.dyness.com/Public/Uploads/uploadfile/files/20251226/DynessPowerBrickPlusDatasheetEN20251210.pdf",
-     "notes": "Fișa oficială PowerBrick Plus din 10.12.2025 declară 16,07 kWh, 314 Ah și 51,2 V; recomandă 140 A și declară 200 A continuu. Folosesc 200 A ca limită maximă, nu ca valoare recomandată. O revizie ulterioară a fișei indică 16,08 kWh; verificați eticheta și revizia livrată pentru codul exact. Certificatul IEC 62619 separat nu este atașat aici."},
+     "conformity_url": "https://apac.dyness.com/Public/Uploads/uploadfile/files/20241207/PowerbrickIEC62619Cert.pdf",
+     "source_url": "https://www.dyness.com/download",
+     "notes": "Fișa oficială PowerBrick Plus din 10.12.2025 declară 16,07 kWh, 314 Ah și 51,2 V; recomandă 140 A și declară 200 A continuu. Folosesc 200 A ca limită maximă, nu ca valoare recomandată. O revizie ulterioară a fișei indică 16,08 kWh; verificați eticheta și revizia livrată pentru codul exact. Linkul certificatului IEC 62619 este disponibil în catalog; confirmați că revizia și codul certificatului corespund bateriei livrate."},
+    {"category": "Invertor", "brand_model": "Deye SUN-8K-SG05LP1-EU-AM2-P", "manufacturer": "Deye",
+     "type": "Hibrid", "phases": "Monofazat", "p_nom_kw": 8, "p_max_kw": 8.8,
+     "vdc_max": 500, "mppt_min": 150, "mppt_max": 425, "mppt_count": 2,
+     "imax_mppt": 32, "isc_max_mppt": 48, "bat_i_max": 190,
+     "battery_voltage": "LV 40–60 V",
+     "datasheet_url": "https://www.deyeinverter.com/deyeinverter/2024/09/27/datasheet_sun-3.6-8k-sg05lp1-eu-am2-p_240927_en.pdf",
+     "conformity_url": "https://www.deyeinverter.com/deyeinverter/2024/11/25/hybridinverter_eudeclaration-sun-3.6-8k-sg05lp1-eusun-3.6-8k-sg05lp1-eu-sm2sun-3.6-8k-sg05lp1-eu-sm2-psun-3.6-8k-sg05lp1-eu-am2-p%2B241125001.pdf",
+     "source_url": "https://www.deyeinverter.com/product/hybrid-inverter-1/sun3-6-5-6-7-7-6-8-10ksg05lp1euam2p-3-610kw-single-phase-2-mppt-hybrid-inverter-lv-battery-supported.html",
+     "notes": "Fișa tehnică oficială și declarația UE de conformitate includ modelul SUN-8K-SG05LP1-EU-AM2-P. Valorile MPPT sunt 150–425 V, 2 trackere, 32 A curent de funcționare și 48 A Isc pe intrare; 190 A este limita maximă de încărcare/descărcare a bateriei. Verificați codul complet de pe etichetă și revizia livrată."},
+    {"category": "Panou", "brand_model": "JINKO SOLAR JKM510N-54HL4M-BDV", "manufacturer": "Jinko Solar",
+     "w": 510, "voc": 40.72, "vmp": 34.39, "isc": 15.73, "imp": 14.83,
+     "coef_voc": -0.25, "temp_pmax": -0.29,
+     "datasheet_url": "https://www.jinkosolar.com/uploads/JKM495-520N-54HL4M-BDV-F2-EN.pdf",
+     "conformity_url": "https://solar-distribution.baywa-re.de/out/media/10-Tiger_Neo_48HL4M-DB_IEC61215IEC61730-Dual-Glass_2025-03-17_Rev-11.pdf",
+     "source_url": "https://www.jinkosolar.com/uploads/JKM495-520N-54HL4M-BDV-F2-EN.pdf",
+     "notes": "Valorile STC sunt pentru varianta de 510 W din fișa oficială Jinko. Certificatul TÜV SÜD IEC 61215/61730 Rev. 11 acoperă familia JKMxxxN-54HL4M-BDV cu puteri 495–530 W, inclusiv JKM510N-54HL4M-BDV. Fișa și certificatul confirmă documentația modelului, nu configurația electrică a stringurilor."},
     {"category": "RSD", "brand_model": "PROJOY PEFS-EL40H-4(P2) 2-STRING", "manufacturer": "PROJOY", "string_count": 2, "poles": 4,
      "voltage_min_v": 300, "voltage_max_v": 1500, "current_300v_a": 40, "current_600v_a": 40, "current_800v_a": 40,
      "current_1000v_a": 40, "current_1200v_a": 30, "current_1500v_a": 20,
@@ -230,4 +247,5 @@ SEED = [
      "notes": "Fișă oficială Sigenergy pentru HomePro SP/TP: 30 kW, 45,6 A; funcția backup depinde de sistemul Energy Controller + baterie și de condițiile de sarcină din fișă. Declarația de conformitate pentru HomePro TP nu este atașată."},
 
 ]
+
 
