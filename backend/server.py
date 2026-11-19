@@ -2102,6 +2102,7 @@ async def sld_ctx(owner, item_id: str):
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     rec = CEF.from_legacy(rec)
+    await auto_fill_cef_from_catalog(owner, rec)
     client = await get_client(owner, rec)
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     s, warns = await effective_settings(owner, rec, base)
@@ -2111,6 +2112,18 @@ async def sld_ctx(owner, item_id: str):
     res = SZ.compute(rec, client)
     state = SZ.state(rec, client, s)
     return rec, client, s, res, state, warns
+
+
+async def auto_fill_cef_from_catalog(owner: str, rec: dict) -> list[str]:
+    """Hydrate exact catalog values and safe calculations whenever a dossier is opened or exported."""
+    cef = rec.get("cef") or {}
+    cef, catalog_fields = await hydrate_cef_catalog_values(owner, cef, rec)
+    cef, calculated_fields = SZ.apply(cef)
+    filled = sorted(set(catalog_fields + calculated_fields))
+    if filled:
+        rec["cef"] = cef
+        await db.prosumator.update_one({"id": rec.get("id"), "owner": owner}, {"$set": {"cef": cef}})
+    return filled
 
 @api_router.get("/sld/demo/pdf")
 async def sld_demo(authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("A3")):
@@ -2884,6 +2897,7 @@ async def dossier_ctx(owner, item_id: str, verify_files: bool = False):
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     rec = CEF.from_legacy(rec)
+    await auto_fill_cef_from_catalog(owner, rec)
     client = await get_client(owner, rec)
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     settings, warns = await effective_settings(owner, rec, base)
