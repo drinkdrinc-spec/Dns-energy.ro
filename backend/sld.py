@@ -5,6 +5,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A3, A4, landscape
 from reportlab.lib.units import mm
 from reportlab.lib import colors
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Table, TableStyle, Paragraph
 from reportlab.lib.styles import ParagraphStyle
 import docgen  # registers LS / LSB fonts
@@ -17,6 +18,7 @@ PEC = colors.HexColor("#1e8449")
 GREY = colors.HexColor("#666666")
 PV_ORANGE = colors.HexColor("#d9822b")
 BATTERY_GREEN = colors.HexColor("#26834a")
+BACKUP_BLUE = colors.HexColor("#3066c2")
 CELL = ParagraphStyle("c", fontName="LS", fontSize=6.6, leading=8)
 CELLB = ParagraphStyle("cb", fontName="LSB", fontSize=6.6, leading=8)
 
@@ -73,6 +75,8 @@ class Sheet:
             self.lw(0.18, GREY, ([0.8, 0.6], 0))
         elif kind == "dc":
             self.lw(0.35, PV_ORANGE)
+        elif kind == "backup":
+            self.lw(0.35, BACKUP_BLUE)
         elif kind == "bat":
             self.lw(0.35, BATTERY_GREEN)
         else:
@@ -362,8 +366,8 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.val(cx + 6, detail_y, "I max ", bt.get("i_max"), battery_unit, size=4.4, w=29)
         if (inv.get("backup") or {}).get("enabled"):
             b = inv["backup"]
-            S.wire(cx + hh, cy - 10, 152, cy - 10); S.wire(152, cy - 10, 152, cy - 16); S.wire(152, cy - 16, 182, cy - 16)
-            S.switch(187, cy - 16, "Q"); S.wire(192, cy - 16, 200, cy - 16)
+            S.wire(cx + hh, cy - 10, 152, cy - 10, "backup"); S.wire(152, cy - 10, 152, cy - 16, "backup"); S.wire(152, cy - 16, 182, cy - 16, "backup")
+            S.switch(187, cy - 16, "Q"); S.wire(192, cy - 16, 200, cy - 16, "backup")
             S.enclosure(176, cy - 24, 228, cy - 9, f"-TB{i + 1}  Tablou backup / EPS")
             S.val(202, cy - 16.8, "", b.get("breaker"), size=4.6, w=25)
             S.text(178, cy - 22.6, str(b.get("circuits") or "circuite EPS"), 4.2, color=GREY, w=48)
@@ -505,8 +509,9 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
     c = S.c
     L, B, R, T = 20, 10, PW - 10, PH - 10
     S.lw(0.5); c.rect(L, B, R - L, T - B, stroke=1, fill=0); S.lw()
-    tbw, tbh = 180, 44
+    tbw, tbh = 190, 58
     x0, y0 = R - tbw, B
+    meta_w = 137
     get = lambda k: client.get(k) or rec.get(k)
     t = res["base"]["totals"]
     kwp = f"{t['kwp']:g} kWp" if t["kwp"] else "[kWp lipsă]"
@@ -517,13 +522,13 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
     if demo:
         stat = "EXEMPLU DEMONSTRATIV — nu este document de execuție"
     rows = [
-        [("", f"{settings.get('company') or 'DNS HOSTESS S.R.L.'}" + (f" · Atestat ANRE {settings.get('anre_type') or ''} nr. {settings.get('anre_attest')}" if settings.get("anre_attest") else " · Atestat ANRE [lipsă]"), 180, True)],
-        [("Beneficiar", get("name"), 110, False), ("Nr. proiect", get("project_no"), 70, False)],
-        [("Adresă", loc or None, 110, False), ("Planșa", f"E-0{sheet} ({sheet}/{sheets})", 70, False)],
-        [("Titlu", f"Schemă electrică monofilară — CEF {kwp} / {kw}" if sheet == 1 else "Tabel cabluri, aparate și verificări", 110, True), ("Format / scara", f"{fmt} orizontal · fără scară", 70, False)],
-        [("Reprezentant firmă", settings.get("rep"), 110, False), ("Data", docgen.ro_date(get("doc_date") or get("date")) or datetime.now().strftime("%d.%m.%Y"), 70, False)],
-        [("Revizie", str((rec.get("sld") or {}).get("revision") or 0), 180, False)],
-        [("Stare", stat, 180, True)],
+        [("", f"{settings.get('company') or 'DNS HOSTESS S.R.L.'}" + (f" · Atestat ANRE {settings.get('anre_type') or ''} nr. {settings.get('anre_attest')}" if settings.get("anre_attest") else " · Atestat ANRE [lipsă]"), meta_w, True)],
+        [("Beneficiar", get("name"), 80, False), ("Nr. proiect", get("project_no"), 57, False)],
+        [("Adresă CEF", loc or None, 80, False), ("Planșa", f"E-0{sheet} ({sheet}/{sheets})", 57, False)],
+        [("Titlu", f"CEF {kwp} — Schemă monofilară" if sheet == 1 else "Tabel cabluri, aparate și verificări", 82, True), ("Format / scara", f"{fmt} orizontal · fără scară", 55, False)],
+        [("Proiectant", settings.get("designer_name"), 68, False), ("Verificator", settings.get("verifier"), 69, False)],
+        [("Data", docgen.ro_date(get("doc_date") or get("date")) or datetime.now().strftime("%d.%m.%Y"), 52, False), ("POD", get("pod"), 85, False)],
+        [("Stare", stat, meta_w, True)],
     ]
     rh = tbh / len(rows)
     S.lw(0.4); c.rect(x0, y0, tbw, tbh, stroke=1, fill=0)
@@ -537,46 +542,114 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
             if lbl:
                 S.text(xx + 1, yy + rh - 2.2, lbl, 4.4, color=GREY)
             color = RED if (val in (None, "") or "lipsă" in str(val) or (ri == 6 and st != "approved")) else INK
-            S.text(xx + (16 if lbl else 1.5), yy + 1.6, val if val not in (None, "") else "[lipsă]", 6.2, bold, color, w=w - (17 if lbl else 3))
+            S.text(xx + (16 if lbl else 1.5), yy + 1.5, val if val not in (None, "") else "[lipsă]", 5.6, bold, color, w=w - (17 if lbl else 3))
             xx += w
+    # Signature and company-stamp boxes remain empty until authorized images are
+    # present in Settings. Nothing is synthesized or copied from another file.
+    sig_x, box_y, box_w, box_h = x0 + 141, y0 + 8, 20, 37
+    stamp_x = x0 + 165
+    S.text(sig_x + box_w / 2, y0 + tbh - 3.8, "PROIECTANT", 4.0, True, anchor="c")
+    S.text(stamp_x + box_w / 2, y0 + tbh - 3.8, "ȘTAMPILĂ", 4.0, True, anchor="c")
+    for bx in (sig_x, stamp_x):
+        S.lw(0.25, GREY, ([1.5, 1.0], 0)); c.rect(bx, box_y, box_w, box_h, stroke=1, fill=0); S.lw()
+    def place_image(data, bx, by, bw, bh):
+        if not data:
+            return
+        try:
+            img = ImageReader(io.BytesIO(data))
+            iw, ih = img.getSize()
+            scale = min((bw - 2) / iw, (bh - 2) / ih)
+            dw, dh = iw * scale, ih * scale
+            c.drawImage(img, bx + (bw - dw) / 2, by + (bh - dh) / 2, dw, dh, mask="auto")
+        except Exception:
+            return
+    signatures = settings.get("_sld_signature_bytes") or {}
+    place_image(signatures.get("designer"), sig_x + 0.5, box_y + 2, box_w - 1, box_h - 4)
+    place_image(settings.get("_stamp_bytes"), stamp_x + 0.5, box_y + 2, box_w - 1, box_h - 4)
+    S.text(sig_x + box_w / 2, y0 + 2, "semnătură", 3.7, color=GREY, anchor="c")
+    S.text(stamp_x + box_w / 2, y0 + 2, "firmă", 3.7, color=GREY, anchor="c")
     # legend
     lw_ = x0 - L - 4
     if sheet == 1 and lw_ > 70:
-        legend(S, L + 2, B, lw_, tbh)
+        legend(S, L + 2, B + tbh - 12, lw_, 10)
+        protection_settings_table(S, L + 2, B + 1, lw_, tbh - 14, rec)
     return (L + 2, B + tbh + 3, R - 2, T - 2)
 
 
 def legend(S, x, y, w, h):
     c = S.c
     S.lw(0.3); c.rect(x, y, w, h, stroke=1, fill=0); S.lw()
-    S.text(x + 2, y + h - 3.4, "LEGENDĂ — simboluri SR EN 60617 (IEC 60617), coduri SR EN 81346-2", 5.2, True, w=w - 4)
-    items = [("pv", "Generator fotovoltaic (string)"), ("inv", "Invertor c.c./c.a."), ("fuse", "Siguranță fuzibilă gPV"),
-             ("LS", "Separator de sarcină (DC)"), ("Q", "Întreruptor automat"), ("rcd", "Dispozitiv diferențial (DDR)"),
-             ("K", "Contactor / element de decuplare"), ("spd", "Descărcător supratensiune (SPD)"), ("kwh", "Contor de energie"),
-             ("ct", "Transformator de curent (TC)"), ("bat", "Baterie de acumulatori"), ("earth", "Priză de pământ"),
-             ("pe", "Conductor PE / echipotențializare"), ("enc", "Tablou / carcasă")]
-    cols = 3 if w > 150 else 2
-    cw = (w - 4) / cols
-    per = -(-len(items) // cols)
-    rh = (h - 9) / per
-    for k, (kind, lbl) in enumerate(items):
-        col, row = k // per, k % per
-        sx, sy = x + 3 + col * cw, y + h - 8 - row * rh - rh / 2 + 1
-        c.saveState(); c.translate(sx + 6, sy); c.scale(0.55, 0.55)
-        if kind == "pv": S.pv(-8, 0)
-        elif kind == "inv": S.inverter(0, 0, 5)
-        elif kind == "fuse": S.wire(-7, 0, 7, 0); S.fuse(0, 0)
-        elif kind in ("LS", "Q", "K"): S.switch(0, 0, kind)
-        elif kind == "rcd": S.rcd(3, 0)
-        elif kind == "spd": S.lw(0.3); c.rect(-1.3, -3, 2.6, 6, stroke=1, fill=0); c.line(-1.3, -2, 1.3, 2)
-        elif kind == "kwh": S.meter(0, 0)
-        elif kind == "ct": S.wire(-6, 0, 6, 0); S.ct(0, 0)
-        elif kind == "bat": S.battery(0, 2)
-        elif kind == "earth": S.earth(0, 3)
-        elif kind == "pe": S.wire(-8, 0, 8, 0, "pe")
-        elif kind == "enc": S.enclosure(-8, -3, 8, 3, "")
-        c.restoreState()
-        S.text(sx + 14, sy - 0.8, lbl, 4.8, w=cw - 15)
+    items = [(INK, "AC REȚEA"), (BACKUP_BLUE, "BACK-UP · TEG"), (PV_ORANGE, "DC FOTOVOLTAIC"),
+             (BATTERY_GREEN, "BATERIE"), (GREY, "COMUNICAȚII")]
+    cw = (w - 6) / len(items)
+    for i, (color, label) in enumerate(items):
+        xx = x + 3 + i * cw
+        S.lw(0.7, color, ([1.0, 0.8], 0) if color == GREY else None)
+        c.line(xx, y + h / 2, xx + 7, y + h / 2)
+        S.lw()
+        S.text(xx + 9, y + h / 2 - 1.3, label, 4.1, True, color, w=cw - 10)
+
+
+def protection_settings_table(S, x, y, w, h, rec):
+    """Draw only entered protection-interface settings; leave the rest blank."""
+    try:
+        params = docgen.REGLAJ
+    except Exception:
+        params = []
+    values = rec.get("reglaj") or {}
+    S.text(x + 1, y + h - 4.1, "FUNCȚII DE PROTECȚIE INTERFAȚĂ · ORDIN ANRE 228/2018", 4.5, True, w=w - 2)
+    headers_y = y + h - 9
+    S.lw(0.25, GREY); S.c.line(x, headers_y - 1.4, x + w, headers_y - 1.4)
+    S.text(x + 1, headers_y, "Parametru", 3.9, True, color=GREY)
+    S.text(x + w - 36, headers_y, "Prag", 3.9, True, color=GREY)
+    S.text(x + w - 16, headers_y, "t (s)", 3.9, True, color=GREY)
+    rows = []
+    for key, label in params:
+        value = values.get(key) or {}
+        rows.append((label, value.get("val"), value.get("t")))
+    if not rows:
+        rows = [("Setările se completează din buletinul de reglaj", None, None)]
+    row_h = max(2.6, (headers_y - y - 4) / len(rows))
+    for i, (label, val, sec) in enumerate(rows):
+        yy = headers_y - 3.7 - i * row_h
+        shown_label = str(label).replace("Tensiune", "U").replace("frecvență", "frecvență")
+        S.text(x + 1, yy, shown_label, 3.75, color=INK, w=w - 42)
+        S.text(x + w - 36, yy, val if val not in (None, "") else "—", 3.75, color=INK, w=16)
+        S.text(x + w - 16, yy, sec if sec not in (None, "") else "—", 3.75, color=INK, w=14)
+
+
+def teg_schedule(S, area, rec):
+    """Compact TEG circuit schedule placed on the same drawing sheet as the SLD."""
+    x1, y1, x2, y2 = area
+    grid = (rec.get("cef") or {}).get("grid") or {}
+    circuits = [c for c in (grid.get("circuits") or []) if isinstance(c, dict)]
+    if not circuits:
+        return
+    # Match the reference drawing: show the TEG board, RCD and each breaker as
+    # a small single-line diagram, with labels sourced only from saved values.
+    x, y, w = x1 + 4, y1 + 4, min(132, x2 - x1 - 8)
+    row_h = min(4.7, max(3.3, (y2 - y1 - 18) / max(len(circuits), 1)))
+    h = 12 + len(circuits) * row_h
+    S.enclosure(x, y, x + w, y + h, "-TEG  TABLOU ELECTRIC GENERAL", "circuite consumatori")
+    bus_x = x + 20
+    first_y = y + h - 12
+    # Main differential protection and the outgoing bus are shown separately
+    # from individual branch breakers.
+    S.wire(x + 7, first_y + row_h, bus_x, first_y + row_h)
+    S.rcd(x + 13, first_y + row_h)
+    S.text(x + 2, first_y + row_h + 2.2, "-Q0.TEG", 3.8, True)
+    S.wire(bus_x, first_y + row_h, bus_x, first_y - (len(circuits) - 1) * row_h)
+    for i, circuit in enumerate(circuits):
+        cy = first_y - i * row_h
+        S.node(bus_x, cy)
+        S.wire(bus_x, cy, x + 27, cy)
+        S.switch(x + 32, cy, "Q")
+        S.wire(x + 37, cy, x + 43, cy)
+        name = circuit.get("name") or f"Circuit {i + 1}"
+        rating = " · ".join(str(v) for v in (circuit.get("breaker"), circuit.get("poles"), circuit.get("rcd")) if v)
+        label = f"C{i + 1}  {name}" + (f"  ·  {rating}" if rating else "")
+        S.text(x + 45, cy - 1.2, label, 4.15, w=w - 48)
+    S.text(x + 2, y + 1.4, "Valorile necompletate nu sunt presupuse.", 3.7, color=GREY, w=w - 4)
 
 
 def watermark(S, PW, PH, label):
@@ -700,19 +773,40 @@ def drawing_header(S, PW, PH, rec, client, settings, res, approval):
     c = S.c
     company = settings.get("company") or "DNS HOSTESS S.R.L."
     totals = res["base"]["totals"]
-    summary = f"CEF {totals['kwp']:g} kWp · {totals['inverters_kw']:g} kW AC" if totals["kwp"] else "CEF · date tehnice de verificat"
+    cef = rec.get("cef") or {}
+    grid = cef.get("grid") or {}
+    invs = cef.get("inverters") or []
+    inverter_names = ", ".join(str(i.get("brand_model")) for i in invs if i.get("brand_model"))
+    batteries = [i.get("battery") or {} for i in invs if i.get("battery_mode") == "own"]
+    batteries += list(cef.get("shared_batteries") or [])
+    storage = ", ".join(str(b.get("model")) for b in batteries if b.get("model"))
+    panels = totals.get("panels") or 0
+    summary_parts = [f"CEF {totals['kwp']:g} kWp · {totals['inverters_kw']:g} kW AC"] if totals["kwp"] else ["CEF · date tehnice de verificat"]
+    if inverter_names:
+        summary_parts.append(inverter_names)
+    if panels:
+        summary_parts.append(f"{panels} panouri")
+    if storage:
+        summary_parts.append(storage)
+    if grid.get("teg_supply"):
+        summary_parts.append(f"alimentare TEG {grid['teg_supply']}")
+    summary = " · ".join(summary_parts)
     title = "SCHEMĂ MONOFILARĂ"
     y = PH - 17
     S.text(22, y + 1.2, company, 7.2, True)
     S.text(22, y - 2.2, "INSTALAȚII FOTOVOLTAICE", 4.2, color=GREY)
     S.text(PW / 2, y, title, 10, True, anchor="c")
     S.text(PW / 2, y - 4.2, summary, 5, color=GREY, anchor="c")
-    label = "CIORNĂ" if approval.get("status") != "approved" else "VERIFICAT INTERN"
-    badge_w = 38
+    supply = "TRIFAZAT" if res["base"]["grid"]["tri"] else "MONOFAZAT"
+    backup = str(grid.get("backup_mode") or "LOAD").upper()
+    badge = f"{backup} · {supply} · 2× BMP" if res["base"]["grid"]["tri"] and grid.get("backup_mode") else f"{backup} · {supply}"
+    badge_w = 58
     bx = PW - 12 - badge_w
-    S.lw(0.35, RED if label == "CIORNĂ" else BATTERY_GREEN)
+    S.lw(0.35, RED)
     c.roundRect(bx, y - 2, badge_w, 7, 1.5, stroke=1, fill=0)
-    S.text(bx + badge_w / 2, y + 0.3, label, 4.8, True, RED if label == "CIORNĂ" else BATTERY_GREEN, "c")
+    S.text(bx + badge_w / 2, y + 0.3, badge, 4.5, True, RED, "c", w=badge_w - 3)
+    status = "CIORNĂ — NEVERIFICATĂ" if approval.get("status") != "approved" else "VERIFICATĂ INTERN"
+    S.text(bx + badge_w / 2, y - 4.5, status, 3.8, True, RED if approval.get("status") != "approved" else BATTERY_GREEN, "c")
     S.lw(0.25, GREY)
     c.line(22, PH - 24, PW - 12, PH - 24)
     return PH - 27
@@ -753,15 +847,17 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     c.setAuthor(settings.get("company") or "DNS HOSTESS S.R.L.")
     c.scale(mm, mm)
     S = Sheet(c)
-    area = frame(S, PW, PH, rec, client, settings, res, approval, 1, 2, fmt, demo)
+    area = frame(S, PW, PH, rec, client, settings, res, approval, 1, 1, fmt, demo)
     x1, y1, x2, _ = area
     plot_y2 = drawing_header(S, PW, PH, rec, client, settings, res, approval)
     drawing_grid(S, x1, y1, x2, plot_y2)
     W, H, draw = diagram(S, rec, res, client)
     s = min((x2 - x1 - 8) / W, (plot_y2 - y1 - 8) / H, 1.6)
-    c.saveState(); c.translate(x1 + 4 + ((x2 - x1 - 8) - W * s) / 2, y1 + 4 + ((plot_y2 - y1 - 8) - H * s) / 2); c.scale(s, s)
+    available_h, diagram_h = plot_y2 - y1 - 8, H * s
+    c.saveState(); c.translate(x1 + 4 + ((x2 - x1 - 8) - W * s) / 2, y1 + 4 + (available_h - diagram_h) * 0.70); c.scale(s, s)
     draw()
     c.restoreState()
+    teg_schedule(S, (x1, y1, x2, plot_y2), rec)
     S.text(x1 + 2, y1 + 2, "DC fotovoltaic — portocaliu · stocare — verde · PE — verde întrerupt · valorile [lipsă] rămân de confirmat.", 4.1, color=GREY)
     if demo:
         watermark(S, PW, PH, "EXEMPLU DEMONSTRATIV")
@@ -769,13 +865,6 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
         watermark(S, PW, PH, "DOSAR DE TEST — NU ESTE OFICIAL")
     elif approval.get("status") != "approved":
         watermark(S, PW, PH, "CIORNĂ — NEVERIFICAT" if approval.get("status") != "stale" else "APROBARE ANULATĂ")
-    c.showPage()
-    c.scale(mm, mm)
-    S2 = Sheet(c)
-    area = frame(S2, PW, PH, rec, client, settings, res, approval, 2, 2, fmt, demo)
-    table_page(S2, area, res, rec)
-    if approval.get("status") != "approved" or demo:
-        watermark(S2, PW, PH, "EXEMPLU DEMONSTRATIV" if demo else "CIORNĂ — NEVERIFICAT")
     c.showPage()
     c.save()
     return buf.getvalue()
