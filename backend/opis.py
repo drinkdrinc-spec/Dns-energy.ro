@@ -185,8 +185,8 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
         pos.append({"key": "metrologie_pram", "title": meter_title, "source": "instrument",
                     "files": [meter_file] if meter_file.get("storage_path") else [], "missing": meter_missing})
 
-    # DEER requires the applicable personal-data information notice for natural-person cases.
-    # Keep it as an official, user-attached document; never generate a fake consent form.
+    # DEER's applicable privacy notice is attached from the official public source for natural-person cases.
+    # It is informational; the application never generates a fake consent or signature.
     operator_name = str(rec.get("operator") or client.get("operator") or "").lower()
     is_deer = ("deer" in operator_name or "distributie energie electrica romania" in operator_name
                or "distribuție energie electrică românia" in operator_name)
