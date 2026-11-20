@@ -74,7 +74,14 @@ def compute(rec: dict, client: dict | None = None) -> dict:
     base = C.check(cef)
     grid = cef.get("grid") or {}
     o = Out()
-    get = lambda k: client.get(k) if has(client.get(k)) else rec.get(k)
+    def get(k):
+        value = client.get(k) if has(client.get(k)) else rec.get(k)
+        # Every dossier already receives a unique internal number. Use it as
+        # the drawing/project reference when no external project number exists,
+        # so the monoline schema does not block on an avoidable blank.
+        if k == "project_no" and not has(value):
+            return rec.get("number") or rec.get("id")
+        return value
     for k, lbl in REQ_CLIENT:
         o.need(k, lbl, get(k), "Date generale")
     invs = cef.get("inverters") or []
