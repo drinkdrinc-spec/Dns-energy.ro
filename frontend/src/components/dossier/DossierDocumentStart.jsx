@@ -258,7 +258,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       notes: [...Object.values(notes).flat(), values.notes].filter(Boolean).join("\n") };
     try {
       setBusy("create");
-      const { data } = await api.post("/import/prosumator", payload);
+      const { data } = await api.post("/import/prosumator", payload, { dnsRetry503: true });
       if (data.intake_warnings?.length) toast.warning(`Dosarul a fost creat. ${data.intake_warnings.join(" ")}`);
       else if (data.related_dossier) toast.warning(
         `Dosar nou creat. Există deja dosarul ${data.related_dossier.number || ""} pentru acest POD; am păstrat ambele cereri.`
