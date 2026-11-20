@@ -2374,6 +2374,17 @@ async def hydrate_cef_catalog_values(owner: str, cef: dict, rec: dict | None = N
                 inv["panel_catalog_id"] = panel.get("id")
                 filled.append(f"cef.inverters.{index}.panel_catalog_id")
             merge(inv, panel_values(panel), f"cef.inverters.{index}")
+        legacy_strings = legacy_inv.get("strings") or []
+        for string_index, string in enumerate(inv.get("strings") or []):
+            legacy_string = legacy_strings[string_index] if string_index < len(legacy_strings) else {}
+            if not string.get("panel_model") and legacy_string.get("panel_model"):
+                string["panel_model"] = legacy_string["panel_model"]
+            string_item = await catalog_item("Panou", string.get("panel_catalog_id"), string.get("panel_model"))
+            if string_item:
+                if string.get("panel_catalog_id") != string_item.get("id"):
+                    string["panel_catalog_id"] = string_item.get("id")
+                    filled.append(f"cef.inverters.{index}.strings.{string_index}.panel_catalog_id")
+                merge(string, panel_values(string_item), f"cef.inverters.{index}.strings.{string_index}")
         if inv.get("battery_mode") == "own":
             battery = inv.setdefault("battery", {})
             legacy_battery = legacy_inv.get("battery") or {}
