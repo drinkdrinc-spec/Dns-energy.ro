@@ -108,6 +108,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
   const selectedClient = clients.find((client) => client.id === form.client_id)
     || (selectedClientMatches.length === 1 ? selectedClientMatches[0] : null);
   const selected = form.catalog_selection || {};
+  const isPowerIncrease = /spor/i.test(String(form.request_type || ""));
+  const receptors = Array.isArray(form.receptors) ? form.receptors : [];
   useEffect(() => {
     const inferred = { ...selected };
     const existingRsd = form.cef?.inverters?.[0]?.rsd?.catalog_id;
@@ -566,6 +568,22 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
           {input("email", "Email")}
           {input("hq_address", "Adresă din CI / sediu")}
           {input("request_type", title(field(cfg, "request_type"), "Tip cerere"), "text", field(cfg, "request_type")?.options)}
+          {isPowerIncrease && <>
+            {input("approved_power_kw", "Putere aprobată existentă (kW)", "number")}
+            {input("requested_kva", "Putere solicitată (kVA)", "number")}
+            {input("current_supply_desc", "Branșament existent / modificări solicitate")}
+            <div className="sm:col-span-2 rounded-xl border p-3" style={{ borderColor: "var(--line)" }} data-testid="power-increase-receptors">
+              <h4 className="text-sm font-semibold">Receptoare electrice</h4>
+              <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Introdu consumatorii și puterile conform solicitării pentru spor.</p>
+              {receptors.map((item, index) => <div key={index} className="mb-2 grid gap-2 sm:grid-cols-[1fr_8rem_1fr_auto]">
+                <input className="den-input" value={item.name || ""} aria-label={`Receptor ${index + 1}`} placeholder="Denumire receptor" onChange={(e) => setVal("receptors", receptors.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} />
+                <input className="den-input" type="number" step="any" value={item.kw || ""} aria-label={`Putere receptor ${index + 1} kW`} placeholder="kW" onChange={(e) => setVal("receptors", receptors.map((row, i) => i === index ? { ...row, kw: e.target.value } : row))} />
+                <input className="den-input" value={item.notes || ""} aria-label={`Observații receptor ${index + 1}`} placeholder="Observații" onChange={(e) => setVal("receptors", receptors.map((row, i) => i === index ? { ...row, notes: e.target.value } : row))} />
+                <button type="button" className="rounded-lg border px-3 text-xs" style={{ borderColor: "var(--line)" }} aria-label={`Șterge receptorul ${index + 1}`} onClick={() => setVal("receptors", receptors.filter((_, i) => i !== index))}>Șterge</button>
+              </div>)}
+              <button type="button" className="text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("receptors", [...receptors, {}])} data-testid="power-increase-add-receptor">+ Adaugă receptor</button>
+            </div>
+          </>}
           {input("operator", "Operator de distribuție", "text", field(cfg, "operator")?.options)}
           {input("supply", title(field(cfg, "supply"), "Branșament"), "text", field(cfg, "supply")?.options)}
           {input("bransament_kw", "Putere branșament (kW)", "number")}
