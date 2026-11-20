@@ -2054,13 +2054,16 @@ async def seed_catalog(owner: str):
             if (item.get("brand_model") == "JINKO SOLAR JKM510N-54HL4M-BDV"
                     and row.get("conformity_url") == "https://solar-distribution.baywa-re.de/out/media/10-Tiger_Neo_48HL4M-DB_IEC61215IEC61730-Dual-Glass_2025-03-17_Rev-11.pdf"):
                 source_updates["conformity_url"] = item["conformity_url"]
-            stale_jinko_conformity = (
-                item.get("brand_model") == "JINKO SOLAR JKM510N-54HL4M-BDV"
-                and row.get("conformity_url") == "https://solar-distribution.baywa-re.de/out/media/10-Tiger_Neo_48HL4M-DB_IEC61215IEC61730-Dual-Glass_2025-03-17_Rev-11.pdf"
+            jinko_model = item.get("brand_model") == "JINKO SOLAR JKM510N-54HL4M-BDV"
+            wrong_jinko_url = "https://solar-distribution.baywa-re.de/out/media/10-Tiger_Neo_48HL4M-DB_IEC61215IEC61730-Dual-Glass_2025-03-17_Rev-11.pdf"
+            current_conformity = row.get("conformity") if isinstance(row.get("conformity"), dict) else {}
+            stale_jinko_conformity = jinko_model and (
+                row.get("conformity_url") == wrong_jinko_url
+                or current_conformity.get("source_url") == wrong_jinko_url
             )
-            stale_jinko_document = stale_jinko_conformity and (
-                not isinstance(row.get("conformity"), dict)
-                or row["conformity"].get("source_url") == row.get("conformity_url")
+            stale_jinko_document = jinko_model and (
+                not current_conformity
+                or current_conformity.get("source_url") == wrong_jinko_url
             )
             verified_updates = missing_catalog_seed_values(row, item)
             if source_updates or verified_updates:
