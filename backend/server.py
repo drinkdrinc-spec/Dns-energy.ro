@@ -2374,6 +2374,19 @@ async def hydrate_cef_catalog_values(owner: str, cef: dict, rec: dict | None = N
                 inv["panel_catalog_id"] = panel.get("id")
                 filled.append(f"cef.inverters.{index}.panel_catalog_id")
             merge(inv, panel_values(panel), f"cef.inverters.{index}")
+        rsd = inv.get("rsd") or {}
+        if rsd.get("enabled"):
+            rsd_item = await catalog_item("RSD", rsd.get("catalog_id"), rsd.get("brand_model"))
+            if rsd_item:
+                if rsd.get("catalog_id") != rsd_item.get("id"):
+                    rsd["catalog_id"] = rsd_item.get("id")
+                    filled.append(f"cef.inverters.{index}.rsd.catalog_id")
+                merge(rsd, {"brand_model": rsd_item.get("brand_model"), "string_count": rsd_item.get("string_count"),
+                            "poles": rsd_item.get("poles"), "voltage_min_v": rsd_item.get("voltage_min_v"),
+                            "voltage_max_v": rsd_item.get("voltage_max_v"), "current_300v_a": rsd_item.get("current_300v_a"),
+                            "current_600v_a": rsd_item.get("current_600v_a"), "current_800v_a": rsd_item.get("current_800v_a"),
+                            "current_1000v_a": rsd_item.get("current_1000v_a"), "current_1200v_a": rsd_item.get("current_1200v_a"),
+                            "current_1500v_a": rsd_item.get("current_1500v_a")}, f"cef.inverters.{index}.rsd")
         legacy_strings = legacy_inv.get("strings") or []
         for string_index, string in enumerate(inv.get("strings") or []):
             legacy_string = legacy_strings[string_index] if string_index < len(legacy_strings) else {}
