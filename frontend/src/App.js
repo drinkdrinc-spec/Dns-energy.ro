@@ -32,6 +32,7 @@ const DistributionPortals = lazy(() => import("@/pages/DistributionPortals"));
 const OperatorMessages = lazy(() => import("@/pages/OperatorMessages"));
 const ArchivedDossiers = lazy(() => import("@/pages/ArchivedDossiers"));
 const WorkMap = lazy(() => import("@/pages/WorkMap"));
+const PublicHome = lazy(() => import("@/pages/PublicHome"));
 import { Gate } from "@/components/UpgradeGate";
 import { ROUTE_FEATURE } from "@/lib/plan";
 import "@/App.css";
@@ -39,15 +40,21 @@ import "@/App.css";
 function Protected({ children }) {
   const { user, authChecking } = useAuth();
   if (user === null) return <div className="min-h-screen grid place-items-center text-sm text-slate-500" role="status">{authChecking ? "Verific sesiunea DNS Energy…" : "Pregătesc accesul…"}</div>;
-  if (!user) { if (window.location.search) sessionStorage.setItem("den_next", window.location.pathname + window.location.search); return <Navigate to="/login" replace />; }
+  if (!user) { sessionStorage.setItem("den_next", window.location.pathname + window.location.search); return <Navigate to="/login" replace />; }
   return children;
+}
+
+function HomeRoute() {
+  const { user, authChecking } = useAuth();
+  if (authChecking) return <div className="min-h-screen grid place-items-center text-sm text-slate-500" role="status">Verific sesiunea DNS Energy…</div>;
+  return user ? <Navigate to="/app" replace /> : <PublicHome />;
 }
 
 function AfterLogin() {
   // Read without side effects during render (StrictMode renders twice); clear after mount
   const [next] = useState(() => sessionStorage.getItem("den_next"));
   useEffect(() => { sessionStorage.removeItem("den_next"); }, []);
-  return <Navigate to={next || "/"} replace />;
+  return <Navigate to={next || "/app"} replace />;
 }
 
 function AppRoutes() {
@@ -58,9 +65,10 @@ function AppRoutes() {
       <Route path="/login" element={user ? <AfterLogin /> : <Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/semneaza/:token" element={<SignPage />} />
+      <Route path="/" element={<HomeRoute />} />
       <Route element={<Protected><Layout /></Protected>}>
         <Route path="/semnare" element={<Gate feat={ROUTE_FEATURE["/semnare"]}><RemoteSigning /></Gate>} />
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/app" element={<Dashboard />} />
         <Route path="/clienti" element={<Gate feat={ROUTE_FEATURE["/clienti"]}><ModulePage moduleKey="clients" /></Gate>} />
         <Route path="/prosumator" element={<Gate feat={ROUTE_FEATURE["/prosumator"]}><ModulePage moduleKey="prosumator" /></Gate>} />
         <Route path="/diu" element={<Gate feat={ROUTE_FEATURE["/diu"]}><ModulePage moduleKey="diu" /></Gate>} />
@@ -112,3 +120,4 @@ export default function App() {
     </AuthProvider>
   );
 }
+
