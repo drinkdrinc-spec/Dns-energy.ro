@@ -2971,7 +2971,7 @@ async def deer_gdpr_notice_file():
             response.raise_for_status()
             final_host = (urlparse(str(response.url)).hostname or "").lower().rstrip(".")
             data = response.content
-            if final_host != "www.distributie-energie.ro" or not data.startswith(b"%PDF-") or len(data) > 12 * 1024 * 1024:
+            if final_host not in ("www.distributie-energie.ro", "distributie-energie.ro") or not data.startswith(b"%PDF-") or len(data) > 12 * 1024 * 1024:
                 raise ValueError("Răspunsul nu este un PDF valid de pe domeniul DEER.")
         stored = put_object(f"{APP_NAME}/official-documents/{uuid.uuid4()}.pdf", data, "application/pdf")
         file_record = {
