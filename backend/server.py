@@ -1556,6 +1556,7 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
 
 # ---------------- AI extraction & document generation ----------------
 import docgen
+import power_docx as POWERDOCX
 from ai_extract import extract_pdf, extract_gpt, extract_office_text, extract_gpt_text, extract_office_local, canonical_document_type
 
 async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> dict:
@@ -1840,6 +1841,28 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
 async def doc_types(user: dict = Depends(get_current_user)):
     return [{"key": k, "label": v[0]} for k, v in docgen.DOCS.items()]
 
+@api_router.get("/docs/anexa1/{item_id}")
+async def generate_deer_annex1(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    client = await get_client(user["id"], rec)
+    operator = str(rec.get("operator") or client.get("operator") or "").casefold()
+    if "deer" not in operator and "distributie energie electrica" not in operator and "distribuție energie electrică" not in operator:
+        raise HTTPException(status_code=422, detail="Precompletarea Word este disponibilă pentru formularul oficial DEER. Pentru alt operator folosește formularul oficial din Registrul de formulare.")
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    settings, _ = await effective_settings(user["id"], rec, base)
+    try:
+        content = await POWERDOCX.render_deer_annex1(rec, client, settings)
+    except Exception as exc:
+        logger.exception("Nu s-a putut precompleta Anexa 1 DEER")
+        raise HTTPException(status_code=502, detail="Formularul oficial DEER nu a putut fi preluat și precompletat. Încearcă din nou.") from exc
+    filename = f"Anexa_1_DEER_{(rec.get('client_name') or 'prosumator').replace(' ', '_')}.docx"
+    return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": disp("attachment", filename)})
+
+
 @api_router.get("/docs/sizing/{item_id}")
 async def doc_sizing(item_id: str, user: dict = Depends(get_current_user)):
     rec = await check_access(user, "prosumator", item_id)
@@ -1880,7 +1903,8 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
         if op_names:
             rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
             candidates = [f for f in rows
-                if any(n in str(f.get("operator") or "").lower() for n in op_names)
+                if not f.get("deprecated") and str(f.get("status") or "").casefold() != "formular retras"
+                and any(n in str(f.get("operator") or "").lower() for n in op_names)
                 and "prosumator" in str(f.get("kind") or "").lower()
                 and ("spor" in str(f.get("kind") or "").lower() or "anexa 1" in str(f.get("title") or "").lower())
                 and "anexa 1" in str(f.get("title") or "").lower()
