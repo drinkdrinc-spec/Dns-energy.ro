@@ -2966,7 +2966,7 @@ async def deer_gdpr_notice_file():
         return cached_file
 
     try:
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, max_redirects=4) as client_http:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=True, max_redirects=4) as client_http:
             response = await client_http.get(source_url)
             response.raise_for_status()
             final_host = (urlparse(str(response.url)).hostname or "").lower().rstrip(".")
