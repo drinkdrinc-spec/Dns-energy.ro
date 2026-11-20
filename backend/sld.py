@@ -440,7 +440,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.wire(BUS, ybot - 12, BUS, ybot - 18, "pe")
         x = 300
         if anti:
-            S.enclosure(302, y - 9, 330, y + 15, "-TAI  Antiinsularizare")
+            S.enclosure(302, y - 9, 330, y + 15, "-TAI / QINT  Interfață EPS" if base["grid"].get("anti_backup") else "-TAI  Antiinsularizare")
             S.switch(312, y, "K")
             S.lw(0.35); S.c.rect(318, y + 4, 9, 5, stroke=1, fill=0); S.lw()
             S.text(322.5, y + 5.6, "PI", 5, True, anchor="c")
@@ -894,6 +894,8 @@ def tech_sheet(rec, client, settings, res, approval) -> bytes:
     Pp = lambda x, st="p": Paragraph(x, St[st])
     C_ = lambda x, b=False: Paragraph(escape(str(x)) if x not in (None, "") else "<font color='#666666'>de completat</font>", CELLB if b else CELL)
     out = [Pp(f"<b>{escape(D['company'])}</b>", "small"), Spacer(1, 4), Pp(TS_TITLE, "h"), Pp(escape(TS_NOTE + D["status"]), "small")]
+    if any((inv.get("backup") or {}).get("enabled") for inv in (rec.get("cef") or {}).get("inverters") or []):
+        out.append(Pp("<b>Regim back-up / EPS:</b> În regim insularizat, alimentarea este permisă numai pentru consum propriu/circuitele convenite cu OD, fără evacuare în rețea. Reconectarea instalației de producere la rețea se face numai după minimum 15 minute de la reapariția tensiunii (Ordin ANRE 228/2018, art. 10 alin. (2) lit. c și art. 14 alin. (4)). Confirmați schema și setările finale cu operatorul de distribuție.", "small"))
     for title, head, rows, ws in D["sections"]:
         tb = Table([[C_(h, True) for h in head]] + [[C_(c) for c in r] for r in rows], colWidths=[w * mm for w in ws], repeatRows=1)
         tb.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f7")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
