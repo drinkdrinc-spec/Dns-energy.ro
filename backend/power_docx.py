@@ -86,18 +86,22 @@ def _cef_rows(rec):
     for inv in inverters:
         model = _first(inv.get("brand_model"), inv.get("model"))
         strings = inv.get("strings") or []
+        units = max(1, int(_number(inv.get("count")) or 1))
+        per_inverter_panel_power = {}
         for string in strings:
             panel = _first(string.get("panel_model"), inv.get("panel_model")) or "Model panou neprecizat"
             count = max(0, int(_number(string.get("panels"))))
             watt = _number(string.get("panel_w") or inv.get("panel_w"))
-            panel_rows.setdefault(panel, [0, 0.0])
+            panel_rows.setdefault(panel, [0, 0.0, 0.0])
             panel_rows[panel][0] += count
             panel_rows[panel][1] += watt * count / 1000
+            per_inverter_panel_power[panel] = per_inverter_panel_power.get(panel, 0.0) + watt * count / (1000 * units)
+        for panel, power in per_inverter_panel_power.items():
+            panel_rows[panel][2] += power
 
         phases = _first(inv.get("phases")).casefold()
         voltage = "400" if "tri" in phases or "3" in phases else ("230" if phases else "")
         battery_only = _enabled(inv.get("battery_only")) or _enabled(inv.get("no_panels"))
-        units = max(1, int(_number(inv.get("count")) or 1))
         nominal = _number(inv.get("p_nom_kw"))
         limit = 0.0 if battery_only else _number(inv.get("p_limit_kw") or inv.get("p_max_kw") or inv.get("p_nom_kw"))
         inverter_rows.append([
@@ -119,12 +123,12 @@ def _cef_rows(rec):
             battery_items.append(legacy_battery)
 
     panels = []
-    for index, (model, (count, power)) in enumerate(panel_rows.items(), start=1):
+    for index, (model, (count, power, per_inverter_power)) in enumerate(panel_rows.items(), start=1):
         unit_power = power / count if count else 0
         panels.append([
             str(index), str(count), model, f"{unit_power:.3f}" if unit_power else "",
             f"{power:.3f}" if power else "", f"{power:.3f}" if power else "",
-            f"{power:.3f}" if power else "", "",
+            f"{per_inverter_power:.3f}" if per_inverter_power else "", "",
         ])
 
     battery_labels = []
@@ -145,7 +149,7 @@ def _cef_rows(rec):
 
     # Report Ah only when every listed module has the same manufacturer value;
     # do not guess whether the battery modules are connected in series or parallel.
-    battery_ah = f"{ah_values[0]:.3f}" if ah_values and all(abs(x - ah_values[0]) < 0.001 for x in ah_values) else ""
+    battery_ah = f"{ah_values[0]:.3f}" if len(battery_items) == 1 and len(ah_values) == 1 else ""
     battery = {"details": "; ".join(battery_labels), "ah": battery_ah}
     return panels, inverter_rows, battery
 
