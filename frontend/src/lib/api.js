@@ -58,17 +58,69 @@ export async function downloadAuthenticatedFile(path, fallbackName = "document")
 }
 
 export async function openAuthenticatedFile(path) {
-  const tab = window.open("about:blank", "_blank");
-  if (!tab) { window.alert("Permite deschiderea ferestrei pentru a vedea documentul."); return; }
-  tab.document.title = "Se pregătește documentul…";
+  // Keep the preview in the current app tab. Opening an about:blank tab and
+  // navigating it to a blob URL works on desktop browsers but can produce a
+  // permanently blank tab in iOS Safari / in-app browsers.
+  const previous = document.getElementById("den-auth-file-preview");
+  previous?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "den-auth-file-preview";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Previzualizare document");
+  Object.assign(overlay.style, {
+    position: "fixed", inset: "0", zIndex: "2147483000", display: "flex",
+    flexDirection: "column", background: "#f4f6fa", color: "#172033",
+    fontFamily: "system-ui, sans-serif"
+  });
+  const bar = document.createElement("div");
+  Object.assign(bar.style, {
+    minHeight: "56px", display: "flex", alignItems: "center", gap: "12px",
+    padding: "8px 14px", paddingTop: "max(8px, env(safe-area-inset-top))",
+    background: "#111b31", color: "white"
+  });
+  const title = document.createElement("strong");
+  title.textContent = "Document";
+  Object.assign(title.style, { flex: "1", fontSize: "15px" });
+  const download = document.createElement("a");
+  download.textContent = "Descarcă";
+  download.setAttribute("aria-label", "Descarcă documentul");
+  Object.assign(download.style, { color: "white", fontSize: "14px", fontWeight: "600", padding: "8px" });
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "Închide";
+  Object.assign(close.style, {
+    border: "1px solid #71809b", borderRadius: "8px", background: "transparent",
+    color: "white", padding: "8px 10px", fontSize: "14px", fontWeight: "600"
+  });
+  const frame = document.createElement("iframe");
+  frame.title = "Previzualizare document";
+  Object.assign(frame.style, { flex: "1", width: "100%", border: "0", background: "white" });
+  overlay.append(bar, frame);
+  bar.append(title, download, close);
+  document.body.appendChild(overlay);
+  const oldOverflow = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+  let objectUrl = "";
+  const cleanup = () => {
+    if (!overlay.isConnected) return;
+    overlay.remove();
+    document.body.style.overflow = oldOverflow;
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    document.removeEventListener("keydown", onKeyDown);
+  };
+  const onKeyDown = (event) => { if (event.key === "Escape") cleanup(); };
+  close.addEventListener("click", cleanup);
+  document.addEventListener("keydown", onKeyDown);
   try {
     const response = await api.get(path, { responseType: "blob" });
     const blob = response.data.type ? response.data : new Blob([response.data], { type: response.headers["content-type"] || "application/pdf" });
-    const objectUrl = URL.createObjectURL(blob);
-    tab.location.replace(objectUrl);
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    objectUrl = URL.createObjectURL(blob);
+    download.href = objectUrl;
+    download.download = "document";
+    frame.src = objectUrl;
   } catch (error) {
-    tab.close();
+    cleanup();
     window.alert(await apiErrorMessage(error));
   }
 }
