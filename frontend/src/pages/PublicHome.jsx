@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowRight, ArrowUpRight, BadgeCheck, BookOpenCheck, Building2, Cable, ChevronRight, DraftingCompass, FileCheck2, FolderKanban, Menu, PlugZap, ShieldCheck, Sun, Zap, X } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, BookOpenCheck, Building2, Cable, ChevronRight, DraftingCompass, FileCheck2, FolderKanban, Menu, PlugZap, ShieldCheck, Sun, Zap, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import "./PublicHome.css";
@@ -19,12 +19,6 @@ const features = [
     title: "Documente și verificări",
     text: "Pregătește scheme și documente de lucru, apoi urmărește verificările și pașii dosarului.",
   },
-];
-
-const steps = [
-  ["01", "Client și loc de consum", "Datele beneficiarului și ale racordului, grupate într-un singur dosar."],
-  ["02", "Instalație și echipamente", "Configurația sistemului fotovoltaic și echipamentele folosite."],
-  ["03", "Documente și punere în funcțiune", "Acte, verificări și informații pentru pașii de finalizare."],
 ];
 
 const services = [
@@ -49,6 +43,16 @@ const services = [
     text: "Proiectăm și instalăm stații de încărcare casnice și industriale, potrivite infrastructurii electrice și modului de utilizare.",
   },
   {
+    icon: Sun,
+    title: "Echipamente fotovoltaice",
+    text: "Furnizăm panouri, invertoare, baterii și componente pentru sisteme rezidențiale și industriale, în funcție de proiect.",
+  },
+  {
+    icon: Cable,
+    title: "Structuri de montaj",
+    text: "Configurăm structuri pentru montajul panourilor pe acoperiș sau la sol, adaptate amplasamentului și tipului de învelitoare.",
+  },
+  {
     icon: DraftingCompass,
     title: "Proiectare electrică",
     text: "Elaborăm proiecte pentru instalații electrice și fotovoltaice și dimensionăm soluții tehnice potrivite specificului fiecărei lucrări.",
@@ -64,25 +68,11 @@ function Brand({ light = false }) {
   return <span className={`dns-brand${light ? " dns-brand-light" : ""}`}><span className="dns-brand-mark"><img src="/dns-energy-official.png" alt="" /></span><span>DNS <b>ENERGY</b></span></span>;
 }
 
-function WorkPreview() {
+function EquipmentPreview() {
   return (
-    <div className="dns-preview-wrap" aria-label="Previzualizare ilustrativă a aplicației DNS Energy">
-      <div className="dns-preview-orbit dns-preview-orbit-one" />
-      <div className="dns-preview-orbit dns-preview-orbit-two" />
-      <div className="dns-preview-window">
-        <div className="dns-preview-top"><span className="dns-preview-dots"><i /><i /><i /></span><span>dns-energy.ro/app</span><span className="dns-preview-live"><i /> activ</span></div>
-        <div className="dns-preview-body">
-          <div className="dns-preview-sidebar"><Brand light /><span className="dns-preview-nav active" /><span className="dns-preview-nav" /><span className="dns-preview-nav" /><span className="dns-preview-nav short" /></div>
-          <div className="dns-preview-content">
-            <div className="dns-preview-heading"><div><small>DOSARE</small><strong>Dosar prosumator</strong></div><span className="dns-preview-tag">În lucru</span></div>
-            <div className="dns-preview-progress"><span /><span /><span /><span /></div>
-            <div className="dns-preview-caption">Progresul dosarului</div>
-            <div className="dns-preview-grid"><div className="dns-mini-card"><Building2 size={17} /><small>Client și loc de consum</small><b>Informații salvate</b></div><div className="dns-mini-card"><Zap size={17} /><small>Instalație fotovoltaică</small><b>Echipamente configurate</b></div></div>
-            <div className="dns-preview-document"><span className="dns-document-icon"><FileCheck2 size={18} /></span><span><b>Schemă monofilară</b><small>Document tehnic · PDF</small></span><BadgeCheck className="dns-document-check" size={18} /></div>
-          </div>
-        </div>
-      </div>
-      <div className="dns-float-note"><span className="dns-float-icon"><ShieldCheck size={18} /></span><span><b>Date centralizate</b><small>Dosar și documente într-un loc</small></span></div>
+    <div className="dns-hero-showcase">
+      <img src="/dns-equipment-showcase.jpg" alt="Panouri, invertor, baterii și stații de încărcare, imagini ilustrative" fetchPriority="high" />
+      <div className="dns-hero-showcase-label"><Sun size={16} /> SOLUȚII PENTRU LOCUINȚE ȘI INDUSTRIE</div>
     </div>
   );
 }
@@ -98,12 +88,11 @@ export default function PublicHome() {
           <Link to="/" className="dns-brand-link" aria-label="DNS Energy, pagina principală"><Brand /></Link>
           <button className="dns-mobile-menu" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Închide meniul" : "Deschide meniul"} aria-expanded={menuOpen}>{menuOpen ? <X size={21} /> : <Menu size={21} />}</button>
           <nav className={`dns-site-nav${menuOpen ? " is-open" : ""}`} aria-label="Navigare principală">
+            <a href="#servicii" onClick={closeMenu}>Instalații</a>
+            <a href="#echipamente" onClick={closeMenu}>Echipamente</a>
             <a href="#despre-noi" onClick={closeMenu}>Despre noi</a>
-            <a href="#servicii" onClick={closeMenu}>Servicii</a>
-            <a href="#platforma" onClick={closeMenu}>Aplicația</a>
-            <a href="#cum-functioneaza" onClick={closeMenu}>Cum funcționează</a>
             <a href="#contact" onClick={closeMenu}>Contact</a>
-            <Link className="dns-nav-app" to="/app" onClick={closeMenu}>Intră în aplicație <ArrowUpRight size={16} /></Link>
+            <Link className="dns-nav-app" to="/app" onClick={closeMenu}>Acces instalatori <ArrowUpRight size={16} /></Link>
           </nav>
         </div>
       </header>
@@ -112,13 +101,13 @@ export default function PublicHome() {
         <div className="dns-hero-glow" />
         <div className="dns-hero-inner">
           <div className="dns-hero-copy">
-            <div className="dns-eyebrow"><span /> INSTALAȚII ȘI PROIECTARE ELECTRICĂ</div>
-            <h1>Soluții energetice,<br /><em>bine gândite și realizate.</em></h1>
-            <p className="dns-hero-lede">Oferim servicii de proiectare și execuție pentru instalații fotovoltaice de toate tipurile și instalații electrice, adaptate fiecărui proiect.</p>
-            <div className="dns-hero-actions"><a href="#servicii" className="dns-button dns-button-primary">Vezi serviciile <ArrowRight size={18} /></a><Link to="/app" className="dns-text-link">Intră în aplicație <ArrowUpRight size={16} /></Link></div>
-            <div className="dns-hero-note"><ShieldCheck size={16} /> Servicii complete, de la proiectare la execuție</div>
+            <div className="dns-eyebrow"><span /> PANOURI FOTOVOLTAICE · INSTALAȚII REZIDENȚIALE ȘI INDUSTRIALE</div>
+            <h1>Panouri și instalații<br /><em>pentru energia viitorului.</em></h1>
+            <p className="dns-hero-lede">Proiectăm, furnizăm și instalăm sisteme fotovoltaice pentru locuințe, afaceri și obiective industriale — de la alegerea echipamentelor și structurilor până la montaj și integrare electrică.</p>
+            <div className="dns-hero-actions"><a href="#contact" className="dns-button dns-button-primary">Solicitați o ofertă <ArrowRight size={18} /></a><a href="#echipamente" className="dns-text-link">Vezi echipamentele <ArrowDown size={16} /></a></div>
+            <div className="dns-hero-note"><ShieldCheck size={16} /> Structuri la sol și pe acoperiș · soluții casnice și industriale</div>
           </div>
-          <WorkPreview />
+          <EquipmentPreview />
         </div>
         <div className="dns-hero-bottom"><span>PLANIFICĂ</span><i /><span>DOCUMENTEAZĂ</span><i /><span>FINALIZEAZĂ</span></div>
       </section>
@@ -131,12 +120,15 @@ export default function PublicHome() {
       </section>
 
       <section className="dns-equipment" id="echipamente">
-        <div className="dns-equipment-inner"><div className="dns-section-label">ECHIPAMENTE PENTRU FIECARE PROIECT</div><div className="dns-equipment-heading"><h2>Lucrăm cu mărci<br /><em>recunoscute în domeniu.</em></h2><p>Selectăm echipamentele în funcție de configurație, cerințele obiectivului și compatibilitatea sistemului. Portofoliul include și alte modele potrivite proiectului.</p></div>
+        <div className="dns-equipment-inner"><div className="dns-section-label">ECHIPAMENTE ȘI FURNIZARE</div><div className="dns-equipment-heading"><h2>Tot sistemul,<br /><em>configurat pentru proiect.</em></h2><p>Furnizăm echipamente și structuri de montaj pentru sisteme fotovoltaice. Selectăm variantele în funcție de configurație, amplasament și compatibilitatea componentelor.</p></div>
           <div className="dns-equipment-grid">
             <article className="dns-equipment-card"><span>INVERTOARE</span><p>DEYE · SOLIS · HUAWEI · SIGENERGY · FRONIUS</p><small>și alte modele compatibile</small></article>
             <article className="dns-equipment-card"><span>BATERII</span><p>DYNESS · DEYE · UHOME · JA SOLAR</p><small>și alte soluții de stocare</small></article>
             <article className="dns-equipment-card"><span>PANOURI FOTOVOLTAICE</span><p>JINKO · AIKO · TRINA · CANADIAN SOLAR</p><small>și alte mărci disponibile</small></article>
+            <article className="dns-equipment-card"><span>STRUCTURI DE MONTAJ</span><p>ACOPERIȘ · SOL</p><small>configurate după amplasament și tipul proiectului</small></article>
+            <article className="dns-equipment-card"><span>STAȚII DE ÎNCĂRCARE</span><p>CASNICE · INDUSTRIALE</p><small>integrate cu instalația electrică și fotovoltaică</small></article>
           </div>
+          <div className="dns-equipment-partner"><p>Prețurile și catalogul extins sunt disponibile doar instalatorilor și partenerilor autorizați.</p><Link to="/app/catalog-echipamente" className="dns-equipment-partner-link">Acces instalatori și parteneri <ArrowUpRight size={15} /></Link></div>
           <figure className="dns-equipment-gallery"><img src="/dns-equipment-showcase.jpg" alt="Exemple ilustrative de invertor solar, baterii, panouri fotovoltaice, stații de încărcare și tablou electric" loading="lazy" /><figcaption>Imagini ilustrative. Mărcile și configurația echipamentelor se stabilesc în funcție de proiect.</figcaption></figure>
         </div>
       </section>
