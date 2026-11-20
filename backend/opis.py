@@ -303,17 +303,45 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
 def file_pdf(data: bytes, ct: str) -> bytes:
     if "pdf" in (ct or ""):
         return data
+
+    # Keep uploaded originals untouched, but scale photographs when they are
+    # embedded into dossier bundles. Full-resolution phone images can otherwise
+    # make a single PDF 40+ MB and fail to render in mobile Safari.
+    image_bytes = data
+    try:
+        from PIL import Image, ImageOps
+        if "heic" in (ct or "").lower() or "heif" in (ct or "").lower():
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        with Image.open(io.BytesIO(data)) as source:
+            image = ImageOps.exif_transpose(source)
+            resampling = getattr(Image, "Resampling", Image)
+            image.thumbnail((2400, 2400), resample=resampling.LANCZOS)
+            if image.mode in ("RGBA", "LA") or "transparency" in image.info:
+                rgba = image.convert("RGBA")
+                flattened = Image.new("RGB", rgba.size, "white")
+                flattened.paste(rgba, mask=rgba.getchannel("A"))
+            else:
+                flattened = image.convert("RGB")
+            optimized = io.BytesIO()
+            flattened.save(optimized, format="JPEG", quality=88, optimize=True, progressive=True)
+            image_bytes = optimized.getvalue()
+    except Exception:
+        # Preserve the existing path for formats Pillow cannot decode.
+        pass
+
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.utils import ImageReader
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
-    img = ImageReader(io.BytesIO(data))
+    img = ImageReader(io.BytesIO(image_bytes))
     iw, ih = img.getSize()
     w, h = A4
     s = min((w - 40) / iw, (h - 40) / ih)
     c.drawImage(img, (w - iw * s) / 2, (h - ih * s) / 2, iw * s, ih * s)
     c.save()
     return buf.getvalue()
+
 
 
 def watermark(writer, text="CIORNĂ", size=70):
