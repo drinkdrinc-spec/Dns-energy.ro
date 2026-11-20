@@ -1998,6 +1998,9 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     if attach or doc_type == "all":
         await auto_import_selected_catalog_documents(user, rec)
         pdf = merge_pdfs(pdf, await catalog_files(user["id"], rec))
+    if doc_type == "all":
+        evidence = await OPIS.authorization_files(db, user["id"], rec, settings)
+        pdf = merge_pdfs(pdf, evidence)
     fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{fname}")})
 
