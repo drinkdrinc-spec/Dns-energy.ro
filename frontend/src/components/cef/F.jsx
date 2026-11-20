@@ -11,7 +11,7 @@ function formatPartnerPrice(raw, markup) {
     : value.replace(/[.,]/g, "");
   const amount = Number(normalized);
   if (!Number.isFinite(amount) || amount <= 0) return "";
-  const currency = /\\bEUR\\b|€/i.test(raw) ? "EUR" : "RON";
+  const currency = /\bEUR\b|€/i.test(raw) ? "EUR" : "RON";
   return new Intl.NumberFormat("ro-RO", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount * (1 + markup / 100));
 }
 export function F({ label, value, onChange, type = "text", options, testid, className = "" }) {
@@ -117,7 +117,7 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
       />
       {selectedItem && <div className="mt-1 text-[11px] leading-4" style={{ color: "var(--muted)" }} data-testid={`${testid}-price`}>
         {selectedItem.source_price
-          ? <><span>Preț furnizor: {selectedItem.source_price}</span>{dnsPrice && <span className="ml-2 font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{markup}%): {dnsPrice}</span>}<span className="block">{selectedItem.source_price_tax_note || "TVA de verificat la furnizor"} · prețul se actualizează la verificarea furnizorului</span></>
+          ? <><span>Preț furnizor: {selectedItem.source_price}</span>{dnsPrice && <span className="ml-2 font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{markup}%): {dnsPrice}</span>}<span className="block">{selectedItem.source_price_tax_note || "TVA de verificat la furnizor"} · preț importat; verifică actualitatea la furnizor</span></>
           : <span>Prețul nu este disponibil pentru acest model. Caută-l în Catalog → la furnizori.</span>}
       </div>}
       {open && (
