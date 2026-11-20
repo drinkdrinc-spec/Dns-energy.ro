@@ -124,7 +124,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     if (selectedDeerForm.key === "existing" && selectedDeerForm.value.includes("actualizare CRR") && !kind.includes("administrativ")) issues.push("Anexa 3 pentru actualizare CRR cere tipul solicitării administrative.");
     if (selectedDeerForm.value.includes("≤10,8")) {
       const invs = selectedPros?.cef?.inverters || [];
-      const stringsPower = invs.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, st) => n + (Number(st.panels) || 0) * (Number(st.panel_w) || Number(inv.panel_w) || 0) / 1000 * (Number(inv.count) || 1), 0), 0);
+      const stringsPower = invs.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, st) => n + (Number(st.panels) || 0) * (Number(st.panel_w) || Number(inv.panel_w) || 0) / 1000 * (Number(inv.count || inv.quantity) || 1), 0), 0);
       const power = installedPanelKwp(selectedPros || { cef: form.atr_cef }) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower;
       if (!power) issues.push("Completează puterea instalată de producere pentru verificarea Anexei 5.");
       else if (power > 10.8) issues.push("Anexa 5 este pentru putere instalată de maximum 10,8 kW.");
@@ -228,9 +228,10 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
             const model = string.panel_model || inv.panel_model || "model necompletat";
             const catalogId = string.panel_catalog_id || inv.panel_catalog_id || "";
             const key = catalogId || model.trim().toLocaleLowerCase("ro-RO");
-            const group = groups.get(key) || { model, panels: 0, watts: Number(string.panel_w) || Number(inv.panel_w) || 0 };
-            group.panels += Number(string.panels) || 0;
-            if (!group.watts) group.watts = Number(string.panel_w) || Number(inv.panel_w) || 0;
+            const watts = Number(string.panel_w) || Number(inv.panel_w) || 0;
+            const group = groups.get(key) || { model, panels: 0, watts: 0 };
+            group.panels += (Number(string.panels) || 0) * (Number(inv.count || inv.quantity) || 1);
+            if (!group.watts) group.watts = watts;
             groups.set(key, group);
           }
           for (const [panelIndex, group] of [...groups.values()].entries()) {
