@@ -300,6 +300,21 @@ export default function EquipmentCatalog() {
     } finally { setSupplierLoading(false); }
   };
 
+  const refreshSupplierPrice = async (item) => {
+    if (!item?.supplier || !item?.source_url) return;
+    setSupplierImporting(item.source_url);
+    try {
+      const { data } = await api.post("/catalog/supplier-import", {
+        supplier: item.supplier, category: item.category, product_url: item.source_url,
+      }, { timeout: 60000 });
+      await load();
+      toast.success(data.item?.source_price
+        ? "Preț actualizat de la furnizor: " + data.item.source_price
+        : "Furnizorul nu afișează momentan un preț public pentru acest model.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Prețul nu a putut fi verificat acum.");
+    } finally { setSupplierImporting(""); }
+  };
   const importSupplierProduct = async (product) => {
     const key = product.product_url;
     setSupplierImporting(key);
@@ -635,6 +650,7 @@ export default function EquipmentCatalog() {
                   </p>}
                 </div>
                 <div className="flex shrink-0 gap-1">
+                  {i.supplier && i.source_url && <button onClick={() => refreshSupplierPrice(i)} disabled={Boolean(supplierImporting)} className="rounded-lg border p-2 hover:bg-[#eef4ff] disabled:opacity-50" aria-label={`Actualizează prețul de la ${i.supplier} pentru ${i.brand_model}`} title={supplierImporting === i.source_url ? "Se verifică prețul…" : "Verifică din nou prețul și datele publicate de furnizor"} data-testid={`catalog-refresh-price-${i.id}`}><RefreshCw size={15} style={{ color: "var(--green, #168363)" }} /></button>}
                   <button onClick={() => setForm({ ...i })} className="rounded-lg border p-2 hover:bg-[#eef4ff]" aria-label={`Editează ${i.brand_model}`} data-testid={`catalog-edit-${i.id}`}><Pencil size={15} style={{ color: "var(--blue)" }} /></button>
                   <button onClick={() => remove(i.id)} className="rounded-lg border p-2 hover:bg-[#fff0f0]" aria-label={`Șterge ${i.brand_model}`} data-testid={`catalog-delete-${i.id}`}><Trash2 size={15} style={{ color: "#b33333" }} /></button>
                 </div>
