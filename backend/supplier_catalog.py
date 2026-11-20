@@ -290,18 +290,23 @@ def _offer(doc):
     offers.price from JSON-LD. Do not use recommendation prices or arbitrary
     amounts from the rest of the page.
     """
-    selectors = (
-        "main .entry-summary .price",
-        "main .summary .price",
-        ".product .entry-summary .price",
-        ".product .summary .price",
-        ".woocommerce-product-details__short-description .price",
+    price_xpaths = (
+        "//*[contains(concat(' ',normalize-space(@class),' '),' entry-summary ')]"
+        "//*[contains(concat(' ',normalize-space(@class),' '),' price ')]",
+        "//*[contains(concat(' ',normalize-space(@class),' '),' summary ')]"
+        "//*[contains(concat(' ',normalize-space(@class),' '),' price ')]",
     )
     visible_price = ""
-    for selector in selectors:
-        for node in doc.cssselect(selector):
-            current = node.cssselect("ins .amount, ins .woocommerce-Price-amount")
-            amounts = current or node.cssselect(".amount, .woocommerce-Price-amount")
+    for xpath in price_xpaths:
+        for node in doc.xpath(xpath):
+            current = node.xpath(
+                ".//*[contains(concat(' ',normalize-space(@class),' '),' amount ') "
+                "and (ancestor::ins or contains(concat(' ',normalize-space(@class),' '),' woocommerce-Price-amount '))]"
+            )
+            amounts = current or node.xpath(
+                ".//*[contains(concat(' ',normalize-space(@class),' '),' amount ') "
+                "or contains(concat(' ',normalize-space(@class),' '),' woocommerce-Price-amount ')]"
+            )
             visible_price = (" ".join(" ".join(amounts[0].itertext()).split())
                              if amounts else " ".join(" ".join(node.itertext()).split()))
             if visible_price:
@@ -315,11 +320,12 @@ def _offer(doc):
             currency = "EUR" if "eur" in visible_price.lower() or "€" in visible_price else "RON"
             price_text = f"{amount:g} {currency}"
             availability = ""
-            for stock_selector in (".entry-summary .stock", ".summary .stock", ".stock"):
-                stock_nodes = doc.cssselect(stock_selector)
-                if stock_nodes:
-                    availability = " ".join(" ".join(stock_nodes[0].itertext()).split())[:80]
-                    break
+            stock_nodes = doc.xpath(
+                "//*[contains(concat(' ',normalize-space(@class),' '),' entry-summary ')]"
+                "//*[contains(concat(' ',normalize-space(@class),' '),' stock ')]"
+            )
+            if stock_nodes:
+                availability = " ".join(" ".join(stock_nodes[0].itertext()).split())[:80]
             return price_text, availability, _price_tax_note(doc, visible_price)
 
     # Structured offers remain the fallback for suppliers that publish them.
