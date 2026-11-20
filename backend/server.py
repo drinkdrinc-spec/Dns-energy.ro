@@ -1718,9 +1718,8 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
             duplicate_match.extend([{"cnp": identity_code}, {"idcode": identity_code}])
         else:
             duplicate_match.append({"client_name": name})
-        # One POD may legitimately have multiple applications over time. The
-        # intake_request_id above prevents retry-created duplicates; report older
-        # dossiers as context without blocking a new application.
+        # A POD can have multiple valid applications over time. The intake request ID
+        # above prevents duplicate retries; show older dossiers as context only.
         related_dossier = await db.prosumator.find_one(
             {**scope_q(user, "prosumator"), "pod": d["pod"], "$or": duplicate_match},
             {"_id": 0, "id": 1, "number": 1, "status": 1, "request_type": 1},
