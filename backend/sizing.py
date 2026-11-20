@@ -108,9 +108,22 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         T = f"INV {i + 1}"
         ac, dc, pa, pd = inv.get("ac") or {}, inv.get("dc") or {}, r["proposals"]["ac"], r["proposals"]["dc"]
         si, sp = src_of(inv, "x", "catalog_id"), src_of(inv, "x", "panel_catalog_id")
-        for k, lbl in [("brand_model", "Marcă și model invertor"), ("p_nom_kw", "Putere nominală AC (kW)"), ("p_max_kw", "Putere maximă AC (kW)"),
-                       ("vdc_max", "Udc max (V)"), ("mppt_min", "MPPT min (V)"), ("mppt_max", "MPPT max (V)"), ("mppt_count", "Nr. MPPT"),
-                       ("imax_mppt", "Curent max de funcționare / MPPT (A)"), ("isc_max_mppt", "Isc max admisibil / MPPT (A)")]:
+        inverter_kind = str(inv.get("kind") or inv.get("type") or "").casefold()
+        battery_only = bool(inv.get("battery_only") or inv.get("no_panels"))
+        has_pv = not battery_only and "invertor de baterie (ac)" not in inverter_kind
+        required_inverter_specs = [
+            ("brand_model", "Marcă și model invertor"),
+            ("p_nom_kw", "Putere nominală AC (kW)"),
+            ("p_max_kw", "Putere maximă AC (kW)"),
+        ]
+        if has_pv:
+            required_inverter_specs += [
+                ("vdc_max", "Udc max (V)"), ("mppt_min", "MPPT min (V)"),
+                ("mppt_max", "MPPT max (V)"), ("mppt_count", "Nr. MPPT"),
+                ("imax_mppt", "Curent max de funcționare / MPPT (A)"),
+                ("isc_max_mppt", "Isc max admisibil / MPPT (A)"),
+            ]
+        for k, lbl in required_inverter_specs:
             if o.need(f"cef.inverters.{i}.{k}", lbl, inv.get(k), T):
                 o.it(T, lbl, g(inv.get(k)), si)
         strings = r["strings"]
@@ -119,7 +132,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         # compatibility check. Ratings are per voltage tier from the exact
         # catalog model; unknown values remain unresolved instead of passing.
         rsd = inv.get("rsd") or {}
-        if rsd.get("enabled"):
+        if rsd.get("enabled") and has_pv:
             rsd_group = f"RSD INV {i + 1}"
             o.need(f"cef.inverters.{i}.rsd.brand_model", "Model RSD", rsd.get("brand_model"), rsd_group)
             rsd_strings = n(rsd.get("string_count"))
@@ -156,7 +169,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                      (rated_current >= required_current) if rated_current and required_current is not None else (False if voltage is not None and tier is None else None),
                      "tensiunea calculată depășește toate treptele publicate" if voltage is not None and tier is None else
                      ("lipsește ratingul de curent al modelului la tensiunea aplicabilă sau Isc din fișa panoului" if not rated_current or required_current is None else ""))
-        if inv.get("kind") != "Invertor de baterie (AC)":
+        if has_pv:
             if strings:
                 # Panel models belong to their strings. Requiring duplicate
                 # inverter-level panel fields blocks valid mixed-model rows and
