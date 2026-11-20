@@ -89,6 +89,43 @@ def catalog_refs(rec):
     return dedup(inv), dedup(pan), dedup(bat), dedup(met), dedup(rsd)
 
 
+async def authorization_files(db, owner, rec, settings):
+    """Return only uploaded, current company, signer and PRAM evidence for a dossier export."""
+    files, seen = [], set()
+    today = datetime.date.today().isoformat()
+
+    def add_file(file):
+        file = file or {}
+        path = file.get("storage_path")
+        if path and path not in seen:
+            seen.add(path)
+            files.append(file)
+
+    company_file = settings.get("anre_file") or {}
+    company_expiry = str(settings.get("anre_valid") or "")
+    if company_file.get("storage_path") and (not company_expiry or company_expiry >= today):
+        add_file(company_file)
+
+    snapshot = rec.get("snapshot") or {}
+    signers = snapshot.get("signers") or rec.get("signers") or {}
+    signer_roles = {"executant", "resp_tehnic", "electrician", "verifier", "measurer", "designer"}
+    for staff_id in dict.fromkeys(value for role, value in signers.items() if role in signer_roles and isinstance(value, str) and value):
+        person = await db.staff.find_one({"owner": owner, "id": staff_id}, {"_id": 0})
+        for auth in (person or {}).get("auths") or []:
+            expiry = str(auth.get("expires") or "")
+            file = auth.get("file") or {}
+            if auth.get("verified") and file.get("storage_path") and (not expiry or expiry >= today):
+                add_file(file)
+
+    if rec.get("pram_source") not in ("third_party", "none"):
+        instrument_id = rec.get("instrument_id")
+        instrument = await db.instruments.find_one({"owner": owner, "id": instrument_id}, {"_id": 0}) if instrument_id else None
+        meter_file = (instrument or {}).get("file") or {}
+        expiry = str((instrument or {}).get("expires") or "")
+        if instrument and instrument.get("active") is not False and instrument.get("measures_grounding") is not False and meter_file.get("storage_path") and (not expiry or expiry >= today):
+            add_file(meter_file)
+    return files
+
 async def build_positions(db, owner, rec, client, settings, public_documents=None):
     kind = str(client.get("kind") or "").strip().casefold()
     pj = "jurid" in kind or kind in ("pj", "company", "firmă", "firma")
