@@ -1,4 +1,19 @@
 import { useState } from "react";
+
+function formatPartnerPrice(raw, markup) {
+  const match = String(raw || "").match(/\d[\d\s.,]*/);
+  if (!match) return "";
+  const value = match[0].replace(/\s/g, "");
+  const decimalAt = Math.max(value.lastIndexOf(","), value.lastIndexOf("."));
+  const fractionLength = decimalAt >= 0 ? value.length - decimalAt - 1 : 0;
+  const normalized = decimalAt >= 0 && fractionLength > 0 && fractionLength <= 2
+    ? `${value.slice(0, decimalAt).replace(/[.,]/g, "")}.${value.slice(decimalAt + 1)}`
+    : value.replace(/[.,]/g, "");
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  const currency = /\\bEUR\\b|€/i.test(raw) ? "EUR" : "RON";
+  return new Intl.NumberFormat("ro-RO", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount * (1 + markup / 100));
+}
 export function F({ label, value, onChange, type = "text", options, testid, className = "" }) {
   const common = { className: "den-input", value: value ?? "", "data-testid": testid, onChange: (e) => onChange(type === "number" && e.target.value !== "" ? Number(e.target.value) : e.target.value) };
   return (
@@ -19,10 +34,13 @@ export function Check({ label, value, onChange, testid }) {
   );
 }
 
-export function CatalogPick({ items, category, onPick, onQueryChange, testid, label = "Caută model în catalog" }) {
+export function CatalogPick({ items, category, onPick, onQueryChange, testid, selectedId, label = "Caută model în catalog" }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const list = items.filter((i) => i.category === category);
+  const selectedItem = list.find((item) => item.id === selectedId);
+  const markup = typeof window !== "undefined" && Number(window.localStorage.getItem("dns-supplier-markup")) === 20 ? 20 : 15;
+  const dnsPrice = formatPartnerPrice(selectedItem?.source_price, markup);
   const fold = (value) => String(value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("ro-RO");
   const hasValue = (value) => value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
   const positive = (value) => hasValue(value) && Number(value) > 0;
@@ -97,6 +115,11 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
         onChange={(event) => { const value = event.target.value; setQuery(value); setOpen(true); onQueryChange?.(value); }}
         onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
       />
+      {selectedItem && <div className="mt-1 text-[11px] leading-4" style={{ color: "var(--muted)" }} data-testid={`${testid}-price`}>
+        {selectedItem.source_price
+          ? <><span>Preț furnizor: {selectedItem.source_price}</span>{dnsPrice && <span className="ml-2 font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{markup}%): {dnsPrice}</span>}<span className="block">{selectedItem.source_price_tax_note || "TVA de verificat la furnizor"} · prețul se actualizează la verificarea furnizorului</span></>
+          : <span>Prețul nu este disponibil pentru acest model. Caută-l în Catalog → la furnizori.</span>}
+      </div>}
       {open && (
         <div id={`${testid}-options`} role="listbox" className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border bg-white p-1 shadow-xl" style={{ borderColor: "var(--line)" }}>
           {filtered.slice(0, 60).map((item) => (
@@ -118,6 +141,7 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, la
                   : category === "Baterie" ? [item.kwh && `${item.kwh} kWh`, item.ah && `${item.ah} Ah`, item.voltage && `${item.voltage} V`].filter(Boolean).join(" · ")
                   : [item.phases].filter(Boolean).join(" · ")}
               </span>
+              {item.source_price && <span className="mt-1 block text-[11px] font-semibold" style={{ color: "var(--green, #168363)" }}>Preț furnizor: {item.source_price}{formatPartnerPrice(item.source_price, markup) ? ` · DNS (+${markup}%): ${formatPartnerPrice(item.source_price, markup)}` : ""} · {item.source_price_tax_note || "TVA de verificat"}</span>}
               {missing(item).length > 0 && <span className="mt-1 block text-[11px] font-medium text-amber-700">Indisponibil pentru proiectare · verifică: {missing(item).join(", ")}</span>}
             </button>
           ))}
