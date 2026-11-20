@@ -2050,6 +2050,10 @@ async def seed_catalog(owner: str):
             # Backfill manufacturer source links without overwriting a link the user already set.
             source_updates = {f"{kind}_url": item[f"{kind}_url"] for kind in ("datasheet", "conformity")
                               if item.get(f"{kind}_url") and not row.get(f"{kind}_url") and not row.get(f"{kind}_source_url")}
+            # Replace this known-wrong Jinko certificate link with the manufacturer's current certificate for the exact 54HL4M-BDV dual-glass family.
+            if (item.get("brand_model") == "JINKO SOLAR JKM510N-54HL4M-BDV"
+                    and row.get("conformity_url") == "https://solar-distribution.baywa-re.de/out/media/10-Tiger_Neo_48HL4M-DB_IEC61215IEC61730-Dual-Glass_2025-03-17_Rev-11.pdf"):
+                source_updates["conformity_url"] = item["conformity_url"]
             verified_updates = missing_catalog_seed_values(row, item)
             if source_updates or verified_updates:
                 updates = {**source_updates, **verified_updates}
