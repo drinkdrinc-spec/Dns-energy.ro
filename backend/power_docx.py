@@ -171,9 +171,16 @@ async def render_deer_annex1(rec, client, settings):
     requested = _first(rec.get("requested_power_kw"), rec.get("requested"), rec.get("power"))
     approved = _first(rec.get("approved_power_kw"), rec.get("approved"), rec.get("bransament_kw"))
     requested_kva = _first(rec.get("requested_kva"), rec.get("power_kva"))
-    site_address = _first(rec.get("address"), c.get("address"))
+    site_address = _first(
+        rec.get("consumption_address"), c.get("consumption_address"), c.get("pod_address"),
+        rec.get("address"), c.get("address"),
+    )
     recipient = _first(c.get("name"), rec.get("client_name"))
-    identity = _first(c.get("idcode"), c.get("cnp"), rec.get("cnp"))
+    applicant_kind = _first(rec.get("applicant_type"), rec.get("client_kind"), c.get("kind"), c.get("type")).casefold()
+    is_company = any(marker in applicant_kind for marker in ("jurid", "company", "firma", "firmă", "pj"))
+    identifier = _first(c.get("idcode"), rec.get("idcode"))
+    cui = _first(c.get("cui"), rec.get("cui"), identifier if is_company else "")
+    cnp = _first(c.get("cnp"), rec.get("cnp"), identifier if not is_company else "")
     company = _first(s.get("company"))
     rep = _first(s.get("rep"), s.get("representative"))
     phone = _first(c.get("phone"), rec.get("phone"))
@@ -186,7 +193,7 @@ async def render_deer_annex1(rec, client, settings):
     hq = _first(c.get("hq_address"), c.get("address"))
     personal = [
         recipient, county, locality, _first(c.get("postal_code"), rec.get("postal_code")), hq, "", "", "", "", "",
-        phone, "", "", email, identity, identity, _first(c.get("regcom"), rec.get("regcom")),
+        phone, "", "", email, cui, cnp, _first(c.get("regcom"), rec.get("regcom")),
         _first(c.get("rep_name"), rec.get("rep_name")), _first(c.get("rep_role"), rec.get("rep_role")),
         _first(c.get("iban"), rec.get("iban")), _first(c.get("bank"), rec.get("bank")), "",
         company, "", hq, "", "", "", "", "", phone, "", "", email, _first(s.get("anre_attest")), "",
