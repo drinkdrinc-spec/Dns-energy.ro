@@ -63,7 +63,7 @@ const requirementState = (item, docs, form) => {
     if (form.meter_enabled !== true) return { label: "Confirmați dacă există", tone: "#92400e", bg: "#fffbeb" };
     const missing = !form.meter || !form.meter_serial || !form.meter_specs;
     return missing
-      ? { label: "Date de completat", tone: "#991b1b", bg: "#fef2f2" }
+      ? { label: "Date de completat", tone: "#8a5a00", bg: "#fff8e8" }
       : { label: "Date completate · verificați la operator", tone: "#92400e", bg: "#fffbeb" };
   }
   if (!docs && item.keys?.length) return { label: "Se verifică…", tone: "#475569", bg: "#f1f5f9" };
@@ -73,10 +73,10 @@ const requirementState = (item, docs, form) => {
     : { label: "Nu este generat pentru acest dosar", tone: "#475569", bg: "#f1f5f9" };
   const missing = positions.some((position) => position.missing?.length);
   if (item.external) return missing
-    ? { label: "De completat · verifică/atașează la operator", tone: "#991b1b", bg: "#fef2f2" }
+    ? { label: "De completat · verifică/atașează la operator", tone: "#8a5a00", bg: "#fff8e8" }
     : { label: "Generat · verifică și atașează la operator", tone: "#92400e", bg: "#fffbeb" };
   return missing
-    ? { label: "De completat", tone: "#991b1b", bg: "#fef2f2" }
+    ? { label: "De completat", tone: "#8a5a00", bg: "#fff8e8" }
     : { label: "Generat în dosar · verifică și semnează", tone: "#166534", bg: "#f0fdf4" };
 };
 
@@ -171,7 +171,7 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
         </div>
       </details>
       <div id="diu-piese-generare" className="flex items-center justify-between flex-wrap gap-2 mt-5">
-        <div className="text-xs font-bold" style={{ color: docs?.complete ? "#166534" : "#9b2c2c" }} data-testid="diu-docs-state">
+        <div className="text-xs font-bold" style={{ color: docs?.complete ? "#166534" : "#8a5a00" }} data-testid="diu-docs-state">
           {docs ? (docs.complete ? "Toate documentele sunt complete" : "Unele documente au date lipsă (export CIORNĂ)") : ""} · stările se actualizează după „Salvează”</div>
         <div className="flex gap-2">
           <Btn variant="secondary" onClick={loadDocs} data-testid="diu-docs-refresh"><RefreshCw size={14} /> Actualizează</Btn>
@@ -181,9 +181,9 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
       </div>
       <div className="mt-2 space-y-1">{(docs?.positions || []).map((p) => (
         <div key={p.key} className="flex items-start justify-between gap-2 rounded-lg bg-white border px-3 py-2 text-xs" style={{ borderColor: "var(--line)" }} data-testid={`diu-doc-${p.key}`}>
-          <div><b>{p.nr}. {p.title}</b>{p.missing.length > 0 && <div style={{ color: "#9b2c2c" }}>Lipsă: {p.missing.join(", ")}</div>}</div>
+          <div><b>{p.nr}. {p.title}</b>{p.missing.length > 0 && <div style={{ color: "#76500a" }}>Lipsă: {p.missing.join(", ")}</div>}</div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="font-bold rounded-full px-2 py-0.5" style={p.status === "semnat" ? { background: "#ecfdf3", color: "#166534" } : p.missing.length ? { background: "#fff0f0", color: "#9b2c2c" } : { background: "#eef4ff", color: "#1d4ed8" }} data-testid={`diu-doc-status-${p.key}`}>{p.status}{p.signed_at ? ` ${new Date(p.signed_at).toLocaleDateString("ro-RO")}` : ""}</span>
+            <span className="font-bold rounded-full px-2 py-0.5" style={p.status === "semnat" ? { background: "#ecfdf3", color: "#166534" } : p.missing.length ? { background: "#fff8e8", color: "#8a5a00" } : { background: "#eef4ff", color: "#1d4ed8" }} data-testid={`diu-doc-status-${p.key}`}>{p.status}{p.signed_at ? ` ${new Date(p.signed_at).toLocaleDateString("ro-RO")}` : ""}</span>
             <button type="button" onClick={() => openAuthenticatedFile(pdf(p.key))} title={p.signed_at ? "PDF semnat" : "PDF"} data-testid={`diu-doc-pdf-${p.key}`}><FileDown size={15} style={{ color: "var(--blue)" }} /></button>
             <button type="button" onClick={() => downloadAuthenticatedFile(pdf(p.key), `DIU_${p.key}_${id}.pdf`)} title="Descarcă PDF separat" aria-label={`Descarcă ${p.title} PDF`} data-testid={`diu-doc-download-${p.key}`}><Download size={15} style={{ color: "var(--blue)" }} /></button>
             {p.docx && <button type="button" onClick={() => openAuthenticatedFile(`/diu/${id}/pdf?doc=${p.key}&fmt=docx`)} title="Word (editabil)" data-testid={`diu-doc-docx-${p.key}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></button>}
