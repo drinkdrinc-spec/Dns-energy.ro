@@ -16,8 +16,11 @@ api.interceptors.request.use((config) => {
 });
 
 const TRANSIENT_API_STATUSES = new Set([502, 503, 504]);
-const SAFE_API_RETRIES = 5;
-const API_RETRY_DELAYS_MS = [1000, 2000, 4000, 6000, 6000];
+const SAFE_API_RETRIES = 7;
+// Render may need several seconds to wake the API and reconnect to MongoDB.
+// Intake creation carries a stable request ID, while document extraction is
+// read-only, so the explicitly marked requests can safely wait and retry.
+const API_RETRY_DELAYS_MS = [2500, 5000, 8000, 10000, 10000, 10000, 10000];
 
 api.interceptors.response.use(
   (response) => response,
@@ -31,13 +34,13 @@ api.interceptors.response.use(
     const temporaryNetworkFailure = !error.response
       && !(typeof navigator !== "undefined" && navigator.onLine === false);
     const attempts = Number(config.__dnsRetryCount || 0);
-    const maxAttempts = safePlatformWakeRetry ? 1 : SAFE_API_RETRIES;
+    const maxAttempts = SAFE_API_RETRIES;
     if (!safeRequest || (!transientResponse && !temporaryNetworkFailure) || attempts >= maxAttempts) {
       return Promise.reject(error);
     }
 
     config.__dnsRetryCount = attempts + 1;
-    const wait = safePlatformWakeRetry ? 2500 : API_RETRY_DELAYS_MS[Math.min(attempts, API_RETRY_DELAYS_MS.length - 1)];
+    const wait = API_RETRY_DELAYS_MS[Math.min(attempts, API_RETRY_DELAYS_MS.length - 1)];
     await new Promise((resolve) => window.setTimeout(resolve, wait));
     return api.request(config);
   },
