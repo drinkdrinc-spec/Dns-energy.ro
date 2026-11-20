@@ -43,7 +43,7 @@ export function SldPanel({ id, form, setVal }) {
     <div className="mt-6 rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="sld-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="font-bold">Schemă monofilară și dimensionare tehnică <span className="text-[10px] font-bold ml-1 rounded-full px-2 py-0.5" style={{ background: "#eef4ff", color: "var(--blue)" }}>generator nou — în verificare</span>{d.is_test && <span className="text-[10px] font-bold ml-1 rounded-full px-2 py-0.5" style={{ background: "#fff0f0", color: "#9b2c2c" }} data-testid="sld-test-badge">DOSAR DE TEST</span>}</h3>
+          <h3 className="font-bold">Schemă monofilară și dimensionare tehnică {d.is_test && <span className="text-[10px] font-bold ml-1 rounded-full px-2 py-0.5" style={{ background: "#fff0f0", color: "#9b2c2c" }} data-testid="sld-test-badge">DOSAR DE TEST</span>}</h3>
           <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Simboluri SR EN 60617 · calcule HD 60364 / IEC 62548. Dimensionarea este o propunere verificabilă; devine document final doar după aprobarea proiectantului / verificatorului.</p>
         </div>
         <span className="text-xs font-bold rounded-full px-3 py-1" style={{ background: st[1], color: st[2] }} data-testid="sld-status">{st[0]}{d.approval.status === "approved" ? ` · ${Object.values(d.approval.approvals || {}).filter((a) => a.valid).map((a) => a.name).join(" + ")}` : ""}</span>
