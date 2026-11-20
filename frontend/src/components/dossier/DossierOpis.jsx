@@ -61,7 +61,7 @@ export function DossierOpis({ id, mode = "all" }) {
   };
   const lock = () => (!d.finalized && can(user, "ai_gpt") ? setPre(true) : doLock().catch(() => {}));
   return (
-    <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="dossier-opis">
+    <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid={mode === "attachments" ? "dossier-acts-photos" : "dossier-opis"}>
       {mode !== "attachments" && <AiPrecheck id={id} open={pre} onClose={() => setPre(false)} onFinalize={doLock} />}
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <div>
