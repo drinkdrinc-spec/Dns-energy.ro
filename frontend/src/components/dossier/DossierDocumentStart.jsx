@@ -260,6 +260,9 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       setBusy("create");
       const { data } = await api.post("/import/prosumator", payload);
       if (data.intake_warnings?.length) toast.warning(`Dosarul a fost creat. ${data.intake_warnings.join(" ")}`);
+      else if (data.related_dossier) toast.warning(
+        `Dosar nou creat. Există deja dosarul ${data.related_dossier.number || ""} pentru acest POD; am păstrat ambele cereri.`
+      );
       else toast.success(requiredDataMissing.length
         ? `Ciornă creată. Completează: ${requiredDataMissing.join(", ")}.`
         : "Clientul și dosarul au fost create cu documentele în opis.");

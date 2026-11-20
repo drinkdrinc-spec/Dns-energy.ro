@@ -1709,6 +1709,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     if client and identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
         client = None
 
+    related_dossier = None
     if d.get("pod"):
         duplicate_match = []
         if client:
@@ -1717,9 +1718,12 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
             duplicate_match.extend([{"cnp": identity_code}, {"idcode": identity_code}])
         else:
             duplicate_match.append({"client_name": name})
-        duplicate = await db.prosumator.find_one({**scope_q(user, "prosumator"), "pod": d["pod"], "$or": duplicate_match}, {"id": 1})
-        if duplicate:
-            raise HTTPException(status_code=409, detail="Există deja un dosar pentru acest client și acest POD")
+        # A POD can have multiple valid applications over time. The intake request ID
+        # above prevents duplicate retries; show older dossiers as context only.
+        related_dossier = await db.prosumator.find_one(
+            {**scope_q(user, "prosumator"), "pod": d["pod"], "$or": duplicate_match},
+            {"_id": 0, "id": 1, "number": 1, "status": 1, "request_type": 1},
+        )
     if not client:
         client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""), "email": d.get("email", ""),
                              "address": d.get("address", ""), "hq_address": d.get("hq_address", ""), "county": d.get("county", ""),
@@ -1836,6 +1840,8 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     response = clean(pros)
     if post_save_warnings:
         response["intake_warnings"] = list(dict.fromkeys(post_save_warnings))
+    if related_dossier:
+        response["related_dossier"] = related_dossier
     return response
 
 @api_router.get("/docs/types")
