@@ -2182,7 +2182,7 @@ async def sld_status(item_id: str, user: dict = Depends(get_current_user)):
     staff_rows = await db.staff.find({"owner": user["id"]}, {"_id": 0, "id": 1, "name": 1, "email": 1, "auths": 1}).limit(300).to_list(300)
     staff_options = [{"id": row.get("id"), "name": row.get("name") or "", "email": row.get("email") or "",
                       "eligible": staff_eligible(row)} for row in staff_rows if row.get("id")]
-    return {"items": res["items"], "missing": res["missing"], "errors": res["errors"], "warnings": res["warnings"], "cables": res["cables"],
+    return {"items": res["items"], "missing": res["missing"], "unconfirmed": res.get("unconfirmed", []), "errors": res["errors"], "warnings": res["warnings"], "cables": res["cables"],
             "ready": res["ready"], "format": res["format"], "totals": res["base"]["totals"], "approval": state, "settings_warnings": warns,
             "source": sld.get("source") or "generated", "upload": sld.get("upload"), "revision": sld.get("revision") or 0,
             "auto_filled": (rec.get("cef") or {}).get("auto_filled") or [], "people": people,
@@ -2434,7 +2434,7 @@ async def sld_approve(item_id: str, request: Request, user: dict = Depends(get_c
     sld = rec.get("sld") or {}
     src = sld.get("source") or "generated"
     if src == "generated" and not res["ready"]:
-        raise HTTPException(status_code=400, detail=f"Schema nu poate fi aprobată: {len(res['missing'])} date lipsă, {len(res['errors'])} erori.")
+        raise HTTPException(status_code=400, detail=f"Schema nu poate fi aprobată: {len(res['missing'])} date lipsă, {len(res.get('unconfirmed', []))} valori de confirmat, {len(res['errors'])} erori.")
     if src == "uploaded" and not sld.get("upload"):
         raise HTTPException(status_code=400, detail="Nu există schemă încărcată.")
     sid = (rec.get("signers") or {}).get(role)
@@ -2501,7 +2501,7 @@ async def request_approval(user: dict, item_id: str, origin: str, auto: bool):
     if state["status"] == "approved":
         raise HTTPException(status_code=400, detail="Schema este deja aprobată pentru configurația actuală")
     if (sld.get("source") or "generated") == "generated" and not res["ready"]:
-        raise HTTPException(status_code=400, detail=f"Datele nu sunt complete: {len(res['missing'])} lipsă, {len(res['errors'])} erori")
+        raise HTTPException(status_code=400, detail=f"Datele nu sunt complete: {len(res['missing'])} lipsă, {len(res.get('unconfirmed', []))} de confirmat, {len(res['errors'])} erori")
     if auto and sld.get("approval_request_hash") == state["fingerprint"]:
         return None
     if not origin.startswith("https://"):
