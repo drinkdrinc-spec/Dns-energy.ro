@@ -108,7 +108,8 @@ async def authorization_files(db, owner, rec, settings):
 
     snapshot = rec.get("snapshot") or {}
     signers = snapshot.get("signers") or rec.get("signers") or {}
-    for staff_id in dict.fromkeys(value for value in signers.values() if value):
+    signer_roles = {"executant", "resp_tehnic", "electrician", "verifier", "measurer", "designer"}
+    for staff_id in dict.fromkeys(value for role, value in signers.items() if role in signer_roles and isinstance(value, str) and value):
         person = await db.staff.find_one({"owner": owner, "id": staff_id}, {"_id": 0})
         for auth in (person or {}).get("auths") or []:
             expiry = str(auth.get("expires") or "")
