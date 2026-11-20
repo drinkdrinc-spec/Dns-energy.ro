@@ -701,6 +701,7 @@ def drawing_header(S, PW, PH, rec, client, settings, res, approval):
     company = settings.get("company") or "DNS HOSTESS S.R.L."
     totals = res["base"]["totals"]
     summary = f"CEF {totals['kwp']:g} kWp · {totals['inverters_kw']:g} kW AC" if totals["kwp"] else "CEF · date tehnice de verificat"
+    backup_enabled = any((inv.get("backup") or {}).get("enabled") for inv in (rec.get("cef") or {}).get("inverters") or [])
     title = "SCHEMĂ MONOFILARĂ"
     y = PH - 17
     S.text(22, y + 1.2, company, 7.2, True)
@@ -713,9 +714,15 @@ def drawing_header(S, PW, PH, rec, client, settings, res, approval):
     S.lw(0.35, RED if label == "CIORNĂ" else BATTERY_GREEN)
     c.roundRect(bx, y - 2, badge_w, 7, 1.5, stroke=1, fill=0)
     S.text(bx + badge_w / 2, y + 0.3, label, 4.8, True, RED if label == "CIORNĂ" else BATTERY_GREEN, "c")
-    S.lw(0.25, GREY)
-    c.line(22, PH - 24, PW - 12, PH - 24)
-    return PH - 27
+    rule_y = PH - 24
+    if backup_enabled:
+        backup_note = ("BACKUP / EPS — în regim insularizat: numai consum propriu și circuitele convenite cu OD, fără evacuare în rețea; "
+                       "reconectare numai după minimum 15 minute de la revenirea tensiunii (Ordinul ANRE 228/2018, art. 14 alin. (4)).")
+        S.text(22, PH - 26.2, backup_note, 3.8, True, PV_ORANGE, w=PW - 44)
+        rule_y = PH - 30
+    c.setStrokeColor(GREY); c.setLineWidth(0.25)
+    c.line(22, rule_y, PW - 12, rule_y)
+    return rule_y - 3
 
 
 def drawing_grid(S, x1, y1, x2, y2):
