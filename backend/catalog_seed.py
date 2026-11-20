@@ -2,6 +2,8 @@ NOTE = "Date orientative — verificați fișa tehnică oficială a modelului ex
 
 SEED_BACKFILL_FIELDS = (
     "i_max", "coupling", "voltage_1ph", "voltage_3ph", "i_max_source_url",
+    "manufacturer", "max_fuse_a", "breaker_a", "breaker_voltage_dc", "breaker_integrated",
+    "breaker_poles", "breaker_icu_ka", "dc_switch_voltage_v", "dc_switch_current_a", "breaker_source_url",
     "string_count", "poles", "voltage_min_v", "voltage_max_v",
     "current_300v_a", "current_600v_a", "current_800v_a", "current_1000v_a", "current_1200v_a", "current_1500v_a",
     "ac_voltage_min_v", "ac_voltage_max_v", "ip_rating", "protection_class",
@@ -11,7 +13,8 @@ SEED_BACKFILL_FIELDS = (
     "kwh", "ah", "voltage", "tech",
 )
 NUMERIC_SEED_FIELDS = {
-    "i_max", "voltage_1ph", "voltage_3ph", "string_count", "poles", "voltage_min_v", "voltage_max_v",
+    "i_max", "voltage_1ph", "voltage_3ph", "string_count", "poles", "max_fuse_a", "breaker_a", "breaker_voltage_dc",
+    "breaker_poles", "breaker_icu_ka", "dc_switch_voltage_v", "dc_switch_current_a", "voltage_min_v", "voltage_max_v",
     "current_300v_a", "current_600v_a", "current_800v_a", "current_1000v_a", "current_1200v_a", "current_1500v_a",
     "ac_voltage_min_v", "ac_voltage_max_v",
     "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count",
