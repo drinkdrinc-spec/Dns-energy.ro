@@ -57,71 +57,11 @@ export async function downloadAuthenticatedFile(path, fallbackName = "document")
   }
 }
 
-function showAuthenticatedBlob(blob, filename = "document") {
-  // Keep the preview in the current app tab. Opening an about:blank tab and
-  // navigating it to a blob URL can produce a permanently blank tab in mobile browsers.
-  const previous = document.getElementById("den-auth-file-preview");
-  previous?.remove();
-  const overlay = document.createElement("div");
-  overlay.id = "den-auth-file-preview";
-  overlay.setAttribute("role", "dialog");
-  overlay.setAttribute("aria-modal", "true");
-  overlay.setAttribute("aria-label", "Previzualizare document");
-  Object.assign(overlay.style, {
-    position: "fixed", inset: "0", zIndex: "2147483000", display: "flex",
-    flexDirection: "column", background: "#f4f6fa", color: "#172033",
-    fontFamily: "system-ui, sans-serif"
-  });
-  const bar = document.createElement("div");
-  Object.assign(bar.style, {
-    minHeight: "56px", display: "flex", alignItems: "center", gap: "12px",
-    padding: "8px 14px", paddingTop: "max(8px, env(safe-area-inset-top))",
-    background: "#111b31", color: "white"
-  });
-  const title = document.createElement("strong");
-  title.textContent = "Document";
-  Object.assign(title.style, { flex: "1", fontSize: "15px" });
-  const viewLink = document.createElement("a");
-  viewLink.textContent = "Deschide PDF";
-  viewLink.setAttribute("aria-label", "Deschide documentul în browser");
-  viewLink.target = "_self";
-  Object.assign(viewLink.style, { color: "white", fontSize: "14px", fontWeight: "600", padding: "8px", whiteSpace: "nowrap" });
-  const download = document.createElement("a");
-  download.textContent = "Descarcă";
-  download.setAttribute("aria-label", "Descarcă documentul");
-  Object.assign(download.style, { color: "white", fontSize: "14px", fontWeight: "600", padding: "8px" });
-  const close = document.createElement("button");
-  close.type = "button";
-  close.textContent = "Închide";
-  Object.assign(close.style, {
-    border: "1px solid #71809b", borderRadius: "8px", background: "transparent",
-    color: "white", padding: "8px 10px", fontSize: "14px", fontWeight: "600"
-  });
-  const frame = document.createElement("iframe");
-  frame.title = "Previzualizare document";
-  Object.assign(frame.style, { flex: "1", width: "100%", border: "0", background: "white" });
-  overlay.append(bar, frame);
-  bar.append(title, viewLink, download, close);
-  document.body.appendChild(overlay);
-  const oldOverflow = document.body.style.overflow;
-  document.body.style.overflow = "hidden";
-  let objectUrl = "";
-  const cleanup = () => {
-    if (!overlay.isConnected) return;
-    overlay.remove();
-    document.body.style.overflow = oldOverflow;
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-    document.removeEventListener("keydown", onKeyDown);
-  };
-  const onKeyDown = (event) => { if (event.key === "Escape") cleanup(); };
-  close.addEventListener("click", cleanup);
-  document.addEventListener("keydown", onKeyDown);
-  objectUrl = URL.createObjectURL(blob);
-  title.textContent = filename;
-  viewLink.href = objectUrl;
-  download.href = objectUrl;
-  download.download = filename;
-  frame.src = objectUrl;
+function openBlobInCurrentTab(blob) {
+  // Mobile browsers can render a PDF in a top-level tab but show a blank page
+  // for the same blob URL inside an iframe or a newly opened about:blank tab.
+  const objectUrl = URL.createObjectURL(blob);
+  window.location.assign(objectUrl);
 }
 
 export async function openAuthenticatedFile(path, fallbackName = "document") {
@@ -139,7 +79,7 @@ export async function openAuthenticatedFile(path, fallbackName = "document") {
     const blob = response.data.type && response.data.type !== "application/octet-stream"
       ? response.data
       : new Blob([response.data], { type: extensionType || headerType || "application/pdf" });
-    showAuthenticatedBlob(blob, filename);
+    openBlobInCurrentTab(blob);
   } catch (error) {
     window.alert(await apiErrorMessage(error));
   }
@@ -203,7 +143,7 @@ if (typeof document !== "undefined" && typeof window !== "undefined" && !window.
         const viewBlob = blob.type && blob.type !== "application/octet-stream"
           ? blob
           : new Blob([blob], { type: inferredType || contentType || "application/pdf" });
-        showAuthenticatedBlob(viewBlob, filename);
+        openBlobInCurrentTab(viewBlob);
       }
     } catch (error) {
       window.alert(await apiErrorMessage(error));
