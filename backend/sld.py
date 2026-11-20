@@ -111,7 +111,7 @@ class Sheet:
         v = gv(value, unit)
         if v is None:
             self.miss += 1
-            self.text(x, y, f"{label}[lipsă]" if label else "[lipsă]", size, bold, RED, anchor, w)
+            self.text(x, y, f"{label}[de completat]" if label else "[de completat]", size, bold, GREY, anchor, w)
         else:
             self.text(x, y, f"{label}{v}", size, bold, INK, anchor, w)
 
@@ -765,7 +765,7 @@ def table_page(S, area, res, rec):
         c.restoreState()
         y -= h / mm + 6
     if res["missing"]:
-        p = Paragraph("<font color='#c0392b'><b>DATE LIPSĂ (schema nu poate fi emisă ca document final):</b> " + escape("; ".join(m["label"] for m in res["missing"])) + "</font>", CELL)
+        p = Paragraph("<font color='#b9770e'><b>DATE DE COMPLETAT / CONFIRMAT ÎNAINTE DE APROBARE:</b> " + escape("; ".join(m["label"] for m in res["missing"])) + "</font>", CELL)
         c.saveState(); c.scale(1 / mm, 1 / mm)
         _, h = p.wrapOn(c, (W - 190) * mm if y < y1 + 50 else (W - 4) * mm, 60 * mm)
         p.drawOn(c, (x1 + 2) * mm, max(y * mm - h, (y1 + 2) * mm))
@@ -781,7 +781,7 @@ def report(rec, client, settings, res, approval) -> bytes:
                             title="Raport de calcul — dimensionare CEF")
     get = lambda k: client.get(k) or rec.get(k)
     Pp = lambda t, st="p": Paragraph(t, St[st])
-    C_ = lambda t, b=False: Paragraph(escape(str(t)) if t not in (None, "") else "<font color='#c0392b'>[lipsă]</font>", CELLB if b else CELL)
+    C_ = lambda t, b=False: Paragraph(escape(str(t)) if t not in (None, "") else "<font color='#666666'>[de completat]</font>", CELLB if b else CELL)
     def tbl(rows, ws):
         t = Table(rows, colWidths=[w * mm for w in ws], repeatRows=1)
         t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f7")),
@@ -823,7 +823,7 @@ def report(rec, client, settings, res, approval) -> bytes:
     for w in res["warnings"]:
         out.append(Pp(f"<font color='#b9770e'><b>ATENȚIE:</b> {escape(w)}</font>", "li"))
     for m in res["missing"]:
-        out.append(Pp(f"<font color='#b03a2e'><b>LIPSĂ:</b> {escape(m['label'])}</font>", "li"))
+        out.append(Pp(f"<font color='#b9770e'><b>DE COMPLETAT ÎNAINTE DE APROBARE:</b> {escape(m['label'])}</font>", "li"))
     if not (res["errors"] or res["warnings"] or res["missing"]):
         out.append(Pp("Nu au fost identificate erori sau date lipsă."))
     out.append(Pp("6. Standarde și surse tehnice", "b"))
@@ -933,7 +933,7 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     c.restoreState()
     teg_schedule(S, (x1, y1, x2, plot_y2), rec)
     execution_notes(S, (x1, y1, x2, plot_y2), rec)
-    S.text(x1 + 2, y1 + 2, "DC fotovoltaic — portocaliu · stocare — verde · PE — verde întrerupt · valorile [lipsă] rămân de confirmat.", 4.1, color=GREY)
+    S.text(x1 + 2, y1 + 2, "DC fotovoltaic — portocaliu · stocare — verde · PE — verde întrerupt · valorile necompletate se confirmă înainte de aprobare.", 4.1, color=GREY)
     if demo:
         watermark(S, PW, PH, "EXEMPLU DEMONSTRATIV")
     elif rec.get("is_test"):
@@ -1079,7 +1079,7 @@ def tech_sheet(rec, client, settings, res, approval) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=P4, leftMargin=16 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title="Fișă tehnică instalație")
     Pp = lambda x, st="p": Paragraph(x, St[st])
-    C_ = lambda x, b=False: Paragraph(escape(str(x)) if x not in (None, "") else "<font color='#c0392b'>[lipsă]</font>", CELLB if b else CELL)
+    C_ = lambda x, b=False: Paragraph(escape(str(x)) if x not in (None, "") else "<font color='#666666'>[de completat]</font>", CELLB if b else CELL)
     out = [Pp(f"<b>{escape(D['company'])}</b>", "small"), Spacer(1, 4), Pp(TS_TITLE, "h"), Pp(escape(TS_NOTE + D["status"]), "small")]
     for title, head, rows, ws in D["sections"]:
         tb = Table([[C_(h, True) for h in head]] + [[C_(c) for c in r] for r in rows], colWidths=[w * mm for w in ws], repeatRows=1)
@@ -1087,7 +1087,7 @@ def tech_sheet(rec, client, settings, res, approval) -> bytes:
         out += [Pp(title, "b"), tb]
     if D["issues"]:
         out.append(Pp("5. Date lipsă / neconformități", "b"))
-        out += [Pp(f"<font color='#b03a2e'>{escape(x)}</font>", "li") for x in D["issues"]]
+        out += [Pp(f"<font color='#b9770e'>{escape(x)}</font>", "li") for x in D["issues"]]
     out += [Spacer(1, 8), Pp("Document tehnic generat pentru semnarea reprezentantului firmei executante.", "small")]
     doc.build(out)
     return buf.getvalue()
