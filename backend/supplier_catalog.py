@@ -307,6 +307,11 @@ def merge_catalog_enrichment(existing: dict, imported: dict) -> dict:
             # Clear an old label when the supplier stops publishing a verifiable basis.
             updates[key] = str(value or "")
             continue
+        if key in {"source_price", "source_availability"}:
+            # A fresh source check must clear stale price/stock when the supplier
+            # no longer publishes it; retaining an old amount would mislead users.
+            updates[key] = str(value or "")
+            continue
         if value in (None, "", {}, []):
             continue
         if key in {"datasheet", "conformity"}:
