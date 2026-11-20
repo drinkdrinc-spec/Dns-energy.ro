@@ -200,7 +200,7 @@ export default function EquipmentCatalog() {
   const [supplierSelected, setSupplierSelected] = useState(() => new Set());
   const [supplierBulkBusy, setSupplierBulkBusy] = useState(false);
   const [supplierBulkProgress, setSupplierBulkProgress] = useState("");
-  const [supplierMarkup, setSupplierMarkup] = useState(15);
+  const [supplierMarkup, setSupplierMarkup] = useState(() => Number(localStorage.getItem("dns-supplier-markup")) === 20 ? 20 : 15);
   const [feedbacks, setFeedbacks] = useState([]);
   const [feedbackUpdating, setFeedbackUpdating] = useState("");
   const load = async () => {
@@ -222,6 +222,7 @@ export default function EquipmentCatalog() {
     }
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => { localStorage.setItem("dns-supplier-markup", String(supplierMarkup)); }, [supplierMarkup]);
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const nextCategory = params.get("category");

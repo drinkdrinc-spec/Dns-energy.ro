@@ -1615,17 +1615,8 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
             fields = await extract_pdf(data, ct, doc_type, use_ai=use_gpt)
     except Exception as e:
         logger.error(f"AI extract failed: {e}")
-        ai_configured = bool((os.environ.get("OPENAI_API_KEY") or "").strip())
-        if ct in image_types and not use_gpt:
-            if not ai_configured:
-                raise HTTPException(status_code=503, detail="Citirea fotografiilor necesită configurarea OPENAI_API_KEY în API.")
-            raise HTTPException(status_code=402, detail="Citirea fotografiilor necesită activarea funcției AI pentru cont.")
-        if ct == "application/pdf" and isinstance(e, ValueError) and "nu conține text selectabil" in str(e).lower():
-            if not ai_configured:
-                raise HTTPException(status_code=503, detail="PDF-ul este scanat și nu are text selectabil. Configurează OPENAI_API_KEY în API pentru citirea scanurilor.")
-            if not use_gpt:
-                raise HTTPException(status_code=402, detail="Citirea PDF-urilor scanate necesită activarea funcției AI pentru cont.")
-        raise HTTPException(status_code=502, detail=str(e) if isinstance(e, ValueError) else "Nu am putut citi documentul. Încearcă din nou.")
+        status = 422 if isinstance(e, ValueError) else 502
+        raise HTTPException(status_code=status, detail=str(e) if isinstance(e, ValueError) else "Nu am putut citi documentul. Încearcă din nou.")
     expected = {
         "ci": [
             (("client_name",), "numele titularului"),

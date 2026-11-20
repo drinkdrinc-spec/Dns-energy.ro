@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import os
 import json
 import re
@@ -347,28 +348,71 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
     if doc_type == "factura" and fields.get("consumption_address"):
         fields.setdefault("address", fields["consumption_address"])
     if not fields:
-        raise ValueError("PDF-ul conține text, dar nu am găsit câmpuri cu etichete suficient de clare. Verifică documentul și completează manual.")
+        raise ValueError("Documentul conține text, dar nu am găsit câmpuri cu etichete suficient de clare. Verifică documentul și completează manual.")
     fields["doc_type"] = {"ci": "Carte de identitate", "factura": "Factură energie", "cf": "Carte funciară"}.get(doc_type, "Document PDF")
     fields["summary"] = "Date extrase local din etichetele vizibile ale PDF-ului. Câmpurile neidentificate nu au fost deduse."
     fields["_engine"] = "Extragere locală PDF"
     return fields
 
 
+def _ocr_document_text(content: bytes, mime: str) -> str:
+    """Read scanned PDFs and photos locally with the Romanian RapidOCR model."""
+    import pymupdf
+    import pymupdf4llm
+    from pymupdf4llm.ocr import rapidocr_api
+
+    if mime == "application/pdf":
+        doc = pymupdf.open(stream=content, filetype="pdf")
+    else:
+        from io import BytesIO
+        from PIL import Image, ImageOps
+        if mime in {"image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"}:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        with Image.open(BytesIO(content)) as source:
+            image = ImageOps.exif_transpose(source).convert("RGB")
+            image.thumbnail((2400, 2400))
+            png = BytesIO()
+            image.save(png, format="PNG", optimize=True)
+        doc = pymupdf.open(stream=png.getvalue(), filetype="png")
+
+    pages = list(range(min(len(doc), 12)))
+    text = pymupdf4llm.to_markdown(
+        doc, pages=pages, force_ocr=True, ocr_function=rapidocr_api.exec_ocr,
+        ocr_language="ro", ocr_dpi=200, show_progress=False,
+    )
+    return str(text or "").strip()
+
+
 async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai: bool = True) -> dict:
-    # For PDFs, fall back to explicitly labelled selectable text when the AI
-    # service fails. Never infer missing values from surrounding context.
+    # Prefer paid AI when enabled, then read selectable text and finally use
+    # local OCR for scans and photos. Missing values are never guessed.
     if use_ai:
         try:
             return await extract_gpt(content, mime, doc_type)
         except Exception:
-            if mime != "application/pdf":
-                raise
-    elif mime != "application/pdf":
-        raise ValueError("Citirea imaginilor scanate necesită funcția AI activă.")
+            pass
 
-    import pymupdf
-    doc = pymupdf.open(stream=content, filetype="pdf")
-    text = "\n".join(page.get_text("text") for page in list(doc)[:12]).strip()
-    if not text:
-        raise ValueError("PDF-ul nu conține text selectabil. Pentru citirea unui scan este necesară funcția AI.")
-    return _fallback_text_fields(text, doc_type)
+    text = ""
+    if mime == "application/pdf":
+        import pymupdf
+        doc = pymupdf.open(stream=content, filetype="pdf")
+        text = "\n".join(page.get_text("text") for page in list(doc)[:12]).strip()
+        if text:
+            try:
+                return _fallback_text_fields(text, doc_type)
+            except ValueError:
+                # Recognized words can still come from a scanned layer with no
+                # useful labels. OCR preserves the original page content too.
+                pass
+
+    try:
+        ocr_text = await asyncio.to_thread(_ocr_document_text, content, mime)
+    except Exception as exc:
+        raise ValueError("Nu am putut citi scanul. Încearcă un PDF mai clar sau fotografiază pagina dreaptă, cu lumină bună.") from exc
+    if not ocr_text:
+        raise ValueError("Nu am găsit text lizibil în document. Încearcă un PDF mai clar sau fotografiază pagina dreaptă, cu lumină bună.")
+    fields = _fallback_text_fields(ocr_text, doc_type)
+    fields["_engine"] = "OCR local (română)"
+    fields["summary"] = "Date extrase local prin OCR din textul vizibil. Verifică valorile înainte de folosire; câmpurile neidentificate nu au fost deduse."
+    return fields
