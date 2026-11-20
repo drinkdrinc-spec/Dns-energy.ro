@@ -2039,7 +2039,7 @@ async def seed_catalog(owner: str):
     await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
     await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
     seed_projection = {key: 1 for item in CATALOG_SEED for key in item}
-    seed_projection.update({"id": 1, "category": 1, "brand_model": 1, "_id": 0})
+    seed_projection.update({"id": 1, "category": 1, "brand_model": 1, "conformity": 1, "_id": 0})
     existing = await db.catalog.find({"owner": owner}, seed_projection).to_list(10000)
     by_key = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()): x for x in existing}
     missing = []
@@ -2054,11 +2054,34 @@ async def seed_catalog(owner: str):
             if (item.get("brand_model") == "JINKO SOLAR JKM510N-54HL4M-BDV"
                     and row.get("conformity_url") == "https://solar-distribution.baywa-re.de/out/media/10-Tiger_Neo_48HL4M-DB_IEC61215IEC61730-Dual-Glass_2025-03-17_Rev-11.pdf"):
                 source_updates["conformity_url"] = item["conformity_url"]
+            jinko_model = item.get("brand_model") == "JINKO SOLAR JKM510N-54HL4M-BDV"
+            wrong_jinko_url = "https://solar-distribution.baywa-re.de/out/media/10-Tiger_Neo_48HL4M-DB_IEC61215IEC61730-Dual-Glass_2025-03-17_Rev-11.pdf"
+            current_conformity = row.get("conformity") if isinstance(row.get("conformity"), dict) else {}
+            stale_jinko_conformity = jinko_model and (
+                row.get("conformity_url") == wrong_jinko_url
+                or current_conformity.get("source_url") == wrong_jinko_url
+            )
+            stale_jinko_document = jinko_model and (
+                not current_conformity
+                or current_conformity.get("source_url") == wrong_jinko_url
+            )
             verified_updates = missing_catalog_seed_values(row, item)
             if source_updates or verified_updates:
                 updates = {**source_updates, **verified_updates}
                 await db.catalog.update_one({"id": row["id"], "owner": owner}, {"$set": updates})
                 row.update(updates)
+            if stale_jinko_document:
+                try:
+                    await catalog_import_document(
+                        row["id"],
+                        _TrustedCatalogImportRequest({
+                            "kind": "conformity",
+                            "url": item["conformity_url"],
+                        }),
+                        {"id": owner},
+                    )
+                except Exception as exc:
+                    logger.warning("Could not refresh the Jinko 54HL4M-BDV certificate from its official source: %s", exc)
             continue
         created = _new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE})
         missing.append(created)
