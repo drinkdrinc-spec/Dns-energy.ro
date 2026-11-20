@@ -64,22 +64,39 @@ function openBlobInCurrentTab(blob) {
   window.location.assign(objectUrl);
 }
 
+function downloadBlob(blob, filename) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename || "document";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+}
+
 export async function openAuthenticatedFile(path, fallbackName = "document") {
   try {
     const response = await api.get(path, { responseType: "blob" });
     const disposition = response.headers["content-disposition"] || "";
     const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
     const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
-    let filename = fallbackName || plain || "document";
-    try { if (encoded && !fallbackName) filename = decodeURIComponent(encoded); } catch { /* keep fallback */ }
-    const headerType = (response.headers["content-type"] || "").split(";")[0].toLowerCase();
+    let filename = fallbackName && fallbackName !== "document" ? fallbackName : (plain || "document");
+    try { if (encoded && (!fallbackName || fallbackName === "document")) filename = decodeURIComponent(encoded); } catch { /* keep fallback */ }
+    const headerType = (response.headers["content-type"] || response.data.type || "").split(";")[0].toLowerCase();
     const extensionType = /\.pdf$/i.test(filename) ? "application/pdf"
       : /\.(png|jpe?g|gif|webp)$/i.test(filename) ? (/\.png$/i.test(filename) ? "image/png" : /\.gif$/i.test(filename) ? "image/gif" : /\.webp$/i.test(filename) ? "image/webp" : "image/jpeg")
       : "";
     const blob = response.data.type && response.data.type !== "application/octet-stream"
       ? response.data
       : new Blob([response.data], { type: extensionType || headerType || "application/pdf" });
-    openBlobInCurrentTab(blob);
+    const contentType = blob.type || extensionType || headerType;
+    if (contentType === "application/pdf" || contentType.startsWith("image/")) {
+      openBlobInCurrentTab(blob);
+    } else {
+      downloadBlob(blob, filename);
+    }
   } catch (error) {
     window.alert(await apiErrorMessage(error));
   }
