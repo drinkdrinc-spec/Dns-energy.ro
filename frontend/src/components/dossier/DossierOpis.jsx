@@ -44,7 +44,7 @@ function Row({ p, id, statuses, reload }) {
   );
 }
 
-export function DossierOpis({ id }) {
+export function DossierOpis({ id, mode = "all" }) {
   const [d, setD] = useState(null);
   const [showReport, setShowReport] = useState(false);
   const [pre, setPre] = useState(false);
@@ -52,6 +52,9 @@ export function DossierOpis({ id }) {
   const load = () => api.get(`/dossier/${id}`).then((r) => setD(r.data)).catch(() => {});
   useEffect(() => { load(); }, [id]); // eslint-disable-line
   if (!d) return null;
+  const positions = mode === "attachments" ? d.positions.filter((p) => p.source !== "generat")
+    : mode === "generated" ? d.positions.filter((p) => p.source === "generat") : d.positions;
+  const fileCount = positions.reduce((count, p) => count + (p.upload ? 1 : 0) + (p.files || []).length, 0);
   const doLock = async () => {
     try { await api.post(`/dossier/${id}/${d.finalized ? "reopen" : "finalize"}`); toast.success(d.finalized ? "Dosar redeschis" : "Dosar finalizat — datele din setări sunt înghețate"); load(); }
     catch (e) { toast.error(e.response?.data?.detail || "Operațiunea a eșuat"); throw e; }
@@ -59,24 +62,25 @@ export function DossierOpis({ id }) {
   const lock = () => (!d.finalized && can(user, "ai_gpt") ? setPre(true) : doLock().catch(() => {}));
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="dossier-opis">
-      <AiPrecheck id={id} open={pre} onClose={() => setPre(false)} onFinalize={doLock} />
+      {mode !== "attachments" && <AiPrecheck id={id} open={pre} onClose={() => setPre(false)} onFinalize={doLock} />}
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <div>
-          <h3 className="font-bold">Opis dosar prosumator ({d.positions.length} poziții)</h3>
-          <button onClick={() => setShowReport(!showReport)} className="text-xs font-bold inline-flex items-center gap-1 mt-1" style={{ color: d.complete ? "#166534" : "#8a5a00" }} data-testid="opis-report-toggle">
-            <AlertTriangle size={13} /> {d.complete ? "Dosar complet" : `${d.missing_total} informații / documente lipsă — vezi raportul`}
-          </button>
+          <h3 className="font-bold">{mode === "attachments" ? "Acte și poze" : mode === "generated" ? `Documente generate (${positions.length})` : `Opis dosar prosumator (${d.positions.length} poziții)`}</h3>
+          {mode === "attachments" ? <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{fileCount} fișiere atașate · încarcă aici actele clientului și fotografiile instalației</p>
+            : <button onClick={() => setShowReport(!showReport)} className="text-xs font-bold inline-flex items-center gap-1 mt-1" style={{ color: d.complete ? "#166534" : "#8a5a00" }} data-testid="opis-report-toggle">
+              <AlertTriangle size={13} /> {d.complete ? "Dosar complet" : `${d.missing_total} informații / documente lipsă — vezi raportul`}
+            </button>}
         </div>
-        <div className="flex gap-2 flex-wrap">
+        {mode !== "attachments" && <div className="flex gap-2 flex-wrap">
           <Btn variant="secondary" onClick={lock} data-testid="opis-finalize">{d.finalized ? <><Unlock size={14} /> Redeschide</> : <><Lock size={14} /> Finalizează dosarul</>}</Btn>
           <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(`/dossier/${id}/file/opis?download=1`, "Opis_declaratie_autenticitate.pdf")} data-testid="opis-declaration"><FileDown size={14} /> Opis (declarație autenticitate)</Btn>
           <Btn onClick={() => downloadAuthenticatedFile(`/dossier/${id}/export`, "Dosar_prosumator.pdf")} data-testid="opis-export"><FileDown size={15} /> Export dosar complet PDF{d.complete ? "" : " (CIORNĂ)"}</Btn>
-        </div>
+        </div>}
       </div>
-      {d.finalized && <p className="text-xs mb-2" style={{ color: "#166534" }} data-testid="opis-finalized">Finalizat la {new Date(d.finalized).toLocaleString("ro-RO")} — modificările din setări nu mai afectează acest dosar.</p>}
-      {d.signer_warnings?.map((w) => <p key={w} className="text-xs mb-1" style={{ color: "#9b2c2c" }} data-testid="signer-warning">⚠ {w}</p>)}
-      <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>Modificările din formular (semnatari, teste, reglaje, date) se reflectă în opis și documente după „Salvează”.</p>
-      {showReport && (
+      {mode !== "attachments" && d.finalized && <p className="text-xs mb-2" style={{ color: "#166534" }} data-testid="opis-finalized">Finalizat la {new Date(d.finalized).toLocaleString("ro-RO")} — modificările din setări nu mai afectează acest dosar.</p>}
+      {mode !== "attachments" && d.signer_warnings?.map((w) => <p key={w} className="text-xs mb-1" style={{ color: "#9b2c2c" }} data-testid="signer-warning">⚠ {w}</p>)}
+      {mode !== "attachments" && <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>Modificările din formular (semnatari, teste, reglaje, date) se reflectă în opis și documente după „Salvează”.</p>}
+      {mode !== "attachments" && showReport && (
         <div className="rounded-lg bg-white border p-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="opis-report">
           {d.common_missing?.length > 0 && <div className="mb-2"><b>Date comune (client / executant), folosite în toate documentele generate:</b> {d.common_missing.join(", ")}</div>}
           {d.positions.filter((p) => p.missing.length).map((p) => <div key={p.key} className="mb-1"><b>{p.nr}. {p.title}:</b> {p.missing.join(", ")}</div>)}
@@ -86,7 +90,7 @@ export function DossierOpis({ id }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm bg-white rounded-lg">
           <thead><tr className="text-left text-[11px]" style={{ color: "var(--muted)" }}><th className="px-2 py-2">Nr.</th><th className="px-2 py-2">Document</th><th className="px-2 py-2">Stadiu</th><th></th></tr></thead>
-          <tbody>{d.positions.map((p) => <Row key={p.key} p={p} id={id} statuses={d.statuses} reload={load} />)}</tbody>
+          <tbody>{positions.map((p) => <Row key={p.key} p={p} id={id} statuses={d.statuses} reload={load} />)}</tbody>
         </table>
       </div>
     </div>
