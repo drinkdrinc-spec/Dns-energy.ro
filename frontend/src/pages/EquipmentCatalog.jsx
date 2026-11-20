@@ -6,7 +6,7 @@ import { F, Check } from "@/components/cef/F";
 import { Plus, Pencil, Trash2, Upload, FileText, X, Sparkles, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-const CATS = ["Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator", "RSD"];
+const CATS = ["Invertor", "Panou", "Baterie", "Stație încărcare", "Structură montaj", "Controler solar", "Smart meter", "Gateway", "Optimizator", "RSD"];
 const hasStoredDocument = (item, kind) => Boolean(item?.[kind]?.storage_path) && item?.[kind]?.available !== false;
 const isCompositeEquipmentName = (name) => /\b(?:kit|bundle|pachet)\b/i.test(String(name || "")) || (/(?:invertor|inverter)/i.test(String(name || "")) && /(?:baterie|battery|\b\d+(?:[.,]\d+)?\s*kwh\b)/i.test(String(name || "")));
 const FIELDS = {
@@ -17,9 +17,39 @@ const FIELDS = {
   "Smart meter": [["phases", "Faze", ["Trifazat", "Monofazat"]], ["current_max_a", "Curent nominal/max (A)"], ["voltage_nominal_v", "Tensiune nominală", null, "text"], ["frequency_hz", "Frecvență", null, "text"], ["protocol", "Protocol comunicație", null, "text"], ["wiring", "Configurație rețea", null, "text"], ["accuracy_class", "Clasă precizie", null, "text"]],
   Gateway: [["phases", "Faze", ["Monofazat", "Trifazat"]], ["p_nom_kw", "Putere nominală AC (kW)"], ["current_max_a", "Curent nominal (A)"], ["voltage_nominal_v", "Tensiune nominală", null, "text"], ["frequency_hz", "Frecvență", null, "text"], ["compatible_inverters", "Invertoare compatibile", null, "text"], ["protocol", "Protocol comunicație", null, "text"], ["interfaces", "Interfețe (Wi-Fi/Ethernet/RS485)", null, "text"], ["max_devices", "Număr maxim de dispozitive"], ["monitoring_platform", "Platformă de monitorizare", null, "text"]],
   Optimizator: [["compatible_inverters", "Invertoare compatibile", null, "text"], ["p_max_w", "Putere nominală de intrare (W)"], ["vdc_max", "Tensiune maximă intrare (V)"], ["isc_max_a", "Curent maxim de scurtcircuit (A)"], ["imax_output_a", "Curent maxim ieșire (A)"], ["vdc_output_max", "Tensiune maximă ieșire (V)"], ["model_scope", "Domeniu de utilizare (modul/string)", null, "text"]],
+  "Stație încărcare": [["p_nom_kw", "Putere nominală (kW)"], ["phases", "Alimentare", ["Monofazat", "Trifazat"]], ["current_max_a", "Curent maxim (A)"], ["voltage_nominal_v", "Tensiune nominală", null, "text"], ["protocol", "Conectivitate / protocol", null, "text"]],
+  "Structură montaj": [["mounting_type", "Tip montaj", ["Acoperiș înclinat", "Acoperiș plat", "La sol", "Copertină"]], ["material", "Material", null, "text"], ["compatible_panels", "Panouri compatibile", null, "text"]],
+  "Controler solar": [["controller_type", "Tip controler", ["MPPT", "PWM"]], ["voltage_nominal_v", "Tensiune sistem", null, "text"], ["current_max_a", "Curent maxim (A)"], ["protocol", "Protocol comunicație", null, "text"]],
   RSD: [["string_count", "Număr stringuri"], ["poles", "Număr poli"], ["voltage_min_v", "Tensiune minimă (Vdc)"], ["voltage_max_v", "Tensiune maximă (Vdc)"], ["current_300v_a", "Curent admis la 300 V (A)"], ["current_600v_a", "Curent admis la 600 V (A)"], ["current_800v_a", "Curent admis la 800 V (A)"], ["current_1000v_a", "Curent admis la 1.000 V (A)"], ["current_1200v_a", "Curent admis la 1.200 V (A)"], ["current_1500v_a", "Curent admis la 1.500 V (A)"], ["ac_voltage_min_v", "Alimentare AC min. (V)"], ["ac_voltage_max_v", "Alimentare AC max. (V)"], ["ip_rating", "Grad IP", null, "text"], ["protection_class", "Clasă protecție", null, "text"]],
 };
-const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${i.phases || ""} · ${i.type || ""}` : i.category === "Panou" ? `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V` : i.category === "Baterie" ? `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.voltage ?? "—"} V · protecție DC ${i.breaker_a ?? "—"} A / ${i.breaker_voltage_dc ?? "—"} V` : i.category === "Smart meter" ? [i.phases, i.current_max_a ? i.current_max_a + " A max" : null, i.voltage_nominal_v, i.frequency_hz, i.protocol, i.wiring, i.accuracy_class].filter(Boolean).join(" · ") : i.category === "Gateway" ? [i.phases, i.p_nom_kw ? `${i.p_nom_kw} kW` : null, i.current_max_a ? `${i.current_max_a} A` : null, i.voltage_nominal_v, i.protocol, i.max_devices ? `${i.max_devices} dispozitive` : null, i.monitoring_platform].filter(Boolean).join(" · ") : i.category === "RSD" ? `${i.string_count ?? "—"} stringuri · ${i.poles ?? "—"} poli · ${i.voltage_min_v ?? "—"}–${i.voltage_max_v ?? "—"} Vdc · IP${i.ip_rating || "—"}` : [i.compatible_inverters, i.p_max_w ? `${i.p_max_w} W intrare` : null, i.vdc_max ? `${i.vdc_max} V max` : null, i.isc_max_a ? `${i.isc_max_a} A Isc` : null, i.imax_output_a ? `${i.imax_output_a} A ieșire` : null, i.vdc_output_max ? `${i.vdc_output_max} V ieșire` : null, i.model_scope].filter(Boolean).join(" · ");
+const spec = (i) => {
+  if (i.category === "Invertor") return `${i.p_nom_kw ?? "—"} kW · ${i.phases || ""} · ${i.type || ""}`;
+  if (i.category === "Panou") return `${i.w ?? "—"} W · Voc ${i.voc ?? "—"} V`;
+  if (i.category === "Baterie") return `${i.kwh ?? "—"} kWh · ${i.ah || "—"} Ah · ${i.voltage ?? "—"} V · protecție DC ${i.breaker_a ?? "—"} A / ${i.breaker_voltage_dc ?? "—"} V`;
+  if (i.category === "Stație încărcare") return [i.p_nom_kw ? `${i.p_nom_kw} kW` : null, i.phases, i.current_max_a ? `${i.current_max_a} A max` : null, i.voltage_nominal_v, i.protocol].filter(Boolean).join(" · ");
+  if (i.category === "Structură montaj") return [i.mounting_type, i.material, i.compatible_panels].filter(Boolean).join(" · ");
+  if (i.category === "Controler solar") return [i.controller_type, i.voltage_nominal_v, i.current_max_a ? `${i.current_max_a} A` : null, i.protocol].filter(Boolean).join(" · ");
+  if (i.category === "Smart meter") return [i.phases, i.current_max_a ? `${i.current_max_a} A max` : null, i.voltage_nominal_v, i.frequency_hz, i.protocol, i.wiring, i.accuracy_class].filter(Boolean).join(" · ");
+  if (i.category === "Gateway") return [i.phases, i.p_nom_kw ? `${i.p_nom_kw} kW` : null, i.current_max_a ? `${i.current_max_a} A` : null, i.voltage_nominal_v, i.protocol, i.max_devices ? `${i.max_devices} dispozitive` : null, i.monitoring_platform].filter(Boolean).join(" · ");
+  if (i.category === "RSD") return `${i.string_count ?? "—"} stringuri · ${i.poles ?? "—"} poli · ${i.voltage_min_v ?? "—"}–${i.voltage_max_v ?? "—"} Vdc · IP${i.ip_rating || "—"}`;
+  return [i.compatible_inverters, i.p_max_w ? `${i.p_max_w} W intrare` : null, i.vdc_max ? `${i.vdc_max} V max` : null, i.isc_max_a ? `${i.isc_max_a} A Isc` : null, i.imax_output_a ? `${i.imax_output_a} A ieșire` : null, i.vdc_output_max ? `${i.vdc_output_max} V ieșire` : null, i.model_scope].filter(Boolean).join(" · ");
+};
+const supplierPartnerPrice = (raw, markup) => {
+  const match = String(raw || "").match(/\d[\d\s.,]*/);
+  if (!match) return "";
+  const value = match[0].replace(/\s/g, "");
+  const lastComma = value.lastIndexOf(",");
+  const lastDot = value.lastIndexOf(".");
+  const decimalAt = Math.max(lastComma, lastDot);
+  const fractionLength = decimalAt >= 0 ? value.length - decimalAt - 1 : 0;
+  const normalized = decimalAt >= 0 && fractionLength > 0 && fractionLength <= 2
+    ? `${value.slice(0, decimalAt).replace(/[.,]/g, "")}.${value.slice(decimalAt + 1)}`
+    : value.replace(/[.,]/g, "");
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  const currency = /\bEUR\b|€/i.test(raw) ? "EUR" : "RON";
+  return new Intl.NumberFormat("ro-RO", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount * (1 + markup / 100));
+};
 
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
@@ -170,6 +200,7 @@ export default function EquipmentCatalog() {
   const [supplierSelected, setSupplierSelected] = useState(() => new Set());
   const [supplierBulkBusy, setSupplierBulkBusy] = useState(false);
   const [supplierBulkProgress, setSupplierBulkProgress] = useState("");
+  const [supplierMarkup, setSupplierMarkup] = useState(15);
   const [feedbacks, setFeedbacks] = useState([]);
   const [feedbackUpdating, setFeedbackUpdating] = useState("");
   const load = async () => {
@@ -208,7 +239,7 @@ export default function EquipmentCatalog() {
     if (q && !String(i.brand_model || "").toLocaleLowerCase("ro-RO").includes(q.toLocaleLowerCase("ro-RO"))) return false;
     if (phaseFilter && String(i.phases || "").toLocaleLowerCase("ro-RO") !== phaseFilter.toLocaleLowerCase("ro-RO")) return false;
     if (typeFilter && String(i.type || "").toLocaleLowerCase("ro-RO") !== typeFilter.toLocaleLowerCase("ro-RO")) return false;
-    const measure = Number(cat === "Invertor" ? i.p_nom_kw : cat === "Panou" ? i.w : cat === "Baterie" ? i.kwh : cat === "Smart meter" || cat === "Gateway" ? i.current_max_a : cat === "RSD" ? i.string_count : i.p_max_w);
+    const measure = Number(cat === "Invertor" || cat === "Stație încărcare" ? i.p_nom_kw : cat === "Panou" ? i.w : cat === "Baterie" ? i.kwh : cat === "Smart meter" || cat === "Gateway" || cat === "Controler solar" ? i.current_max_a : cat === "RSD" ? i.string_count : cat === "Structură montaj" ? i.panel_count : i.p_max_w);
     if (minValue !== "" && (!Number.isFinite(measure) || measure < Number(minValue))) return false;
     if (maxValue !== "" && (!Number.isFinite(measure) || measure > Number(maxValue))) return false;
     const hasDatasheet = hasStoredDocument(i, "datasheet");
@@ -225,7 +256,7 @@ export default function EquipmentCatalog() {
     const models = items.filter((item) => item.category === category && !/\bTEST\b/i.test(String(item.brand_model || "")));
     return [category, { total: models.length, complete: models.filter((item) => hasStoredDocument(item, "datasheet") && hasStoredDocument(item, "conformity")).length }];
   })), [items]);
-  const measureLabel = cat === "Invertor" ? "putere nominală (kW)" : cat === "Panou" ? "putere panou (W)" : cat === "Baterie" ? "capacitate (kWh)" : cat === "Smart meter" || cat === "Gateway" ? "curent nominal/maxim (A)" : cat === "RSD" ? "stringuri" : "putere intrare (W)";
+  const measureLabel = cat === "Invertor" || cat === "Stație încărcare" ? "putere nominală (kW)" : cat === "Panou" ? "putere panou (W)" : cat === "Baterie" ? "capacitate (kWh)" : cat === "Smart meter" || cat === "Gateway" || cat === "Controler solar" ? "curent nominal/maxim (A)" : cat === "RSD" ? "stringuri" : cat === "Structură montaj" ? "număr panouri" : "putere intrare (W)";
   const clearFilters = () => { setPhaseFilter(""); setTypeFilter(""); setMinValue(""); setMaxValue(""); setCompleteDocsOnly(false); setQ(""); };
 
   const save = async () => {
@@ -520,9 +551,16 @@ export default function EquipmentCatalog() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-bold">Modele de la furnizori</h2>
-            <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Căutare la: Depozit Solar · SolarHev · SolarTech. Prețul și stocul se verifică la comerciant.</p>
+            <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>Catalog intern pentru instalatori și parteneri: Depozit Solar · SolarHev · SolarTech. Prețul și stocul se verifică la comerciant.</p>
           </div>
           {supplierResults.length > 0 && <span className="text-[11px]" style={{ color: "var(--muted)" }}>{supplierResults.length} rezultate încărcate</span>}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border p-3" style={{ borderColor: "var(--line)", background: "var(--bg)" }} data-testid="partner-markup-control">
+          <label htmlFor="partner-markup" className="text-xs font-semibold">Adaos preț partener:</label>
+          <select id="partner-markup" className="den-input min-h-9 w-28" value={supplierMarkup} onChange={(event) => setSupplierMarkup(Number(event.target.value))}>
+            <option value={15}>15%</option><option value={20}>20%</option>
+          </select>
+          <span className="text-[11px]" style={{ color: "var(--muted)" }}>calculat peste prețul afișat de furnizor; baza TVA/taxelor se păstrează ca în sursă.</span>
         </div>
         {supplierSearchMessage && <p className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: supplierResults.length ? "var(--muted)" : "var(--amber, #8a5a00)" }} role="status" data-testid="supplier-search-status">{supplierSearchMessage}</p>}
         {supplierResults.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="supplier-bulk-import">
@@ -542,6 +580,7 @@ export default function EquipmentCatalog() {
                 <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--blue)" }}>{product.supplier}</div>
                 <h3 className="font-bold text-sm mt-1">{product.brand_model}</h3>
                 <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{[product.price_text, product.availability].filter(Boolean).join(" · ") || "Preț/stoc vezi la furnizor"}</p>
+                {supplierPartnerPrice(product.price_text, supplierMarkup) && <p className="mt-1 text-xs font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{supplierMarkup}%): {supplierPartnerPrice(product.price_text, supplierMarkup)}</p>}
                 <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>{Object.entries(product).filter(([key, value]) => value !== null && value !== undefined && ["p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "w", "voc", "coef_voc", "coef_vmp", "temp_pmax", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max"].includes(key)).map(([key, value]) => `${key}: ${value}`).join(" · ") || "Specificațiile tehnice nu sunt publicate structurat."}</p>
               </div>
               <a href={product.product_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold whitespace-nowrap" style={{ color: "var(--blue)" }}>Produs ↗</a>
@@ -589,6 +628,7 @@ export default function EquipmentCatalog() {
                   <h3 className="font-bold break-words">{i.brand_model}</h3>
                   {i.notes && <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{i.notes}</p>}
                   <p className="mt-2 text-sm font-medium">{spec(i)}</p>
+                  {i.source_price && <div className="mt-2 text-xs"><p style={{ color: "var(--muted)" }}>Preț furnizor (importat): {i.source_price}</p>{supplierPartnerPrice(i.source_price, supplierMarkup) && <p className="mt-1 font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{supplierMarkup}%): {supplierPartnerPrice(i.source_price, supplierMarkup)}</p>}</div>}
                   {FIELDS[i.category]?.length > 0 && <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }} data-testid={`catalog-spec-coverage-${i.id}`}>
                     Date tehnice introduse: {FIELDS[i.category].filter(([key]) => i[key] !== null && i[key] !== undefined && String(i[key]).trim() !== "").length}/{FIELDS[i.category].length} câmpuri din catalog
                   </p>}
