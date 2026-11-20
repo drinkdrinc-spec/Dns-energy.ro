@@ -34,6 +34,17 @@ async function apiErrorMessage(error) {
   return typeof data?.detail === "string" ? data.detail : "Nu am putut genera documentul. Verifică datele și încearcă din nou.";
 }
 
+function openPendingDocumentTab() {
+  const tab = window.open("about:blank", "_blank");
+  if (!tab) return null;
+  try {
+    tab.document.open();
+    tab.document.write(`<!doctype html><html lang="ro"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Se pregătește documentul</title><body style="margin:0;background:#f7f8fa;color:#1f2937;font:16px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"><main style="min-height:100vh;display:grid;place-items:center;padding:24px;box-sizing:border-box"><section style="max-width:420px;text-align:center;background:white;border:1px solid #e2e8f0;border-radius:16px;padding:28px;box-shadow:0 8px 28px #0f172a12"><div style="font-size:32px;margin-bottom:12px">📄</div><strong style="font-size:18px">Se pregătește documentul…</strong><p style="color:#64748b;line-height:1.5">Te rugăm să aștepți. PDF-ul se va deschide aici.</p></section></main></body></html>`);
+    tab.document.close();
+  } catch { /* Keep the tab usable in browsers that restrict document writing. */ }
+  return tab;
+}
+
 export async function downloadAuthenticatedFile(path, fallbackName = "document") {
   try {
     const response = await api.get(path, { responseType: "blob" });
@@ -57,47 +68,17 @@ export async function downloadAuthenticatedFile(path, fallbackName = "document")
   }
 }
 
-function openBlobInCurrentTab(blob) {
-  // Mobile browsers can render a PDF in a top-level tab but show a blank page
-  // for the same blob URL inside an iframe or a newly opened about:blank tab.
-  const objectUrl = URL.createObjectURL(blob);
-  window.location.assign(objectUrl);
-}
-
-function downloadBlob(blob, filename) {
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = objectUrl;
-  link.download = filename || "document";
-  link.style.display = "none";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-}
-
-export async function openAuthenticatedFile(path, fallbackName = "document") {
+export async function openAuthenticatedFile(path) {
+  const tab = openPendingDocumentTab();
+  if (!tab) { window.alert("Permite deschiderea ferestrei pentru a vedea documentul."); return; }
   try {
     const response = await api.get(path, { responseType: "blob" });
-    const disposition = response.headers["content-disposition"] || "";
-    const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-    const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
-    let filename = fallbackName && fallbackName !== "document" ? fallbackName : (plain || "document");
-    try { if (encoded && (!fallbackName || fallbackName === "document")) filename = decodeURIComponent(encoded); } catch { /* keep fallback */ }
-    const headerType = (response.headers["content-type"] || response.data.type || "").split(";")[0].toLowerCase();
-    const extensionType = /\.pdf$/i.test(filename) ? "application/pdf"
-      : /\.(png|jpe?g|gif|webp)$/i.test(filename) ? (/\.png$/i.test(filename) ? "image/png" : /\.gif$/i.test(filename) ? "image/gif" : /\.webp$/i.test(filename) ? "image/webp" : "image/jpeg")
-      : "";
-    const blob = response.data.type && response.data.type !== "application/octet-stream"
-      ? response.data
-      : new Blob([response.data], { type: extensionType || headerType || "application/pdf" });
-    const contentType = blob.type || extensionType || headerType;
-    if (contentType === "application/pdf" || contentType.startsWith("image/")) {
-      openBlobInCurrentTab(blob);
-    } else {
-      downloadBlob(blob, filename);
-    }
+    const blob = response.data.type ? response.data : new Blob([response.data], { type: response.headers["content-type"] || "application/pdf" });
+    const objectUrl = URL.createObjectURL(blob);
+    tab.location.replace(objectUrl);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 600000);
   } catch (error) {
+    tab.close();
     window.alert(await apiErrorMessage(error));
   }
 }
@@ -130,6 +111,11 @@ if (typeof document !== "undefined" && typeof window !== "undefined" && !window.
     linkUrl.searchParams.delete("auth");
     const requestPath = linkUrl.pathname.slice(apiPath.length) + linkUrl.search;
     const requestedDownload = target.hasAttribute("download");
+    const tab = requestedDownload ? null : openPendingDocumentTab();
+    if (!requestedDownload && !tab) {
+      window.alert("Permite deschiderea ferestrei pentru a vedea documentul.");
+      return;
+    }
 
     try {
       const response = await api.get(requestPath, { responseType: "blob" });
@@ -142,13 +128,11 @@ if (typeof document !== "undefined" && typeof window !== "undefined" && !window.
       let filename = target.getAttribute("download") || plainName || "document";
       try { if (encodedName) filename = decodeURIComponent(encodedName); } catch { /* keep fallback */ }
 
-      const inferredType = /\.pdf$/i.test(filename) ? "application/pdf"
-        : /\.png$/i.test(filename) ? "image/png" : /\.(jpe?g)$/i.test(filename) ? "image/jpeg" : "";
-      const contentType = (response.headers["content-type"] || blob.type || inferredType || "").split(";")[0].toLowerCase();
+      const contentType = (response.headers["content-type"] || blob.type || "").split(";")[0].toLowerCase();
       const canDisplay = contentType === "application/pdf" || contentType.startsWith("image/");
       const isDownload = requestedDownload || /attachment/i.test(disposition) || !canDisplay;
+      const objectUrl = URL.createObjectURL(blob);
       if (isDownload) {
-        const objectUrl = URL.createObjectURL(blob);
         const downloadLink = document.createElement("a");
         downloadLink.href = objectUrl;
         downloadLink.download = filename;
@@ -156,14 +140,17 @@ if (typeof document !== "undefined" && typeof window !== "undefined" && !window.
         document.body.appendChild(downloadLink);
         downloadLink.click();
         downloadLink.remove();
+        tab?.close();
+      } else if (tab && !tab.closed) {
+        tab.location.replace(objectUrl);
       } else {
-        const viewBlob = blob.type && blob.type !== "application/octet-stream"
-          ? blob
-          : new Blob([blob], { type: inferredType || contentType || "application/pdf" });
-        openBlobInCurrentTab(viewBlob);
+        URL.revokeObjectURL(objectUrl);
       }
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 600000);
     } catch (error) {
+      tab?.close();
       window.alert(await apiErrorMessage(error));
     }
   }, true);
 }
+
