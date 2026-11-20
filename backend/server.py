@@ -2947,6 +2947,53 @@ async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None
     )
 
 
+async def deer_gdpr_notice_file():
+    """Cache and include the current public DEER privacy notice from DEER's own domain."""
+    import httpx
+    from urllib.parse import urlparse
+
+    source_url = "https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf"
+    cache_key = "deer-gdpr-privacy-notice"
+    cached = await db.official_public_documents.find_one({"key": cache_key}, {"_id": 0})
+    now = datetime.now(timezone.utc)
+    cache_time = None
+    try:
+        cache_time = datetime.fromisoformat(str((cached or {}).get("fetched_at") or "").replace("Z", "+00:00"))
+    except ValueError:
+        pass
+    cached_file = (cached or {}).get("file") or {}
+    if cached_file.get("storage_path") and cache_time and now - cache_time < timedelta(days=30):
+        return cached_file
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, max_redirects=4) as client_http:
+            response = await client_http.get(source_url)
+            response.raise_for_status()
+            final_host = (urlparse(str(response.url)).hostname or "").lower().rstrip(".")
+            data = response.content
+            if final_host != "www.distributie-energie.ro" or not data.startswith(b"%PDF-") or len(data) > 12 * 1024 * 1024:
+                raise ValueError("Răspunsul nu este un PDF valid de pe domeniul DEER.")
+        stored = put_object(f"{APP_NAME}/official-documents/{uuid.uuid4()}.pdf", data, "application/pdf")
+        file_record = {
+            "storage_path": stored["path"],
+            "original_filename": "Nota DEER — informare generala site feb 2026.pdf",
+            "content_type": "application/pdf",
+            "size": len(data),
+            "source_url": source_url,
+            "source_host": final_host,
+            "imported_at": now.isoformat(),
+        }
+        await db.official_public_documents.update_one(
+            {"key": cache_key},
+            {"$set": {"key": cache_key, "file": file_record, "source_url": source_url, "fetched_at": now.isoformat()}},
+            upsert=True,
+        )
+        return file_record
+    except Exception as exc:
+        logger.warning("Nu s-a putut prelua nota oficială DEER din sursa publică: %s", str(exc)[:180])
+        return cached_file if cached_file.get("storage_path") else None
+
+
 async def dossier_ctx(owner, item_id: str, verify_files: bool = False):
     if isinstance(owner, dict):
         await check_access(owner, "prosumator", item_id); owner = owner["id"]
@@ -2958,7 +3005,18 @@ async def dossier_ctx(owner, item_id: str, verify_files: bool = False):
     client = await get_client(owner, rec)
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     settings, warns = await effective_settings(owner, rec, base)
-    info = await OPIS.build_positions(db, owner, rec, client, settings)
+    public_documents = {}
+    client_kind = str(client.get("kind") or "").strip().casefold()
+    is_company_client = "jurid" in client_kind or client_kind in ("pj", "company", "firmă", "firma")
+    operator_name = str(rec.get("operator") or client.get("operator") or "").casefold()
+    is_deer = any(token in operator_name for token in (
+        "deer", "distributie energie electrica romania", "distribuție energie electrică românia"
+    ))
+    if is_deer and not is_company_client:
+        notice_file = await deer_gdpr_notice_file()
+        if notice_file:
+            public_documents["deer_gdpr_notice"] = notice_file
+    info = await OPIS.build_positions(db, owner, rec, client, settings, public_documents)
     if verify_files:
         info = verify_dossier_attachments(info, get_object, LegacyObjectUnavailable)
     info["signer_warnings"] = warns
