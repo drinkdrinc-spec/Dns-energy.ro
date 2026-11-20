@@ -8,7 +8,7 @@ import { SldChecks } from "./SldChecks";
 import { SldCompare } from "./SldCompare";
 import { SldEditor } from "./SldEditor";
 
-const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare anulată — configurație modificată", "#fff4e0", "#8a5a00"], draft: ["Ciornă — neaprobată", "#fff8e8", "#8a5a00"] };
+const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare anulată — configurație modificată", "#fff4e0", "#8a5a00"], draft: ["Necesită verificarea proiectantului", "#fff8e8", "#8a5a00"] };
 
 export function SldPanel({ id, form, setVal }) {
   const [d, setD] = useState(null);
