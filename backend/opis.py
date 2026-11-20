@@ -146,6 +146,19 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     res_sld = SZ.compute(rec, client)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
+        if key == "notificare" and ctx.power_increase:
+            operator_name = str(rec.get("operator") or client.get("operator") or "").casefold()
+            is_deer = ("deer" in operator_name or "distributie energie electrica" in operator_name
+                       or "distribuție energie electrică" in operator_name)
+            if is_deer:
+                pos.append({"key": key, "title": "Cerere de racordare — Anexa 1 DEER (formular oficial Word precompletat)",
+                            "source": "generat", "docs": [], "docx_only": True,
+                            "missing": ["Verifică formularul oficial și completează/semnează câmpurile rămase necompletate."]})
+            else:
+                pos.append({"key": key, "title": "Cerere de racordare — Anexa 1 a operatorului",
+                            "source": "manual", "files": [],
+                            "missing": ["Deschide formularul oficial curent al operatorului în Registrul de formulare și atașează-l după completare."]})
+            continue
         if key == "priza" and rec.get("pram_source") == "none":
             if PIFDOC.filled(rec):
                 pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
@@ -358,6 +371,8 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
     if p.get("upload") and not force_generated:
         data, ct = get_object(p["upload"]["storage_path"])
         return [file_pdf(data, p["upload"].get("content_type") or ct)]
+    if p.get("docx_only"):
+        return []
     if p.get("key") in ("schema", "fisa_tehnica"):
         res = SZ.compute(rec, client)
         st = SZ.state(rec, client, settings)
