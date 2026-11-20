@@ -24,11 +24,10 @@ export function SldChecks({ d }) {
   const items = all ? d.items : d.items.filter((x) => x.ok === false || x.source === "de confirmat");
   return (
     <div className="mt-4">
-      {d.unconfirmed?.length > 0 && <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: "#fff8e8", color: "#76500a" }} data-testid="sld-unconfirmed"><b>De confirmat din instalație sau ATR:</b> {d.unconfirmed.length} valori, precum Ik, lungimile reale ale cablurilor și măsurarea prizei de pământ. Acestea nu se pot completa corect din surse publice.</div>}
       {d.missing.length > 0 && (
         <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: "#fff8e8", color: "#76500a" }} data-testid="sld-missing">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div><b>Date necesare pentru aprobare</b><span className="ml-2">Mai sunt {d.missing.length} date tehnice de completat.</span></div>
+            <div><b>Schema este ciornă</b><span className="ml-2">Lipsesc {d.missing.length} date tehnice pentru verificarea și aprobarea schemei.</span></div>
             <button type="button" className="font-bold underline" onClick={() => setMissingOpen(!missingOpen)} data-testid="sld-toggle-missing">
               {missingOpen ? "Ascunde detaliile" : "Vezi ce lipsește"}
             </button>
@@ -48,3 +47,4 @@ export function SldChecks({ d }) {
     </div>
   );
 }
+
