@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowRight, ArrowUpRight, BadgeCheck, BookOpenCheck, Building2, ChevronRight, FileCheck2, FolderKanban, Menu, ShieldCheck, Zap, X } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, BadgeCheck, BookOpenCheck, Building2, Cable, ChevronRight, DraftingCompass, FileCheck2, FolderKanban, Menu, ShieldCheck, Sun, Zap, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import "./PublicHome.css";
@@ -25,6 +25,29 @@ const steps = [
   ["01", "Client și loc de consum", "Datele beneficiarului și ale racordului, grupate într-un singur dosar."],
   ["02", "Instalație și echipamente", "Configurația sistemului fotovoltaic și echipamentele folosite."],
   ["03", "Documente și punere în funcțiune", "Acte, verificări și informații pentru pașii de finalizare."],
+];
+
+const services = [
+  {
+    icon: Sun,
+    title: "Instalații fotovoltaice",
+    text: "Proiectăm și realizăm sisteme on-grid, hibride și off-grid, cu sau fără baterii și soluții de backup, în funcție de cerințele fiecărui obiectiv.",
+  },
+  {
+    icon: Cable,
+    title: "Instalații electrice",
+    text: "Executăm instalații electrice pentru construcții noi și existente, tablouri, circuite și sisteme de protecție, precum și lucrări de modernizare.",
+  },
+  {
+    icon: DraftingCompass,
+    title: "Proiectare electrică",
+    text: "Elaborăm proiecte pentru instalații electrice și fotovoltaice și dimensionăm soluții tehnice potrivite specificului fiecărei lucrări.",
+  },
+  {
+    icon: Zap,
+    title: "Lucrări și soluții electrice",
+    text: "Realizăm extinderi, modificări și integrarea echipamentelor, urmărind o soluție coerentă și potrivită cerințelor proiectului.",
+  },
 ];
 
 function Brand({ light = false }) {
@@ -65,7 +88,8 @@ export default function PublicHome() {
           <Link to="/" className="dns-brand-link" aria-label="DNS Energy, pagina principală"><Brand /></Link>
           <button className="dns-mobile-menu" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Închide meniul" : "Deschide meniul"} aria-expanded={menuOpen}>{menuOpen ? <X size={21} /> : <Menu size={21} />}</button>
           <nav className={`dns-site-nav${menuOpen ? " is-open" : ""}`} aria-label="Navigare principală">
-            <a href="#platforma" onClick={closeMenu}>Platforma</a>
+            <a href="#servicii" onClick={closeMenu}>Servicii</a>
+            <a href="#platforma" onClick={closeMenu}>Aplicația</a>
             <a href="#cum-functioneaza" onClick={closeMenu}>Cum funcționează</a>
             <a href="#contact" onClick={closeMenu}>Contact</a>
             <Link className="dns-nav-app" to="/app" onClick={closeMenu}>Intră în aplicație <ArrowUpRight size={16} /></Link>
@@ -77,20 +101,27 @@ export default function PublicHome() {
         <div className="dns-hero-glow" />
         <div className="dns-hero-inner">
           <div className="dns-hero-copy">
-            <div className="dns-eyebrow"><span /> SOLUȚII DIGITALE PENTRU ENERGIE SOLARĂ</div>
-            <h1>Documentația energetică,<br /><em>mai ușor de gestionat.</em></h1>
-            <p className="dns-hero-lede">DNS Energy aduce dosarele, datele instalației și documentele tehnice într-un singur spațiu de lucru.</p>
-            <div className="dns-hero-actions"><Link to="/app" className="dns-button dns-button-primary">Intră în aplicație <ArrowRight size={18} /></Link><a href="#platforma" className="dns-text-link">Descoperă platforma <ArrowDown size={16} /></a></div>
-            <div className="dns-hero-note"><ShieldCheck size={16} /> Acces securizat pentru echipa ta</div>
+            <div className="dns-eyebrow"><span /> INSTALAȚII ȘI PROIECTARE ELECTRICĂ</div>
+            <h1>Soluții energetice,<br /><em>bine gândite și realizate.</em></h1>
+            <p className="dns-hero-lede">Oferim servicii de proiectare și execuție pentru instalații fotovoltaice de toate tipurile și instalații electrice, adaptate fiecărui proiect.</p>
+            <div className="dns-hero-actions"><a href="#servicii" className="dns-button dns-button-primary">Vezi serviciile <ArrowRight size={18} /></a><Link to="/app" className="dns-text-link">Intră în aplicație <ArrowUpRight size={16} /></Link></div>
+            <div className="dns-hero-note"><ShieldCheck size={16} /> Servicii complete, de la proiectare la execuție</div>
           </div>
           <WorkPreview />
         </div>
         <div className="dns-hero-bottom"><span>PLANIFICĂ</span><i /><span>DOCUMENTEAZĂ</span><i /><span>FINALIZEAZĂ</span></div>
       </section>
 
+      <section className="dns-services" id="servicii">
+        <div className="dns-section-label">CE FACEM</div>
+        <div className="dns-services-heading"><h2>Servicii pentru proiecte<br /><em>energetice și electrice.</em></h2><p>De la planificare la execuție, abordăm fiecare lucrare cu atenție la cerințele tehnice și la specificul obiectivului.</p></div>
+        <div className="dns-services-grid">{services.map(({ icon: Icon, title, text }, index) => <article className="dns-service-card" key={title}><span className="dns-service-icon"><Icon size={22} /></span><span className="dns-service-number">0{index + 1}</span><h3>{title}</h3><p>{text}</p></article>)}</div>
+        <a href="#contact" className="dns-services-link">Solicitați o discuție despre proiectul dumneavoastră <ArrowRight size={16} /></a>
+      </section>
+
       <section className="dns-intro" id="platforma">
-        <div className="dns-section-label">PLATFORMĂ DNS ENERGY</div>
-        <div className="dns-intro-row"><h2>Tot ce ține de un dosar,<br /><em>într-un flux de lucru clar.</em></h2><p>O platformă pentru echipele care pregătesc documentația instalațiilor fotovoltaice și gestionează dosarele clienților.</p></div>
+        <div className="dns-section-label">APLICAȚIA DNS ENERGY</div>
+        <div className="dns-intro-row"><h2>Dosarele firmei,<br /><em>într-un singur loc.</em></h2><p>Folosim aplicația DNS Energy pentru a organiza dosarele, datele instalațiilor și documentele lucrărilor noastre.</p></div>
         <div className="dns-feature-grid">{features.map(({ icon: Icon, title, text }, index) => <article className="dns-feature-card" key={title}><div className="dns-feature-top"><span className="dns-feature-icon"><Icon size={21} /></span><span className="dns-feature-number">0{index + 1}</span></div><h3>{title}</h3><p>{text}</p><a href="#cum-functioneaza" aria-label={`Află despre ${title}`}><ChevronRight size={18} /></a></article>)}</div>
       </section>
 
@@ -102,7 +133,7 @@ export default function PublicHome() {
       </section>
 
       <section className="dns-contact" id="contact">
-        <div className="dns-contact-card"><div className="dns-contact-copy"><div className="dns-section-label">DNS ENERGY</div><h2>Hai să discutăm<br /><em>despre proiectul tău.</em></h2><p>Contactează echipa DNS HOSTESS pentru informații despre platformă și serviciile oferite.</p><a className="dns-button dns-button-primary" href="mailto:dnshostess@outlook.com">Scrie-ne <ArrowRight size={17} /></a></div><div className="dns-contact-details"><div className="dns-contact-detail"><span>EMAIL</span><a href="mailto:dnshostess@outlook.com">dnshostess@outlook.com</a></div><div className="dns-contact-detail"><span>TELEFON</span><a href="tel:+40741540265">+40 741 540 265</a></div><div className="dns-contact-detail"><span>SEDIU</span><p>Str. 1 nr. 85, Cheriu, Bihor, 417362</p></div><div className="dns-contact-company"><Building2 size={17} /> DNS HOSTESS SRL</div></div></div>
+        <div className="dns-contact-card"><div className="dns-contact-copy"><div className="dns-section-label">DNS ENERGY</div><h2>Suntem aici pentru<br /><em>proiectul dumneavoastră.</em></h2><p>Pentru prezentarea serviciilor și detalii de ofertare, vă invităm să contactați echipa DNS HOSTESS.</p><a className="dns-button dns-button-primary" href="mailto:office@dns-hostess.ro?subject=Prezentare%20servicii%20%C8%99i%20solicitare%20ofert%C4%83">Solicitați o ofertă <ArrowRight size={17} /></a></div><div className="dns-contact-details"><div className="dns-contact-detail"><span>PREZENTARE ȘI OFERTARE</span><a href="mailto:office@dns-hostess.ro">office@dns-hostess.ro</a></div><div className="dns-contact-detail"><span>TELEFON</span><a href="tel:+40741540265">0741 540 265</a></div><div className="dns-contact-detail"><span>SEDIU</span><p>Str. 1 nr. 85, Cheriu, Bihor, 417362</p></div><div className="dns-contact-company"><Building2 size={17} /> DNS HOSTESS SRL</div></div></div>
       </section>
 
       <footer className="dns-footer"><Link to="/" className="dns-brand-link"><Brand /></Link><span>© {new Date().getFullYear()} DNS HOSTESS SRL</span><Link to="/app" className="dns-footer-app">Acces aplicație <ArrowRight size={15} /></Link></footer>
