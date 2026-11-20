@@ -1021,12 +1021,12 @@ export default function ModulePage({ moduleKey }) {
 
             <details id="dossier-section-acts" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-acts-card">
               <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>3. Acte și responsabili</p><h3 className="text-sm font-bold">Echipa dosarului</h3></div></summary>
-              <div className="space-y-4 px-4 py-4 sm:px-5"><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierExtras form={form} setVal={setVal} part="pram" dossierId={editId} onSave={editId ? () => saveSection("Actele și PRAM") : undefined} saving={sectionSaving} /></div>
+              <div className="space-y-4 px-4 py-4 sm:px-5"><AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierExtras form={form} setVal={setVal} part="pram" dossierId={editId} onSave={editId ? () => saveSection("Actele și PRAM") : undefined} saving={sectionSaving} /><DossierOpis id={editId} mode="attachments" /></div>
             </details>
 
             {editId && <details id="dossier-section-documents" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-documents-card">
               <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>4. Documente și semnare</p><h3 className="text-sm font-bold">Documente generate și semnături</h3></div></summary>
-              <div className="space-y-4"><DossierOpis id={editId} /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /><SignRequests dossierId={editId} /><GeneratedDocs id={editId} files={form.files} form={form} /></div>
+              <div className="space-y-4"><DossierOpis id={editId} mode="generated" /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /><SignRequests dossierId={editId} /><GeneratedDocs id={editId} files={form.files} form={form} /></div>
             </details>}
             {key === "prosumator" && editId && <details id="dossier-section-submission" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-operator-progress">
               <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}>
