@@ -186,7 +186,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         }
         if (!extractable) throw new Error("Formatul nu este acceptat pentru citire automată.");
         const fd = new FormData(); fd.append("file", file); fd.append("doc_type", kind === "altele" ? "other" : kind);
-        const { data } = await api.post("/ai/extract", fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 240000 });
+        const { data } = await api.post("/ai/extract", fd, { headers: { "Content-Type": "multipart/form-data" }, timeout: 240000, dnsRetry503: true });
         mergedFiles.push(data.file);
         attached = true;
         if (data.warning) extractionWarnings.push(`${file.name}: ${data.warning}`);
