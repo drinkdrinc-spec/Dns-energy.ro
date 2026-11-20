@@ -176,12 +176,23 @@ def battery_cable_proposal(battery: dict) -> dict:
 def string_calc(s, inv, tmin):
     """Calculate string values only from supplied model parameters; never invent temperature coefficients."""
     cnt = int(n(s.get("panels")))
+    string_model = " ".join(str(s.get("panel_model") or "").split()).casefold()
+    inverter_model = " ".join(str(inv.get("panel_model") or "").split()).casefold()
+    same_panel_model = not string_model or (inverter_model and string_model == inverter_model)
+
     def panel_value(key):
         value = s.get(f"panel_{key}")
-        return inv.get(f"panel_{key}") if value in (None, "") else value
+        if value not in (None, ""):
+            return value
+        # In mixed-model installations, never reuse the inverter's single
+        # fallback panel values for a different string model.
+        return inv.get(f"panel_{key}") if same_panel_model else None
 
     panel_model = s.get("panel_model") or inv.get("panel_model")
-    panel_w = n(s.get("panel_w") if s.get("panel_w") not in (None, "") else inv.get("panel_w"))
+    panel_w_value = s.get("panel_w")
+    if panel_w_value in (None, ""):
+        panel_w_value = inv.get("panel_w") if same_panel_model else None
+    panel_w = n(panel_w_value)
     voc, vmp, isc = n(panel_value("voc")), n(panel_value("vmp")), n(panel_value("isc"))
     imp = n(panel_value("imp"))
     cv_raw = panel_value("coef_voc")

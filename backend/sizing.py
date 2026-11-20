@@ -157,15 +157,31 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                      "tensiunea calculată depășește toate treptele publicate" if voltage is not None and tier is None else
                      ("lipsește ratingul de curent al modelului la tensiunea aplicabilă sau Isc din fișa panoului" if not rated_current or required_current is None else ""))
         if inv.get("kind") != "Invertor de baterie (AC)":
-            for k, lbl in [("panel_model", "Model panou"), ("panel_w", "Putere panou (W)"), ("panel_voc", "Voc panou (V)"),
-                           ("panel_vmp", "Vmp panou (V)"), ("panel_isc", "Isc panou (A)")]:
-                if o.need(f"cef.inverters.{i}.{k}", lbl, inv.get(k), T):
-                    o.it(T, lbl, g(inv.get(k)), sp)
-            o.it(T, "Coeficient Voc (%/°C)", g(inv.get("panel_coef_voc")), sp if has(inv.get("panel_coef_voc")) else "lipsă",
-                 note="" if has(inv.get("panel_coef_voc")) else "preluați valoarea din fișa tehnică oficială; nu se folosește o valoare implicită")
-            o.it(T, "Coeficient Vmp (%/°C)", g(inv.get("panel_coef_vmp")), sp if has(inv.get("panel_coef_vmp")) else "lipsă",
-                 note="" if has(inv.get("panel_coef_vmp")) else "preluați valoarea din fișa tehnică oficială; verificarea Vmp la cald rămâne neconfirmată")
-            if not strings:
+            if strings:
+                # Panel models belong to their strings. Requiring duplicate
+                # inverter-level panel fields blocks valid mixed-model rows and
+                # can hide exact catalog values already attached to each string.
+                string_rows = [row for row in (inv.get("strings") or []) if n(row.get("panels")) > 0]
+                for string_index, string in enumerate(strings):
+                    row = string_rows[string_index] if string_index < len(string_rows) else {}
+                    for key, label in [("panel_model", "Model panou"), ("panel_w", "Putere panou (W)"),
+                                       ("panel_voc", "Voc panou (V)"), ("panel_vmp", "Vmp panou (V)"),
+                                       ("panel_isc", "Isc panou (A)")]:
+                        if o.need(f"cef.inverters.{i}.strings.{string_index}.{key}", label,
+                                  string.get(key), f"{T} / String {string_index + 1}"):
+                            o.it(f"{T} / String {string_index + 1}", label, g(string.get(key)),
+                                 "catalog" if (inv.get("panel_catalog_id") or row.get("panel_catalog_id")) else "introdus")
+                    for key, label, note in [
+                        ("panel_coef_voc", "Coeficient Voc (%/°C)",
+                         "Se folosește numai valoarea publicată în fișa exactă a modulului."),
+                        ("panel_coef_vmp", "Coeficient Vmp (%/°C)",
+                         "Fără această valoare, verificarea Vmp la cald rămâne neconfirmată.")
+                    ]:
+                        value = string.get(key)
+                        o.it(f"{T} / String {string_index + 1}", label, g(value),
+                             "catalog" if (inv.get("panel_catalog_id") or row.get("panel_catalog_id")) and has(value) else ("introdus" if has(value) else "lipsă"),
+                             note="" if has(value) else note)
+            else:
                 o.missing.append({"path": f"cef.inverters.{i}.strings", "label": f"{T} — configurația stringurilor"})
         vdc_max, mmin, mmax, imax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max")), n(inv.get("imax_mppt"))
         isc_limit = n(inv.get("isc_max_mppt"))
@@ -189,14 +205,19 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         per = {}
         for s in strings:
             per.setdefault(s["mppt"], []).append(s)
-        imp = n(inv.get("panel_imp")) or (n(inv.get("panel_w")) / n(inv.get("panel_vmp")) if n(inv.get("panel_vmp")) else 0)
+        def string_imp(s):
+            return n(s.get("imp")) or (
+                n(s.get("panel_w")) / n(s.get("panel_vmp")) if n(s.get("panel_vmp")) else 0
+            )
+        string_currents = [string_imp(s) for s in strings]
+        imp = max(string_currents or [0])
         for m, ss in per.items():
             isc_sum = sum(x["isc"] for x in ss)
-            operating_sum = imp * len(ss) if imp else 0
+            operating_sum = sum(string_imp(x) for x in ss)
             o.it(T, f"MPPT {m} — Isc total ({len(ss)} string)", g(isc_sum, " A", 1), "calculat", "ΣIsc pe MPPT; comparat separat cu Isc max din fișa invertorului", (isc_sum <= isc_limit) if isc_limit else None,
                  f"≤ Isc max / MPPT {isc_limit:g} A" if isc_limit else "lipsește limita Isc max / MPPT din fișa invertorului")
             o.it(T, f"MPPT {m} — Imp total în funcționare", g(operating_sum, " A", 1) if operating_sum else None,
-                 "calculat" if operating_sum else "necalculat", "Imp panou × număr stringuri în paralel",
+                 "calculat" if operating_sum else "necalculat", "Σ Imp stringuri conectate la MPPT",
                  (operating_sum <= imax) if (operating_sum and imax) else None,
                  f"≤ Imax / MPPT {imax:g} A" if imax and operating_sum else "lipsește Imp panou sau Imax / MPPT")
         isc1 = max([s["isc"] for s in strings] or [0])
@@ -208,11 +229,18 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             o.need(f"cef.inverters.{i}.dc.section", "Secțiune cablu DC (mm²)", dc.get("section"), T)
             o.it(T, "DC — curent de dimensionare", g(1.25 * isc1, " A", 1), "calculat", "Ib,DC = 1,25 · Isc,STC (IEC 62548)")
             o.it(T, "DC — secțiune propusă", g(pd["section"], " mm²"), "calculat", "Iz ≥ 1,25·Isc și ΔU ≤ 1%")
-            vmp = max(s["vmp_stc"] for s in strings)
             if ds:
                 izd = iz(ds, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True)
-                du = vdrop_dc(imp, dL, ds, dmat, vmp)
-                loss = len(strings) * 2 * dL * imp ** 2 * RHO.get(dmat, RHO["Cu"]) / ds
+                cable_drops = [
+                    vdrop_dc(current, dL, ds, dmat, string["vmp_stc"])
+                    for string, current in zip(strings, string_currents)
+                    if current and string.get("vmp_stc")
+                ]
+                du = max(cable_drops or [0])
+                loss = sum(
+                    2 * dL * current ** 2 * RHO.get(dmat, RHO["Cu"]) / ds
+                    for current in string_currents
+                )
                 tot_loss += loss
                 o.it(T, "DC — Iz cablu ales", g(izd, " A", 0), "calculat", "Iz = Iz,tabel · k", izd >= 1.25 * isc1, f"≥ {1.25 * isc1:.1f} A")
                 o.it(T, "DC — cădere de tensiune", g(du, " %") or "0 %", "calculat", "ΔU = 2·L·Imp·ρ/(S·Ump)·100", du <= 1, "≤ 1 % (recomandat)")
