@@ -267,7 +267,8 @@ def _price_tax_note(doc, source_price: str) -> str:
     # Keep the VAT basis only when the supplier publishes a label whose amount
     # matches the exact structured price we use for the markup calculation.
     body = " ".join(" ".join(doc.xpath("//body//text()")).split())
-    normalized = _norm(body)
+    normalized = unicodedata.normalize("NFKD", body).encode("ascii", "ignore").decode().lower()
+    normalized = re.sub(r"\s+", " ", normalized)
     source_amount = _displayed_price_amount(source_price)
     if source_amount is None:
         return ""
