@@ -733,6 +733,10 @@ async def list_items(module: str, q: Optional[str] = None, include_archived: boo
         raise HTTPException(status_code=404, detail="Modul inexistent")
     guard(module, user)
     query = scope_q(user, module)
+    if module == "catalog":
+        # Keep test/demo rows intact in storage, but never show them in the
+        # working equipment catalog or its dossier selectors.
+        query = {"$and": [query, {"is_test": {"$ne": True}}]}
     if module in AUTO_ARCHIVE_MODULES:
         await archive_inactive_dossiers(user)
         query = {"$and": [query, dossier_archive_filter(include_archived)]}
