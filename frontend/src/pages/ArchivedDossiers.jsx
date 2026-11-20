@@ -65,3 +65,4 @@ export default function ArchivedDossiers(){
  <div className="flex flex-wrap gap-2 mt-4"><Btn variant="secondary" onClick={()=>recheck(item)}><RefreshCw size={14}/>Reia revizuirea</Btn><Btn variant="secondary" onClick={()=>delegate(item)}><UserRoundCog size={14}/>Deleagă</Btn><Btn onClick={()=>complete(item)} disabled={item.status==="complete"}>Confirmă finalizarea</Btn><Btn variant="secondary" onClick={()=>remove(item)}><Trash2 size={14}/>Șterge înregistrarea</Btn></div>
  </div>)}</div>}</div></div>;
 }
+
