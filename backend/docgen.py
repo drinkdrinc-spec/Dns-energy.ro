@@ -499,9 +499,18 @@ def doc_serii(ctx):
     panel_serials = [str(value).strip() for value in panel_serials or [] if str(value).strip()]
     if not panel_serials and ctx.raw("panel_serials"):
         panel_serials = [str(ctx.raw("panel_serials"))]
-    panel_models = sorted({str(inv.get("panel_model")) for inv in cef.get("inverters") or [] if inv.get("panel_model")})
+    panel_models_by_serial = []
+    for inv in cef.get("inverters") or []:
+        if inv.get("battery_only") or inv.get("no_panels"):
+            continue
+        quantity = max(1, min(100, int(num(inv.get("count") or inv.get("quantity"), 1) or 1)))
+        for string in inv.get("strings") or []:
+            model = string.get("panel_model") or inv.get("panel_model") or ""
+            panels = max(0, int(num(string.get("panels")))) * quantity
+            panel_models_by_serial.extend([model] * panels)
     if panel_serials:
-        rows.extend([[f"Panou {i + 1} {escape(', '.join(panel_models))}", escape(value)] for i, value in enumerate(panel_serials)])
+        rows.extend([[f"Panou {i + 1} {escape(panel_models_by_serial[i] if i < len(panel_models_by_serial) else '')}".strip(),
+                      escape(value)] for i, value in enumerate(panel_serials)])
     else:
         for p in panel_rows(ctx):
             rows.append([f"{p['n']}× panou {escape(p['model'])}", ""])
