@@ -82,15 +82,16 @@ def _cef_rows(rec):
                 grouped[panel or "Model panou neprecizat"] += int(float(string.get("panels") or 0))
             except (TypeError, ValueError):
                 pass
-        panel_w = inv.get("panel_w")
-        for panel, count in grouped.items():
+        for string in strings:
+            panel = _first(string.get("panel_model"), inv.get("panel_model")) or "Model panou neprecizat"
             try:
-                kw = float(panel_w or 0) * count / 1000
+                count = int(float(string.get("panels") or 0))
+                watt = float(string.get("panel_w") or inv.get("panel_w") or 0)
             except (TypeError, ValueError):
-                kw = 0
-            panel_rows.setdefault(panel, [0, kw])
+                count, watt = 0, 0
+            panel_rows.setdefault(panel, [0, 0.0])
             panel_rows[panel][0] += count
-            panel_rows[panel][1] += kw
+            panel_rows[panel][1] += watt * count / 1000
         phases = _first(inv.get("phases")).casefold()
         voltage = "400" if "tri" in phases or "3" in phases else ("230" if phases else "")
         inverter_rows.append([
@@ -123,6 +124,7 @@ async def render_deer_annex1(rec, client, settings):
     kwp = sum(float(row[4]) for row in all_panels) if all_panels else 0
     requested = _first(rec.get("requested_power_kw"), rec.get("requested"), rec.get("power"))
     approved = _first(rec.get("approved_power_kw"), rec.get("approved"), rec.get("bransament_kw"))
+    requested_kva = _first(rec.get("requested_kva"), rec.get("power_kva"))
     site_address = _first(rec.get("address"), c.get("address"))
     recipient = _first(c.get("name"), rec.get("client_name"))
     identity = _first(c.get("idcode"), c.get("cnp"), rec.get("cnp"))
@@ -153,13 +155,28 @@ async def render_deer_annex1(rec, client, settings):
             paragraph.text = paragraph.text.replace("[]", "[X]", 1)
         elif "Data estimată solicitată" in txt:
             _replace_paragraph(paragraph, [_first(rec.get("energize_date"), rec.get("estimated_energize_date"))])
-        elif "Modul de alimentare actual" in txt:
-            _replace_paragraph(paragraph, [_first(rec.get("current_supply_desc"), rec.get("current_supply"), rec.get("changes"))])
+    paragraphs = doc.paragraphs
+    for index, paragraph in enumerate(paragraphs):
+        if "Modul de alimentare actual" in paragraph.text:
+            current_supply = _first(rec.get("current_supply_desc"), rec.get("current_supply"), rec.get("supply"))
+            change_text = _first(rec.get("changes"), rec.get("other_changes"), rec.get("purpose"))
+            details = []
+            if current_supply:
+                details.append(f"Alimentare existentă: {current_supply}")
+            if approved:
+                details.append(f"Putere aprobată existentă: {approved} kW")
+            if requested:
+                details.append(f"Putere solicitată: {requested} kW")
+            if change_text:
+                details.append(change_text)
+            if details and index + 1 < len(paragraphs):
+                paragraphs[index + 1].text = "; ".join(details)
+            break
 
     for table_index, table in enumerate(doc.tables):
         if table_index == 0 and len(table.rows) >= 3:
-            _set_cell(table.rows[1].cells[1], approved)
-            _set_cell(table.rows[2].cells[1], _first(rec.get("approved_power_kva"), rec.get("requested_kva")))
+            _set_cell(table.rows[1].cells[1], requested)
+            _set_cell(table.rows[2].cells[1], requested_kva)
         elif table_index == 1:
             receptors = rec.get("receptors") or []
             _write_rows(table, [[str(i + 1), _first(row.get("name")), _first(row.get("kw"), row.get("power_kw")), _first(row.get("notes"))]
@@ -175,10 +192,11 @@ async def render_deer_annex1(rec, client, settings):
                 _set_cell(table.rows[2].cells[1], _first(battery.get("ah")))
         elif table_index == 8:
             meter = cef.get("smart_meter") or rec.get("smart_meter") or {}
-            if meter.get("separate") or meter.get("model"):
+            meter_model = _first(meter.get("model"), rec.get("smart_meter_type"))
+            if meter.get("separate") or meter_model:
                 _set_cell(table.rows[1].cells[0], "1")
-                _set_cell(table.rows[1].cells[1], _first(meter.get("serial")))
-                _set_cell(table.rows[1].cells[2], _first(meter.get("model")))
+                _set_cell(table.rows[1].cells[1], _first(meter.get("serial"), rec.get("smart_meter_serial")))
+                _set_cell(table.rows[1].cells[2], meter_model)
                 _set_cell(table.rows[1].cells[3], _first(meter.get("technical_data")))
     # Only preselect the existing-site option from the explicit request type.
     for paragraph in doc.paragraphs:
