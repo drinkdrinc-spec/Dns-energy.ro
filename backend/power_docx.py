@@ -253,9 +253,16 @@ async def render_deer_annex1(rec, client, settings):
         elif table_index == 9:
             grid = cef.get("grid") or {}
             meter_model = _first(grid.get("meter"), rec.get("smart_meter_type"))
-            meter_catalog_id = grid.get("meter_catalog_id")
-            separate_meter = grid.get("meter_separate") or rec.get("smart_meter_separate")
-            if separate_meter or meter_model or meter_catalog_id:
+            meter_choice = rec.get("smart_meter")
+            separate_meter = (
+                _enabled(grid.get("meter_separate"))
+                or _enabled(rec.get("smart_meter_separate"))
+                or (isinstance(meter_choice, dict) and _enabled(meter_choice.get("separate")))
+                or _text(meter_choice).casefold() in {"contor separat", "separat", "separate"}
+            )
+            # A selected inverter-integrated meter must not be declared as an
+            # additional meter in the official connection request.
+            if separate_meter:
                 _set_cell(table.rows[1].cells[0], "1")
                 _set_cell(table.rows[1].cells[1], _first(grid.get("meter_serial"), rec.get("smart_meter_serial")))
                 _set_cell(table.rows[1].cells[2], meter_model)
