@@ -561,7 +561,7 @@ export default function EquipmentCatalog() {
           <select id="partner-markup" className="den-input min-h-9 w-28" value={supplierMarkup} onChange={(event) => setSupplierMarkup(Number(event.target.value))}>
             <option value={15}>15%</option><option value={20}>20%</option>
           </select>
-          <span className="text-[11px]" style={{ color: "var(--muted)" }}>calculat peste prețul afișat de furnizor; baza TVA/taxelor se păstrează ca în sursă.</span>
+          <span className="text-[11px]" style={{ color: "var(--muted)" }}>calculat peste prețul publicat de furnizor; regimul TVA se afișează numai când sursa îl precizează clar.</span>
         </div>
         {supplierSearchMessage && <p className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: supplierResults.length ? "var(--muted)" : "var(--amber, #8a5a00)" }} role="status" data-testid="supplier-search-status">{supplierSearchMessage}</p>}
         {supplierResults.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="supplier-bulk-import">
@@ -581,7 +581,7 @@ export default function EquipmentCatalog() {
                 <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--blue)" }}>{product.supplier}</div>
                 <h3 className="font-bold text-sm mt-1">{product.brand_model}</h3>
                 <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{[product.price_text, product.availability].filter(Boolean).join(" · ") || "Preț/stoc vezi la furnizor"}</p>
-                {supplierPartnerPrice(product.price_text, supplierMarkup) && <p className="mt-1 text-xs font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{supplierMarkup}%): {supplierPartnerPrice(product.price_text, supplierMarkup)}</p>}
+                {supplierPartnerPrice(product.price_text, supplierMarkup) && <p className="mt-1 text-xs font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{supplierMarkup}%): {supplierPartnerPrice(product.price_text, supplierMarkup)} <span className="font-normal">· {product.price_tax_note || "TVA de verificat la furnizor"}</span></p>}
                 <p className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>{Object.entries(product).filter(([key, value]) => value !== null && value !== undefined && ["p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "w", "voc", "coef_voc", "coef_vmp", "temp_pmax", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max"].includes(key)).map(([key, value]) => `${key}: ${value}`).join(" · ") || "Specificațiile tehnice nu sunt publicate structurat."}</p>
               </div>
               <a href={product.product_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold whitespace-nowrap" style={{ color: "var(--blue)" }}>Produs ↗</a>
@@ -629,7 +629,7 @@ export default function EquipmentCatalog() {
                   <h3 className="font-bold break-words">{i.brand_model}</h3>
                   {i.notes && <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>{i.notes}</p>}
                   <p className="mt-2 text-sm font-medium">{spec(i)}</p>
-                  {i.source_price && <div className="mt-2 text-xs"><p style={{ color: "var(--muted)" }}>Preț furnizor (importat): {i.source_price}</p>{supplierPartnerPrice(i.source_price, supplierMarkup) && <p className="mt-1 font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{supplierMarkup}%): {supplierPartnerPrice(i.source_price, supplierMarkup)}</p>}</div>}
+                  {i.source_price && <div className="mt-2 text-xs"><p style={{ color: "var(--muted)" }}>Preț furnizor (importat): {i.source_price}</p>{supplierPartnerPrice(i.source_price, supplierMarkup) && <p className="mt-1 font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{supplierMarkup}%): {supplierPartnerPrice(i.source_price, supplierMarkup)} <span className="font-normal">· {i.source_price_tax_note || "TVA de verificat la furnizor"}</span></p>}</div>}
                   {FIELDS[i.category]?.length > 0 && <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }} data-testid={`catalog-spec-coverage-${i.id}`}>
                     Date tehnice introduse: {FIELDS[i.category].filter(([key]) => i[key] !== null && i[key] !== undefined && String(i[key]).trim() !== "").length}/{FIELDS[i.category].length} câmpuri din catalog
                   </p>}

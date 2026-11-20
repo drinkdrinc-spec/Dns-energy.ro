@@ -1359,6 +1359,7 @@ async def catalog_supplier_import(request: Request, user: dict = Depends(get_cur
                "isc_max_a", "imax_output_a", "vdc_output_max", "model_scope")
     item = {"category": category, "brand_model": product["brand_model"], "supplier": supplier,
             "source_url": product_url, "source_price": product.get("price_text", ""),
+            "source_price_tax_note": product.get("price_tax_note", ""),
             "source_availability": product.get("availability", ""),
             "notes": "Importat din pagina publică a furnizorului. Valorile tehnice sunt completate numai când sunt publicate explicit și neambiguu.",
             **{key: product[key] for key in allowed if key in product}}
