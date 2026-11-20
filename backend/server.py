@@ -2365,7 +2365,8 @@ async def hydrate_cef_catalog_values(owner: str, cef: dict, rec: dict | None = N
                         "phases": item.get("phases"), "p_nom_kw": item.get("p_nom_kw"), "p_max_kw": item.get("p_max_kw"),
                         "vdc_max": item.get("vdc_max"), "mppt_min": item.get("mppt_min"), "mppt_max": item.get("mppt_max"),
                         "mppt_count": item.get("mppt_count"), "imax_mppt": item.get("imax_mppt"), "isc_max_mppt": item.get("isc_max_mppt"),
-                        "bat_i_max": item.get("bat_i_max"), "bat_v_min": item.get("bat_v_min"), "bat_v_max": item.get("bat_v_max")},
+                        "bat_i_max": item.get("bat_i_max"), "bat_v_min": item.get("bat_v_min"), "bat_v_max": item.get("bat_v_max"),
+                        "rcd_type": item.get("rcd_type"), "rcd_ma": item.get("rcd_ma")},
                   f"cef.inverters.{index}")
         panel = await catalog_item("Panou", inv.get("panel_catalog_id"), inv.get("panel_model") or legacy_inv.get("panel_model"))
         if panel:
