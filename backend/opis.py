@@ -89,7 +89,7 @@ def catalog_refs(rec):
     return dedup(inv), dedup(pan), dedup(bat), dedup(met), dedup(rsd)
 
 
-async def build_positions(db, owner, rec, client, settings):
+async def build_positions(db, owner, rec, client, settings, public_documents=None):
     kind = str(client.get("kind") or "").strip().casefold()
     pj = "jurid" in kind or kind in ("pj", "company", "firmă", "firma")
     ctx = docgen.Ctx(docgen.CEF.flatten(rec), settings, client)
@@ -188,9 +188,17 @@ async def build_positions(db, owner, rec, client, settings):
     # DEER requires the applicable personal-data information notice for natural-person cases.
     # Keep it as an official, user-attached document; never generate a fake consent form.
     operator_name = str(rec.get("operator") or client.get("operator") or "").lower()
-    if "deer" in operator_name or "distributie energie electrica romania" in operator_name or "distribuție energie electrică românia" in operator_name:
-        pos.append({"key": "gdpr", "title": "Notă oficială DEER privind prelucrarea datelor personale (GDPR)", "source": "manual",
-                    "files": [], "missing": ["Atașează nota oficială DEER aplicabilă dosarului"]})
+    is_deer = ("deer" in operator_name or "distributie energie electrica romania" in operator_name
+               or "distribuție energie electrică românia" in operator_name)
+    notice = (public_documents or {}).get("deer_gdpr_notice")
+    if is_deer and not pj:
+        if notice and notice.get("storage_path"):
+            pos.append({"key": "gdpr", "title": "Notă oficială DEER — informare privind datele personale (februarie 2026)",
+                        "source": "official", "files": [notice], "missing": []})
+        else:
+            pos.append({"key": "gdpr", "title": "Notă oficială DEER privind prelucrarea datelor personale (GDPR)",
+                        "source": "manual", "files": [],
+                        "missing": ["Nota oficială DEER nu a putut fi preluată automat; reîncearcă sau atașează PDF-ul oficial."]})
 
     inv, pan, bat, met, rsd = catalog_refs(rec)
 
