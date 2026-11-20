@@ -345,7 +345,6 @@ export default function EquipmentCatalog() {
   };
 
   const toggleSupplierSelection = (product) => {
-    if (!product.datasheet_url || !product.conformity_url) return;
     setSupplierSelected((previous) => {
       const next = new Set(previous);
       if (next.has(product.product_url)) next.delete(product.product_url);
@@ -360,10 +359,15 @@ export default function EquipmentCatalog() {
       .map((product) => product.product_url)));
   };
 
+  const selectAllSupplierProducts = () => {
+    setSupplierSelected(new Set(supplierResults.map((product) => product.product_url)));
+  };
+
   const importSelectedSupplierProducts = async () => {
-    const selected = supplierResults.filter((product) => supplierSelected.has(product.product_url)
-      && product.datasheet_url && product.conformity_url);
-    if (!selected.length) return toast.info("Selectează modele pentru care furnizorul oferă ambele PDF-uri.");
+    const selectedAll = supplierResults.filter((product) => supplierSelected.has(product.product_url));
+    if (!selectedAll.length) return toast.info("Selectează cel puțin un model pentru import.");
+    const selected = selectedAll.slice(0, 24);
+    const remaining = selectedAll.slice(24);
     setSupplierBulkBusy(true);
     let imported = 0;
     let existing = 0;
@@ -392,11 +396,11 @@ export default function EquipmentCatalog() {
         }
       }
       await load();
-      setSupplierSelected(new Set(failedProducts.map((product) => product.product_url)));
+      setSupplierSelected(new Set([...failedProducts, ...remaining].map((product) => product.product_url)));
       if (failedProducts.length || extractionFailed) {
         toast.warning(`${imported} modele noi, ${existing} deja existente; ${failedProducts.length} importuri eșuate${extractionFailed ? `, ${extractionFailed} extrageri AI nereușite` : ""}.`);
       } else {
-        toast.success(`${imported} modele adăugate cu PDF-urile furnizorului; ${existing} erau deja în catalog.`);
+        toast.success(imported + " produse adăugate; " + existing + " erau deja în catalog." + (remaining.length ? " " + remaining.length + " au rămas selectate — apasă din nou pentru următorul lot." : ""));
       }
     } finally {
       setSupplierBulkBusy(false);
@@ -580,6 +584,7 @@ export default function EquipmentCatalog() {
         </div>
         {supplierSearchMessage && <p className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--bg)", color: supplierResults.length ? "var(--muted)" : "var(--amber, #8a5a00)" }} role="status" data-testid="supplier-search-status">{supplierSearchMessage}</p>}
         {supplierResults.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="supplier-bulk-import">
+          <button type="button" onClick={selectAllSupplierProducts} disabled={supplierBulkBusy} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }} data-testid="supplier-select-all">Selectează toate rezultatele încărcate</button>
           <button type="button" onClick={selectSupplierProductsWithDocuments} disabled={supplierBulkBusy} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }} data-testid="supplier-select-complete">Selectează modelele cu ambele PDF-uri</button>
           <button type="button" onClick={() => setSupplierSelected(new Set())} disabled={supplierBulkBusy || supplierSelected.size === 0} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }}>Șterge selecția</button>
           <button type="button" onClick={importSelectedSupplierProducts} disabled={supplierBulkBusy || supplierSelected.size === 0} className="rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: "var(--blue)" }} data-testid="supplier-import-selected">{supplierBulkBusy ? "Se importă…" : `Importă ${supplierSelected.size} selectate în DNS`}</button>
@@ -590,8 +595,8 @@ export default function EquipmentCatalog() {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <label className="mb-2 flex items-center gap-2 text-[11px] font-semibold">
-                  <input type="checkbox" checked={supplierSelected.has(product.product_url)} onChange={() => toggleSupplierSelection(product)} disabled={supplierBulkBusy || !product.datasheet_url || !product.conformity_url} aria-label={`Selectează ${product.brand_model} pentru import`} data-testid="supplier-product-select" />
-                  {product.datasheet_url && product.conformity_url ? "Selectează pentru import multiplu" : "Importul multiplu cere ambele PDF-uri"}
+                  <input type="checkbox" checked={supplierSelected.has(product.product_url)} onChange={() => toggleSupplierSelection(product)} disabled={supplierBulkBusy} aria-label={`Selectează ${product.brand_model} pentru import`} data-testid="supplier-product-select" />
+                  {product.datasheet_url && product.conformity_url ? "Selectează pentru import" : "Se importă și fără PDF-uri; documentele rămân de completat"}
                 </label>
                 <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--blue)" }}>{product.supplier}</div>
                 <h3 className="font-bold text-sm mt-1">{product.brand_model}</h3>
