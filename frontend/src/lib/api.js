@@ -25,17 +25,19 @@ api.interceptors.response.use(
     const config = error.config;
     if (!config) return Promise.reject(error);
     const method = String(config.method || "get").toLowerCase();
-    const safeRequest = ["get", "head"].includes(method) || config.dnsRetrySafe === true;
+    const safePlatformWakeRetry = config.dnsRetry503 === true && error.response?.status === 503;
+    const safeRequest = ["get", "head"].includes(method) || config.dnsRetrySafe === true || safePlatformWakeRetry;
     const transientResponse = TRANSIENT_API_STATUSES.has(error.response?.status);
     const temporaryNetworkFailure = !error.response
       && !(typeof navigator !== "undefined" && navigator.onLine === false);
     const attempts = Number(config.__dnsRetryCount || 0);
-    if (!safeRequest || (!transientResponse && !temporaryNetworkFailure) || attempts >= SAFE_API_RETRIES) {
+    const maxAttempts = safePlatformWakeRetry ? 1 : SAFE_API_RETRIES;
+    if (!safeRequest || (!transientResponse && !temporaryNetworkFailure) || attempts >= maxAttempts) {
       return Promise.reject(error);
     }
 
     config.__dnsRetryCount = attempts + 1;
-    const wait = API_RETRY_DELAYS_MS[Math.min(attempts, API_RETRY_DELAYS_MS.length - 1)];
+    const wait = safePlatformWakeRetry ? 2500 : API_RETRY_DELAYS_MS[Math.min(attempts, API_RETRY_DELAYS_MS.length - 1)];
     await new Promise((resolve) => window.setTimeout(resolve, wait));
     return api.request(config);
   },
