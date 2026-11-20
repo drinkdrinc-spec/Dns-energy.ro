@@ -72,7 +72,7 @@ export default function Login() {
 
       <div className="flex items-center justify-center px-5 py-8 sm:p-12" style={{ background: "var(--bg)" }}>
         <form onSubmit={submit} className={`w-full ${reg ? "max-w-2xl" : "max-w-sm"} den-panel`} data-testid="login-form">
-          <div className="lg:hidden flex flex-col items-center gap-3 mb-8 text-center"><BrandMark size={54} /><span className="text-xl font-extrabold tracking-wide">DNS ENERGY</span><span className="text-xs" style={{color:"var(--muted)"}}>Platformă pentru documentații fotovoltaice</span></div>
+          <div className="lg:hidden mb-8 min-h-[150px] rounded-2xl overflow-hidden" role="img" aria-label="D-Energy — Energie pentru un viitor sustenabil" style={{ backgroundImage: "linear-gradient(rgba(8,36,70,.12), rgba(8,36,70,.12)), url('/d-energy-blue-brand.jpg')", backgroundSize: "cover", backgroundPosition: "center" }} />
           <h1 className="text-2xl font-extrabold">{reg ? "Cont nou" : forgot ? "Resetează parola" : "Conectează-te"}</h1>
           <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>{reg ? "Contul devine activ după aprobarea administratorului. Apoi alegeți și plătiți abonamentul." : forgot ? "Îți trimitem un link temporar dacă adresa aparține unui cont activ." : "Intră în contul tău DNS Energy pentru a continua."}</p>
           {reg && <div className="den-field mb-4"><label>Nume complet</label><input data-testid="register-name" className="den-input" value={name} onChange={(e) => setName(e.target.value)} required /></div>}
