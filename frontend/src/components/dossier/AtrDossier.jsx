@@ -124,7 +124,7 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     if (selectedDeerForm.key === "existing" && selectedDeerForm.value.includes("actualizare CRR") && !kind.includes("administrativ")) issues.push("Anexa 3 pentru actualizare CRR cere tipul solicitării administrative.");
     if (selectedDeerForm.value.includes("≤10,8")) {
       const invs = selectedPros?.cef?.inverters || [];
-      const stringsPower = invs.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, st) => n + (Number(st.panels) || 0), 0) * (Number(inv.panel_w) || 0) / 1000 * (Number(inv.count) || 1), 0);
+      const stringsPower = invs.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, st) => n + (Number(st.panels) || 0) * (Number(st.panel_w) || Number(inv.panel_w) || 0) / 1000 * (Number(inv.count) || 1), 0), 0);
       const power = installedPanelKwp(selectedPros || { cef: form.atr_cef }) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower;
       if (!power) issues.push("Completează puterea instalată de producere pentru verificarea Anexei 5.");
       else if (power > 10.8) issues.push("Anexa 5 este pentru putere instalată de maximum 10,8 kW.");
@@ -162,7 +162,16 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     };
     for (const inv of cef.inverters || []) {
       add("invertor", inv.brand_model, inv.catalog_id);
-      add("panou", inv.panel_model, inv.panel_catalog_id);
+      const strings = (inv.strings || []).filter((string) => Number(string.panels) > 0);
+      if (!(inv.battery_only || inv.no_panels)) {
+        if (strings.length) {
+          for (const string of strings) {
+            add("panou", string.panel_model || inv.panel_model, string.panel_catalog_id || inv.panel_catalog_id);
+          }
+        } else {
+          add("panou", inv.panel_model, inv.panel_catalog_id);
+        }
+      }
       if (inv.battery_mode === "own") add("baterie", inv.battery?.model, inv.battery?.catalog_id);
     }
     for (const battery of cef.shared_batteries || []) add("baterie", battery.model, battery.catalog_id);
@@ -209,11 +218,32 @@ export function AtrDossier({ id, form, setVal, clients = [] }) {
     };
     for (const [index, inv] of inverters.entries()) {
       const quantity = inv.count || inv.quantity || 1;
-      const panelCount = (inv.strings || []).reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
+      const strings = (inv.strings || []).filter((string) => Number(string.panels) > 0);
+      const panelCount = strings.reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
       items.push({ key: `inv-${index}`, label: `Invertor: ${inv.brand_model || "model necompletat"} · ${quantity} buc. · ${inv.p_nom_kw || "—"} kW` });
-      const declaredPanelCount = inverters.length === 1 ? Math.max(0, Number(selectedPros?.panel_count) || 0) : 0;
-      const shownPanelCount = panelCount || declaredPanelCount;
-      if (inv.panel_model || shownPanelCount) items.push({ key: `panel-${index}`, label: `Panouri: ${inv.panel_model || "model necompletat"} · ${shownPanelCount || "—"} buc. · ${inv.panel_w || "—"} Wp` });
+      if (!(inv.battery_only || inv.no_panels)) {
+        if (strings.length) {
+          const groups = new Map();
+          for (const string of strings) {
+            const model = string.panel_model || inv.panel_model || "model necompletat";
+            const catalogId = string.panel_catalog_id || inv.panel_catalog_id || "";
+            const key = catalogId || model.trim().toLocaleLowerCase("ro-RO");
+            const group = groups.get(key) || { model, panels: 0, watts: Number(string.panel_w) || Number(inv.panel_w) || 0 };
+            group.panels += Number(string.panels) || 0;
+            if (!group.watts) group.watts = Number(string.panel_w) || Number(inv.panel_w) || 0;
+            groups.set(key, group);
+          }
+          for (const [panelIndex, group] of [...groups.values()].entries()) {
+            const capacity = group.watts > 0 ? ` · ${(group.panels * group.watts / 1000).toFixed(2)} kWp` : "";
+            items.push({ key: `panel-${index}-${panelIndex}`, label: `Panouri: ${group.model} · ${group.panels} buc. · ${group.watts || "—"} Wp${capacity}` });
+          }
+        } else {
+          const declaredPanelCount = inverters.length === 1 ? Math.max(0, Number(selectedPros?.panel_count) || 0) : 0;
+          if (inv.panel_model || declaredPanelCount) {
+            items.push({ key: `panel-${index}`, label: `Panouri: ${inv.panel_model || "model necompletat"} · ${declaredPanelCount || "—"} buc. · ${inv.panel_w || "—"} Wp` });
+          }
+        }
+      }
       if (inv.battery_mode === "own" && inv.battery?.model) addBattery(`battery-own-${index}`, inv.battery, quantity);
     }
     for (const [index, battery] of (cef.shared_batteries || []).entries()) {
