@@ -245,6 +245,43 @@ def _json_products(doc):
                 stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
 
 
+def _displayed_price_amount(value: str) -> float | None:
+    raw = re.sub(r"[^0-9.,]", "", str(value or ""))
+    if not raw:
+        return None
+    if "," in raw and "." in raw:
+        decimal = "," if raw.rfind(",") > raw.rfind(".") else "."
+        grouping = "." if decimal == "," else ","
+        raw = raw.replace(grouping, "").replace(decimal, ".")
+    elif "," in raw or "." in raw:
+        separator = "," if "," in raw else "."
+        whole, _, fraction = raw.rpartition(separator)
+        raw = whole + ("." + fraction if 0 < len(fraction) <= 2 else fraction)
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def _price_tax_note(doc, source_price: str) -> str:
+    # Keep the VAT basis only when the supplier publishes a label whose amount
+    # matches the exact structured price we use for the markup calculation.
+    body = " ".join(" ".join(doc.xpath("//body//text()")).split())
+    normalized = _norm(body)
+    source_amount = _displayed_price_amount(source_price)
+    if source_amount is None:
+        return ""
+    for label, note in (("pret fara tva", "fără TVA (TVA separat)"),
+                        ("pret cu tva", "cu TVA")):
+        match = re.search(rf"{label}\s*:?\s*([0-9][0-9., ]*)", normalized)
+        if not match:
+            continue
+        labelled_amount = _displayed_price_amount(match.group(1))
+        if labelled_amount is not None and abs(source_amount - labelled_amount) <= max(0.02, labelled_amount * 0.0001):
+            return note
+    return ""
+
+
 def _offer(doc):
     for product in _json_products(doc):
         offers = product.get("offers") or {}
@@ -254,15 +291,22 @@ def _offer(doc):
             price = offers.get("price") or offers.get("lowPrice")
             currency = offers.get("priceCurrency") or "RON"
             availability = str(offers.get("availability") or "").rsplit("/", 1)[-1]
-            return (f"{price} {currency}" if price else "", availability[:80])
-    return "", ""
+            price_text = f"{price} {currency}" if price else ""
+            return price_text, availability[:80], _price_tax_note(doc, price_text)
+    return "", "", ""
 
 
 def merge_catalog_enrichment(existing: dict, imported: dict) -> dict:
     """Fill missing catalog data from a fresh source check without overwriting curated values."""
     updates = {}
     for key, value in imported.items():
-        if key in {"id", "owner", "_id", "created_at", "updated_at"} or value in (None, "", {}, []):
+        if key in {"id", "owner", "_id", "created_at", "updated_at"}:
+            continue
+        if key == "source_price_tax_note":
+            # Clear an old label when the supplier stops publishing a verifiable basis.
+            updates[key] = str(value or "")
+            continue
+        if value in (None, "", {}, []):
             continue
         if key in {"datasheet", "conformity"}:
             current = existing.get(key)
@@ -514,9 +558,9 @@ async def search_supplier_products(query: str, category: str, offset: int = 0, l
                 title = _product_title(doc)
                 if not title or not _correct_category(title, cat):
                     return None
-                price, stock = _offer(doc)
+                price, stock, tax_note = _offer(doc)
                 return {"supplier": name, "category": cat, "brand_model": title[:240], "product_url": url,
-                        "price_text": price, "availability": stock, **_properties(doc), **_documents(doc, url)}
+                        "price_text": price, "availability": stock, "price_tax_note": tax_note, **_properties(doc), **_documents(doc, url)}
 
         products = await asyncio.gather(*[detail(row) for row in page_rows])
     found, seen = [], set()
@@ -545,9 +589,9 @@ async def get_public_product(supplier: str, category: str, url: str) -> dict | N
         title = _product_title(doc)
         if not title or not _correct_category(title, category):
             return None
-        price, stock = _offer(doc)
+        price, stock, tax_note = _offer(doc)
         return {"supplier": supplier, "category": category, "brand_model": title[:240], "product_url": url,
-                "price_text": price, "availability": stock, **_properties(doc), **_documents(doc, url)}
+                "price_text": price, "availability": stock, "price_tax_note": tax_note, **_properties(doc), **_documents(doc, url)}
 
 
 async def get_public_product_document(supplier: str, category: str, product_url: str, kind: str) -> str:
