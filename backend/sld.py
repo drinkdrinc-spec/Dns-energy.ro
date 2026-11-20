@@ -273,7 +273,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                 S.text(6, y + 4.9, f"-PV{i + 1}.{k + 1}", 4.8, True)
                 agg = strings_raw[k].get("aggregate")
                 lbl = "Câmp PV total (stringuri nedefinite)" if agg else f"S{k + 1}:"
-                val = f"{s['panels']}×{gv(n(inv.get('panel_w')), ' W') or '[W lipsă]'} = " + (f"{s['kwp']:g} kWp" if s['kwp'] else "[kWp lipsă]")
+                val = f"{s['panels']}×{gv(n(s.get('panel_w')), ' W') or '[W lipsă]'} = " + (f"{s['kwp']:g} kWp" if s['kwp'] else "[kWp lipsă]")
                 if agg:
                     S.text(24, y + 3.6, lbl, 4.4, True, w=31)
                     S.text(24, y + 1.0, val, 4.8, w=31)
@@ -284,7 +284,10 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                 if fuses:
                     S.fuse(62, y)
                 S.wire(2, y - 4, 6, y - 4, "pe")
-            S.text(6, min(ys) - 8.5, str(inv.get("panel_model") or "model panou de completat"), 4.6, color=INK if inv.get("panel_model") else GREY, w=48)
+            panel_models = list(dict.fromkeys(str(s.get("panel_model") or inv.get("panel_model") or "model panou de completat") for s in strings))
+            models_confirmed = all(model != "model panou de completat" for model in panel_models)
+            S.text(6, min(ys) - 8.5, " · ".join(panel_models), 4.6,
+                   color=INK if models_confirmed else GREY, w=48)
             mppts = sorted(par)
             nm = len(mppts)
             for j, m in enumerate(mppts):
@@ -849,9 +852,17 @@ def sheet_data(rec, client, settings, res, approval):
         eq.append([f"-U{i + 1}", f"Invertor {inv.get('type') or ''}".strip(), inv.get("brand_model"),
                    f"Pn {gv(n(inv.get('p_nom_kw')), ' kW') or '—'} · Pmax {gv(n(inv.get('p_max_kw')), ' kW') or '—'} · {'3F' if r['tri'] else '1F'} · Udc max {gv(n(inv.get('vdc_max')), ' V') or '—'} · MPPT {gv(n(inv.get('mppt_min'))) or '—'}–{gv(n(inv.get('mppt_max')), ' V') or '—'} × {gv(n(inv.get('mppt_count'))) or '—'}", "1"])
         if r["strings"]:
-            eq.append([f"-PV{i + 1}", "Module fotovoltaice", inv.get("panel_model"),
-                       f"{gv(n(inv.get('panel_w')), ' W') or '—'} · Voc {gv(n(inv.get('panel_voc')), ' V') or '—'} · Isc {gv(n(inv.get('panel_isc')), ' A') or '—'} · stringuri: " + " + ".join(f"{s['panels']} (MPPT{s['mppt']})" for s in r["strings"]),
-                       str(sum(s["panels"] for s in r["strings"]))])
+            panel_groups = {}
+            for string in r["strings"]:
+                model = string.get("panel_model") or inv.get("panel_model") or "Model panou neprecizat"
+                panel_groups.setdefault(model, []).append(string)
+            for panel_index, (model, strings) in enumerate(panel_groups.items(), start=1):
+                sample = strings[0]
+                details = (f"{gv(n(sample.get('panel_w')), ' W') or '—'} · Voc {gv(n(sample.get('panel_voc')), ' V') or '—'} · "
+                           f"Isc {gv(n(sample.get('panel_isc')), ' A') or '—'} · stringuri: " +
+                           " + ".join(f"{string['panels']} (MPPT{string['mppt']})" for string in strings))
+                eq.append([f"-PV{i + 1}.{panel_index}", "Module fotovoltaice", model, details,
+                           str(sum(string["panels"] for string in strings))])
         rsd = inv.get("rsd") or {}
         if rsd.get("enabled"):
             voltage_rows = [(300, "current_300v_a"), (600, "current_600v_a"), (800, "current_800v_a"), (1000, "current_1000v_a"), (1200, "current_1200v_a"), (1500, "current_1500v_a")]
