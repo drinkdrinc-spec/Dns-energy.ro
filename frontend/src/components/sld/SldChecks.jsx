@@ -10,7 +10,7 @@ function Row({ it, i }) {
     <tr className="border-t" style={{ borderColor: "var(--line)" }} data-testid={`sld-item-${i}`}>
       <td className="py-1.5 pr-2 whitespace-nowrap" style={{ color: "var(--muted)" }}>{it.group}</td>
       <td className="py-1.5 pr-2">{it.label}</td>
-      <td className="py-1.5 pr-2 font-semibold whitespace-nowrap">{it.value ?? <span style={{ color: "#b03a2e" }}>lipsă</span>}</td>
+      <td className="py-1.5 pr-2 font-semibold whitespace-nowrap">{it.value ?? <span style={{ color: "var(--muted)" }}>de completat</span>}</td>
       <td className="py-1.5 pr-2"><span className="rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap" style={{ background: s[0], color: s[1] }}>{it.source}</span></td>
       <td className="py-1.5 pr-2 hidden md:table-cell" style={{ color: "var(--muted)" }}>{it.formula}{it.note ? ` · ${it.note}` : ""}</td>
       <td className="py-1.5 font-bold whitespace-nowrap" style={{ color: ok[1] }}>{ok[0]}</td>
@@ -24,10 +24,11 @@ export function SldChecks({ d }) {
   const items = all ? d.items : d.items.filter((x) => x.ok === false || x.source === "de confirmat");
   return (
     <div className="mt-4">
+      {d.unconfirmed?.length > 0 && <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: "#fff8e8", color: "#76500a" }} data-testid="sld-unconfirmed"><b>De confirmat din instalație sau ATR:</b> {d.unconfirmed.length} valori, precum Ik, lungimile reale ale cablurilor și măsurarea prizei de pământ. Acestea nu se pot completa corect din surse publice.</div>}
       {d.missing.length > 0 && (
         <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: "#fff8e8", color: "#76500a" }} data-testid="sld-missing">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div><b>Schema este ciornă</b><span className="ml-2">Lipsesc {d.missing.length} date tehnice pentru verificarea și aprobarea schemei.</span></div>
+            <div><b>Date necesare pentru aprobare</b><span className="ml-2">Mai sunt {d.missing.length} date tehnice de completat.</span></div>
             <button type="button" className="font-bold underline" onClick={() => setMissingOpen(!missingOpen)} data-testid="sld-toggle-missing">
               {missingOpen ? "Ascunde detaliile" : "Vezi ce lipsește"}
             </button>
