@@ -94,10 +94,11 @@ def _cef_rows(rec):
             panel_rows[panel][1] += watt * count / 1000
         phases = _first(inv.get("phases")).casefold()
         voltage = "400" if "tri" in phases or "3" in phases else ("230" if phases else "")
+        battery_only = bool(inv.get("battery_only") or inv.get("no_panels"))
+        maximum = "0" if battery_only else _first(inv.get("p_max_kw"), inv.get("p_nom_kw"))
         inverter_rows.append([
             str(len(inverter_rows) + 1), "1", model, voltage, _first(inv.get("p_nom_kw")),
-            _first(inv.get("p_max_kw"), inv.get("p_nom_kw")), _first(inv.get("p_max_kw"), inv.get("p_nom_kw")),
-            "Invertor baterie fără panouri; evacuare 0 kW" if inv.get("battery_only") or inv.get("no_panels") else "",
+            maximum, maximum, "Invertor baterie fără panouri; evacuare 0 kW" if battery_only else "",
         ])
     panels = []
     for index, (model, (count, power)) in enumerate(panel_rows.items(), start=1):
