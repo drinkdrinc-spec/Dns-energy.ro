@@ -485,17 +485,36 @@ def render_deer_annex(rec: dict, client: dict, settings: dict, pros: dict, attac
     cef = (pros or {}).get("cef") or {}
     invs = cef.get("inverters") or []
     equipment = [["Invertor", "Putere", "Panou / număr / Wp", "Stringuri"]]
-    for inv in invs:
+    for inv_index, inv in enumerate(invs):
         strings = inv.get("strings") or []
         quantity = max(1, int(D.num(inv.get("count")) or 1))
-        panel_count = sum(int(D.num(x.get("panels"))) for x in strings) * quantity
-        if not panel_count and inv is invs[0]:
+        inverter_name = escape(str(inv.get("brand_model") or M))
+        inverter_power = escape(str(inv.get("p_nom_kw") or M)) + " kW"
+        panel_groups = {}
+        if not (inv.get("battery_only") or inv.get("no_panels")):
+            for string in strings:
+                panels = max(0, int(D.num(string.get("panels"))))
+                if panels <= 0:
+                    continue
+                model = str(string.get("panel_model") or inv.get("panel_model") or "")
+                watts = D.num(string.get("panel_w") if string.get("panel_w") not in (None, "") else inv.get("panel_w"))
+                panel_groups.setdefault((model, watts), []).append(string)
+        if not panel_groups and inv_index == 0 and not strings and not (inv.get("battery_only") or inv.get("no_panels")):
             panel_count = int(D.num(p.get("panel_count")) or 0)
-        panel_w = D.num(inv.get("panel_w"))
-        string_text = ", ".join(str(int(D.num(x.get("panels")))) for x in strings if D.num(x.get("panels")))
-        equipment.append([escape(str(inv.get("brand_model") or M)), escape(str(inv.get("p_nom_kw") or M)) + " kW",
-                          escape(str(inv.get("panel_model") or M)) + (f" / {panel_count} × {panel_w:g} Wp" if panel_count and panel_w else ""),
-                          escape(string_text or M)])
+            panel_w = D.num(inv.get("panel_w") or p.get("panel_w"))
+            if panel_count:
+                panel_groups[(str(inv.get("panel_model") or ""), panel_w)] = [{"panels": panel_count, "mppt": 1}]
+        if panel_groups:
+            for (model, panel_w), grouped_strings in panel_groups.items():
+                panel_count = sum(max(0, int(D.num(string.get("panels")))) for string in grouped_strings) * quantity
+                string_text = ", ".join(f"{int(D.num(string.get('panels')))} (MPPT {string.get('mppt') or 1})"
+                                        for string in grouped_strings if D.num(string.get("panels")))
+                panel_text = escape(model or M)
+                if panel_count and panel_w:
+                    panel_text += f" / {panel_count} × {panel_w:g} Wp"
+                equipment.append([inverter_name, inverter_power, panel_text, escape(string_text or M)])
+        else:
+            equipment.append([inverter_name, inverter_power, M, M])
     if not invs:
         equipment.append([M, M, M, M])
     story.append(T(equipment, [50, 22, 70, 36]))
