@@ -82,6 +82,11 @@ export async function openAuthenticatedFile(path, fallbackName = "document") {
   const title = document.createElement("strong");
   title.textContent = "Document";
   Object.assign(title.style, { flex: "1", fontSize: "15px" });
+  const viewLink = document.createElement("a");
+  viewLink.textContent = "Deschide PDF";
+  viewLink.setAttribute("aria-label", "Deschide documentul în browser");
+  viewLink.target = "_self";
+  Object.assign(viewLink.style, { color: "white", fontSize: "14px", fontWeight: "600", padding: "8px", whiteSpace: "nowrap" });
   const download = document.createElement("a");
   download.textContent = "Descarcă";
   download.setAttribute("aria-label", "Descarcă documentul");
@@ -97,7 +102,7 @@ export async function openAuthenticatedFile(path, fallbackName = "document") {
   frame.title = "Previzualizare document";
   Object.assign(frame.style, { flex: "1", width: "100%", border: "0", background: "white" });
   overlay.append(bar, frame);
-  bar.append(title, download, close);
+  bar.append(title, viewLink, download, close);
   document.body.appendChild(overlay);
   const oldOverflow = document.body.style.overflow;
   document.body.style.overflow = "hidden";
@@ -128,6 +133,7 @@ export async function openAuthenticatedFile(path, fallbackName = "document") {
       : new Blob([response.data], { type: extensionType || headerType || "application/pdf" });
     objectUrl = URL.createObjectURL(blob);
     title.textContent = filename;
+    viewLink.href = objectUrl;
     download.href = objectUrl;
     download.download = filename;
     frame.src = objectUrl;
