@@ -33,6 +33,9 @@ SOURCES = {
             "Invertor": "https://solarhev.ro/invertoare-fotovoltaice",
             "Panou": "https://solarhev.ro/panouri-fotovoltaice",
             "Baterie": "https://solarhev.ro/acumulatori-solari",
+            "Stație încărcare": "https://solarhev.ro/statii-incarcare-auto-electrice-hybrid-plug-in",
+            "Structură montaj": "https://solarhev.ro/structura-metalica-sisteme-fotovoltaice",
+            "Controler solar": "https://solarhev.ro/controlere-solare",
         },
     },
     "SolarTech": {
@@ -55,11 +58,14 @@ DOCUMENT_HOSTS = {
     "sigenergy.com", "solsol.eu",
     "reteleelectrice.ro", "distributieoltenia.ro",
 }
-CATEGORIES = {"Invertor", "Panou", "Baterie", "Smart meter", "Gateway", "Optimizator"}
+CATEGORIES = {"Invertor", "Panou", "Baterie", "Stație încărcare", "Structură montaj", "Controler solar", "Smart meter", "Gateway", "Optimizator"}
 BROWSE_SEARCH_TERMS = {
     "Smart meter": "smart meter",
     "Gateway": "gateway",
     "Optimizator": "optimizator",
+    "Stație încărcare": "statie incarcare auto electrica",
+    "Structură montaj": "structura montaj panouri fotovoltaice",
+    "Controler solar": "controler solar fotovoltaic",
 }
 # Public supplier pages are crawled only within their own category/search URL,
 # with separate bounds for a quick model search and a full category browse.
@@ -212,6 +218,12 @@ def _correct_category(title: str, category: str) -> bool:
         return any(term in value for term in ("gateway", "logger", "datalogger", "data logger", "concentrator"))
     if category == "Optimizator":
         return any(term in value for term in ("optimizator", "optimizer", "power optimizer"))
+    if category == "Stație încărcare":
+        return any(term in value for term in ("statie incarcare", "incarcator masina electrica", "ev charger", "wallbox"))
+    if category == "Structură montaj":
+        return any(term in value for term in ("structura", "sistem montaj", "suport panou", "prindere panou", "mounting system"))
+    if category == "Controler solar":
+        return any(term in value for term in ("controler solar", "controller solar", "regulator solar", "mppt controller"))
     return value.startswith(("baterie ", "acumulator ", "acumulatori ", "battery "))
 
 
@@ -594,6 +606,7 @@ async def fetch_public_pdf(url: str, supplier_host: str, max_bytes: int) -> tupl
     if not data.startswith(b"%PDF-"):
         return None
     return data, current_url
+
 
 
 

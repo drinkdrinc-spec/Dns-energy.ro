@@ -6,13 +6,13 @@ import base64
 import asyncio
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, Request, Depends
+from fastapi import HTTPException, Request, Depends, UploadFile, File
 from fastapi.responses import StreamingResponse
 from ai_provider import LlmChat, UserMessage, TextDelta, StreamDone, ImageContent
 
 import server as S
 from ai_context import redact_dossier_context
-from ai_extract import _parse
+from ai_extract import _parse, extract_company_document
 from equipment_extract import extract_equipment_specs
 import cef as CEF
 
@@ -68,6 +68,38 @@ async def own_session(user: dict, sid: str) -> dict:
 
 
 # ---------------- Asistent tehnic (chat) ----------------
+@api.post("/ai/extract-company")
+async def ai_extract_company(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Read an uploaded company certificate for the Settings company profile."""
+    S.guard("settings", user)
+    ai_need(user)
+    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Citirea certificatelor firmei necesită configurarea OPENAI_API_KEY în API.")
+
+    filename = str(file.filename or "document.pdf")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+    data = await file.read(S.MAX_UPLOAD_BYTES + 1)
+    if len(data) > S.MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Fișierul depășește limita de 25 MB")
+    content_type = str(file.content_type or "").split(";", 1)[0].strip().lower()
+    if not content_type or content_type == "application/octet-stream":
+        content_type = S.MIME_TYPES.get(ext, content_type)
+    content_type = S.validate_upload_payload(filename, content_type, data)
+    if content_type not in {"application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}:
+        raise HTTPException(status_code=415, detail="Încarcă un certificat al firmei în PDF, JPG, PNG sau WebP.")
+
+    try:
+        fields = await extract_company_document(data, content_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Company certificate extraction failed")
+        raise HTTPException(status_code=502, detail="Nu am putut citi certificatul firmei. Încearcă un PDF sau o fotografie mai clară.")
+    fields.pop("_engine", None)
+    return {"data": fields}
+
+
 @api.get("/ai/sessions")
 async def ai_sessions(user: dict = Depends(get_current_user)):
     ai_need(user)
@@ -646,4 +678,5 @@ async def ai_sign_message(request: Request, user: dict = Depends(get_current_use
               "Explică pe scurt pașii: deschide linkul, citește documentul, cere codul primit pe e-mail, semnează pe ecran. Menționează că fiecare link este valabil 7 zile "
               "și că este o semnătură electronică simplă. Răspunde doar cu textul mesajului.\n\nDocumente și linkuri:\n" + lst)
     return sse(new_chat("Ești asistentul de comunicare cu clienții al firmei. " + RULES), prompt)
+
 
