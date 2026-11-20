@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowRight, ArrowUpRight, BadgeCheck, BookOpenCheck, Building2, Cable, ChevronRight, DraftingCompass, FileCheck2, FolderKanban, Menu, ShieldCheck, Sun, Zap, X } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, BadgeCheck, BookOpenCheck, Building2, Cable, ChevronRight, DraftingCompass, FileCheck2, FolderKanban, Menu, PlugZap, ShieldCheck, Sun, Zap, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import "./PublicHome.css";
@@ -31,12 +31,22 @@ const services = [
   {
     icon: Sun,
     title: "Instalații fotovoltaice",
-    text: "Proiectăm și realizăm sisteme on-grid, hibride și off-grid, cu sau fără baterii și soluții de backup, în funcție de cerințele fiecărui obiectiv.",
+    text: "Proiectăm și realizăm sisteme on-grid, hibride și off-grid pentru locuințe, spații comerciale și obiective industriale, cu sau fără baterii și soluții de backup.",
   },
   {
     icon: Cable,
-    title: "Instalații electrice",
-    text: "Executăm instalații electrice pentru construcții noi și existente, tablouri, circuite și sisteme de protecție, precum și lucrări de modernizare.",
+    title: "Instalații electrice și industriale",
+    text: "Executăm instalații electrice pentru clădiri noi și existente, hale și spații de producție, inclusiv tablouri, circuite, protecții și modernizări.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Tablouri de antiinsularizare",
+    text: "Configurăm și realizăm tablouri de antiinsularizare pentru instalații fotovoltaice de toate capacitățile, dimensionate la proiect și echipamente.",
+  },
+  {
+    icon: PlugZap,
+    title: "Stații de încărcare",
+    text: "Proiectăm și instalăm stații de încărcare casnice și industriale, potrivite infrastructurii electrice și modului de utilizare.",
   },
   {
     icon: DraftingCompass,
@@ -51,7 +61,7 @@ const services = [
 ];
 
 function Brand({ light = false }) {
-  return <span className={`dns-brand${light ? " dns-brand-light" : ""}`}><span className="dns-brand-mark"><Zap size={20} fill="currentColor" strokeWidth={2.4} /></span><span>DNS <b>ENERGY</b></span></span>;
+  return <span className={`dns-brand${light ? " dns-brand-light" : ""}`}><span className="dns-brand-mark"><img src="/dns-energy-official.png" alt="" /></span><span>DNS <b>ENERGY</b></span></span>;
 }
 
 function WorkPreview() {
@@ -88,6 +98,7 @@ export default function PublicHome() {
           <Link to="/" className="dns-brand-link" aria-label="DNS Energy, pagina principală"><Brand /></Link>
           <button className="dns-mobile-menu" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Închide meniul" : "Deschide meniul"} aria-expanded={menuOpen}>{menuOpen ? <X size={21} /> : <Menu size={21} />}</button>
           <nav className={`dns-site-nav${menuOpen ? " is-open" : ""}`} aria-label="Navigare principală">
+            <a href="#despre-noi" onClick={closeMenu}>Despre noi</a>
             <a href="#servicii" onClick={closeMenu}>Servicii</a>
             <a href="#platforma" onClick={closeMenu}>Aplicația</a>
             <a href="#cum-functioneaza" onClick={closeMenu}>Cum funcționează</a>
@@ -119,16 +130,39 @@ export default function PublicHome() {
         <a href="#contact" className="dns-services-link">Solicitați o discuție despre proiectul dumneavoastră <ArrowRight size={16} /></a>
       </section>
 
+      <section className="dns-equipment" id="echipamente">
+        <div className="dns-equipment-inner"><div className="dns-section-label">ECHIPAMENTE PENTRU FIECARE PROIECT</div><div className="dns-equipment-heading"><h2>Lucrăm cu mărci<br /><em>recunoscute în domeniu.</em></h2><p>Selectăm echipamentele în funcție de configurație, cerințele obiectivului și compatibilitatea sistemului. Portofoliul include și alte modele potrivite proiectului.</p></div>
+          <div className="dns-equipment-grid">
+            <article className="dns-equipment-card"><span>INVERTOARE</span><p>DEYE · SOLIS · HUAWEI · SIGENERGY · FRONIUS</p><small>și alte modele compatibile</small></article>
+            <article className="dns-equipment-card"><span>BATERII</span><p>DYNESS · DEYE · UHOME · JA SOLAR</p><small>și alte soluții de stocare</small></article>
+            <article className="dns-equipment-card"><span>PANOURI FOTOVOLTAICE</span><p>JINKO · AIKO · TRINA · CANADIAN SOLAR</p><small>și alte mărci disponibile</small></article>
+          </div>
+          <figure className="dns-equipment-gallery"><img src="/dns-equipment-showcase.jpg" alt="Exemple ilustrative de invertor solar, baterii, panouri fotovoltaice, stații de încărcare și tablou electric" loading="lazy" /><figcaption>Imagini ilustrative. Mărcile și configurația echipamentelor se stabilesc în funcție de proiect.</figcaption></figure>
+        </div>
+      </section>
+
+      <section className="dns-story" id="despre-noi">
+        <div className="dns-story-inner">
+          <div className="dns-story-copy"><div className="dns-section-label">DESPRE DNS ENERGY</div><h2>Fiecare proiect începe<br /><em>cu o înțelegere clară.</em></h2><p>O instalație bună pornește de la felul în care este folosit spațiul: energia necesară, echipamentele existente și planurile pentru viitor. De aceea, punem întrebările potrivite înainte de a propune soluția.</p><p>Combinăm proiectarea cu lucrările fotovoltaice și electrice, astfel încât componentele să funcționeze împreună. Pentru locuințe, afaceri și obiective industriale, soluția se adaptează clădirii și cerințelor proiectului.</p><a href="#contact" className="dns-services-link">Să discutăm despre proiect <ArrowRight size={16} /></a></div>
+          <div className="dns-story-note"><span className="dns-story-mark"><Zap size={21} /></span><div className="dns-story-label">ABORDAREA NOASTRĂ</div><strong>Gândit cu atenție.<br />Realizat cu grijă.</strong><p>Proiectare, instalații și integrare electrică — coordonate într-un parcurs clar, de la primele detalii până la punerea în funcțiune.</p><div className="dns-story-line"><span /><span /><span /><span /></div><div className="dns-story-stages"><span>Consultare</span><span>Proiectare</span><span>Execuție</span><span>Predare</span></div></div>
+        </div>
+      </section>
+
       <section className="dns-intro" id="platforma">
-        <div className="dns-section-label">APLICAȚIA DNS ENERGY</div>
-        <div className="dns-intro-row"><h2>Dosarele firmei,<br /><em>într-un singur loc.</em></h2><p>Folosim aplicația DNS Energy pentru a organiza dosarele, datele instalațiilor și documentele lucrărilor noastre.</p></div>
+        <div className="dns-section-label">TEHNOLOGIE CARE SIMPLIFICĂ LUCRUL</div>
+        <div className="dns-intro-row"><h2>Mai puțină muncă repetitivă.<br /><em>Mai multă claritate.</em></h2><p>Aplicația DNS Energy ajută echipa să organizeze dosarele și să urmărească informațiile tehnice, în timp ce verificarea finală rămâne în grija specialiștilor.</p></div>
         <div className="dns-feature-grid">{features.map(({ icon: Icon, title, text }, index) => <article className="dns-feature-card" key={title}><div className="dns-feature-top"><span className="dns-feature-icon"><Icon size={21} /></span><span className="dns-feature-number">0{index + 1}</span></div><h3>{title}</h3><p>{text}</p><a href="#cum-functioneaza" aria-label={`Află despre ${title}`}><ChevronRight size={18} /></a></article>)}</div>
       </section>
 
       <section className="dns-process" id="cum-functioneaza">
         <div className="dns-process-inner">
-          <div className="dns-process-heading"><div className="dns-section-label">UN FLUX, DE LA DATE LA DOCUMENTE</div><h2>Pașii dosarului,<br /><em>la vedere.</em></h2><p>Informațiile sunt organizate pe etape, ca echipa să poată continua dosarul fără să piardă contextul.</p><Link to="/app" className="dns-button dns-button-outline">Deschide aplicația <ArrowRight size={17} /></Link></div>
-          <div className="dns-steps">{steps.map(([number, title, text]) => <div className="dns-step" key={number}><span className="dns-step-number">{number}</span><div><h3>{title}</h3><p>{text}</p></div><ArrowUpRight size={18} className="dns-step-arrow" /></div>)}</div>
+          <div className="dns-process-heading"><div className="dns-section-label">UN FLUX DE LUCRU MAI CLAR</div><h2>Automatizăm pașii<br /><em>care consumă timp.</em></h2><p>Aplicația preia activitățile repetitive de organizare, ca echipa să poată urmări mai ușor fiecare dosar și etapă a lucrării.</p><Link to="/app" className="dns-button dns-button-outline">Deschide aplicația <ArrowRight size={17} /></Link></div>
+          <div className="dns-steps">{[
+            ["01", "Date centralizate", "Informațiile clientului, ale locului de consum și ale instalației sunt grupate în dosar."],
+            ["02", "Echipamente ușor de regăsit", "Catalogul păstrează modelele și fișele tehnice pentru echipamentele folosite."],
+            ["03", "Documente pregătite mai simplu", "Aplicația reutilizează datele introduse pentru documentele și schemele disponibile."],
+            ["04", "Verificare și urmărire", "Echipa verifică rezultatele și vede ce informații sau pași mai sunt necesari."],
+          ].map(([number, title, text]) => <div className="dns-step" key={number}><span className="dns-step-number">{number}</span><div><h3>{title}</h3><p>{text}</p></div><ArrowUpRight size={18} className="dns-step-arrow" /></div>)}</div>
         </div>
       </section>
 
