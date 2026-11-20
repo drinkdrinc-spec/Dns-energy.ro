@@ -24,7 +24,7 @@ const spec = (i) => i.category === "Invertor" ? `${i.p_nom_kw ?? "—"} kW · ${
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
   const [sourceUrl, setSourceUrl] = useState(() => item[`${k}_source_url`] || item[`${k}_url`] || "");
-  const officialUrl = item[`${k}_url`] || item[`${k}_source_url`] || "";
+  const officialUrl = item[k]?.source_url || item[`${k}_source_url`] || item[`${k}_url`] || "";
   const [importing, setImporting] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [feedbackUrl, setFeedbackUrl] = useState("");
