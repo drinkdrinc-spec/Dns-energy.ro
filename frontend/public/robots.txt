@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /login
+Disallow: /reset-password
+Disallow: /clienti
+Disallow: /prosumator
+Disallow: /diu
+Disallow: /dosare
+Sitemap: https://dns-energy.ro/sitemap.xml
+
