@@ -57,7 +57,7 @@ export async function downloadAuthenticatedFile(path, fallbackName = "document")
   }
 }
 
-export async function openAuthenticatedFile(path) {
+export async function openAuthenticatedFile(path, fallbackName = "document") {
   // Keep the preview in the current app tab. Opening an about:blank tab and
   // navigating it to a blob URL works on desktop browsers but can produce a
   // permanently blank tab in iOS Safari / in-app browsers.
@@ -114,10 +114,22 @@ export async function openAuthenticatedFile(path) {
   document.addEventListener("keydown", onKeyDown);
   try {
     const response = await api.get(path, { responseType: "blob" });
-    const blob = response.data.type ? response.data : new Blob([response.data], { type: response.headers["content-type"] || "application/pdf" });
+    const disposition = response.headers["content-disposition"] || "";
+    const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+    let filename = fallbackName || plain || "document";
+    try { if (encoded && !fallbackName) filename = decodeURIComponent(encoded); } catch { /* keep fallback */ }
+    const headerType = (response.headers["content-type"] || "").split(";")[0].toLowerCase();
+    const extensionType = /\.pdf$/i.test(filename) ? "application/pdf"
+      : /\.(png|jpe?g|gif|webp)$/i.test(filename) ? ( /\.png$/i.test(filename) ? "image/png" : /\.gif$/i.test(filename) ? "image/gif" : /\.webp$/i.test(filename) ? "image/webp" : "image/jpeg" )
+      : "";
+    const blob = response.data.type && response.data.type !== "application/octet-stream"
+      ? response.data
+      : new Blob([response.data], { type: extensionType || headerType || "application/pdf" });
     objectUrl = URL.createObjectURL(blob);
+    title.textContent = filename;
     download.href = objectUrl;
-    download.download = "document";
+    download.download = filename;
     frame.src = objectUrl;
   } catch (error) {
     cleanup();
