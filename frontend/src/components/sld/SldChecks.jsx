@@ -27,7 +27,7 @@ export function SldChecks({ d }) {
       {d.missing.length > 0 && (
         <div className="rounded-lg px-3 py-2 text-xs mb-3" style={{ background: "#fff8e8", color: "#76500a" }} data-testid="sld-missing">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div><b>Schema este ciornă</b><span className="ml-2">Lipsesc {d.missing.length} date tehnice pentru verificarea și aprobarea schemei.</span></div>
+            <div><b>Aprobarea tehnică necesită verificare</b><span className="ml-2">Sunt {d.missing.length} date tehnice de confirmat pentru această schemă.</span></div>
             <button type="button" className="font-bold underline" onClick={() => setMissingOpen(!missingOpen)} data-testid="sld-toggle-missing">
               {missingOpen ? "Ascunde detaliile" : "Vezi ce lipsește"}
             </button>
