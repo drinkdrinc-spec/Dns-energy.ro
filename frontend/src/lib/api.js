@@ -57,10 +57,9 @@ export async function downloadAuthenticatedFile(path, fallbackName = "document")
   }
 }
 
-export async function openAuthenticatedFile(path, fallbackName = "document") {
+function showAuthenticatedBlob(blob, filename = "document") {
   // Keep the preview in the current app tab. Opening an about:blank tab and
-  // navigating it to a blob URL works on desktop browsers but can produce a
-  // permanently blank tab in iOS Safari / in-app browsers.
+  // navigating it to a blob URL can produce a permanently blank tab in mobile browsers.
   const previous = document.getElementById("den-auth-file-preview");
   previous?.remove();
   const overlay = document.createElement("div");
@@ -117,6 +116,15 @@ export async function openAuthenticatedFile(path, fallbackName = "document") {
   const onKeyDown = (event) => { if (event.key === "Escape") cleanup(); };
   close.addEventListener("click", cleanup);
   document.addEventListener("keydown", onKeyDown);
+  objectUrl = URL.createObjectURL(blob);
+  title.textContent = filename;
+  viewLink.href = objectUrl;
+  download.href = objectUrl;
+  download.download = filename;
+  frame.src = objectUrl;
+}
+
+export async function openAuthenticatedFile(path, fallbackName = "document") {
   try {
     const response = await api.get(path, { responseType: "blob" });
     const disposition = response.headers["content-disposition"] || "";
@@ -126,19 +134,13 @@ export async function openAuthenticatedFile(path, fallbackName = "document") {
     try { if (encoded && !fallbackName) filename = decodeURIComponent(encoded); } catch { /* keep fallback */ }
     const headerType = (response.headers["content-type"] || "").split(";")[0].toLowerCase();
     const extensionType = /\.pdf$/i.test(filename) ? "application/pdf"
-      : /\.(png|jpe?g|gif|webp)$/i.test(filename) ? ( /\.png$/i.test(filename) ? "image/png" : /\.gif$/i.test(filename) ? "image/gif" : /\.webp$/i.test(filename) ? "image/webp" : "image/jpeg" )
+      : /\.(png|jpe?g|gif|webp)$/i.test(filename) ? (/\.png$/i.test(filename) ? "image/png" : /\.gif$/i.test(filename) ? "image/gif" : /\.webp$/i.test(filename) ? "image/webp" : "image/jpeg")
       : "";
     const blob = response.data.type && response.data.type !== "application/octet-stream"
       ? response.data
       : new Blob([response.data], { type: extensionType || headerType || "application/pdf" });
-    objectUrl = URL.createObjectURL(blob);
-    title.textContent = filename;
-    viewLink.href = objectUrl;
-    download.href = objectUrl;
-    download.download = filename;
-    frame.src = objectUrl;
+    showAuthenticatedBlob(blob, filename);
   } catch (error) {
-    cleanup();
     window.alert(await apiErrorMessage(error));
   }
 }
@@ -171,11 +173,6 @@ if (typeof document !== "undefined" && typeof window !== "undefined" && !window.
     linkUrl.searchParams.delete("auth");
     const requestPath = linkUrl.pathname.slice(apiPath.length) + linkUrl.search;
     const requestedDownload = target.hasAttribute("download");
-    const tab = requestedDownload ? null : window.open("about:blank", "_blank");
-    if (!requestedDownload && !tab) {
-      window.alert("Permite deschiderea ferestrei pentru a vedea documentul.");
-      return;
-    }
 
     try {
       const response = await api.get(requestPath, { responseType: "blob" });
@@ -188,11 +185,13 @@ if (typeof document !== "undefined" && typeof window !== "undefined" && !window.
       let filename = target.getAttribute("download") || plainName || "document";
       try { if (encodedName) filename = decodeURIComponent(encodedName); } catch { /* keep fallback */ }
 
-      const contentType = (response.headers["content-type"] || blob.type || "").split(";")[0].toLowerCase();
+      const inferredType = /\.pdf$/i.test(filename) ? "application/pdf"
+        : /\.png$/i.test(filename) ? "image/png" : /\.(jpe?g)$/i.test(filename) ? "image/jpeg" : "";
+      const contentType = (response.headers["content-type"] || blob.type || inferredType || "").split(";")[0].toLowerCase();
       const canDisplay = contentType === "application/pdf" || contentType.startsWith("image/");
       const isDownload = requestedDownload || /attachment/i.test(disposition) || !canDisplay;
-      const objectUrl = URL.createObjectURL(blob);
       if (isDownload) {
+        const objectUrl = URL.createObjectURL(blob);
         const downloadLink = document.createElement("a");
         downloadLink.href = objectUrl;
         downloadLink.download = filename;
@@ -200,15 +199,13 @@ if (typeof document !== "undefined" && typeof window !== "undefined" && !window.
         document.body.appendChild(downloadLink);
         downloadLink.click();
         downloadLink.remove();
-        tab?.close();
-      } else if (tab && !tab.closed) {
-        tab.location.replace(objectUrl);
       } else {
-        URL.revokeObjectURL(objectUrl);
+        const viewBlob = blob.type && blob.type !== "application/octet-stream"
+          ? blob
+          : new Blob([blob], { type: inferredType || contentType || "application/pdf" });
+        showAuthenticatedBlob(viewBlob, filename);
       }
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
     } catch (error) {
-      tab?.close();
       window.alert(await apiErrorMessage(error));
     }
   }, true);
