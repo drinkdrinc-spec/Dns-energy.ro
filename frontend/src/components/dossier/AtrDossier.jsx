@@ -16,10 +16,14 @@ function installedPanelKwp(pros) {
   };
   const inverters = pros.cef?.inverters || [];
   const calculated = inverters.reduce((total, inverter) => {
-    const panelW = number(inverter.panel_w);
-    const panels = (inverter.strings || []).reduce((sum, string) => sum + number(string.panels), 0);
+    if (inverter.battery_only || inverter.no_panels) return total;
     const count = Math.max(1, number(inverter.count || inverter.quantity) || 1);
-    return total + panels * panelW * count / 1000;
+    const strings = inverter.strings || [];
+    if (strings.length) {
+      return total + strings.reduce((sum, string) =>
+        sum + number(string.panels) * (number(string.panel_w) || number(inverter.panel_w)) * count / 1000, 0);
+    }
+    return total + number(inverter.panel_count) * number(inverter.panel_w) * count / 1000;
   }, 0);
   if (calculated > 0) return Number(calculated.toFixed(3));
   const legacyPanels = number(pros.panel_count);
