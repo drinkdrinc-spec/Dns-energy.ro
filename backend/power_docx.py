@@ -27,12 +27,11 @@ def _replace_paragraph(paragraph, values):
 
     def replace(match):
         nonlocal index
-        while index < len(values):
-            value = _text(values[index])
-            index += 1
-            if value:
-                return value
-        return match.group(0)
+        if index >= len(values):
+            return match.group(0)
+        value = _text(values[index])
+        index += 1
+        return value if value else match.group(0)
 
     result = re.sub(r"\.{4,}", replace, original)
     if result == original:
@@ -95,12 +94,16 @@ def _cef_rows(rec):
         phases = _first(inv.get("phases")).casefold()
         voltage = "400" if "tri" in phases or "3" in phases else ("230" if phases else "")
         inverter_rows.append([
-            "1", model, voltage, _first(inv.get("p_nom_kw")), _first(inv.get("p_limit_kw"), inv.get("p_max_kw"), inv.get("p_nom_kw")),
-            _first(inv.get("p_max_kw"), inv.get("p_nom_kw")), "Invertor baterie fără panouri; evacuare 0 kW" if inv.get("battery_only") or inv.get("no_panels") else "",
+            str(len(inverter_rows) + 1), "1", model, voltage, _first(inv.get("p_nom_kw")),
+            _first(inv.get("p_max_kw"), inv.get("p_nom_kw")), _first(inv.get("p_max_kw"), inv.get("p_nom_kw")),
+            "Invertor baterie fără panouri; evacuare 0 kW" if inv.get("battery_only") or inv.get("no_panels") else "",
         ])
-    panels = [[str(count), model, "", f"{power:.3f}" if power else "", f"{power:.3f}" if power else "",
-               f"{power:.3f}" if power else "", f"{power:.3f}" if power else "", ""]
-              for model, (count, power) in panel_rows.items()]
+    panels = []
+    for index, (model, (count, power)) in enumerate(panel_rows.items(), start=1):
+        unit_power = (power / count) if count else 0
+        panels.append([str(index), str(count), model, f"{unit_power:.3f}" if unit_power else "",
+                       f"{power:.3f}" if power else "", f"{power:.3f}" if power else "",
+                       f"{power:.3f}" if power else "", ""])
     return panels, inverter_rows, battery
 
 
