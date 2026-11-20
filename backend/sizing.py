@@ -195,17 +195,19 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         per = {}
         for s in strings:
             per.setdefault(s["mppt"], []).append(s)
-        imp = n(inv.get("panel_imp")) or (n(inv.get("panel_w")) / n(inv.get("panel_vmp")) if n(inv.get("panel_vmp")) else 0)
+        def string_imp(s):
+            return n(s.get("imp")) or (
+                n(s.get("panel_w")) / n(s.get("panel_vmp")) if n(s.get("panel_vmp")) else 0
+            )
+        string_currents = [string_imp(s) for s in strings]
+        imp = max(string_currents or [0])
         for m, ss in per.items():
             isc_sum = sum(x["isc"] for x in ss)
-            operating_sum = sum(
-                n(x.get("imp")) or (n(x.get("panel_w")) / n(x.get("panel_vmp")) if n(x.get("panel_vmp")) else 0)
-                for x in ss
-            )
+            operating_sum = sum(string_imp(x) for x in ss)
             o.it(T, f"MPPT {m} — Isc total ({len(ss)} string)", g(isc_sum, " A", 1), "calculat", "ΣIsc pe MPPT; comparat separat cu Isc max din fișa invertorului", (isc_sum <= isc_limit) if isc_limit else None,
                  f"≤ Isc max / MPPT {isc_limit:g} A" if isc_limit else "lipsește limita Isc max / MPPT din fișa invertorului")
             o.it(T, f"MPPT {m} — Imp total în funcționare", g(operating_sum, " A", 1) if operating_sum else None,
-                 "calculat" if operating_sum else "necalculat", "Imp panou × număr stringuri în paralel",
+                 "calculat" if operating_sum else "necalculat", "Σ Imp stringuri conectate la MPPT",
                  (operating_sum <= imax) if (operating_sum and imax) else None,
                  f"≤ Imax / MPPT {imax:g} A" if imax and operating_sum else "lipsește Imp panou sau Imax / MPPT")
         isc1 = max([s["isc"] for s in strings] or [0])
@@ -217,11 +219,18 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             o.need(f"cef.inverters.{i}.dc.section", "Secțiune cablu DC (mm²)", dc.get("section"), T)
             o.it(T, "DC — curent de dimensionare", g(1.25 * isc1, " A", 1), "calculat", "Ib,DC = 1,25 · Isc,STC (IEC 62548)")
             o.it(T, "DC — secțiune propusă", g(pd["section"], " mm²"), "calculat", "Iz ≥ 1,25·Isc și ΔU ≤ 1%")
-            vmp = max(s["vmp_stc"] for s in strings)
             if ds:
                 izd = iz(ds, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True)
-                du = vdrop_dc(imp, dL, ds, dmat, vmp)
-                loss = len(strings) * 2 * dL * imp ** 2 * RHO.get(dmat, RHO["Cu"]) / ds
+                cable_drops = [
+                    vdrop_dc(current, dL, ds, dmat, string["vmp_stc"])
+                    for string, current in zip(strings, string_currents)
+                    if current and string.get("vmp_stc")
+                ]
+                du = max(cable_drops or [0])
+                loss = sum(
+                    2 * dL * current ** 2 * RHO.get(dmat, RHO["Cu"]) / ds
+                    for current in string_currents
+                )
                 tot_loss += loss
                 o.it(T, "DC — Iz cablu ales", g(izd, " A", 0), "calculat", "Iz = Iz,tabel · k", izd >= 1.25 * isc1, f"≥ {1.25 * isc1:.1f} A")
                 o.it(T, "DC — cădere de tensiune", g(du, " %") or "0 %", "calculat", "ΔU = 2·L·Imp·ρ/(S·Ump)·100", du <= 1, "≤ 1 % (recomandat)")
