@@ -31,6 +31,15 @@ def missing_seed_values(existing: dict, seed: dict) -> dict:
     return updates
 
 SEED = [
+    {"category": "Invertor", "brand_model": "Solis S6-EH3P15K02-NV-YD-L",
+     "manufacturer": "Solis", "type": "Hibrid", "phases": "Trifazat",
+     "p_nom_kw": 15, "p_max_kw": 15, "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850,
+     "mppt_count": 2, "imax_mppt": 40, "isc_max_mppt": 50, "bat_i_max": 290,
+     "battery_voltage": "LV 40–60 V",
+     "datasheet_url": "https://storage-official-website.oss-eu-central-1.aliyuncs.com/solisstorage/products/S6-EH3P%288-18%29K02-NV-YD-L/S6-EH3P%288-18%29K-Global-Datasheet-V3.8_20260208223612.pdf",
+     "source_url": "https://www.solisstorage.com/en/product/20260209214915.html",
+     "notes": "Parametrii pentru varianta de 15 kW din fișa oficială Solis S6-EH3P(8-18)K02-NV-YD-L: 40 A curent maxim/MPPT, 50 A Isc/MPPT, 2 MPPT, 4 stringuri total, 290 A curent maxim baterie și 40–60 V. Verificați codul și revizia de pe plăcuța invertorului."},
+
     {"category": "Invertor", "brand_model": "Invertor Hibrid Trifazat Solis 15 kW LV - S6-EH3P15K02-NV-YD-L",
      "manufacturer": "Solis", "type": "Hibrid", "phases": "Trifazat", "p_nom_kw": 15, "p_max_kw": 15,
      "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850, "mppt_count": 2, "bat_i_max": 290,
