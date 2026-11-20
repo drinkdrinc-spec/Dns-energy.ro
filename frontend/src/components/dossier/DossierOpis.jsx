@@ -15,13 +15,13 @@ function Row({ p, id, statuses, reload }) {
   const put = async (body) => { await api.put(`/dossier/${id}/item/${p.key}`, body); reload(); };
   const filePath = `/dossier/${id}/file/${encodeURIComponent(p.key)}`;
   const [bg, fg] = STATUS_STYLE[p.status] || STATUS_STYLE.generat;
-  const canView = p.source === "generat" || !!p.upload || p.files.length > 0;
+  const canView = !p.docx_only && (p.source === "generat" || !!p.upload || p.files.length > 0);
   return (
     <tr className="border-t align-top" style={{ borderColor: "var(--line)" }} data-testid={`opis-row-${p.nr}`}>
       <td className="px-2 py-2.5 font-bold">{p.nr}</td>
       <td className="px-2 py-2.5">
         <div className="font-semibold">{p.title}</div>
-        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{p.upload ? `Încărcat: ${p.upload.original_filename}` : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : p.source === "manual" ? "Document oficial — atașează PDF-ul aplicabil" : "Din catalog echipamente"}</div>
+        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{p.upload ? `Încărcat: ${p.upload.original_filename}` : p.docx_only ? "Formularul oficial DEER este precompletat din dosar în format Word; verifică datele și semnează formularul." : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : p.source === "manual" ? "Document oficial — atașează PDF-ul aplicabil" : "Din catalog echipamente"}</div>
         {p.key === "gdpr" && <a className="text-[11px] underline inline-block mt-1" style={{ color: "var(--blue)" }} href="https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf" target="_blank" rel="noopener noreferrer">Deschide nota oficială DEER (PDF, versiunea octombrie 2026) ↗</a>}
         {p.missing.length > 0 && <div className="text-[11px] mt-1" style={{ color: "#76500a" }}>Lipsă: {p.missing.join(", ")}</div>}
       </td>
@@ -34,7 +34,8 @@ function Row({ p, id, statuses, reload }) {
       <td className="px-2 py-2.5 whitespace-nowrap text-right">
         {canView && <button className="p-1.5 rounded hover:bg-[#eef4ff]" title="Previzualizare" onClick={() => openAuthenticatedFile(filePath)} data-testid={`opis-preview-${p.nr}`}><Eye size={15} style={{ color: "var(--blue)" }} /></button>}
         {canView && <button type="button" className="p-1.5 inline-flex items-center gap-1 rounded hover:bg-[#eef4ff]" title={p.key === "schema" ? "Descarcă schema monofilară PDF" : p.key === "priza" ? "Descarcă buletinul PRAM PDF" : "Descarcă PDF"} aria-label={p.key === "schema" ? "Descarcă schema monofilară PDF" : p.key === "priza" ? "Descarcă buletinul PRAM PDF" : `Descarcă PDF ${p.title}`} onClick={() => downloadAuthenticatedFile(`${filePath}?download=1`, `document-${p.key}.pdf`)} data-testid={`opis-pdf-${p.nr}`}><FileDown size={15} style={{ color: "var(--blue)" }} />{p.key === "schema" ? <span className="text-[11px]">Schema PDF</span> : p.key === "priza" ? <span className="text-[11px]">PRAM PDF</span> : null}</button>}
-        {p.source === "generat" && p.key !== "schema" && <button type="button" className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="Descarcă Word" onClick={() => downloadAuthenticatedFile(`${filePath}?fmt=docx`, `document-${p.key}.docx`)} data-testid={`opis-docx-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></button>}
+        {p.source === "generat" && p.key !== "schema" && !p.docx_only && <button type="button" className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="Descarcă Word" onClick={() => downloadAuthenticatedFile(`${filePath}?fmt=docx`, `document-${p.key}.docx`)} data-testid={`opis-docx-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></button>}
+        {p.docx_only && <button type="button" className="p-1.5 inline-flex items-center gap-1 rounded hover:bg-[#eef4ff]" title="Descarcă Anexa 1 oficială DEER precompletată" onClick={() => downloadAuthenticatedFile(`/docs/anexa1/${encodeURIComponent(id)}`, `Anexa_1_DEER_${String(id).slice(0, 8)}.docx`)} data-testid={`opis-deer-annex1-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /><span className="text-[11px]">Anexa 1 Word</span></button>}
         <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" data-testid={`opis-upload-input-${p.nr}`}
           onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; await put({ upload: await uploadFile(f), status: null }); toast.success("Document atașat"); ref.current.value = ""; }} />
         <button className="p-1.5 rounded hover:bg-[#eef4ff]" title="Încarcă document existent / semnat" onClick={() => ref.current.click()} data-testid={`opis-upload-${p.nr}`}><Upload size={15} style={{ color: "var(--blue)" }} /></button>
