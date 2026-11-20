@@ -171,6 +171,16 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                                   string.get(key), f"{T} / String {string_index + 1}"):
                             o.it(f"{T} / String {string_index + 1}", label, g(string.get(key)),
                                  "catalog" if (inv.get("panel_catalog_id") or row.get("panel_catalog_id")) else "introdus")
+                    for key, label, note in [
+                        ("panel_coef_voc", "Coeficient Voc (%/°C)",
+                         "Se folosește numai valoarea publicată în fișa exactă a modulului."),
+                        ("panel_coef_vmp", "Coeficient Vmp (%/°C)",
+                         "Fără această valoare, verificarea Vmp la cald rămâne neconfirmată.")
+                    ]:
+                        value = string.get(key)
+                        o.it(f"{T} / String {string_index + 1}", label, g(value),
+                             "catalog" if (inv.get("panel_catalog_id") or row.get("panel_catalog_id")) and has(value) else ("introdus" if has(value) else "lipsă"),
+                             note="" if has(value) else note)
             else:
                 o.missing.append({"path": f"cef.inverters.{i}.strings", "label": f"{T} — configurația stringurilor"})
         vdc_max, mmin, mmax, imax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max")), n(inv.get("imax_mppt"))
