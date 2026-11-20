@@ -15,6 +15,32 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+const TRANSIENT_API_STATUSES = new Set([502, 503, 504]);
+const SAFE_API_RETRIES = 5;
+const API_RETRY_DELAYS_MS = [1000, 2000, 4000, 6000, 6000];
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error.config;
+    if (!config) return Promise.reject(error);
+    const method = String(config.method || "get").toLowerCase();
+    const safeRequest = ["get", "head"].includes(method) || config.dnsRetrySafe === true;
+    const transientResponse = TRANSIENT_API_STATUSES.has(error.response?.status);
+    const temporaryNetworkFailure = !error.response
+      && !(typeof navigator !== "undefined" && navigator.onLine === false);
+    const attempts = Number(config.__dnsRetryCount || 0);
+    if (!safeRequest || (!transientResponse && !temporaryNetworkFailure) || attempts >= SAFE_API_RETRIES) {
+      return Promise.reject(error);
+    }
+
+    config.__dnsRetryCount = attempts + 1;
+    const wait = API_RETRY_DELAYS_MS[Math.min(attempts, API_RETRY_DELAYS_MS.length - 1)];
+    await new Promise((resolve) => window.setTimeout(resolve, wait));
+    return api.request(config);
+  },
+);
+
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "A apărut o eroare. Încearcă din nou.";
   if (typeof detail === "string") return detail;
