@@ -50,15 +50,16 @@ def pe_for(s):
 
 class Out:
     def __init__(self):
-        self.items, self.missing, self.errors, self.warnings, self.cables, self.prot = [], [], [], [], [], []
+        self.items, self.missing, self.unconfirmed, self.errors, self.warnings, self.cables, self.prot = [], [], [], [], [], [], []
 
     def it(self, group, label, value, src="calculat", formula="", ok=None, note=""):
         self.items.append({"group": group, "label": label, "value": value if has(value) else None, "source": src,
                            "formula": formula, "ok": ok, "note": note})
 
-    def need(self, path, label, val, group=""):
+    def need(self, path, label, val, group="", blocking=True):
         if not has(val):
-            self.missing.append({"path": path, "label": f"{group} — {label}" if group else label})
+            item = {"path": path, "label": f"{group} — {label}" if group else label}
+            (self.missing if blocking else self.unconfirmed).append(item)
             return False
         return True
 
@@ -86,13 +87,13 @@ def compute(rec: dict, client: dict | None = None) -> dict:
     o.need("cef.grid.supply", "Tip branșament", grid.get("supply"), G)
     o.need("cef.grid.bransament_kw", "Putere aprobată (kW)", grid.get("bransament_kw"), G)
     o.need("cef.grid.earthing", "Sistem de legare la pământ (TN-C-S / TT)", grid.get("earthing"), G)
-    o.need("cef.grid.ik_ka", "Curent de scurtcircuit la punctul de racord Ik (kA, din ATR/OD)", grid.get("ik_ka"), G)
-    o.need("cef.grid.column_length", "Lungime coloană BMP→TG (m)", grid.get("column_length"), G)
+    o.need("cef.grid.ik_ka", "Curent de scurtcircuit la punctul de racord Ik (kA, din ATR/OD)", grid.get("ik_ka"), G, blocking=False)
+    o.need("cef.grid.column_length", "Lungime coloană BMP→TG (m)", grid.get("column_length"), G, blocking=False)
     o.need("cef.grid.bmp_a", "Întreruptor BMP (A)", grid.get("bmp_a"), G)
     o.need("cef.grid.tg_breaker_a", "Întreruptor general TG (A)", grid.get("tg_breaker_a"), G)
-    o.need("cef.grid.spd_ac", "SPD AC (tip)", grid.get("spd_ac"), G)
+    o.need("cef.grid.spd_ac", "SPD AC (tip)", grid.get("spd_ac"), G, blocking=False)
     gro = grid.get("grounding_ohm") or rec.get("grounding_ohm")
-    o.need("cef.grid.grounding_ohm", "Rezistența prizei de pământ — valoare MĂSURATĂ (Ω)", gro, G)
+    o.need("cef.grid.grounding_ohm", "Rezistența prizei de pământ — valoare MĂSURATĂ (Ω)", gro, G, blocking=False)
     inv_in = []
     tot_loss = 0.0
     for i, inv in enumerate(invs):
@@ -196,7 +197,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         if strings:
             # DC cable
             dmat, dL, ds = dc.get("material") or "Cu", n(dc.get("length_m")), n(dc.get("section"))
-            o.need(f"cef.inverters.{i}.dc.length_m", "Lungime cablu DC (m)", dc.get("length_m"), T)
+            o.need(f"cef.inverters.{i}.dc.length_m", "Lungime cablu DC (m)", dc.get("length_m"), T, blocking=False)
             o.need(f"cef.inverters.{i}.dc.section", "Secțiune cablu DC (mm²)", dc.get("section"), T)
             o.it(T, "DC — curent de dimensionare", g(1.25 * isc1, " A", 1), "calculat", "Ib,DC = 1,25 · Isc,STC (IEC 62548)")
             o.it(T, "DC — secțiune propusă", g(pd["section"], " mm²"), "calculat", "Iz ≥ 1,25·Isc și ΔU ≤ 1%")
@@ -235,7 +236,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         tri = r["tri"]
         mat, L, sct, ina = ac.get("material") or "Cu", n(ac.get("length_m")), n(ac.get("section")), n(ac.get("breaker_a"))
         ib = pa["ib"]
-        o.need(f"cef.inverters.{i}.ac.length_m", "Lungime cablu AC (m)", ac.get("length_m"), T)
+        o.need(f"cef.inverters.{i}.ac.length_m", "Lungime cablu AC (m)", ac.get("length_m"), T, blocking=False)
         o.need(f"cef.inverters.{i}.ac.section", "Secțiune cablu AC (mm²)", ac.get("section"), T)
         o.need(f"cef.inverters.{i}.ac.breaker_a", "Întreruptor AC (A)", ac.get("breaker_a"), T)
         o.need(f"cef.inverters.{i}.rcd_type", "Tip protecție diferențială (din manualul invertorului)", inv.get("rcd_type"), T)
@@ -273,7 +274,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         if inv.get("battery_mode") == "own":
             o.need(f"cef.inverters.{i}.battery.model", "Model baterie", bat.get("model"), T)
             o.need(f"cef.inverters.{i}.battery.i_max", "Curent max descărcare baterie (A)", bat.get("i_max"), T)
-            o.need(f"cef.inverters.{i}.battery.cable_length", "Lungime cablu baterie (m)", bat.get("cable_length"), T)
+            o.need(f"cef.inverters.{i}.battery.cable_length", "Lungime cablu baterie (m)", bat.get("cable_length"), T, blocking=False)
             o.need(f"cef.inverters.{i}.battery.dc_switch_voltage_v", "Tensiune nominală separator / întreruptor DC baterie (V, din fișă)",
                    bat.get("dc_switch_voltage_v") or bat.get("breaker_voltage_dc"), T)
             o.need(f"cef.inverters.{i}.battery.dc_switch_current_a", "Curent nominal separator / întreruptor DC baterie (A, din fișă)",
@@ -331,7 +332,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         if "TT" in str(grid.get("earthing") or "") and idn:
             o.it(G, "Priză de pământ — condiție TT", f"{R:g} Ω ≤ {50 / idn:.0f} Ω", "calculat", "RA · IΔn ≤ 50 V (HD 60364-4-41)", R * idn <= 50)
         lim = n(grid.get("grounding_limit") or rec.get("grounding_limit"))
-        o.need("cef.grid.grounding_limit", "Valoare admisă priză de pământ (Ω) — stabilită de proiectant pentru această instalație", lim, G)
+        o.need("cef.grid.grounding_limit", "Valoare admisă priză de pământ (Ω) — stabilită de proiectant pentru această instalație", lim, G, blocking=False)
         o.it(G, "Priză de pământ — valoare măsurată vs. admisă", f"{R:g} Ω ≤ {lim:g} Ω" if lim else g(R, " Ω"), "introdus", "Buletin de măsurare vs. valoarea admisă",
              (R <= lim) if lim else None, "valoarea admisă se stabilește de proiectant (I7-2011, schema TN/TT, IPT, cerințe OD/producător) — fără prag universal")
     else:
@@ -349,12 +350,14 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         if it["ok"] is False:
             msg = f"{it['group']}: {it['label']} = {it['value']} — NECONFORM ({it['formula']}{' · ' + it['note'] if it['note'] else ''})"
             (o.warnings if "recomandat" in (it["note"] or "") or "de confirmat" in (it["note"] or "") else o.errors).append(msg)
+    if o.unconfirmed:
+        o.warnings.append(f"{len(o.unconfirmed)} valori depind de ATR/OD, măsurători sau lungimile reale ale cablurilor; se confirmă înainte de semnarea și depunerea documentației.")
     ns = sum(len(i["strings"]) for i in base["inverters"])
     complex_ = len(invs) > 1 or ns > 2 or gr["anti"] or bool(cef.get("shared_batteries")) or any(
         i.get("battery_mode") == "own" or (i.get("backup") or {}).get("enabled") for i in invs)
-    return {"base": base, "items": o.items, "missing": o.missing, "errors": o.errors, "warnings": o.warnings,
+    return {"base": base, "items": o.items, "missing": o.missing, "unconfirmed": o.unconfirmed, "errors": o.errors, "warnings": o.warnings,
             "cables": o.cables, "format": "A3" if complex_ else "A4", "standards": STANDARDS,
-            "ready": not o.missing and not o.errors}
+            "ready": not o.missing and not o.unconfirmed and not o.errors}
 
 
 def apply(cef: dict) -> tuple[dict, list]:
