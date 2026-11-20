@@ -8,7 +8,7 @@ import { SldChecks } from "./SldChecks";
 import { SldCompare } from "./SldCompare";
 import { SldEditor } from "./SldEditor";
 
-const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare anulată — configurație modificată", "#fff4e0", "#8a5a00"], draft: ["Ciornă — neaprobată", "#fff0f0", "#9b2c2c"] };
+const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare anulată — configurație modificată", "#fff4e0", "#8a5a00"], draft: ["Ciornă — neaprobată", "#fff8e8", "#8a5a00"] };
 
 export function SldPanel({ id, form, setVal }) {
   const [d, setD] = useState(null);
@@ -106,7 +106,7 @@ export function SldPanel({ id, form, setVal }) {
               </div>
             );
           })}
-          {d.source === "generated" && !d.ready && <p className="text-[11px] mt-1" style={{ color: "#9b2c2c" }}>Aprobarea este blocată până la completarea datelor lipsă și rezolvarea erorilor.</p>}
+          {d.source === "generated" && !d.ready && <p className="text-[11px] mt-1" style={{ color: "#8a5a00" }}>Aprobarea așteaptă completarea datelor lipsă și rezolvarea verificărilor tehnice.</p>}
           {d.approval.status !== "approved" && (
             <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--line)" }}>
               <Btn variant="secondary" disabled={busy || (d.source === "generated" && !d.ready)} onClick={requestApproval} data-testid="sld-request-approval"><Send size={13} /> Cere aprobare pe e-mail</Btn>
