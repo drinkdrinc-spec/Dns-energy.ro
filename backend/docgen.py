@@ -632,7 +632,11 @@ def doc_buletin_priza(ctx):
     lim = num(ctx.raw("grounding_limit"), None)
     calc = meas * psi if meas is not None and psi is not None else None
     md = ctx.raw("measure_date")
-    measured = all(value is not None for value in (meas, psi, lim)) and bool(md)
+    meter_device = str(ctx.raw("meter_device") or "").strip()
+    meter_serial = str(ctx.raw("meter_serial") or "").strip()
+    meter_valid = str(ctx.raw("meter_valid") or "").strip()
+    measured = (all(value is not None for value in (meas, psi, lim)) and bool(md)
+                and bool(meter_device) and bool(meter_serial) and bool(meter_valid))
     ok = ("DA" if calc <= lim else "NU") if measured else "NECOMPLETAT"
     valid = M
     if measured:
@@ -643,7 +647,7 @@ def doc_buletin_priza(ctx):
             ok = "NECOMPLETAT"
     return hdr() + [
         B("title", ("BULETIN DE VERIFICARE ȘI MĂSURARE INSTALAȚII DE LEGARE LA PĂMÂNT" if measured else "FIȘĂ DE LUCRU — BULETIN PRAM NEFINALIZAT")),
-        B("small", "Măsurătorile și concluzia se completează numai după verificarea efectivă la fața locului; valorile lipsă nu sunt estimate." if not measured else "Document completat cu valorile măsurate înregistrate în dosar."),
+        B("small", "Măsurătorile, datele aparatului și concluzia se completează numai după verificarea efectivă la fața locului; valorile lipsă nu sunt estimate." if not measured else "Document completat cu măsurătorile înregistrate și aparatul cu certificat metrologic valabil selectat în dosar."),
         B("sub", f"NR. {ctx.v('bulletin_no')} din {ro_date(md) or M}"),
         B("p", f"<b>Client:</b> {ctx.name} · <b>Adresa:</b> {ctx.loc}"),
         B("p", f"<b>Obiectivul:</b> {ctx.v('measure_object')} · <b>Data verificărilor/măsurătorilor:</b> {ro_date(md) or M}"),
@@ -652,8 +656,9 @@ def doc_buletin_priza(ctx):
                     ["Valoarea rezistenței de dispersie măsurată (Ω)", f"{meas:.2f}" if meas is not None else M],
                     ["Valoarea rezistenței de dispersie calculată în funcție de starea solului (Ω)", f"<b>{calc:.2f}</b>" if calc is not None else M],
                     [f"Concluzii — corespunde (da/nu){f' · valoare admisă ≤ {fmt(lim)} Ω' if lim is not None else ''}", f"<b>{ok}</b>"]], [140, 34], True),
+        B("p", f"<b>Aparat de măsură folosit:</b> {ctx.v('meter_device')} · <b>Seria:</b> {ctx.v('meter_serial')} · <b>Certificat metrologic valabil până la:</b> {ro_date(meter_valid) or M}"),
 
-        B("small", f"Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la <b>{valid}</b>." if measured else "Valabilitatea se stabilește după efectuarea și înregistrarea măsurătorilor."),
+        B("small", f"Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la <b>{valid}</b>." if measured else "Buletinul rămâne fișă de lucru până la înregistrarea măsurătorilor și selectarea aparatului cu metrologie valabilă."),
         sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
 
 
