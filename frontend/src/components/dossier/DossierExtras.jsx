@@ -36,7 +36,7 @@ export function DossierExtras({ form, setVal, compact = false, part = "all", onS
   const setT = (k, f, v) => setVal("tests", { ...ts, [k]: { ...(ts[k] || {}), [f]: v } });
   return (
     <div id={compact ? "diu-executant" : undefined} className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
-      <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="dossier-executant-signer">
+      {part !== "commissioning" && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="dossier-executant-signer">
         <h4 className="font-bold text-sm mb-2">Semnătura și ștampila firmei</h4>
         <label className="den-field block"><span className="text-xs">Reprezentant executant</span>
           <select className="den-input" value={selectedExecutor} onChange={(event) => chooseExecutor(event.target.value)} data-testid="dossier-executant-select">
@@ -47,7 +47,7 @@ export function DossierExtras({ form, setVal, compact = false, part = "all", onS
           </select>
         </label>
         <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Pentru aplicare: încarcă ștampila în Setări → Firmă și semnătura persoanei în Setări → Personal, confirmă autorizația și acordul pentru folosirea semnăturii. Salvează dosarul după selectare.</p>
-      </div>
+      </div>}
       {!compact && (part === "all" || part === "pram") && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-center justify-between gap-2"><h4 className="font-bold text-sm">PRAM — priza de pământ</h4><span className="text-xs" style={{ color: "var(--muted)" }}>{form.bulletin_no ? `Buletin nr. ${form.bulletin_no}` : "număr de completat"}</span></div>
         <div className="mt-3 grid grid-cols-3 rounded-lg p-1 gap-1" style={{ background: "#f7f4ed" }} role="group" aria-label="Sursa buletinului PRAM">
