@@ -28,11 +28,23 @@ def init_storage(force: bool = False):
     _client.admin.command("ping")
     r2_required = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME")
     r2_missing = [name for name in r2_required if not (os.environ.get(name) or "").strip()]
+    legacy_status = "not configured"
+    if LEGACY_STORAGE_KEY:
+        try:
+            _legacy_storage_token(force=True)
+            legacy_status = "accessible"
+        except requests.HTTPError as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            legacy_status = f"rejected (HTTP {status})" if status else "unavailable (HTTP error)"
+        except requests.RequestException:
+            legacy_status = "unavailable (network error)"
+        except Exception as exc:
+            legacy_status = f"unavailable ({type(exc).__name__})"
     logger.info(
-        "Storage readiness: GridFS=ready; R2=%s (missing settings: %s); legacy access key=%s",
+        "Storage readiness: GridFS=ready; R2=%s (missing settings: %s); legacy storage=%s",
         "ready" if not r2_missing else "not configured",
         ", ".join(r2_missing) if r2_missing else "none",
-        "configured" if LEGACY_STORAGE_KEY else "missing",
+        legacy_status,
     )
     return True
 
