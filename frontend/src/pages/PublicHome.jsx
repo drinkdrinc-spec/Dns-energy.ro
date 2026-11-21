@@ -102,7 +102,8 @@ export default function PublicHome() {
             <a href="#echipamente" onClick={closeMenu}>Echipamente</a>
             <a href="#despre-noi" onClick={closeMenu}>Despre noi</a>
             <a href="#contact" onClick={closeMenu}>Contact</a>
-            <Link className="dns-nav-app" to="/app" onClick={closeMenu}>Acces instalatori <ArrowUpRight size={16} /></Link>
+            <Link className="dns-nav-app" to="/app" onClick={closeMenu}>Acces aplicație <ArrowUpRight size={16} /></Link>
+            <Link className="dns-nav-app" to="/login?mode=register" onClick={closeMenu}>Cont nou instalator / partener</Link>
           </nav>
         </div>
       </header>
@@ -152,7 +153,7 @@ export default function PublicHome() {
 
       <section className="dns-intro" id="platforma">
         <div className="dns-section-label">TEHNOLOGIE CARE SIMPLIFICĂ LUCRUL</div>
-        <div className="dns-intro-row"><h2>Dosare de prosumator<br /><em>și atestare ANRE.</em></h2><p>Aplicația DNS Energy este destinată instalatorilor și partenerilor. Ajută la organizarea dosarelor de prosumator și a dosarelor pentru atestarea operatorilor economici ANRE, împreună cu informațiile tehnice și documentele aferente. Accesul la aplicație este separat de pagina de prezentare.</p></div>
+        <div className="dns-intro-row"><h2>Dosare de prosumator<br /><em>și atestare ANRE.</em></h2><div><p>Aplicația DNS Energy este destinată instalatorilor și partenerilor. Ajută la organizarea dosarelor de prosumator și a dosarelor pentru atestarea operatorilor economici ANRE, împreună cu informațiile tehnice și documentele aferente. Accesul la aplicație este separat de pagina de prezentare.</p><Link to="/login?mode=register" className="dns-services-link">Creează cont de instalator / partener <ArrowRight size={16} /></Link></div></div>
         <div className="dns-feature-grid">{features.map(({ icon: Icon, title, text }, index) => <article className="dns-feature-card" key={title}><div className="dns-feature-top"><span className="dns-feature-icon"><Icon size={21} /></span><span className="dns-feature-number">0{index + 1}</span></div><h3>{title}</h3><p>{text}</p><a href="#cum-functioneaza" aria-label={`Află despre ${title}`}><ChevronRight size={18} /></a></article>)}</div>
       </section>
 
@@ -176,4 +177,5 @@ export default function PublicHome() {
     </main>
   );
 }
+
 
