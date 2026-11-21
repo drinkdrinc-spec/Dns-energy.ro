@@ -1520,20 +1520,24 @@ async def catalog_recover_document(item_id: str, request: Request, user: dict = 
         raise HTTPException(status_code=404, detail="Modelul nu există în catalog")
 
     document = item.get(kind)
-    direct_url = str(
-        item.get(kind + "_source_url")
-        or item.get(kind + "_url")
-        or (document.get("source_url") if isinstance(document, dict) else "")
-        or ""
-    ).strip()
+    direct_urls = list(dict.fromkeys(
+        str(value).strip()
+        for value in (
+            item.get(kind + "_source_url"),
+            document.get("source_url") if isinstance(document, dict) else "",
+            document.get("url") if isinstance(document, dict) else "",
+            item.get(kind + "_url"),
+        )
+        if str(value or "").strip()
+    ))
     direct_error = ""
-    if direct_url:
+    for direct_url in direct_urls:
         try:
             return await catalog_import_document(
                 item_id, _TrustedCatalogImportRequest({"kind": kind, "url": direct_url}), user
             )
         except HTTPException as exc:
-            direct_error = str(exc.detail or "")
+            direct_error = direct_error or str(exc.detail or "")
 
     supplier, product_url = catalog_product_source(item)
     if supplier and product_url and item.get("category") in SUPPLIER_CATALOG.CATEGORIES:
@@ -1541,7 +1545,7 @@ async def catalog_recover_document(item_id: str, request: Request, user: dict = 
             document_url = await SUPPLIER_CATALOG.get_public_product_document(
                 supplier, item["category"], product_url, kind
             )
-            if document_url and document_url != direct_url:
+            if document_url and document_url not in direct_urls:
                 return await catalog_import_document(
                     item_id, _TrustedCatalogImportRequest({"kind": kind, "url": document_url}), user
                 )
