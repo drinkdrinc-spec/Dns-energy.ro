@@ -119,7 +119,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
           {!item.datasheet_url && item.datasheet?.storage_path && <span style={{ color: "var(--green, #168363)" }}>Fișa tehnică este salvată în catalog</span>}
           {!item.conformity_url && item.conformity?.storage_path && <span style={{ color: "var(--green, #168363)" }}>Conformitatea este salvată în catalog</span>}
         </div>)}
-      </div>
+      </div>}
       <div className="grid sm:grid-cols-4 gap-3">
         <CatalogPick items={catalog} category="Invertor" selectedId={inv.catalog_id} testid={`${t}-pick`} onQueryChange={(model) => catalogModelText(model, "catalog_id", ["type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "red_limit_mode"])} onPick={(it) => { const battery = inv.battery?.catalog_id ? { ...inv.battery, voltage: batteryVoltageForPhase(inv.battery, it.phases) } : inv.battery; set({ ...inv, ...(battery ? { battery } : {}), catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, isc_max_mppt: it.isc_max_mppt, bat_i_max: it.bat_i_max, red_limit_mode: it.red_limit_mode || "Nu este declarată" }); }} />
         <F label="Marcă și model" value={inv.brand_model} onChange={(model) => catalogModelText(model, "catalog_id", ["type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "red_limit_mode"])} testid={`${t}-model`} className="sm:col-span-2" />
