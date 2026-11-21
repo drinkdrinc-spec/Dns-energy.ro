@@ -244,7 +244,8 @@ def diagram(S, rec, res, client):
         st = base["inverters"][i]["strings"] or []
         nm = len({x["mppt"] for x in st}) or 1
         hh = max(13, 1.6 * (nm + 1))
-        hs = max(len(st) * 14, 36, 2 * hh + 22) + 10
+        string_pitch = 24 if 2 <= len(st) <= 3 else 14
+        hs = max(len(st) * string_pitch, 36, 2 * hh + 22) + 10
         hb = 50 if inv.get("battery_mode") == "own" else (12 if (inv.get("backup") or {}).get("enabled") else 4)
         rows.append((hs, hb + 2 * (hh - 13)))
     shared = cef.get("shared_batteries") or []
@@ -280,7 +281,8 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         pe_y = row_bot + 1.5
         # PV strings + TDC
         if strings:
-            ys = [cy + (len(strings) - 1) * 7 - k * 14 for k in range(len(strings))]
+            string_pitch = 24 if 2 <= len(strings) <= 3 else 14
+            ys = [cy + (len(strings) - 1) * string_pitch / 2 - k * string_pitch for k in range(len(strings))]
             par = {}
             for k, s in enumerate(strings):
                 par.setdefault(s["mppt"], []).append(k)
@@ -948,10 +950,9 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     s = min((x2 - x1 - 8) / W, (plot_y2 - y1 - 8) / H, 1.6)
     available_h, diagram_h = plot_y2 - y1 - 8, H * s
     dx = x1 + 4 + ((x2 - x1 - 8) - W * s) / 2
-    # Center the diagram vertically in the drawing frame. Keeping it pinned
-    # to the header leaves a large empty band above the TEG schedule on common
-    # one-inverter dossiers.
-    dy = y1 + 4 + (available_h - diagram_h) * 0.50
+    # Keep the main circuit toward the upper half, as in the ReEnergy sheet,
+    # while leaving a clear lower zone for the TEG schedule and execution notes.
+    dy = y1 + 4 + (available_h - diagram_h) * 0.95
     c.saveState(); c.translate(dx + W * s, dy); c.scale(-s, s); S.mirror_x = True
     draw()
     S.mirror_x = False
