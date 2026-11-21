@@ -49,6 +49,8 @@ export function DossierOpis({ id, mode = "all" }) {
   const [d, setD] = useState(null);
   const [showReport, setShowReport] = useState(false);
   const [pre, setPre] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const exportLock = useRef(false);
   const { user } = useAuth();
   const load = () => api.get(`/dossier/${id}`).then((r) => setD(r.data)).catch(() => {});
   useEffect(() => { load(); }, [id]); // eslint-disable-line
@@ -75,7 +77,13 @@ export function DossierOpis({ id, mode = "all" }) {
         {mode !== "attachments" && <div className="flex gap-2 flex-wrap">
           <Btn variant="secondary" onClick={lock} data-testid="opis-finalize">{d.finalized ? <><Unlock size={14} /> Redeschide</> : <><Lock size={14} /> Finalizează dosarul</>}</Btn>
           <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(`/dossier/${id}/file/opis?download=1`, "Opis_declaratie_autenticitate.pdf")} data-testid="opis-declaration"><FileDown size={14} /> Opis (declarație autenticitate)</Btn>
-          <Btn onClick={() => downloadAuthenticatedFile(`/dossier/${id}/export`, "Dosar_prosumator.pdf")} data-testid="opis-export"><FileDown size={15} /> Export dosar complet PDF{d.complete ? "" : " (CIORNĂ)"}</Btn>
+          <Btn disabled={exporting} aria-busy={exporting} onClick={async () => {
+            if (exportLock.current) return;
+            exportLock.current = true;
+            setExporting(true);
+            try { await downloadAuthenticatedFile(`/dossier/${id}/export`, "Dosar_prosumator.pdf"); }
+            finally { exportLock.current = false; setExporting(false); }
+          }} data-testid="opis-export"><FileDown size={15} /> {exporting ? "Se pregătește PDF-ul… păstrează pagina deschisă" : `Export dosar complet PDF${d.complete ? "" : " (CIORNĂ)"}`}</Btn>
         </div>}
       </div>
       {mode !== "attachments" && d.finalized && <p className="text-xs mb-2" style={{ color: "#166534" }} data-testid="opis-finalized">Finalizat la {new Date(d.finalized).toLocaleString("ro-RO")} — modificările din setări nu mai afectează acest dosar.</p>}
