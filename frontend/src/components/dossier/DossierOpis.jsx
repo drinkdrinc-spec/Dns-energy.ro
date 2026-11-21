@@ -21,7 +21,7 @@ function Row({ p, id, statuses, reload }) {
       <td className="px-2 py-2.5 font-bold">{p.nr}</td>
       <td className="px-2 py-2.5">
         <div className="font-semibold">{p.title}</div>
-        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{p.upload ? `Încărcat: ${p.upload.original_filename}` : p.docx_only ? "Formularul oficial DEER este precompletat din dosar în format Word; verifică datele și semnează formularul." : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : p.source === "manual" ? "Document oficial — atașează PDF-ul aplicabil" : "Din catalog echipamente"}</div>
+        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{p.upload ? `Încărcat: ${p.upload.original_filename}` : p.docx_only ? "Descarcă formularul Word, verifică datele și semnează-l. Încarcă apoi PDF-ul semnat aici ca să intre în dosarul complet." : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : p.source === "manual" ? "Document oficial — atașează PDF-ul aplicabil" : "Din catalog echipamente"}</div>
         {p.key === "gdpr" && <a className="text-[11px] underline inline-block mt-1" style={{ color: "var(--blue)" }} href="https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf" target="_blank" rel="noopener noreferrer">Deschide nota oficială DEER (PDF, versiunea octombrie 2026) ↗</a>}
         {p.missing.length > 0 && <div className="text-[11px] mt-1" style={{ color: "#76500a" }}>Lipsă: {p.missing.join(", ")}</div>}
       </td>
@@ -38,7 +38,7 @@ function Row({ p, id, statuses, reload }) {
         {p.docx_only && <button type="button" className="p-1.5 inline-flex items-center gap-1 rounded hover:bg-[#eef4ff]" title="Descarcă Anexa 1 oficială DEER precompletată" onClick={() => downloadAuthenticatedFile(`/docs/anexa1/${encodeURIComponent(id)}`, `Anexa_1_DEER_${String(id).slice(0, 8)}.docx`)} data-testid={`opis-deer-annex1-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /><span className="text-[11px]">Anexa 1 Word</span></button>}
         <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" data-testid={`opis-upload-input-${p.nr}`}
           onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; await put({ upload: await uploadFile(f), status: null }); toast.success("Document atașat"); ref.current.value = ""; }} />
-        <button className="p-1.5 rounded hover:bg-[#eef4ff]" title="Încarcă document existent / semnat" onClick={() => ref.current.click()} data-testid={`opis-upload-${p.nr}`}><Upload size={15} style={{ color: "var(--blue)" }} /></button>
+        <button className="p-1.5 rounded hover:bg-[#eef4ff]" title={p.docx_only ? "Încarcă Anexa 1 completată și semnată (PDF)" : "Încarcă document existent / semnat"} aria-label={p.docx_only ? "Încarcă Anexa 1 completată și semnată (PDF)" : `Încarcă document ${p.title}`} onClick={() => ref.current.click()} data-testid={`opis-upload-${p.nr}`}><Upload size={15} style={{ color: "var(--blue)" }} />{p.docx_only && <span className="text-[11px]">PDF semnat</span>}</button>
         {p.upload && <button className="p-1.5 rounded hover:bg-[#fff0f0]" title="Elimină documentul încărcat" onClick={() => put({ clear_upload: true })} data-testid={`opis-clear-${p.nr}`}><X size={15} style={{ color: "#b33333" }} /></button>}
       </td>
     </tr>
