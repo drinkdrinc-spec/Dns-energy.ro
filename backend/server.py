@@ -98,8 +98,10 @@ async def get_current_user(request: Request) -> dict:
             raise HTTPException(status_code=401, detail="Sesiunea a fost revocată. Autentifică-te din nou.")
         if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
             admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-            if not admin_email or user.get("email", "").lower() != admin_email or user.get("role") != "admin":
-                raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
+            is_admin_account = bool(admin_email) and user.get("email", "").lower() == admin_email and user.get("role") == "admin"
+            approved_partner = user.get("account_type") in ("installer", "partner") and user.get("status") == "active"
+            if not (is_admin_account or approved_partner):
+                raise HTTPException(status_code=403, detail="Acces permis administratorului și partenerilor aprobați DNS Energy")
         user.pop("password_hash", None)
         user.pop("_id", None)
         if user.get("status", "active") != "active":
