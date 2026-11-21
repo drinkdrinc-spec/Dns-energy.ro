@@ -5,6 +5,7 @@ import { PageHeader, Btn } from "@/components/Layout";
 import { F, Check } from "@/components/cef/F";
 import { Plus, Pencil, Trash2, Upload, FileText, X, Sparkles, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { supplierPartnerPrice, useSupplierMarkup } from "@/lib/supplierPricing";
 
 const CATS = ["Invertor", "Panou", "Baterie", "Stație încărcare", "Structură montaj", "Controler solar", "Smart meter", "Gateway", "Optimizator", "RSD"];
 const hasStoredDocument = (item, kind) => Boolean(item?.[kind]?.storage_path) && item?.[kind]?.available !== false;
@@ -34,23 +35,6 @@ const spec = (i) => {
   if (i.category === "RSD") return `${i.string_count ?? "—"} stringuri · ${i.poles ?? "—"} poli · ${i.voltage_min_v ?? "—"}–${i.voltage_max_v ?? "—"} Vdc · IP${i.ip_rating || "—"}`;
   return [i.compatible_inverters, i.p_max_w ? `${i.p_max_w} W intrare` : null, i.vdc_max ? `${i.vdc_max} V max` : null, i.isc_max_a ? `${i.isc_max_a} A Isc` : null, i.imax_output_a ? `${i.imax_output_a} A ieșire` : null, i.vdc_output_max ? `${i.vdc_output_max} V ieșire` : null, i.model_scope].filter(Boolean).join(" · ");
 };
-const supplierPartnerPrice = (raw, markup) => {
-  const match = String(raw || "").match(/\d[\d\s.,]*/);
-  if (!match) return "";
-  const value = match[0].replace(/\s/g, "");
-  const lastComma = value.lastIndexOf(",");
-  const lastDot = value.lastIndexOf(".");
-  const decimalAt = Math.max(lastComma, lastDot);
-  const fractionLength = decimalAt >= 0 ? value.length - decimalAt - 1 : 0;
-  const normalized = decimalAt >= 0 && fractionLength > 0 && fractionLength <= 2
-    ? `${value.slice(0, decimalAt).replace(/[.,]/g, "")}.${value.slice(decimalAt + 1)}`
-    : value.replace(/[.,]/g, "");
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount) || amount <= 0) return "";
-  const currency = /\bEUR\b|€/i.test(raw) ? "EUR" : "RON";
-  return new Intl.NumberFormat("ro-RO", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount * (1 + markup / 100));
-};
-
 function DocSlot({ item, k, label, onUploaded }) {
   const ref = useRef();
   const [sourceUrl, setSourceUrl] = useState(() => item[`${k}_source_url`] || item[`${k}_url`] || "");
@@ -200,7 +184,7 @@ export default function EquipmentCatalog() {
   const [supplierSelected, setSupplierSelected] = useState(() => new Set());
   const [supplierBulkBusy, setSupplierBulkBusy] = useState(false);
   const [supplierBulkProgress, setSupplierBulkProgress] = useState("");
-  const [supplierMarkup, setSupplierMarkup] = useState(() => Number(localStorage.getItem("dns-supplier-markup")) === 20 ? 20 : 15);
+  const [supplierMarkup, setSupplierMarkup] = useSupplierMarkup();
   const [feedbacks, setFeedbacks] = useState([]);
   const [feedbackUpdating, setFeedbackUpdating] = useState("");
   const load = async () => {
@@ -222,7 +206,6 @@ export default function EquipmentCatalog() {
     }
   };
   useEffect(() => { load(); }, []);
-  useEffect(() => { localStorage.setItem("dns-supplier-markup", String(supplierMarkup)); }, [supplierMarkup]);
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const nextCategory = params.get("category");
