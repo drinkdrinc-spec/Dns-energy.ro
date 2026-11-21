@@ -133,3 +133,4 @@ def render(rec: dict, client: dict, s: dict) -> bytes:
               D.pdf_sign(["Reprezentantul firmei executante (electrician autorizat ANRE),", f"<b>{e(s.get('company'))}</b>", e(p.get("operator") or s.get("rep")) or M, "(numele, prenumele și semnătura)", "(ștampilă)"], [], s)]
     doc.build(story)
     return buf.getvalue()
+

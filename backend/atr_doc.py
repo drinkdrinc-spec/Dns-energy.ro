@@ -1080,3 +1080,4 @@ def render_operator_annex_prep(rec: dict, client: dict, pros: dict, operator_key
     doc.build(story)
     return buf.getvalue()
 
+

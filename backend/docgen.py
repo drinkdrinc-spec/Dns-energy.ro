@@ -1061,3 +1061,4 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, c
     d.save(out)
     return out.getvalue()
 
+

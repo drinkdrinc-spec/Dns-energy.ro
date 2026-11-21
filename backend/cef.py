@@ -581,3 +581,4 @@ def from_legacy(rec: dict) -> dict:
     cef.update({"inverters": invs, "grid": grid, "from_legacy": True})
     return {**rec, "cef": cef}
 
+
