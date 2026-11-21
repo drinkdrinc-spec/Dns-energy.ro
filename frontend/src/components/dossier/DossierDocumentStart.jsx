@@ -108,6 +108,10 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
   const inputs = useRef({});
   const createRequestId = useRef("");
+  const normalizeIdentity = (value) => String(value || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+  const existingClientIdentity = normalizeIdentity(selectedClient?.idcode || selectedClient?.cui);
+  const draftIdentity = normalizeIdentity(values.cnp);
+  const clientIdentityMismatch = Boolean(selectedClient && existingClientIdentity && draftIdentity && existingClientIdentity !== draftIdentity);
 
   useEffect(() => { if (autoOpen) setOpen(true); }, [autoOpen]);
 
@@ -245,6 +249,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   };
 
   const create = async () => {
+    if (clientIdentityMismatch) return toast.error("CNP/CUI din acte diferă de clientul selectat. Alege «Creează client separat» sau verifică actele înainte de salvare.");
     if (!values.client_name.trim()) return toast.error("Completează sau corectează numele clientului din CI.");
     const filesForDossier = Object.entries(files).flatMap(([kind, list]) => list.map((f) => ({
       ...f, kind,
@@ -324,6 +329,17 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             {!clientMatches.length && clientSearch.trim().length >= 2 && <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Nu am găsit un client potrivit. Completează datele din CI mai jos pentru un client nou.</p>}
           </>}
         </section>
+        {clientIdentityMismatch && <div role="alert" className="rounded-lg border px-3 py-3 text-xs" style={{ borderColor: "#f0c8c8", background: "#fff6f6", color: "#8f2525" }} data-testid="intake-client-identity-mismatch">
+          <b>CNP/CUI diferit față de clientul selectat.</b> Dosarul nu va fi salvat în fișa altei persoane; datele existente rămân nemodificate.
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" className="rounded-lg border bg-white px-3 py-2 font-semibold" style={{ borderColor: "#e4b7b7" }} onClick={() => {
+              setValues((prev) => ({ ...prev, client_id: "" }));
+              setSelectedClient(null); setSelectedSiteId("new"); setClientSearch("");
+              toast.warning("Client separat selectat. Verifică numele, CNP/CUI, adresa și datele de contact preluate înainte să creezi dosarul.");
+            }} data-testid="intake-create-separate-client">Creează client separat</button>
+            <span>Verifică datele clientului înainte de continuare.</span>
+          </div>
+        </div>}
         <div className="grid sm:grid-cols-2 gap-2">
           {TYPES.map(([kind, title, help]) => <div key={kind} className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="font-bold text-sm">{title}</div><p className="text-[11px] my-1" style={{ color: "var(--muted)" }}>{help}</p>
@@ -425,7 +441,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         </section>}
         {notes.altele?.length > 0 && <div className="rounded-lg bg-slate-50 p-3 text-xs"><b>Documente suplimentare:</b><ul className="list-disc pl-5">{notes.altele.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
         <div className="flex justify-between gap-2 pt-2"><div>{step > 0 && <Btn variant="secondary" onClick={() => setStep((current) => current - 1)} disabled={!!busy}>Înapoi</Btn>}</div><div className="flex gap-2"><Btn variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
-          {step < 2 ? <Btn onClick={() => { if (step === 0 && !values.client_name.trim()) return toast.error("Încarcă CI-ul sau completează numele clientului pentru a continua."); setStep((current) => current + 1); }} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn onClick={create} disabled={!!busy || !values.client_name.trim()} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…" : "Creează dosarul"}</Btn>}</div></div>
+          {step < 2 ? <Btn onClick={() => { if (step === 0 && !values.client_name.trim()) return toast.error("Încarcă CI-ul sau completează numele clientului pentru a continua."); setStep((current) => current + 1); }} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn onClick={create} disabled={!!busy || !values.client_name.trim() || clientIdentityMismatch} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…" : "Creează dosarul"}</Btn>}</div></div>
       </DialogContent>
     </Dialog>
   </>;
