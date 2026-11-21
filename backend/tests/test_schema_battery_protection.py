@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
 
@@ -6,6 +7,9 @@ from pypdf import PdfReader
 
 import docgen
 import cef as CEF
+import sizing as SZ
+import sld as SLD
+from sld_demo import DEMO_CLIENT, DEMO_REC
 
 
 def _sample_cef():
@@ -174,3 +178,109 @@ def test_battery_cable_ampacity_must_cover_selected_fuse():
     assert proposal["fuse_a"] == 50
     assert proposal["section"] == 10
     assert proposal["iz"] >= proposal["fuse_a"]
+
+
+
+def _sheet_data(rec):
+    result = SZ.compute(rec, DEMO_CLIENT)
+    return SLD.sheet_data(
+        rec,
+        DEMO_CLIENT,
+        {"company": "DNS HOSTESS S.R.L."},
+        result,
+        {"status": "approved", "approvals": {}},
+    )
+
+
+def test_backup_schema_note_states_islanding_separation_and_reconnect_delay():
+    class TextCapture:
+        def __init__(self):
+            self.values = []
+
+        def text(self, *args, **kwargs):
+            self.values.append(str(args[2]))
+
+    rec = deepcopy(DEMO_REC)
+    capture = TextCapture()
+
+    SLD.execution_notes(capture, (0, 0, 500, 500), rec)
+
+    text = " ".join(capture.values)
+    assert "QINT separă instalația de RED" in text
+    assert "fără injecție în RED" in text
+    assert "Reconectare după ≥15 min" in text
+
+
+def test_mixed_panel_models_keep_separate_string_counts_and_power():
+    rec = deepcopy(DEMO_REC)
+    inverter = rec["cef"]["inverters"][0]
+    inverter["strings"] = [
+        {
+            "panels": 10,
+            "mppt": 1,
+            "panel_model": "JINKO JKM510M",
+            "panel_w": 510,
+            "panel_voc": 49.5,
+            "panel_vmp": 41.5,
+            "panel_isc": 13.1,
+            "panel_coef_voc": -0.28,
+        },
+        {
+            "panels": 8,
+            "mppt": 2,
+            "panel_model": "AIKO A500",
+            "panel_w": 500,
+            "panel_voc": 45.5,
+            "panel_vmp": 38.5,
+            "panel_isc": 14.0,
+            "panel_coef_voc": -0.26,
+        },
+    ]
+
+    data = _sheet_data(rec)
+    base_strings = SZ.compute(rec, DEMO_CLIENT)["base"]["inverters"][0]["strings"]
+    equipment = next(section[2] for section in data["sections"] if section[0] == "2. Lista echipamentelor")
+    panels = [row for row in equipment if row[1] == "Module fotovoltaice"]
+
+    assert [(row[2], row[4]) for row in panels] == [
+        ("JINKO JKM510M", "10"),
+        ("AIKO A500", "8"),
+    ]
+    assert [round(row["kwp"], 2) for row in base_strings] == [5.1, 4.0]
+
+
+def test_battery_only_hybrid_has_zero_export_and_is_identified_in_sheet():
+    rec = deepcopy(DEMO_REC)
+    pv_export = CEF.check(rec["cef"])["totals"]["export_kw"]
+    rec["cef"]["inverters"].append({
+        "brand_model": "Deye SUN-8K battery-only",
+        "type": "Hibrid",
+        "kind": "Hibrid",
+        "phases": "Trifazat",
+        "p_nom_kw": 8,
+        "p_max_kw": 8,
+        "p_limit_kw": 8,
+        "battery_only": True,
+        "no_panels": True,
+        "strings": [],
+        "battery_mode": "own",
+        "battery": {
+            "model": "Dyness 16.07 kWh",
+            "kwh": 16.07,
+            "voltage": 51.2,
+            "modules": 1,
+            "coupling": "DC",
+            "i_max": 100,
+        },
+    })
+
+    checked = CEF.check(rec["cef"])
+    data = _sheet_data(rec)
+    equipment = next(section[2] for section in data["sections"] if section[0] == "2. Lista echipamentelor")
+    capture = type("TextCapture", (), {"values": [], "text": lambda self, *args, **kwargs: self.values.append(str(args[2]))})()
+    SLD.execution_notes(capture, (0, 0, 500, 500), rec)
+
+    assert checked["totals"]["export_kw"] == pv_export
+    assert checked["inverters"][1]["kwp"] == 0
+    assert any(row[2] == "Dyness 16.07 kWh" for row in equipment)
+    assert any("putere evacuată 0 kW" in value for value in capture.values)
