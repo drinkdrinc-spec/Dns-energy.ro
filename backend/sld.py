@@ -948,9 +948,10 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     s = min((x2 - x1 - 8) / W, (plot_y2 - y1 - 8) / H, 1.6)
     available_h, diagram_h = plot_y2 - y1 - 8, H * s
     dx = x1 + 4 + ((x2 - x1 - 8) - W * s) / 2
-    # Keep the main single-line diagram in the upper portion of the sheet,
-    # leaving a clear band below for the TEG schedule and execution notes.
-    dy = y1 + 4 + (available_h - diagram_h) * 0.92
+    # Center the diagram vertically in the drawing frame. Keeping it pinned
+    # to the header leaves a large empty band above the TEG schedule on common
+    # one-inverter dossiers.
+    dy = y1 + 4 + (available_h - diagram_h) * 0.50
     c.saveState(); c.translate(dx + W * s, dy); c.scale(-s, s); S.mirror_x = True
     draw()
     S.mirror_x = False
