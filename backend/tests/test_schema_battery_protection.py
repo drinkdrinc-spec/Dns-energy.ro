@@ -3,6 +3,7 @@ from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
 
+from PIL import Image as PILImage
 from pypdf import PdfReader
 
 import docgen
@@ -56,6 +57,31 @@ def test_schema_pdf_shows_battery_dc_switch_cable_and_documented_protection():
     assert "100 A" in text
     assert "Imax 100 A" in text
     assert "Voc rece la Tmin: NECONFIRMAT" in text
+
+
+def _test_company_logo():
+    image = PILImage.new("RGB", (64, 32), (31, 106, 69))
+    out = BytesIO()
+    image.save(out, format="PNG")
+    return out.getvalue()
+
+
+def test_generated_sld_embeds_configured_company_logo():
+    res = SZ.compute(DEMO_REC, DEMO_CLIENT)
+    pdf = SLD.render(DEMO_REC, DEMO_CLIENT, {"company": "DNS Energy", "_header_logo_bytes": _test_company_logo()}, res,
+                     {"status": "draft"}, fmt="A3", demo=True)
+    assert len(PdfReader(BytesIO(pdf)).pages[0].images) == 1
+
+
+def test_generated_document_header_embeds_configured_company_logo(monkeypatch):
+    logo = _test_company_logo()
+    docgen._IMG_CACHE.clear()
+    monkeypatch.setattr(docgen, "IMG_LOADER", lambda _path: logo)
+    rec = {"name": "Beneficiar test", "address": "Adresa test", "operator": "DEER", "pod": "POD-TEST"}
+    client = {"name": "Beneficiar test", "address": "Adresa test", "kind": "persoană fizică"}
+    settings = {"company": "DNS Energy", "header_logo": {"storage_path": "test/logo.png"}}
+    pdf = docgen.render(["declaratie_autenticitate"], rec, settings, client)
+    assert len(PdfReader(BytesIO(pdf)).pages[0].images) >= 1
 
 
 def test_schema_pdf_marks_missing_battery_switch_rating_for_confirmation():
