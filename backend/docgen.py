@@ -969,8 +969,7 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, c
         if blocks is None:
             blocks = []
             doc_keys = list(keys or [doc_key])
-            if doc_keys and not (len(doc_keys) == 1 and doc_keys[0] in ("schema_cef", "schema")) and "gdpr" not in doc_keys:
-                doc_keys.append("gdpr")
+            # Official OD privacy notices are separate OPIS attachments, not generated DOCX templates.
             for i, k in enumerate(doc_keys):
                 if i:
                     blocks.append(B("pagebreak"))
