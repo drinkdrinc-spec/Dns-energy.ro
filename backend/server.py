@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from dotenv import load_dotenv
 from pathlib import Path
 import os
@@ -274,6 +275,13 @@ class RegisterReq(BaseModel):
     password: str
     name: Optional[str] = None
     billing: Optional[dict] = None
+    account_type: Optional[str] = None
+    anre_certificate_number: Optional[str] = None
+    anre_certificate_filename: Optional[str] = None
+    anre_certificate_type: Optional[str] = None
+    anre_certificate_base64: Optional[str] = None
+    gdpr_acknowledged: bool = False
+    gdpr_notice_version: Optional[str] = None
 
 class LoginReq(BaseModel):
     email: EmailStr
@@ -393,34 +401,90 @@ EDIT_ROLES = ("admin", "inginer", "electrician", "instalator")
 def pub_user(u: dict) -> dict:
     return {"id": u.get("uid") or u["id"], "email": u["email"], "name": u.get("name"), "role": u.get("role", "admin"), "status": u.get("status", "active"),
             "phone": u.get("phone"), "function": u.get("function"), "staff_id": u.get("staff_id"), "account_type": u.get("account_type") or ("team" if u.get("tenant") else "owner"),
+            "anre_certificate_number": u.get("anre_certificate_number"),
+            "anre_certificate_path": u.get("anre_certificate_path"),
             "plan": u.get("plan"), "platform": bool(PLATFORM["id"]) and (u.get("uid") or u["id"]) == PLATFORM["id"]}
 
 @api_router.post("/auth/register")
 async def register(body: RegisterReq, request: Request):
-    # Private test mode: only permit one-time bootstrap for the configured admin email.
-    # Once any platform admin exists, public self-registration is permanently closed.
-    email = body.email.lower()
+    email = body.email.lower().strip()
     configured_admin = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     existing_admin = await db.users.find_one({"role": "admin", "tenant": {"$in": [None, ""]}})
-    if not configured_admin or email != configured_admin or existing_admin:
-        raise HTTPException(status_code=403, detail="Înregistrarea publică este dezactivată. Accesul este permis numai administratorului DNS Energy.")
+
+    # Preserve first-run administrator bootstrap; public registrations never
+    # receive an administrative role after an administrator exists.
+    if not existing_admin and not body.account_type:
+        if not configured_admin or email != configured_admin:
+            raise HTTPException(status_code=403, detail="Înregistrarea inițială este permisă numai administratorului DNS Energy.")
+        if await db.users.find_one({"email": email}):
+            raise HTTPException(status_code=400, detail="Email deja înregistrat")
+        if len(body.password or "") < 8:
+            raise HTTPException(status_code=400, detail="Parola trebuie să aibă minimum 8 caractere")
+        uid = str(uuid.uuid4())
+        doc = {"id": uid, "email": email, "password_hash": hash_password(body.password), "name": body.name or email.split("@")[0],
+               "role": "admin", "status": "active", "tenant": None, "account_type": "owner",
+               "created_at": datetime.now(timezone.utc).isoformat()}
+        await db.users.insert_one(doc)
+        return {"access_token": create_access_token(uid, email, int(doc.get("token_version", 0))), "user": pub_user(doc)}
+
+    if not existing_admin:
+        raise HTTPException(status_code=503, detail="Înregistrarea conturilor de partener nu este disponibilă până la configurarea administratorului.")
+    if body.account_type not in ("installer", "partner"):
+        raise HTTPException(status_code=400, detail="Alegeți tipul de cont: instalator sau partener.")
+    if not body.gdpr_acknowledged or body.gdpr_notice_version != "partner-registration-v1-2026-11":
+        raise HTTPException(status_code=400, detail="Citiți informarea privind datele personale și confirmați acordul înainte de trimitere.")
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email deja înregistrat")
-    if len(body.password or "") < 8:
-        raise HTTPException(status_code=400, detail="Parola trebuie să aibă minimum 8 caractere")
-    admin = await db.users.find_one({"email": os.environ["ADMIN_EMAIL"].lower()}) or await db.users.find_one({"role": "admin", "tenant": {"$in": [None, ""]}}, sort=[("created_at", 1)])
-    import billing_routes as BR
-    prof = BR.validate_profile(body.billing or {}, email) if admin else None
+    password = body.password or ""
+    if len(password) < 12:
+        raise HTTPException(status_code=400, detail="Parola trebuie să aibă minimum 12 caractere")
+    if len(password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=400, detail="Parola este prea lungă; limita este 72 de octeți.")
+
+    cert_number = re.sub(r"\s+", " ", str(body.anre_certificate_number or "")).strip()
+    filename = os.path.basename(str(body.anre_certificate_filename or "").replace("\\", "/"))
+    encoded = str(body.anre_certificate_base64 or "").strip()
+    if not cert_number or not filename or not encoded:
+        raise HTTPException(status_code=400, detail="Completați numărul autorizației ANRE și atașați certificatul.")
+    if len(encoded) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Certificatul depășește limita de 8 MB.")
+    try:
+        cert_data = base64.b64decode(encoded, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Fișierul certificatului nu poate fi citit.")
+    if len(cert_data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Certificatul depășește limita de 8 MB.")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ("pdf", "jpg", "jpeg", "png"):
+        raise HTTPException(status_code=415, detail="Atașați certificatul ANRE în format PDF, JPG sau PNG.")
+    cert_type = validate_upload_payload(filename, body.anre_certificate_type, cert_data)
+
     uid = str(uuid.uuid4())
-    doc = {"id": uid, "email": email, "password_hash": hash_password(body.password), "name": body.name or email.split("@")[0],
-           "role": "admin", "status": "pending" if admin else "active", "tenant": None, "account_type": "subscriber" if admin else "owner",
-           "created_at": datetime.now(timezone.utc).isoformat()}
+    now = datetime.now(timezone.utc).isoformat()
+    cert_path = f"{APP_NAME}/partner-applications/{uid}/anre-certificate.{ext}"
+    doc = {"id": uid, "email": email, "password_hash": hash_password(password),
+           "name": str(body.name or "").strip()[:120] or email.split("@")[0],
+           "role": "limitat", "status": "pending", "tenant": existing_admin["id"],
+           "account_type": body.account_type, "anre_certificate_number": cert_number,
+           "anre_certificate_path": cert_path, "anre_certificate_filename": filename,
+           "created_at": now, "gdpr_notice_version": body.gdpr_notice_version,
+           "gdpr_acknowledged_at": now}
     await db.users.insert_one(doc)
-    if admin:
-        await BR.save_profile(uid, prof, email, {})
-        await db.audit.insert_one({"owner": admin["id"], "user": email, "action": "înregistrare cont (în așteptare)", "module": "users", "item_id": uid, "fields": [], "at": doc["created_at"]})
-        return {"pending": True, "message": STATUS_MSG["pending"]}
-    return {"access_token": create_access_token(uid, email, int(doc.get("token_version", 0))), "user": pub_user(doc)}
+    try:
+        put_object(cert_path, cert_data, cert_type)
+    except Exception as exc:
+        await db.users.delete_one({"id": uid})
+        logger.error("ANRE certificate storage failed for account request (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Nu am putut păstra certificatul ANRE. Încercați din nou.")
+    try:
+        await db.audit.insert_one({"owner": existing_admin["id"], "user": email,
+            "action": f"cerere cont {body.account_type} — verificare certificat ANRE",
+            "module": "users", "item_id": uid, "fields": ["account_type", "anre_certificate_number", "gdpr_notice_version"],
+            "at": now})
+    except Exception as exc:
+        logger.warning("Partner account request audit could not be recorded (%s)", type(exc).__name__)
+    return {"pending": True, "message": "Cererea a fost trimisă. Contul va fi activat după verificarea certificatului ANRE de către administrator."}
+
 
 @api_router.post("/auth/login")
 async def login(body: LoginReq, request: Request):
@@ -501,6 +565,21 @@ async def admin_users(user: dict = Depends(get_current_user)):
     require(user, "admin")
     us = await db.users.find({"$or": [{"tenant": user["id"]}, {"id": user["id"]}]}, {"_id": 0, "password_hash": 0}).sort("created_at", 1).to_list(500)
     return {"users": [pub_user(u) | {"created_at": u.get("created_at")} for u in us], "roles": ROLES}
+
+@api_router.get("/admin/users/{uid}/anre-certificate")
+async def admin_user_anre_certificate(uid: str, user: dict = Depends(get_current_user)):
+    require(user, "admin")
+    account = await db.users.find_one({"id": uid, "tenant": user["id"]}, {"_id": 0, "anre_certificate_path": 1, "anre_certificate_filename": 1})
+    if not account or not account.get("anre_certificate_path"):
+        raise HTTPException(status_code=404, detail="Certificatul ANRE nu este disponibil.")
+    try:
+        data, content_type = await asyncio.to_thread(get_object, account["anre_certificate_path"])
+    except Exception:
+        raise HTTPException(status_code=404, detail="Fișierul certificatului nu a fost găsit.")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", account.get("anre_certificate_filename") or "certificat-anre.pdf")
+    return Response(content=data, media_type=content_type,
+                    headers={"Content-Disposition": f'attachment; filename="{safe_name}"', "Cache-Control": "no-store"})
+
 
 @api_router.put("/admin/users/{uid}")
 async def admin_user_update(uid: str, request: Request, user: dict = Depends(get_current_user)):
