@@ -161,6 +161,11 @@ export function CefEditor({ value, onChange, onSave, saving = false }) {
         </div>
         <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Căutare la: Depozit Solar · SolarHev · SolarTech. Importul salvează produsul și PDF-urile disponibile în catalogul firmei.</p>
         {supplierMessage && <p className="mt-2 text-xs" role="status" aria-live="polite">{supplierMessage}</p>}
+        <label className="mt-2 inline-flex items-center gap-2 text-[11px] font-semibold">Adaos pentru preț DNS
+          <select className="den-input min-h-8 w-20 py-1 text-xs" value={supplierMarkup} onChange={(event) => setSupplierMarkup(Number(event.target.value))} aria-label="Adaos preț DNS">
+            <option value={15}>15%</option><option value={20}>20%</option>
+          </select>
+        </label>
         {supplierResults.length > 0 && <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {supplierResults.map((product) => <article key={product.product_url} className="rounded-lg border p-2" style={{ borderColor: "var(--line)" }}>
             <p className="text-xs font-semibold">{product.brand_model}</p>
