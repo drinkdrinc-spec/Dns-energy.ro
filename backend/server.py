@@ -2164,7 +2164,7 @@ async def seed_catalog(owner: str):
                 except Exception as exc:
                     logger.warning("Could not refresh the Jinko 54HL4M-BDV certificate from its official source: %s", exc)
             continue
-        if key in deleted_seed_keys:
+        if _catalog_seed_key(item.get("category"), item.get("brand_model")) in deleted_seed_keys:
             continue
         created = _new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE})
         missing.append(created)
