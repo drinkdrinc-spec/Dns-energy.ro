@@ -1899,6 +1899,8 @@ async def doc_sizing(item_id: str, user: dict = Depends(get_current_user)):
     rec = await check_access(user, "prosumator", item_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    rec = CEF.from_legacy(rec)
+    await auto_fill_cef_from_catalog(user["id"], rec)
     return docgen.sizing(rec)
 
 @api_router.get("/docs/{doc_type}/{item_id}")
@@ -1908,6 +1910,8 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     rec = await check_access(user, "prosumator", item_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    rec = CEF.from_legacy(rec)
+    await auto_fill_cef_from_catalog(user["id"], rec)
 
     is_power_increase = str(rec.get("request_type") or "").strip() == "Spor de putere + prosumator"
     client = await get_client(user["id"], rec)
