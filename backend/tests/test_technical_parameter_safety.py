@@ -180,4 +180,26 @@ def test_selected_rsd_is_checked_against_string_voltage_and_current():
     current_check = next(item for item in result["items"] if item["label"] == "Curent admis RSD la 600 V")
     assert current_check["ok"] is False
     assert any("RSD INV 1" in error and "NECONFORM" in error for error in result["errors"])
-
+def test_mixed_panel_models_use_each_strings_current_and_voltage_for_checks():
+    inverter = {
+        **sample_inverter(),
+        "isc_max_mppt": 25,
+        "dc": {"length_m": 100},
+        "strings": [
+            {"panels": 10, "mppt": 1, "panel_model": "Panel A", "panel_w": 500,
+             "panel_voc": 40, "panel_vmp": 30, "panel_isc": 15, "panel_imp": 14},
+            {"panels": 10, "mppt": 2, "panel_model": "Panel B", "panel_w": 400,
+             "panel_voc": 50, "panel_vmp": 40, "panel_isc": 10, "panel_imp": 8},
+        ],
+    }
+    result = cef.check({"grid": {"supply": "Trifazat"}, "inverters": [inverter]})
+    sizing_result = sizing.compute({"cef": {"tmin": -10, "grid": {"supply": "Trifazat"},
+                                               "inverters": [inverter]}}, {})
+    items = sizing_result["items"]
+    mppt_1 = next(item for item in items if item["label"] == "MPPT 1 — Imp total în funcționare")
+    mppt_2 = next(item for item in items if item["label"] == "MPPT 2 — Imp total în funcționare")
+    assert mppt_1["value"] == "14 A"
+    assert mppt_2["value"] == "8 A"
+    # The 14 A, 300 V string needs 25 mm² at 100 m to meet the 1% proposal.
+    # Combining its current with the other string's higher voltage would under-size it.
+    assert result["inverters"][0]["proposals"]["dc"]["section"] == 25
