@@ -23,6 +23,11 @@ const features = [
 
 const services = [
   {
+    icon: ShieldCheck,
+    title: "Firmă atestată ANRE",
+    text: "DNS HOSTESS este atestată ANRE pentru activitățile din domeniul său de autorizare. Abordăm fiecare lucrare în limitele atestatului și ale cerințelor tehnice aplicabile.",
+  },
+  {
     icon: Sun,
     title: "Instalații fotovoltaice",
     text: "Proiectăm și realizăm sisteme on-grid, hibride și off-grid pentru locuințe, spații comerciale și obiective industriale, cu sau fără baterii și soluții de backup.",
@@ -54,13 +59,18 @@ const services = [
   },
   {
     icon: DraftingCompass,
-    title: "Proiectare electrică",
-    text: "Elaborăm proiecte pentru instalații electrice și fotovoltaice și dimensionăm soluții tehnice potrivite specificului fiecărei lucrări.",
+    title: "Proiectare branșamente și rețele electrice",
+    text: "Proiectăm branșamente, linii electrice și instalații pentru obiective rezidențiale, comerciale și industriale, în funcție de cerințele proiectului.",
   },
   {
     icon: Zap,
     title: "Lucrări și soluții electrice",
     text: "Realizăm extinderi, modificări și integrarea echipamentelor, urmărind o soluție coerentă și potrivită cerințelor proiectului.",
+  },
+  {
+    icon: FolderKanban,
+    title: "Dosare de prosumator și documentație ANRE",
+    text: "Prin aplicația DNS Energy, instalatorii pregătesc dosare de prosumator și dosare pentru atestarea operatorilor economici, cu datele firmei și documentele organizate într-un singur loc.",
   },
 ];
 
@@ -105,7 +115,7 @@ export default function PublicHome() {
             <h1>Instalații fotovoltaice și electrice<br /><em>pentru locuințe, afaceri și industrie.</em></h1>
             <p className="dns-hero-lede">Proiectăm, furnizăm și instalăm sisteme fotovoltaice pentru locuințe, afaceri și obiective industriale — de la alegerea echipamentelor și structurilor până la montaj și integrare electrică.</p>
             <div className="dns-hero-actions"><a href="#contact" className="dns-button dns-button-primary">Solicitați o ofertă <ArrowRight size={18} /></a><a href="#echipamente" className="dns-text-link">Vezi echipamentele <ArrowDown size={16} /></a></div>
-            <div className="dns-hero-note"><ShieldCheck size={16} /> Structuri la sol și pe acoperiș · soluții casnice și industriale</div>
+            <div className="dns-hero-note"><ShieldCheck size={16} /> Firmă atestată ANRE · structuri la sol și pe acoperiș · soluții casnice și industriale</div>
           </div>
           <EquipmentPreview />
         </div>
@@ -114,7 +124,7 @@ export default function PublicHome() {
 
       <section className="dns-services" id="servicii">
         <div className="dns-section-label">CE FACEM</div>
-        <div className="dns-services-heading"><h2>Servicii pentru proiecte<br /><em>energetice și electrice.</em></h2><p>De la planificare la execuție, abordăm fiecare lucrare cu atenție la cerințele tehnice și la specificul obiectivului.</p></div>
+        <div className="dns-services-heading"><h2>Servicii pentru proiecte<br /><em>energetice și electrice.</em></h2><p>Suntem o firmă atestată ANRE. De la proiectare și documentație până la execuție, abordăm fiecare lucrare cu atenție la cerințele tehnice și la specificul obiectivului.</p></div>
         <div className="dns-services-grid">{services.map(({ icon: Icon, title, text }, index) => <article className="dns-service-card" key={title}><span className="dns-service-icon"><Icon size={22} /></span><span className="dns-service-number">0{index + 1}</span><h3>{title}</h3><p>{text}</p></article>)}</div>
         <a href="#contact" className="dns-services-link">Solicitați o discuție despre proiectul dumneavoastră <ArrowRight size={16} /></a>
       </section>
@@ -142,7 +152,7 @@ export default function PublicHome() {
 
       <section className="dns-intro" id="platforma">
         <div className="dns-section-label">TEHNOLOGIE CARE SIMPLIFICĂ LUCRUL</div>
-        <div className="dns-intro-row"><h2>Mai puțină muncă repetitivă.<br /><em>Mai multă claritate.</em></h2><p>Aplicația DNS Energy ajută echipa să organizeze dosarele și să urmărească informațiile tehnice, în timp ce verificarea finală rămâne în grija specialiștilor.</p></div>
+        <div className="dns-intro-row"><h2>Dosare de prosumator<br /><em>și atestare ANRE.</em></h2><p>Aplicația DNS Energy este destinată instalatorilor și partenerilor. Ajută la organizarea dosarelor de prosumator și a dosarelor pentru atestarea operatorilor economici ANRE, împreună cu informațiile tehnice și documentele aferente. Accesul la aplicație este separat de pagina de prezentare.</p></div>
         <div className="dns-feature-grid">{features.map(({ icon: Icon, title, text }, index) => <article className="dns-feature-card" key={title}><div className="dns-feature-top"><span className="dns-feature-icon"><Icon size={21} /></span><span className="dns-feature-number">0{index + 1}</span></div><h3>{title}</h3><p>{text}</p><a href="#cum-functioneaza" aria-label={`Află despre ${title}`}><ChevronRight size={18} /></a></article>)}</div>
       </section>
 
