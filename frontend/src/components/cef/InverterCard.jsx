@@ -21,6 +21,7 @@ function batteryCatalogData(item, phases) {
     catalog_id: item.id,
     model: item.brand_model,
     kwh: item.kwh,
+    tech: item.tech,
     ah: item.ah,
     voltage: batteryVoltageForPhase(item, phases),
     voltage_1ph: item.voltage_1ph,
@@ -53,7 +54,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
   };
   const batteryModelText = (model) => set({
     ...inv,
-    battery: { ...(inv.battery || {}), model, catalog_id: undefined, kwh: undefined, ah: undefined, voltage: undefined, voltage_1ph: undefined, voltage_3ph: undefined, i_max: undefined, i_max_source_url: undefined, max_fuse_a: undefined, coupling: undefined, protection: undefined, fuse_a: undefined, cable_section: undefined, breaker_a: undefined, breaker_voltage_dc: undefined, breaker_integrated: undefined, breaker_poles: undefined, breaker_icu_ka: undefined, dc_switch_voltage_v: undefined, dc_switch_current_a: undefined, breaker_source_url: undefined, datasheet_url: undefined, conformity_url: undefined },
+    battery: { ...(inv.battery || {}), model, catalog_id: undefined, kwh: undefined, tech: undefined, ah: undefined, voltage: undefined, voltage_1ph: undefined, voltage_3ph: undefined, i_max: undefined, i_max_source_url: undefined, max_fuse_a: undefined, coupling: undefined, protection: undefined, fuse_a: undefined, cable_section: undefined, breaker_a: undefined, breaker_voltage_dc: undefined, breaker_integrated: undefined, breaker_poles: undefined, breaker_icu_ka: undefined, dc_switch_voltage_v: undefined, dc_switch_current_a: undefined, breaker_source_url: undefined, datasheet_url: undefined, conformity_url: undefined },
   });
   const sub = (obj, k) => (v) => set({ ...inv, [obj]: { ...(inv[obj] || {}), [k]: v } });
   const strings = inv.strings || [];
