@@ -2224,6 +2224,7 @@ async def sld_ctx(owner, item_id: str):
 
 async def auto_fill_cef_from_catalog(owner: str, rec: dict) -> list[str]:
     """Hydrate exact catalog values and safe calculations whenever a dossier is opened or exported."""
+    await seed_catalog(owner)
     cef = rec.get("cef") or {}
     cef, catalog_fields = await hydrate_cef_catalog_values(owner, cef, rec)
     cef, calculated_fields = SZ.apply(cef)
