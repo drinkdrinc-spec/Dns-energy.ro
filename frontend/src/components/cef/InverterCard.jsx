@@ -2,6 +2,7 @@ import { Trash2, Plus, Wand2 } from "lucide-react";
 import { useEffect } from "react";
 import { F, Check, CatalogPick, INSTALL, SECTIONS } from "./F";
 import { Issues } from "./CefResults";
+import { supplierPartnerPrice } from "@/lib/supplierPricing";
 
 function Section({ title, children }) {
   return <div className="mt-4"><div className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--blue)" }}>{title}</div>{children}</div>;
@@ -41,7 +42,7 @@ function batteryCatalogData(item, phases) {
   };
 }
 
-export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
+export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supplierMarkup = 15 }) {
   const s = (k) => (v) => set({ ...inv, [k]: v });
   const catalogModelText = (model, idKey, fields) => {
     const next = { ...inv, [idKey]: undefined };
@@ -76,6 +77,12 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
     } : x) });
   };
   const t = `inv-${idx}`;
+  const selectedEquipment = [
+    catalog.find((item) => item.id === inv.catalog_id),
+    catalog.find((item) => item.id === inv.panel_catalog_id),
+    ...strings.map((row) => catalog.find((item) => item.id === row.panel_catalog_id)),
+    inv.battery?.catalog_id ? catalog.find((item) => item.id === inv.battery.catalog_id) : null,
+  ].filter(Boolean).filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index);
   const pa = res?.proposals?.ac || {}, pd = res?.proposals?.dc || {};
   const apply = () => set({
     ...inv,
@@ -101,6 +108,17 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res }) {
       <div className="flex items-center justify-between gap-2 mb-2">
         <h4 className="font-bold text-sm">{inv.type === "Invertor de baterie (AC)" ? `Invertor BESS ${idx + 1}` : `Invertor ${idx + 1}`} {res && <span className="font-normal text-xs" style={{ color: "var(--muted)" }}>· {res.kwp} kWp · DC/AC {res.dc_ac_ratio}{res.battery_kwh ? ` · ${res.battery_kwh} kWh` : ""}</span>}</h4>
         <button onClick={remove} className="p-1.5 rounded hover:bg-[#fff0f0]" data-testid={`${t}-remove`} title="Elimină invertorul"><Trash2 size={15} style={{ color: "#b33333" }} /></button>
+      </div>
+      {selectedEquipment.length > 0 && <div className="mb-3 space-y-1 rounded-lg p-2.5 text-[11px]" style={{ background: "var(--bg, #faf8f4)" }} data-testid={`${t}-equipment-documents-prices`}>
+        {selectedEquipment.map((item) => <div key={item.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-semibold">{item.category}: {item.brand_model}</span>
+          {item.source_price && <span style={{ color: "var(--muted)" }}>Furnizor: {item.source_price}</span>}
+          {supplierPartnerPrice(item.source_price, supplierMarkup) && <span className="font-bold" style={{ color: "var(--green, #168363)" }}>Orientativ DNS (+{supplierMarkup}%): {supplierPartnerPrice(item.source_price, supplierMarkup)} / unitate</span>}
+          {item.datasheet_url && <a className="font-semibold underline" style={{ color: "var(--green, #168363)" }} href={item.datasheet_url} target="_blank" rel="noopener noreferrer">Fișă tehnică</a>}
+          {item.conformity_url && <a className="font-semibold underline" style={{ color: "var(--green, #168363)" }} href={item.conformity_url} target="_blank" rel="noopener noreferrer">Conformitate</a>}
+          {!item.datasheet_url && item.datasheet?.storage_path && <span style={{ color: "var(--green, #168363)" }}>Fișa tehnică este salvată în catalog</span>}
+          {!item.conformity_url && item.conformity?.storage_path && <span style={{ color: "var(--green, #168363)" }}>Conformitatea este salvată în catalog</span>}
+        </div>)}
       </div>
       <div className="grid sm:grid-cols-4 gap-3">
         <CatalogPick items={catalog} category="Invertor" selectedId={inv.catalog_id} testid={`${t}-pick`} onQueryChange={(model) => catalogModelText(model, "catalog_id", ["type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "red_limit_mode"])} onPick={(it) => { const battery = inv.battery?.catalog_id ? { ...inv.battery, voltage: batteryVoltageForPhase(inv.battery, it.phases) } : inv.battery; set({ ...inv, ...(battery ? { battery } : {}), catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, isc_max_mppt: it.isc_max_mppt, bat_i_max: it.bat_i_max, red_limit_mode: it.red_limit_mode || "Nu este declarată" }); }} />

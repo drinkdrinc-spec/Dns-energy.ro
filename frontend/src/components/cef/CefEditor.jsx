@@ -35,7 +35,20 @@ function sharedBatteryCatalogData(item) {
   };
 }
 
-function SharedBatteries({ list, set, catalog }) {
+function CatalogEquipmentSummary({ item, markup }) {
+  if (!item) return null;
+  return <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-3 py-2 text-[11px]" style={{ background: "var(--bg, #faf8f4)" }}>
+    <span className="font-semibold">{item.brand_model}</span>
+    {item.source_price && <span style={{ color: "var(--muted)" }}>Furnizor: {item.source_price}</span>}
+    {supplierPartnerPrice(item.source_price, markup) && <span className="font-bold" style={{ color: "var(--green, #168363)" }}>Orientativ DNS (+{markup}%): {supplierPartnerPrice(item.source_price, markup)} / unitate</span>}
+    {item.datasheet_url && <a className="font-semibold underline" style={{ color: "var(--green, #168363)" }} href={item.datasheet_url} target="_blank" rel="noopener noreferrer">Fișă tehnică</a>}
+    {item.conformity_url && <a className="font-semibold underline" style={{ color: "var(--green, #168363)" }} href={item.conformity_url} target="_blank" rel="noopener noreferrer">Conformitate</a>}
+    {!item.datasheet_url && item.datasheet?.storage_path && <span style={{ color: "var(--green, #168363)" }}>Fișa tehnică este salvată în catalog</span>}
+    {!item.conformity_url && item.conformity?.storage_path && <span style={{ color: "var(--green, #168363)" }}>Conformitatea este salvată în catalog</span>}
+  </div>;
+}
+
+function SharedBatteries({ list, set, catalog, supplierMarkup }) {
   const upd = (i, patch) => set(list.map((b, j) => (j === i ? { ...b, ...patch } : b)));
   return (
     <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="cef-shared">
@@ -43,6 +56,7 @@ function SharedBatteries({ list, set, catalog }) {
       <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Folosește doar dacă arhitectura producătorului permite funcționarea în paralel pe aceeași baterie.</p>
       {list.map((b, i) => (
         <div key={b.id} className="grid sm:grid-cols-4 gap-3 mb-3 pb-3 border-b" style={{ borderColor: "var(--line)" }} data-testid={`shared-${i}`}>
+          <div className="sm:col-span-4"><CatalogEquipmentSummary item={catalog.find((item) => item.id === b.catalog_id)} markup={supplierMarkup} /></div>
           <CatalogPick items={catalog} category="Baterie" selectedId={b.catalog_id} testid={`shared-${i}-pick`} onQueryChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, voltage_1ph: undefined, voltage_3ph: undefined, i_max: undefined, i_max_source_url: undefined, max_fuse_a: undefined, coupling: undefined, breaker_a: undefined, breaker_voltage_dc: undefined, breaker_integrated: undefined, breaker_poles: undefined, breaker_icu_ka: undefined, dc_switch_voltage_v: undefined, dc_switch_current_a: undefined, breaker_source_url: undefined, datasheet_url: undefined, conformity_url: undefined })} onPick={(it) => upd(i, sharedBatteryCatalogData(it))} />
           <F label="Model" value={b.model} onChange={(model) => upd(i, { catalog_id: undefined, model, kwh: undefined, ah: undefined, voltage: undefined, voltage_1ph: undefined, voltage_3ph: undefined, i_max: undefined, i_max_source_url: undefined, max_fuse_a: undefined, coupling: undefined, breaker_a: undefined, breaker_voltage_dc: undefined, breaker_integrated: undefined, breaker_poles: undefined, breaker_icu_ka: undefined, dc_switch_voltage_v: undefined, dc_switch_current_a: undefined, breaker_source_url: undefined, datasheet_url: undefined, conformity_url: undefined })} testid={`shared-${i}-model`} />
           <F label="kWh / modul" type="number" value={b.kwh} onChange={(v) => upd(i, { kwh: v })} testid={`shared-${i}-kwh`} />
@@ -192,10 +206,10 @@ export function CefEditor({ value, onChange, onSave, saving = false }) {
       <Totals res={res} inverters={invs} sharedBatteries={cef.shared_batteries || []} />
       <GridCard grid={cef.grid || {}} set={(g) => set({ grid: g })} catalog={catalog} res={res} />
       {invs.map((inv, i) => (
-        <InverterCard key={inv.id || i} idx={i} inv={inv} catalog={catalog} shared={cef.shared_batteries || []} res={res?.inverters?.[i]}
+        <InverterCard key={inv.id || i} idx={i} inv={inv} catalog={catalog} shared={cef.shared_batteries || []} res={res?.inverters?.[i]} supplierMarkup={supplierMarkup}
           set={(v) => set({ inverters: invs.map((x, j) => (j === i ? v : x)) })} remove={() => set({ inverters: invs.filter((_, j) => j !== i) })} />
       ))}
-      <SharedBatteries list={cef.shared_batteries || []} set={(l) => set({ shared_batteries: l })} catalog={catalog} />
+      <SharedBatteries list={cef.shared_batteries || []} set={(l) => set({ shared_batteries: l })} catalog={catalog} supplierMarkup={supplierMarkup} />
       <Issues errors={(res?.errors || []).filter((e) => !invErrs.has(e))} warnings={(res?.warnings || []).filter((w) => !invErrs.has(w))} testid="cef-global-issues" />
       {res && <p className="text-[11px]" style={{ color: "var(--muted)" }}>{res.note}</p>}
       {onSave && <div className="flex justify-end"><button type="button" className="rounded-lg px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60" style={{ background: "var(--green)" }} onClick={onSave} disabled={saving} data-testid="save-cef-card">{saving ? "Se salvează…" : "Salvează"}</button></div>}
