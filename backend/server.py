@@ -1501,7 +1501,7 @@ async def catalog_import_document(item_id: str, request: Request, user: dict = D
 
 @api_router.post("/catalog/{item_id}/recover-document")
 async def catalog_recover_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Re-import a missing technical PDF by finding its link on the saved product page."""
+    """Restore a missing technical PDF from its saved direct URL or public product page."""
     guard("catalog", user, write=True)
     body = await request.json()
     kind = str(body.get("kind") or "").strip()
@@ -1510,17 +1510,44 @@ async def catalog_recover_document(item_id: str, request: Request, user: dict = 
     item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
     if not item:
         raise HTTPException(status_code=404, detail="Modelul nu există în catalog")
+
+    document = item.get(kind)
+    direct_url = str(
+        item.get(kind + "_source_url")
+        or item.get(kind + "_url")
+        or (document.get("source_url") if isinstance(document, dict) else "")
+        or ""
+    ).strip()
+    direct_error = ""
+    if direct_url:
+        try:
+            return await catalog_import_document(
+                item_id, _TrustedCatalogImportRequest({"kind": kind, "url": direct_url}), user
+            )
+        except HTTPException as exc:
+            direct_error = str(exc.detail or "")
+
     supplier, product_url = catalog_product_source(item)
+    if supplier and product_url and item.get("category") in SUPPLIER_CATALOG.CATEGORIES:
+        try:
+            document_url = await SUPPLIER_CATALOG.get_public_product_document(
+                supplier, item["category"], product_url, kind
+            )
+            if document_url and document_url != direct_url:
+                return await catalog_import_document(
+                    item_id, _TrustedCatalogImportRequest({"kind": kind, "url": document_url}), user
+                )
+        except HTTPException as exc:
+            direct_error = direct_error or str(exc.detail or "")
+
+    if direct_error:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Nu am putut prelua PDF-ul salvat și nu s-a găsit o alternativă pe pagina produsului. {direct_error}",
+        )
     if not supplier or not product_url or item.get("category") not in SUPPLIER_CATALOG.CATEGORIES:
-        raise HTTPException(status_code=422, detail="Modelul nu are o pagină de produs verificabilă la un furnizor cunoscut")
-    document_url = await SUPPLIER_CATALOG.get_public_product_document(
-        supplier, item["category"], product_url, kind
-    )
-    if not document_url:
-        raise HTTPException(status_code=404, detail="Nu am găsit un PDF pentru acest tip în pagina publică a modelului")
-    return await catalog_import_document(
-        item_id, _TrustedCatalogImportRequest({"kind": kind, "url": document_url}), user
-    )
+        raise HTTPException(status_code=422, detail="Modelul nu are un link PDF sau o pagină verificabilă la un furnizor cunoscut")
+    raise HTTPException(status_code=404, detail="Nu am găsit un PDF pentru acest tip în pagina publică a modelului")
 
 
 @api_router.get("/files/{path:path}")
