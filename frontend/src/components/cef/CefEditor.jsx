@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { supplierPartnerPrice, useSupplierMarkup } from "@/lib/supplierPricing";
 import { GridCard } from "./GridCard";
 import { InverterCard } from "./InverterCard";
 import { Totals, Issues } from "./CefResults";
@@ -164,6 +165,7 @@ export function CefEditor({ value, onChange, onSave, saving = false }) {
           {supplierResults.map((product) => <article key={product.product_url} className="rounded-lg border p-2" style={{ borderColor: "var(--line)" }}>
             <p className="text-xs font-semibold">{product.brand_model}</p>
             <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted)" }}>{product.supplier}{product.price_text ? ` · ${product.price_text}` : ""}{product.availability ? ` · ${product.availability}` : ""}</p>
+            {supplierPartnerPrice(product.price_text, supplierMarkup) && <p className="mt-0.5 text-[11px] font-semibold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{supplierMarkup}%): {supplierPartnerPrice(product.price_text, supplierMarkup)} <span className="font-normal">{product.price_tax_note || "TVA de verificat la furnizor"}</span></p>}
             <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted)" }}>{product.datasheet_url ? "Fișă PDF disponibilă" : "Fișă PDF negăsită"} · {product.conformity_url ? "conformitate PDF disponibilă" : "conformitate PDF negăsită"}</p>
             <button type="button" className="mt-2 rounded-md border px-2 py-1.5 text-[11px] font-semibold disabled:opacity-50" style={{ borderColor: "var(--line)" }}
               onClick={() => importSupplierProduct(product)} disabled={supplierBusy}>Importă în catalog</button>
