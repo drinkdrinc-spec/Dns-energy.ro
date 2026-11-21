@@ -178,6 +178,25 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
         shared_keys, shared_exec = DOC_COMMON.get(key, ([], []))
         m += missing(shared_keys, shared_exec)
         m = list(dict.fromkeys(m))
+        if key == "date_stocare":
+            for battery_index, battery in enumerate(docgen.storage(ctx), 1):
+                model = str(battery.get("model") or f"bateria {battery_index}")
+                battery_missing = []
+                for field, label in (("kwh", "capacitatea în kWh pe modul"),
+                                     ("modules", "numărul modulelor"),
+                                     ("voltage", "tensiunea nominală"),
+                                     ("ah", "capacitatea în Ah"),
+                                     ("tech", "clasa bateriei LV/HV"),
+                                     ("coupling", "tipul de cuplare")):
+                    value = battery.get(field)
+                    if field in ("kwh", "modules", "voltage", "ah"):
+                        number = docgen.num(value, None)
+                        if number is None or number <= 0:
+                            battery_missing.append(label)
+                    elif value in (None, ""):
+                        battery_missing.append(label)
+                if battery_missing:
+                    m.append(f"{model}: completează/verifică " + ", ".join(battery_missing))
         if key == "notificare" and not (ctx.raw("inverter") or ctx.raw("panels")):
             m.append("Invertoare / panouri (configurare CEF)")
         if key in ("schema", "fisa_tehnica"):
