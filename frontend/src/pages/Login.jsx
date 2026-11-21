@@ -15,7 +15,7 @@ export default function Login() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [apiWarmup, setApiWarmup] = useState("checking");
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState(() => new URLSearchParams(window.location.search).get("mode") === "register" ? "register" : "login");
   const [name, setName] = useState("");
   const [gdpr, setGdpr] = useState(false);
   const [accountType, setAccountType] = useState("installer");
@@ -47,6 +47,7 @@ export default function Login() {
       if (reg) {
         if (!gdpr) { setErr("Citiți informarea și confirmați acordul privind prelucrarea datelor."); return; }
         if (!certFile) { setErr("Atașați certificatul ANRE pentru verificarea cererii."); return; }
+        if (certFile.size > 8 * 1024 * 1024) { setErr("Certificatul ANRE trebuie să aibă maximum 8 MB."); return; }
         const certificateBase64 = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
@@ -142,4 +143,5 @@ export default function Login() {
     </div>
   );
 }
+
 
