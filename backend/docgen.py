@@ -1,3 +1,4 @@
+import base64
 import io
 import os
 import re
@@ -765,8 +766,7 @@ DOCS = {
 def pdf_header(ctx):
     left = Paragraph(f"<b><font size=10>{ctx.company}</font></b><br/>{ctx.e('cui', '')} · {ctx.e('regcom', '')}<br/>Atestat ANRE {ctx.e('anre_attest', '')}", S["hdrl"])
     right = Paragraph(f"{ctx.e('phone', '')}<br/>{ctx.e('email', '')}<br/>{ctx.e('address', '')}", S["hdrr"])
-    logo_file = ctx.s.get("header_logo") or {}
-    logo = _img(logo_file.get("storage_path"), 22 * mm, 13 * mm) if isinstance(logo_file, dict) and logo_file.get("storage_path") else None
+    logo = _company_logo(ctx.s, 22 * mm, 13 * mm)
     if logo:
         left = Table([[logo, left]], colWidths=[24 * mm, 63 * mm])
         left.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 3)]))
@@ -798,6 +798,7 @@ def split_sig(lines):
 
 IMG_LOADER = None
 _IMG_CACHE = {}
+DEFAULT_COMPANY_LOGO_B64 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "brand-assets", "dns-energy-official.png.b64")
 
 
 def _img(path, w, h):
@@ -807,6 +808,37 @@ def _img(path, w, h):
         return Image(io.BytesIO(_IMG_CACHE[path]), width=w, height=h, kind="proportional")
     except Exception:
         return None
+
+def company_logo_bytes(settings):
+    logo_file = (settings or {}).get("header_logo") or {}
+    path = logo_file.get("storage_path") if isinstance(logo_file, dict) else None
+    if path and IMG_LOADER:
+        try:
+            data = IMG_LOADER(path)
+            if data:
+                return data
+        except Exception:
+            pass
+    try:
+        with open(DEFAULT_COMPANY_LOGO_B64, "rt", encoding="ascii") as logo:
+            return base64.b64decode(logo.read().strip(), validate=True)
+    except OSError:
+        return None
+
+
+def _company_logo(settings, w, h):
+    logo_file = (settings or {}).get("header_logo") or {}
+    path = logo_file.get("storage_path") if isinstance(logo_file, dict) else None
+    logo = _img(path, w, h) if path else None
+    if logo:
+        return logo
+    data = company_logo_bytes(settings)
+    if data:
+        try:
+            return Image(io.BytesIO(data), width=w, height=h, kind="proportional")
+        except Exception:
+            pass
+    return None
 
 
 def _signature_paths(lines, s):
