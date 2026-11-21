@@ -7,6 +7,7 @@ from PIL import Image as PILImage
 from pypdf import PdfReader
 
 import docgen
+import pif_doc as PIFDOC
 import cef as CEF
 import sizing as SZ
 import sld as SLD
@@ -97,6 +98,13 @@ def test_generated_document_header_uses_dns_official_logo_by_default(monkeypatch
     rec = {"name": "Beneficiar test", "address": "Adresa test", "operator": "DEER", "pod": "POD-TEST"}
     client = {"name": "Beneficiar test", "address": "Adresa test", "kind": "persoană fizică"}
     pdf = docgen.render(["declaratie_autenticitate"], rec, {"company": "DNS HOSTESS S.R.L."}, client)
+    assert len(PdfReader(BytesIO(pdf)).pages[0].images) >= 1
+
+
+def test_pif_document_uses_dns_official_logo_by_default(monkeypatch):
+    docgen._IMG_CACHE.clear()
+    monkeypatch.setattr(docgen, "IMG_LOADER", None)
+    pdf = PIFDOC.render(DEMO_REC, DEMO_CLIENT, {"company": "DNS HOSTESS S.R.L."})
     assert len(PdfReader(BytesIO(pdf)).pages[0].images) >= 1
 
 
