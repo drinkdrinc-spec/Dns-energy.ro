@@ -695,20 +695,36 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
         table = tables[panel_table]
         row = 2
         for idx, inv in enumerate(inverters, 1):
-            strings = inv.get("strings") or []
-            try:
-                panels = sum(int(D.num(x.get("panels"))) for x in strings) * max(1, int(D.num(inv.get("count")) or 1))
-            except (TypeError, ValueError):
-                panels = 0
-            if not panels and idx == 1:
-                panels = int(D.num(rec.get("panel_count") or pros.get("panel_count") or CEF.flatten(pros).get("panel_count")) or 0)
-            watts = D.num(inv.get("panel_w"))
-            model = inv.get("panel_model")
-            total_kw = panels * watts / 1000 if panels and watts else None
-            _deer_table_row(table, row, [str(idx), panels or "", model,
-                (f"{watts / 1000:g}" if watts else ""), (f"{total_kw:g}" if total_kw else ""),
-                "", (f"{total_kw:g}" if total_kw else ""), ""])
-            row += 1
+            quantity = max(1, int(D.num(inv.get("count")) or 1))
+            panel_groups = {}
+            if not (inv.get("battery_only") or inv.get("no_panels")):
+                for string in inv.get("strings") or []:
+                    panels_in_string = max(0, int(D.num(string.get("panels"))))
+                    if not panels_in_string:
+                        continue
+                    model = str(string.get("panel_model") or inv.get("panel_model") or "")
+                    watts = D.num(string.get("panel_w") if string.get("panel_w") not in (None, "") else inv.get("panel_w"))
+                    panel_groups.setdefault((model, watts), 0)
+                    panel_groups[(model, watts)] += panels_in_string * quantity
+                if not panel_groups and idx == 1:
+                    legacy_panels = int(D.num(rec.get("panel_count") or pros.get("panel_count") or CEF.flatten(pros).get("panel_count")) or 0)
+                    legacy_watts = D.num(inv.get("panel_w") or pros.get("panel_w") or CEF.flatten(pros).get("panel_w"))
+                    if legacy_panels:
+                        panel_groups[(str(inv.get("panel_model") or ""), legacy_watts)] = legacy_panels * quantity
+            if panel_groups:
+                for (model, watts), panels in panel_groups.items():
+                    total_kw = panels * watts / 1000 if panels and watts else None
+                    _deer_table_row(table, row, [str(idx), panels or "", model or "",
+                        (f"{watts / 1000:g}" if watts else ""), (f"{total_kw:g}" if total_kw else ""),
+                        "", (f"{total_kw:g}" if total_kw else ""), ""])
+                    row += 1
+            elif inv.get("battery_only") or inv.get("no_panels"):
+                _deer_table_row(table, row, [str(idx), "0", "Fără panouri (doar baterie)", "", "0", "", "0", ""])
+                row += 1
+            else:
+                _deer_table_row(table, row, [str(idx), "", inv.get("panel_model") or "",
+                    "", "", "", "", ""])
+                row += 1
 
     if len(tables) > inverter_table:
         table = tables[inverter_table]
