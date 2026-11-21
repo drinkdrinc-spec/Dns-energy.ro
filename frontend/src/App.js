@@ -27,7 +27,7 @@ const Contracts = lazy(() => import("@/pages/Contracts"));
 const OperatorAttest = lazy(() => import("@/pages/OperatorAttest"));
 const AdminOperators = lazy(() => import("@/pages/AdminOperators"));
 const AnreDossiers = lazy(() => import("@/pages/AnreDossiers"));
-const SchemaTehnica = lazy(() => import("@/pages/SchemaTehnica"));
+
 const DistributionPortals = lazy(() => import("@/pages/DistributionPortals"));
 const OperatorMessages = lazy(() => import("@/pages/OperatorMessages"));
 const ArchivedDossiers = lazy(() => import("@/pages/ArchivedDossiers"));
@@ -100,7 +100,7 @@ function AppRoutes() {
         <Route path="/oferte" element={<Gate feat="oferte"><Offers /></Gate>} />
         <Route path="/atestat-anre" element={<OperatorAttest />} />
         <Route path="/dosare-anre" element={<AnreDossiers />} />
-        <Route path="/schema-tehnica" element={<SchemaTehnica />} />
+        <Route path="/schema-tehnica" element={<Navigate to="/prosumator" replace />} />
         <Route path="/operatori-anre" element={<AdminOperators />} />
         <Route path="/contracte" element={<Gate feat="oferte"><Contracts /></Gate>} />
       </Route>
