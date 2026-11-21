@@ -367,6 +367,16 @@ def watermark(writer, text="CIORNĂ", size=70):
         page.merge_page(PdfReader(io.BytesIO(buf.getvalue())).pages[0])
 
 
+def mark_draft(pdf: bytes, text="CIORNĂ") -> bytes:
+    writer = PdfWriter()
+    for page in PdfReader(io.BytesIO(pdf)).pages:
+        writer.add_page(page)
+    watermark(writer, text)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
 async def position_pdf(p, rec, client, settings, titles, get_object, force_generated=False):
     if p.get("upload") and not force_generated:
         data, ct = get_object(p["upload"]["storage_path"])
@@ -427,8 +437,8 @@ def _incomplete_report(positions_info, unavailable):
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
                             topMargin=20 * mm, bottomMargin=18 * mm, title="Verificare dosar DNS Energy")
     story = [
-        Paragraph("LISTĂ DE VERIFICARE — DOSAR INCOMPLET", docgen.S["h"]),
-        Paragraph("Acest PDF este o ciornă. Lista de mai jos arată ce lipsește sau ce nu a putut fi inclus. Nu confirmă conformitatea și nu înlocuiește verificarea tehnică ori cerințele operatorului.", docgen.S["p"]),
+        Paragraph("LISTĂ DE VERIFICARE — ELEMENTE DE COMPLETAT", docgen.S["h"]),
+        Paragraph("Lista de mai jos arată ce lipsește sau ce nu a putut fi inclus. Marcajul CIORNĂ apare numai pe documentele generate care au date incomplete; documentele complete și fișierele atașate rămân nemodificate. Dosarul se finalizează după completarea și verificarea elementelor de mai jos.", docgen.S["p"]),
         Spacer(1, 5 * mm),
     ]
     for title, items in rows:
@@ -442,25 +452,31 @@ def _incomplete_report(positions_info, unavailable):
 async def export_bundle(positions_info, rec, client, settings, get_object, logger):
     titles = positions_info["titles"]
     w = PdfWriter()
-    parts = [docgen.render(["declaratie_autenticitate"], rec, settings, client, titles)]
+    parts = [docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
+                           draft=not positions_info["complete"])]
     unavailable = []
     for p in positions_info["positions"]:
         try:
-            parts += await position_pdf(p, rec, client, settings, titles, get_object)
+            position_parts = await position_pdf(p, rec, client, settings, titles, get_object)
+            if p.get("source") == "generat" and p.get("missing") and p.get("key") not in ("schema", "fisa_tehnica"):
+                position_parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in position_parts]
+            parts += position_parts
         except Exception as e:
             logger.error(f"bundle skip {p['key']}: {e}")
             unavailable.append(p.get("title") or p.get("key") or "Document atașat")
+    if unavailable and positions_info["complete"]:
+        parts[0] = mark_draft(parts[0], "CIORNĂ — FIȘIER LIPSĂ")
     report = _incomplete_report(positions_info, unavailable)
     if report:
-        parts.append(report)
+        parts.insert(1, report)
     for b in parts:
         try:
             for pg in PdfReader(io.BytesIO(b)).pages:
                 w.add_page(pg)
         except Exception as e:
             logger.error(f"bundle merge skip: {e}")
-    if not positions_info["complete"] or unavailable:
-        watermark(w)
+    # Missing files or fields affect only the relevant generated document and
+    # the verification list; complete attachments and forms remain unaltered.
     if rec.get("is_test"):
         watermark(w, "DOSAR DE TEST — NEOFICIAL", 38)
     out = io.BytesIO()
