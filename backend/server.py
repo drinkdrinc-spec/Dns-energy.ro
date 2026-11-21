@@ -494,8 +494,6 @@ async def login(body: LoginReq, request: Request):
         raise HTTPException(status_code=429, detail="Prea multe încercări eșuate. Încercați din nou peste 15 minute.")
     private_mode = os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-    if private_mode and (not admin_email or email != admin_email):
-        raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(body.password, user["password_hash"]):
         lock_until = datetime.now(timezone.utc) + timedelta(minutes=15)
@@ -504,6 +502,8 @@ async def login(body: LoginReq, request: Request):
         }, upsert=True)
         raise HTTPException(status_code=401, detail="Email sau parolă incorectă")
     await db.login_attempts.delete_many({"identifier": ident})
+    if private_mode and email != admin_email and user.get("account_type") not in ("installer", "partner"):
+        raise HTTPException(status_code=403, detail="Acces permis administratorului și partenerilor aprobați DNS Energy")
     if user.get("status", "active") != "active":
         raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
     tok = create_access_token(user["id"], email, int(user.get("token_version", 0)))
