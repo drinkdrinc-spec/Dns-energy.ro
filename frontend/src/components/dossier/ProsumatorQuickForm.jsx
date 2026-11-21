@@ -92,7 +92,7 @@ function proposeStrings(inv, totalPanels) {
 }
 
 export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBusyChange }) {
-  const [supplierMarkup] = useSupplierMarkup();
+  const [supplierMarkup, setSupplierMarkup] = useSupplierMarkup();
   const [catalog, setCatalog] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [problem, setProblem] = useState("");
@@ -506,6 +506,11 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         </div>
         {supplierSearch.kind === kind && (supplierSearch.products.length > 0 || supplierSearch.message) && <div className="mt-2 space-y-2 rounded-lg border p-2" style={{ borderColor: "var(--line)" }}>
           {supplierSearch.message && <p className="text-xs" role="status">{supplierSearch.message}</p>}
+          <label className="inline-flex items-center gap-2 text-[11px] font-semibold">Adaos pentru preț DNS
+            <select className="den-input min-h-8 w-20 py-1 text-xs" value={supplierMarkup} onChange={(event) => setSupplierMarkup(Number(event.target.value))} aria-label="Adaos preț DNS">
+              <option value={15}>15%</option><option value={20}>20%</option>
+            </select>
+          </label>
           {supplierSearch.products.map((product) => <div key={product.product_url} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 p-2">
             <div className="min-w-0"><p className="text-xs font-semibold">{product.brand_model}</p>
               <p className="text-[11px]" style={{ color: "var(--muted)" }}>{product.supplier}{product.price_text ? ` · ${product.price_text}` : ""}{product.availability ? ` · ${product.availability}` : ""}</p>
