@@ -29,6 +29,7 @@ EL = {"company": "Denumire executant", "cui": "CUI executant", "regcom": "Reg. C
       "warranty_months": "Garanție lucrări (luni)", "meter_device": "Aparat de măsură", "meter_serial": "Serie aparat de măsură", "meter_valid": "Valabilitate metrologică"}
 
 GEN = [("notificare", "Anexa 2 — Notificare (Ord. ANRE 19/2022)", ["notificare"], ["apparent_kva", "power", "doc_date", "internal_pi", "internal_pmax"], []),
+       ("date_stocare", "Date despre instalația de stocare", ["date_stocare"], [], []),
        ("schema", "Schemă monofilară", ["sld"], [], []),
        ("fisa_tehnica", "Fișă tehnică instalație — echipamente, cabluri și protecții", ["fisa_tehnica"], [], []),
        ("afm", "Declarație accesare fonduri (AFM)", ["declaratie_afm"], ["afm", "doc_date"], []),
@@ -45,7 +46,7 @@ EXEC = ["company", "cui", "regcom", "address", "phone", "email", "anre_attest", 
 
 # Missing shared values should affect only documents that actually print them.
 DOC_COMMON = {
-    "notificare": (COMMON, EXEC), "schema": (["name", "address", "county", "pod", "operator"], ["company", "rep"]),
+    "notificare": (COMMON, EXEC), "date_stocare": (["name", "address", "pod"], ["company", "rep"]), "schema": (["name", "address", "county", "pod", "operator"], ["company", "rep"]),
     "fisa_tehnica": (["name", "address", "county", "pod", "operator"], ["company", "rep"]),
     "afm": (["name", "idcode", "hq_address"], []), "reglaj": (["name", "address"], ["company", "rep"]),
     "priza": (["name", "address", "county"], ["company", "rep"]),
@@ -146,6 +147,8 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     res_sld = SZ.compute(rec, client)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
+        if key == "date_stocare" and not docgen.storage(ctx):
+            continue
         if key == "notificare" and ctx.power_increase:
             operator_name = str(rec.get("operator") or client.get("operator") or "").casefold()
             is_deer = ("deer" in operator_name or "distributie energie electrica" in operator_name
@@ -274,14 +277,15 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     def dossier_order(p):
         key = p.get("key", "")
         priority = {
-            "notificare": 10, "certificat": 20, "factura": 22, "cf": 24, "gdpr": 30,
-            "afm": 40, "schema": 50, "fisa_tehnica": 60, "reglaj": 80,
-            "priza": 90, "metrologie_pram": 95, "pif_pv": 100, "pif": 110, "receptie": 120,
-            "anre_firma": 125,
-            "executant": 130, "conformitate": 140, "imputernicire": 150,
+            # Follow the practical submission sequence used in the ReEnergy dossier.
+            "priza": 5, "notificare": 10, "date_stocare": 15, "gdpr": 20,
+            "imputernicire": 25, "afm": 30, "executant": 35, "conformitate": 40,
+            "receptie": 45, "pif_pv": 50, "pif": 55, "reglaj": 60,
+            "schema": 70, "fisa_tehnica": 75, "certificat": 80, "factura": 82, "cf": 84,
+            "metrologie_pram": 90, "anre_firma": 95,
         }
         if key.startswith("cat_"):
-            return (70, p.get("title", "").lower())
+            return (85, p.get("title", "").lower())
         return (priority.get(key, 500), p.get("title", "").lower())
 
     pos.sort(key=dossier_order)
@@ -452,8 +456,9 @@ def _incomplete_report(positions_info, unavailable):
 async def export_bundle(positions_info, rec, client, settings, get_object, logger):
     titles = positions_info["titles"]
     w = PdfWriter()
-    parts = [docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
-                           draft=not positions_info["complete"])]
+    authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
+                                      draft=not positions_info["complete"])
+    parts = []
     unavailable = []
     for p in positions_info["positions"]:
         try:
@@ -465,10 +470,13 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
             logger.error(f"bundle skip {p['key']}: {e}")
             unavailable.append(p.get("title") or p.get("key") or "Document atașat")
     if unavailable and positions_info["complete"]:
-        parts[0] = mark_draft(parts[0], "CIORNĂ — FIȘIER LIPSĂ")
+        authenticity_page = mark_draft(authenticity_page, "CIORNĂ — FIȘIER LIPSĂ")
+    # Keep the review/index page after submission documents; the bundle opens
+    # with real PRAM evidence and official application forms.
     report = _incomplete_report(positions_info, unavailable)
     if report:
-        parts.insert(1, report)
+        parts.append(report)
+    parts.append(authenticity_page)
     for b in parts:
         try:
             for pg in PdfReader(io.BytesIO(b)).pages:
