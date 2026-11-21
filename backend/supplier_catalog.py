@@ -299,13 +299,18 @@ def _offer(doc):
     visible_price = ""
     for xpath in price_xpaths:
         for node in doc.xpath(xpath):
+            # WooCommerce sale prices render both the struck-through old amount
+            # inside <del> and the payable amount inside <ins>. Prefer the active
+            # <ins> value, then any visible amount outside <del>.
             current = node.xpath(
                 ".//*[contains(concat(' ',normalize-space(@class),' '),' amount ') "
-                "and (ancestor::ins or contains(concat(' ',normalize-space(@class),' '),' woocommerce-Price-amount '))]"
+                "or contains(concat(' ',normalize-space(@class),' '),' woocommerce-Price-amount ')]"
+                "[ancestor::ins and not(ancestor::del)]"
             )
             amounts = current or node.xpath(
                 ".//*[contains(concat(' ',normalize-space(@class),' '),' amount ') "
                 "or contains(concat(' ',normalize-space(@class),' '),' woocommerce-Price-amount ')]"
+                "[not(ancestor::del)]"
             )
             visible_price = (" ".join(" ".join(amounts[0].itertext()).split())
                              if amounts else " ".join(" ".join(node.itertext()).split()))
