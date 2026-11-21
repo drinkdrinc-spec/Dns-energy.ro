@@ -86,7 +86,20 @@ async function apiErrorMessage(error) {
   return typeof data?.detail === "string" ? data.detail : "Nu am putut genera documentul. Verifică datele și încearcă din nou.";
 }
 
-export async function downloadAuthenticatedFile(path, fallbackName = "document") {
+const activeFileOperations = new Map();
+
+function runFileOperationOnce(key, operation) {
+  const active = activeFileOperations.get(key);
+  if (active) return active;
+  const request = Promise.resolve().then(operation).finally(() => {
+    if (activeFileOperations.get(key) === request) activeFileOperations.delete(key);
+  });
+  activeFileOperations.set(key, request);
+  return request;
+}
+
+export function downloadAuthenticatedFile(path, fallbackName = "document") {
+  return runFileOperationOnce(`download:${path}:${fallbackName}`, async () => {
   try {
     const response = await api.get(path, { responseType: "blob" });
     const disposition = response.headers["content-disposition"] || "";
@@ -107,6 +120,7 @@ export async function downloadAuthenticatedFile(path, fallbackName = "document")
   } catch (error) {
     window.alert(await apiErrorMessage(error));
   }
+  });
 }
 
 function openBlobInCurrentTab(blob) {
@@ -128,7 +142,8 @@ function downloadBlob(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
 }
 
-export async function openAuthenticatedFile(path, fallbackName = "document") {
+export function openAuthenticatedFile(path, fallbackName = "document") {
+  return runFileOperationOnce(`open:${path}:${fallbackName}`, async () => {
   try {
     const response = await api.get(path, { responseType: "blob" });
     const disposition = response.headers["content-disposition"] || "";
@@ -152,6 +167,7 @@ export async function openAuthenticatedFile(path, fallbackName = "document") {
   } catch (error) {
     window.alert(await apiErrorMessage(error));
   }
+  });
 }
 
 /*
