@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { supplierPartnerPrice, useSupplierMarkup } from "@/lib/supplierPricing";
 import { hasConfiguredStorage } from "@/lib/cefStorage";
 
 const field = (cfg, name) => (cfg.fields || []).find((f) => f.name === name);
@@ -91,6 +92,7 @@ function proposeStrings(inv, totalPanels) {
 }
 
 export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBusyChange }) {
+  const [supplierMarkup] = useSupplierMarkup();
   const [catalog, setCatalog] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [problem, setProblem] = useState("");
@@ -507,6 +509,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
           {supplierSearch.products.map((product) => <div key={product.product_url} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 p-2">
             <div className="min-w-0"><p className="text-xs font-semibold">{product.brand_model}</p>
               <p className="text-[11px]" style={{ color: "var(--muted)" }}>{product.supplier}{product.price_text ? ` · ${product.price_text}` : ""}{product.availability ? ` · ${product.availability}` : ""}</p>
+              {supplierPartnerPrice(product.price_text, supplierMarkup) && <p className="text-[11px] font-semibold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{supplierMarkup}%): {supplierPartnerPrice(product.price_text, supplierMarkup)} <span className="font-normal">{product.price_tax_note || "TVA de verificat la furnizor"}</span></p>}
               <p className="text-[11px]" style={{ color: "var(--muted)" }}>{product.datasheet_url ? "Fișă PDF" : "Fișă indisponibilă"} · {product.conformity_url ? "conformitate PDF" : "conformitate indisponibilă"}</p></div>
             <button type="button" className="rounded-lg border px-3 py-2 text-xs font-bold" style={{ borderColor: "var(--line)" }}
               disabled={supplierSearch.loading} onClick={() => importSupplierModel(kind, product)}>Importă în catalog și selectează</button>
