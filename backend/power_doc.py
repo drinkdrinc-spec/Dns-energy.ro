@@ -67,6 +67,64 @@ def box(v):
     return "<b>[X]</b>" if v else "[  ]"
 
 
+def _generator_tables(invs: list) -> tuple[list, list, list]:
+    """Build the ANRE generator tables from each inverter's actual string models."""
+    rows = [["Nr. crt.", "Nr. panouri", "Tip", "Pi panou (c.c.) (kW)", "Pi total panouri (c.c.) (kW)", "Pmax debitat (c.c.) (kW)", "Pi total panouri pe 1 invertor (kW)", "Obs."]]
+    irows = [["Nr. crt.", "Nr. invertoare", "Tipul invertoarelor", "Un invertor (c.a.) (V)", "Pi invertor (c.a.) (kW)", "Pmax evacuată în reţea (kW)", "Obs."]]
+    export_limit_notes = []
+    for i, inv in enumerate(invs):
+        unit_count = max(1, int(D.num(inv.get("count") or inv.get("quantity")) or 1))
+        battery_only = bool(inv.get("battery_only") or inv.get("no_panels"))
+        groups = {}
+        if not battery_only:
+            for string in inv.get("strings") or []:
+                panels = max(0, int(D.num(string.get("panels"))))
+                if not panels:
+                    continue
+                model = str(string.get("panel_model") or inv.get("panel_model") or M)
+                panel_w = D.num(string.get("panel_w") if string.get("panel_w") not in (None, "") else inv.get("panel_w"))
+                key = (model, round(panel_w, 3))
+                groups[key] = groups.get(key, 0) + panels
+            # Older records may have a panel count but no per-string breakdown.
+            if not groups and D.num(inv.get("panel_count")) > 0:
+                groups[(str(inv.get("panel_model") or M), round(D.num(inv.get("panel_w")), 3))] = int(D.num(inv.get("panel_count")))
+        if groups:
+            for (model, panel_w), panels_per_inverter in sorted(groups.items(), key=lambda item: (item[0][0].casefold(), item[0][1])):
+                total_panels = panels_per_inverter * unit_count
+                panel_kw = panel_w / 1000 if panel_w > 0 else 0
+                total_kwp = D.fmt(total_panels * panel_kw, 3) if panel_kw else ""
+                per_inverter_kwp = D.fmt(panels_per_inverter * panel_kw, 3) if panel_kw else ""
+                rows.append([str(i + 1), str(total_panels), escape(model), D.fmt(panel_kw, 3) if panel_kw else "",
+                             total_kwp, total_kwp, per_inverter_kwp, ""])
+        else:
+            rows.append([str(i + 1), "0" if battery_only else "", "Fără panouri (doar baterie)" if battery_only else "Model panou nedeclarat",
+                         "", "", "", "", ""])
+        rated_kw = D.num(inv.get("p_nom_kw"))
+        max_kw = D.num(inv.get("p_max_kw")) or rated_kw
+        configured_limit = D.num(inv.get("p_limit_kw"))
+        if battery_only:
+            export_per_inverter = 0
+            export_total = "0"
+            limit_note = f"{inv.get('brand_model') or 'Invertor'}: doar baterie — putere evacuată 0 kW"
+            inverter_note = "Doar baterie; fără panouri; injecție 0 kW"
+        else:
+            export_per_inverter = min(configured_limit, max_kw) if configured_limit and configured_limit > 0 and max_kw > 0 else (
+                configured_limit if configured_limit and configured_limit > 0 else max_kw)
+            export_total = D.fmt(export_per_inverter * unit_count, 3) if export_per_inverter and export_per_inverter > 0 else ""
+            limit_note = (f"{inv.get('brand_model') or 'Invertor'}: {configured_limit:g} kW/invertor × {unit_count} buc. = {configured_limit * unit_count:g} kW total"
+                          if configured_limit and configured_limit > 0 else
+                          f"{inv.get('brand_model') or 'Invertor'}: limită de injecție nedeclarată")
+            inverter_note = "Limită setată" if configured_limit and configured_limit > 0 else "Nedeclarată"
+        irows.append([str(i + 1), str(unit_count), escape(inv.get("brand_model") or ""),
+                      "400" if "tri" in str(inv.get("phases") or "").lower() else "230" if inv.get("phases") else "",
+                      escape(str(rated_kw if rated_kw > 0 else "")), export_total, inverter_note])
+        export_limit_notes.append(limit_note)
+    if not invs:
+        rows.append([""] * 8)
+        irows.append([""] * 7)
+    return rows, irows, export_limit_notes
+
+
 def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, op: str = "") -> bytes:
     from atr_doc import OP_NAMES
     st = D.S
@@ -109,34 +167,7 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, o
               P(f"2.1. Puterea aprobată — Puterea maximă simultan evacuată în reţea: <b>{g(p, 'power')}</b> kW / <b>{g(p, 'apparent_kva')}</b> kVA"),
               P("2.2. Generatoare fotovoltaice:")]
     invs = (pros.get("cef") or {}).get("inverters") or [] if pros else []
-    rows = [["Nr. crt.", "Nr. panouri", "Tip", "Pi panou (c.c.) (kW)", "Pi total panouri (c.c.) (kW)", "Pmax debitat (c.c.) (kW)", "Pi total panouri pe 1 invertor (kW)", "Obs."]]
-    irows = [["Nr. crt.", "Nr. invertoare", "Tipul invertoarelor", "Un invertor (c.a.) (V)", "Pi invertor (c.a.) (kW)", "Pmax evacuată în reţea (kW)", "Obs."]]
-    export_limit_notes = []
-    for i, inv in enumerate(invs):
-        unit_count = max(1, int(D.num(inv.get("count") or inv.get("quantity")) or 1))
-        panels_per_inverter = sum(int(D.num(x.get("panels"))) for x in inv.get("strings") or [])
-        total_panels = panels_per_inverter * unit_count
-        w = D.num(inv.get("panel_w")) / 1000
-        total_kwp = D.fmt(total_panels * w, 3) if total_panels and w else ""
-        per_inverter_kwp = D.fmt(panels_per_inverter * w, 3) if panels_per_inverter and w else ""
-        rows.append([str(i + 1), str(total_panels or ""), escape(inv.get("panel_model") or ""), D.fmt(w, 3) if w else "",
-                     total_kwp, total_kwp, per_inverter_kwp, ""])
-        rated_kw = D.num(inv.get("p_nom_kw"))
-        max_kw = D.num(inv.get("p_max_kw")) or rated_kw
-        configured_limit = D.num(inv.get("p_limit_kw"))
-        export_per_inverter = min(configured_limit, max_kw) if configured_limit and configured_limit > 0 and max_kw > 0 else (
-            configured_limit if configured_limit and configured_limit > 0 else max_kw)
-        export_total = D.fmt(export_per_inverter * unit_count, 3) if export_per_inverter and export_per_inverter > 0 else ""
-        limit_note = (f"{inv.get('brand_model') or 'Invertor'}: {configured_limit:g} kW/invertor × {unit_count} buc. = {configured_limit * unit_count:g} kW total"
-                      if configured_limit and configured_limit > 0 else
-                      f"{inv.get('brand_model') or 'Invertor'}: limită de injecție nedeclarată")
-        export_limit_notes.append(limit_note)
-        irows.append([str(i + 1), str(unit_count), escape(inv.get("brand_model") or ""),
-                      "400" if "tri" in str(inv.get("phases") or "").lower() else "230" if inv.get("phases") else "",
-                      escape(str(rated_kw if rated_kw > 0 else "")), export_total,
-                      "Limită setată" if configured_limit and configured_limit > 0 else "Nedeclarată"])
-    if not invs:
-        rows.append([""] * 8); irows.append([""] * 7)
+    rows, irows, export_limit_notes = _generator_tables(invs)
     story += [T(rows, [7, 9, 22, 11, 13, 12, 14, 8]), Spacer(1, 3), P("Invertoare:"), T(irows, [7, 10, 30, 12, 12, 16, 9]),
               P("Limită de injecție declarată: " + escape("; ".join(export_limit_notes) or "nedeclarată în configurarea invertorului."), "small"), Spacer(1, 3),
               P(f"2.3. Serviciile interne ale instalaţiei de producere: Pi servicii interne {g(p, 'internal_pi')} kW; Puterea maximă simultan absorbită servicii interne {g(p, 'internal_pmax')} kW"),
