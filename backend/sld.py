@@ -696,7 +696,7 @@ def execution_notes(S, area, rec):
         notes.append(f"SPD AC: {grid['spd_ac']} — tablou general")
     backups = [inv.get("backup") or {} for inv in inverters if (inv.get("backup") or {}).get("enabled")]
     if backups:
-        notes.insert(0, "Back-up/EPS: QINT separă instalația de RED la căderea rețelei; în insularizare se alimentează doar consumul local, fără injecție în RED. Reconectare după ≥15 min de la revenirea tensiunii (Ordin ANRE 228/2018, art. 10 lit. c și art. 14).")
+        notes.insert(0, "Back-up/EPS: QINT separă instalația de RED la căderea rețelei; în insularizare se alimentează doar consumul local, fără injecție în RED. Reconectare după ≥15 min de la revenirea tensiunii (Ordinul ANRE nr. 228/2018, art. 10 alin. (2) lit. c și art. 14 alin. (1), (4)).")
         for backup in backups[:2]:
             notes.append("Backup: " + ", ".join(str(v) for v in (backup.get("type"), backup.get("circuits")) if v))
     measured = grid.get("grounding_ohm") or rec.get("grounding_ohm")
