@@ -765,6 +765,11 @@ DOCS = {
 def pdf_header(ctx):
     left = Paragraph(f"<b><font size=10>{ctx.company}</font></b><br/>{ctx.e('cui', '')} · {ctx.e('regcom', '')}<br/>Atestat ANRE {ctx.e('anre_attest', '')}", S["hdrl"])
     right = Paragraph(f"{ctx.e('phone', '')}<br/>{ctx.e('email', '')}<br/>{ctx.e('address', '')}", S["hdrr"])
+    logo_file = ctx.s.get("header_logo") or {}
+    logo = _img(logo_file.get("storage_path"), 22 * mm, 13 * mm) if isinstance(logo_file, dict) and logo_file.get("storage_path") else None
+    if logo:
+        left = Table([[logo, left]], colWidths=[24 * mm, 63 * mm])
+        left.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 3)]))
     t = Table([[left, right]], colWidths=[87 * mm, 87 * mm])
     t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, 0), 0.6, GRID), ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
     return [t, Spacer(1, 10)]
