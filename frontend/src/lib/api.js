@@ -159,7 +159,7 @@ export function openAuthenticatedFile(path, fallbackName = "document") {
       ? response.data
       : new Blob([response.data], { type: extensionType || headerType || "application/pdf" });
     const contentType = blob.type || extensionType || headerType;
-    if (contentType === "application/pdf" || /\\.pdf$/i.test(filename)) {
+    if (contentType === "application/pdf" || /\.pdf$/i.test(filename)) {
       if (!blob.size) throw new Error("Fișierul PDF primit este gol. Reîncarcă dosarul și încearcă din nou.");
       const header = await blob.slice(0, 1024).text();
       if (!header.includes("%PDF-")) throw new Error("Serverul nu a returnat un PDF valid. Încearcă din nou; dacă se repetă, anunță administratorul.");
