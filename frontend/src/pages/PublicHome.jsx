@@ -102,7 +102,7 @@ export default function PublicHome() {
         <div className="dns-hero-inner">
           <div className="dns-hero-copy">
             <div className="dns-eyebrow"><span /> PANOURI FOTOVOLTAICE · INSTALAȚII REZIDENȚIALE ȘI INDUSTRIALE</div>
-            <h1>Soluții fotovoltaice și electrice,<br /><em>de la proiectare la execuție.</em></h1>
+            <h1>Soluții fotovoltaice și electrice<br /><em>pentru locuințe și afaceri.</em></h1>
             <p className="dns-hero-lede">Proiectăm, furnizăm și instalăm sisteme fotovoltaice pentru locuințe, afaceri și obiective industriale — de la alegerea echipamentelor și structurilor până la montaj și integrare electrică.</p>
             <div className="dns-hero-actions"><a href="#contact" className="dns-button dns-button-primary">Solicitați o ofertă <ArrowRight size={18} /></a><a href="#echipamente" className="dns-text-link">Vezi echipamentele <ArrowDown size={16} /></a></div>
             <div className="dns-hero-note"><ShieldCheck size={16} /> Structuri la sol și pe acoperiș · soluții casnice și industriale</div>
