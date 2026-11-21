@@ -379,27 +379,38 @@ def check(cef: dict) -> dict:
         dmat, dL, ds = dc.get("material") or "Cu", n(dc.get("length_m")), n(dc.get("section"))
         isc_max = max([sum(x["isc"] for x in ss) for ss in per_mppt.values()] or [0])
         isc1 = max([x["isc"] for x in strings] or [0])
-        i_dc = 1.25 * isc1
-        vmp_any = max([x["vmp_stc"] for x in strings] or [0])
+        isc_complete = bool(strings) and all(x["isc"] > 0 for x in strings)
+        i_dc = 1.25 * isc1 if isc_complete else None
+        dc_operating = [
+            (x["imp"] or (x["panel_w"] / x["panel_vmp"] if x["panel_vmp"] else 0), x["vmp_stc"])
+            for x in strings
+        ]
+        drop_complete = bool(dc_operating) and all(current > 0 and voltage > 0 for current, voltage in dc_operating)
         voc_values = [x["voc_cold"] for x in strings if x.get("voc_cold") is not None]
         voc_cold_max = max(voc_values) if voc_values else 0
         p_ds = None
         for sct in SECTIONS[1:]:
-            if iz(sct, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True) >= i_dc and (not dL or vdrop_dc(isc1, dL, sct, dmat, vmp_any) <= 1):
+            if i_dc and iz(sct, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True) >= i_dc and (
+                not dL or (drop_complete and all(vdrop_dc(current, dL, sct, dmat, voltage) <= 1
+                                                 for current, voltage in dc_operating))
+            ):
                 p_ds = sct; break
         par = max([len(ss) for ss in per_mppt.values()] or [0])
-        fuse = up(GPV, 1.5 * isc1) if par >= 3 else None
+        fuse = up(GPV, 1.5 * isc1) if par >= 3 and isc_complete else None
         spd_ucpv = up([600, 800, 1000, 1100, 1200, 1500], voc_cold_max * 1.0) if voc_cold_max else None
-        prop["dc"] = {"section": p_ds, "fuse": fuse, "fuse_note": "necesare (≥3 stringuri în paralel)" if fuse else "nu sunt necesare (≤2 stringuri în paralel/MPPT)",
-                      "spd_ucpv": spd_ucpv, "i_design": round(i_dc, 1)}
+        fuse_note = ("necesare (≥3 stringuri în paralel)" if isc_complete else "de dimensionat după fișa panoului")
+        if par < 3:
+            fuse_note = "nu sunt necesare (≤2 stringuri în paralel/MPPT)"
+        prop["dc"] = {"section": p_ds, "fuse": fuse, "fuse_note": fuse_note,
+                      "spd_ucpv": spd_ucpv, "i_design": round(i_dc, 1) if i_dc is not None else None}
         if ds and strings:
             izd = iz(ds, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True)
-            if izd < i_dc:
+            if i_dc is not None and izd < i_dc:
                 e.append(f"{tag}: cablul DC {ds:g} mm² (Iz {izd:.0f} A) sub 1,25·Isc = {i_dc:.1f} A.")
-            dud = vdrop_dc(isc1, dL, ds, dmat, vmp_any)
-            if dud > 1:
+            dud = max((vdrop_dc(current, dL, ds, dmat, voltage) for current, voltage in dc_operating), default=0) if drop_complete else None
+            if dud is not None and dud > 1:
                 w.append(f"{tag}: cădere de tensiune DC {dud:.2f}% > 1% recomandat.")
-            prop["dc"].update({"iz": round(izd, 1), "du": round(dud, 2)})
+            prop["dc"].update({"iz": round(izd, 1), "du": round(dud, 2) if dud is not None else None})
         spd = n(dc.get("spd_ucpv"))
         if spd and voc_cold_max and spd < voc_cold_max:
             e.append(f"{tag}: SPD DC Ucpv {spd:g} V sub Voc la rece ({voc_cold_max:.0f} V).")
