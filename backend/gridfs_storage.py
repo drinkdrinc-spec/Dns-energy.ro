@@ -26,6 +26,14 @@ _legacy_key = None
 def init_storage(force: bool = False):
     """Fail startup if MongoDB is unavailable; legacy storage remains read-only and lazy."""
     _client.admin.command("ping")
+    r2_required = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME")
+    r2_missing = [name for name in r2_required if not (os.environ.get(name) or "").strip()]
+    logger.info(
+        "Storage readiness: GridFS=ready; R2=%s (missing settings: %s); legacy access key=%s",
+        "ready" if not r2_missing else "not configured",
+        ", ".join(r2_missing) if r2_missing else "none",
+        "configured" if LEGACY_STORAGE_KEY else "missing",
+    )
     return True
 
 
