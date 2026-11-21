@@ -84,6 +84,22 @@ def test_generated_document_header_embeds_configured_company_logo(monkeypatch):
     assert len(PdfReader(BytesIO(pdf)).pages[0].images) >= 1
 
 
+def test_generated_sld_uses_dns_official_logo_by_default():
+    res = SZ.compute(DEMO_REC, DEMO_CLIENT)
+    pdf = SLD.render(DEMO_REC, DEMO_CLIENT, {"company": "DNS HOSTESS S.R.L."}, res,
+                     {"status": "draft"}, fmt="A3", demo=True)
+    assert len(PdfReader(BytesIO(pdf)).pages[0].images) == 1
+
+
+def test_generated_document_header_uses_dns_official_logo_by_default(monkeypatch):
+    docgen._IMG_CACHE.clear()
+    monkeypatch.setattr(docgen, "IMG_LOADER", None)
+    rec = {"name": "Beneficiar test", "address": "Adresa test", "operator": "DEER", "pod": "POD-TEST"}
+    client = {"name": "Beneficiar test", "address": "Adresa test", "kind": "persoană fizică"}
+    pdf = docgen.render(["declaratie_autenticitate"], rec, {"company": "DNS HOSTESS S.R.L."}, client)
+    assert len(PdfReader(BytesIO(pdf)).pages[0].images) >= 1
+
+
 def test_schema_pdf_marks_missing_battery_switch_rating_for_confirmation():
     cef = _sample_cef()
     battery = cef["inverters"][0]["battery"]
