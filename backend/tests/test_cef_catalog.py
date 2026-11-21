@@ -11,6 +11,8 @@ import copy
 import uuid
 import pytest
 import requests
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from pypdf import PdfReader
 from reportlab.pdfgen import canvas
 
