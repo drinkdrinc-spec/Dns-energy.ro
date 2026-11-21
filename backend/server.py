@@ -402,7 +402,6 @@ def pub_user(u: dict) -> dict:
     return {"id": u.get("uid") or u["id"], "email": u["email"], "name": u.get("name"), "role": u.get("role", "admin"), "status": u.get("status", "active"),
             "phone": u.get("phone"), "function": u.get("function"), "staff_id": u.get("staff_id"), "account_type": u.get("account_type") or ("team" if u.get("tenant") else "owner"),
             "anre_certificate_number": u.get("anre_certificate_number"),
-            "anre_certificate_path": u.get("anre_certificate_path"),
             "plan": u.get("plan"), "platform": bool(PLATFORM["id"]) and (u.get("uid") or u["id"]) == PLATFORM["id"]}
 
 @api_router.post("/auth/register")
@@ -564,7 +563,9 @@ async def check_access(user: dict, module: str, item_id: str) -> dict:
 async def admin_users(user: dict = Depends(get_current_user)):
     require(user, "admin")
     us = await db.users.find({"$or": [{"tenant": user["id"]}, {"id": user["id"]}]}, {"_id": 0, "password_hash": 0}).sort("created_at", 1).to_list(500)
-    return {"users": [pub_user(u) | {"created_at": u.get("created_at")} for u in us], "roles": ROLES}
+    return {"users": [pub_user(u) | {"created_at": u.get("created_at"),
+            "anre_certificate_path": u.get("anre_certificate_path"),
+            "anre_certificate_filename": u.get("anre_certificate_filename")} for u in us], "roles": ROLES}
 
 @api_router.get("/admin/users/{uid}/anre-certificate")
 async def admin_user_anre_certificate(uid: str, user: dict = Depends(get_current_user)):
@@ -597,6 +598,8 @@ async def admin_user_update(uid: str, request: Request, user: dict = Depends(get
         if b["status"] not in ("pending", "active", "suspended", "disabled"):
             raise HTTPException(status_code=400, detail="Stare invalidă")
         upd["status"] = b["status"]
+        if b["status"] == "active" and u.get("account_type") in ("installer", "partner") and "role" not in b:
+            upd["role"] = "instalator"
     await db.users.update_one({"id": uid}, {"$set": upd})
     await audit(user, "cont utilizator", "users", uid, list(upd.keys()) + [str(upd.get("status") or ""), str(upd.get("role") or "")])
     return {"ok": True}

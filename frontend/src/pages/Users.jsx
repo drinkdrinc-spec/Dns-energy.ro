@@ -19,7 +19,7 @@ export default function Users() {
       const url = URL.createObjectURL(data);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `certificat-anre-${u.anre_certificate_number || u.id}.pdf`;
+      link.download = u.anre_certificate_filename || `certificat-anre-${u.anre_certificate_number || u.id}`;
       document.body.appendChild(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) { toast.error(e.response?.data?.detail || "Certificatul ANRE nu a putut fi descărcat."); }
