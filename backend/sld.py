@@ -885,15 +885,7 @@ def drawing_header(S, PW, PH, rec, client, settings, res, approval):
     summary = " · ".join(summary_parts)
     title = "SCHEMĂ MONOFILARĂ"
     y = PH - 17
-    logo_data = settings.get("_header_logo_bytes")
-    if not logo_data:
-        logo_file = settings.get("header_logo") or {}
-        logo_path = settings.get("_header_logo_path") or (logo_file.get("storage_path") if isinstance(logo_file, dict) else None)
-        if logo_path and docgen.IMG_LOADER:
-            try:
-                logo_data = docgen.IMG_LOADER(logo_path)
-            except Exception:
-                logo_data = None
+    logo_data = settings.get("_header_logo_bytes") or docgen.company_logo_bytes(settings)
     text_x = 22
     if logo_data:
         try:
