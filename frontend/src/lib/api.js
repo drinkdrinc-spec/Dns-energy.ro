@@ -9,9 +9,30 @@ const API = `${backendOrigin}/api`;
 
 export const api = axios.create({ baseURL: API });
 
-api.interceptors.request.use((config) => {
+let backendReadyAt = 0;
+let backendWarmup = null;
+const WARMUP_TTL_MS = 10 * 60 * 1000;
+
+async function warmBackend() {
+  if (isLocalHost || !backendOrigin || Date.now() - backendReadyAt < WARMUP_TTL_MS) return;
+  if (backendWarmup) return backendWarmup;
+  backendWarmup = api.get(`${backendOrigin}/readyz`, {
+    timeout: 120000,
+    dnsWarmup: true,
+    dnsSkipAuth: true,
+    dnsRetrySafe: true,
+  }).then(() => {
+    backendReadyAt = Date.now();
+  }).finally(() => {
+    backendWarmup = null;
+  });
+  return backendWarmup;
+}
+
+api.interceptors.request.use(async (config) => {
+  if (!config.dnsWarmup) await warmBackend();
   const token = localStorage.getItem("den_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && !config.dnsSkipAuth) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
