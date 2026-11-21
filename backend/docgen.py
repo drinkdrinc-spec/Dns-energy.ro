@@ -206,6 +206,8 @@ def inverters(ctx):
 def panel_rows(ctx):
     rows = []
     for inv in inverters(ctx):
+        if inv.get("battery_only") or inv.get("no_panels"):
+            continue
         count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
         groups = {}
         for string in inv.get("strings") or []:
@@ -500,24 +502,34 @@ def doc_serii(ctx):
     panel_serials = serials.get("panels")
     if isinstance(panel_serials, str):
         panel_serials = panel_serials.splitlines()
-    panel_serials = [str(value).strip() for value in panel_serials or [] if str(value).strip()]
-    if not panel_serials and ctx.raw("panel_serials"):
-        panel_serials = [str(ctx.raw("panel_serials"))]
+    # Keep empty slots between serial numbers: a missing serial must not shift
+    # every following serial onto the wrong physical panel/model.
+    panel_serials = [str(value).strip() for value in (panel_serials or [])]
+    if not any(panel_serials) and ctx.raw("panel_serials"):
+        legacy = str(ctx.raw("panel_serials"))
+        panel_serials = [value.strip() for value in legacy.splitlines()]
+    while panel_serials and not panel_serials[-1]:
+        panel_serials.pop()
+
     panel_models_by_serial = []
-    for inv in cef.get("inverters") or []:
+    for inv in inverters(ctx):
         if inv.get("battery_only") or inv.get("no_panels"):
             continue
         quantity = max(1, min(100, int(num(inv.get("count") or inv.get("quantity"), 1) or 1)))
         for string in inv.get("strings") or []:
-            model = string.get("panel_model") or inv.get("panel_model") or ""
             panels = max(0, int(num(string.get("panels")))) * quantity
+            model = string.get("panel_model") or inv.get("panel_model") or ""
             panel_models_by_serial.extend([model] * panels)
-    if panel_serials:
-        rows.extend([[f"Panou {i + 1} {escape(panel_models_by_serial[i] if i < len(panel_models_by_serial) else '')}".strip(),
-                      escape(value)] for i, value in enumerate(panel_serials)])
-    else:
-        for p in panel_rows(ctx):
-            rows.append([f"{p['n']}× panou {escape(p['model'])}", ""])
+
+    # Match the Reenergy PIF layout: one line per configured panel, even when
+    # its serial has not yet been recorded. Never invent a serial or a model.
+    for i, model in enumerate(panel_models_by_serial):
+        value = panel_serials[i] if i < len(panel_serials) else ""
+        rows.append([f"Panou {i + 1} {escape(model)}".strip(), escape(value)])
+    for i in range(len(panel_models_by_serial), len(panel_serials)):
+        value = panel_serials[i]
+        if value:
+            rows.append([f"Panou suplimentar {i + 1 - len(panel_models_by_serial)} — model neidentificat", escape(value)])
     battery_serials = serials.get("batteries") or {}
     battery_items = []
     for i, inv in enumerate(cef.get("inverters") or []):
