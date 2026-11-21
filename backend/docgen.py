@@ -353,12 +353,16 @@ def doc_imputernicire(ctx):
 def doc_storage(ctx):
     """Fișă separată pentru instalația de stocare, după structura dosarului ReEnergy."""
     bats = storage(ctx)
-    rows = [["Nr.", "Producător / model", "Capacitate nominală (kWh)", "Tensiune (V)", "Capacitate (Ah)",
-             "Tehnologie", "Cuplare", "Nr. module", "Serie"]]
+    rows = [["Nr.", "Producător / model", "Capacitate totală (kWh)", "kWh / modul", "Tensiune (V)",
+             "Capacitate (Ah)", "Clasă (LV/HV)", "Cuplare", "Nr. module", "Serie"]]
     for i, b in enumerate(bats, 1):
+        kwh_per_module = num(b.get("kwh"), None)
+        modules = num(b.get("modules"), None)
+        total_kwh = kwh_per_module * modules if kwh_per_module is not None and modules is not None else None
         rows.append([
             str(i), escape(str(b.get("model") or M)),
-            escape(str(b.get("kwh") if b.get("kwh") is not None else M)),
+            fmt(total_kwh) if total_kwh is not None else M,
+            fmt(kwh_per_module) if kwh_per_module is not None else M,
             escape(str(b.get("voltage") if b.get("voltage") is not None else M)),
             escape(str(b.get("ah") if b.get("ah") is not None else M)),
             escape(str(b.get("tech") or M)),
@@ -367,12 +371,12 @@ def doc_storage(ctx):
             escape(str(b.get("serial") or M)),
         ])
     if not bats:
-        rows.append(["—", "Nu este declarat un sistem de stocare în datele dosarului", M, M, M, M, M, M, M])
+        rows.append(["—", "Nu este declarat un sistem de stocare în datele dosarului", M, M, M, M, M, M, M, M])
     return hdr() + [
         B("title", "DATE DESPRE INSTALAȚIA DE STOCARE"),
         B("p", f"<b>Beneficiar:</b> {ctx.name}<br/><b>Loc de consum:</b> {ctx.loc}<br/><b>POD:</b> {ctx.v('pod')}"),
-        B("table", rows, [6, 27, 15, 10, 10, 12, 10, 10, 14], True),
-        B("small", "Datele sunt preluate din configurația dosarului. Câmpurile marcate cu „—” trebuie completate/verificate pe baza etichetei și fișei tehnice a echipamentului."),
+        B("table", rows, [5, 26, 15, 11, 12, 10, 10, 9, 9, 14], True),
+        B("small", "Capacitatea totală este calculată din kWh pe modul și numărul de module. Datele provin din configurația dosarului; valorile lipsă trebuie verificate pe eticheta și fișa tehnică a echipamentului. Seria se completează la punerea în funcțiune."),
         sign(ex_sig(ctx), ben_sig(ctx)),
     ]
 
