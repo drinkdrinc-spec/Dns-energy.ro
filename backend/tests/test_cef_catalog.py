@@ -19,6 +19,12 @@ API = f"{BASE_URL}/api"
 EMAIL = _dns_test_os.environ["DNS_ENERGY_TEST_EMAIL"]
 PASSWORD = _dns_test_os.environ["DNS_ENERGY_TEST_PASSWORD"]
 SAMPLE = json.load(open(os.path.join(os.path.dirname(__file__), "cef_sample.json")))
+from catalog_seed import SEED as CATALOG_SEED
+EXPECTED_SEED_COUNT = len({
+    (str(item.get("category") or "").strip().casefold(),
+     " ".join(str(item.get("brand_model") or "").split()).casefold())
+    for item in CATALOG_SEED
+})
 CREATED = {"prosumator": [], "catalog": [], "clients": [], "documents": []}
 
 
@@ -165,9 +171,9 @@ class TestCatalog:
         assert r.status_code == 200
         h = {"Authorization": f"Bearer {r.json()['access_token']}"}
         a = requests.get(f"{API}/data/catalog", headers=h).json()
-        assert len(a) == 14
+        assert len(a) == EXPECTED_SEED_COUNT
         b = requests.get(f"{API}/data/catalog", headers=h).json()
-        assert len(b) == 14
+        assert len(b) == EXPECTED_SEED_COUNT
         for it in b:
             requests.delete(f"{API}/data/catalog/{it['id']}", headers=h)
         assert requests.get(f"{API}/data/catalog", headers=h).json() == []
