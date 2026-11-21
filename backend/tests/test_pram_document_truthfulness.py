@@ -24,17 +24,37 @@ def test_pram_without_measured_values_is_a_work_sheet():
     assert "NECOMPLETAT" in output
 
 
-def test_pram_with_recorded_measurements_has_validity_period():
+def test_pram_with_recorded_measurements_and_valid_meter_has_validity_period():
     output = _text(_blocks({
         "grounding_ohm": 4.0,
         "soil_psi": 1.2,
         "grounding_limit": 5.0,
         "measure_date": "2026-10-01",
+        "meter_device": "Metrel MI 3123",
+        "meter_serial": "123456",
+        "meter_valid": "2027-01-01",
     }))
 
     assert "BULETIN DE VERIFICARE" in output
+    assert "Metrel MI 3123" in output
+    assert "123456" in output
     assert "valabil 1 an" in output
     assert "Valabil până la <b>01.10.2027</b>" in output
+
+
+def test_pram_measurements_without_valid_meter_remain_a_work_sheet():
+    output = _text(_blocks({
+        "grounding_ohm": 4.0,
+        "soil_psi": 1.2,
+        "grounding_limit": 5.0,
+        "measure_date": "2026-10-01",
+        "meter_device": "Metrel MI 3123",
+        "meter_serial": "123456",
+    }))
+
+    assert "FIȘĂ DE LUCRU" in output
+    assert "valabil 1 an" not in output
+    assert "NEFINALIZAT" in output
 
 
 def test_pram_invalid_measurement_date_remains_a_work_sheet():
