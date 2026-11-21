@@ -974,7 +974,15 @@ async def delete_item(module: str, item_id: str, user: dict = Depends(get_curren
     guard(module, user, write=True)
     if not is_admin(user) and module in ("prosumator", "clients"):
         raise HTTPException(status_code=403, detail="Doar administratorul poate șterge dosare și clienți")
-    await check_access(user, module, item_id)
+    record = await check_access(user, module, item_id)
+    if module == "catalog" and record:
+        key = _catalog_seed_key(record.get("category"), record.get("brand_model"))
+        if key in {_catalog_seed_key(item.get("category"), item.get("brand_model")) for item in CATALOG_SEED}:
+            await db.settings.update_one(
+                {"owner": user["id"]},
+                {"$addToSet": {"catalog_deleted_seed_keys": key}},
+                upsert=True,
+            )
     await db[module].delete_one({"id": item_id, "owner": user["id"]})
     await audit(user, "ștergere", module, item_id, [])
     if module == "prosumator":
@@ -2100,9 +2108,16 @@ from catalog_seed import SEED as CATALOG_SEED, NOTE as CATALOG_NOTE, missing_see
 from pypdf import PdfReader, PdfWriter
 import io
 
+def _catalog_seed_key(category: str | None, brand_model: str | None) -> str:
+    normalized_model = " ".join(str(brand_model or "").split()).casefold()
+    return f"{str(category or '').strip().casefold()}|{normalized_model}"
+
+
 async def seed_catalog(owner: str):
-    # Seed idempotent: adaugă numai modelele lipsă și pentru conturile deja existente.
+    # Seed idempotent: adds newly curated models and backfills existing rows.
     await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
+    settings = await db.settings.find_one({"owner": owner}, {"_id": 0, "catalog_deleted_seed_keys": 1}) or {}
+    deleted_seed_keys = set(settings.get("catalog_deleted_seed_keys") or [])
     await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
     seed_projection = {key: 1 for item in CATALOG_SEED for key in item}
     seed_projection.update({"id": 1, "category": 1, "brand_model": 1, "conformity": 1, "_id": 0})
@@ -2148,6 +2163,8 @@ async def seed_catalog(owner: str):
                     )
                 except Exception as exc:
                     logger.warning("Could not refresh the Jinko 54HL4M-BDV certificate from its official source: %s", exc)
+            continue
+        if key in deleted_seed_keys:
             continue
         created = _new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE})
         missing.append(created)
