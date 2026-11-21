@@ -57,6 +57,41 @@ DOC_COMMON = {
 }
 
 
+def storage_missing_fields(battery):
+    """List storage-sheet values that must be verified before submission."""
+    missing = []
+    model = str(battery.get("model") or "Baterie")
+    for field, label in (("kwh", "capacitatea în kWh pe modul"),
+                         ("modules", "numărul modulelor"),
+                         ("voltage", "tensiunea nominală"),
+                         ("ah", "capacitatea în Ah"),
+                         ("tech", "clasa bateriei LV/HV"),
+                         ("coupling", "tipul de cuplare")):
+        value = battery.get(field)
+        if field in ("kwh", "modules", "voltage", "ah"):
+            number = docgen.num(value, None)
+            if number is None or number <= 0:
+                missing.append(label)
+        elif value in (None, ""):
+            missing.append(label)
+    return [f"{model}: completează/verifică " + ", ".join(missing)] if missing else []
+
+
+def dossier_order(p):
+    """Submission order, with PRAM and the distributor packet first."""
+    key = p.get("key", "")
+    priority = {
+        "priza": 5, "notificare": 10, "date_stocare": 15, "gdpr": 20,
+        "imputernicire": 25, "afm": 30, "executant": 35, "conformitate": 40,
+        "receptie": 45, "pif_pv": 50, "pif": 55, "reglaj": 60,
+        "schema": 70, "fisa_tehnica": 75, "certificat": 80, "factura": 82, "cf": 84,
+        "metrologie_pram": 90, "anre_firma": 95,
+    }
+    if key.startswith("cat_"):
+        return (85, p.get("title", "").lower())
+    return (priority.get(key, 500), p.get("title", "").lower())
+
+
 def catalog_refs(rec):
     c = rec.get("cef") or {}
     inv, pan, bat, rsd = [], [], [], []
@@ -179,24 +214,8 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
         m += missing(shared_keys, shared_exec)
         m = list(dict.fromkeys(m))
         if key == "date_stocare":
-            for battery_index, battery in enumerate(docgen.storage(ctx), 1):
-                model = str(battery.get("model") or f"bateria {battery_index}")
-                battery_missing = []
-                for field, label in (("kwh", "capacitatea în kWh pe modul"),
-                                     ("modules", "numărul modulelor"),
-                                     ("voltage", "tensiunea nominală"),
-                                     ("ah", "capacitatea în Ah"),
-                                     ("tech", "clasa bateriei LV/HV"),
-                                     ("coupling", "tipul de cuplare")):
-                    value = battery.get(field)
-                    if field in ("kwh", "modules", "voltage", "ah"):
-                        number = docgen.num(value, None)
-                        if number is None or number <= 0:
-                            battery_missing.append(label)
-                    elif value in (None, ""):
-                        battery_missing.append(label)
-                if battery_missing:
-                    m.append(f"{model}: completează/verifică " + ", ".join(battery_missing))
+            for battery in docgen.storage(ctx):
+                m.extend(storage_missing_fields(battery))
         if key == "notificare" and not (ctx.raw("inverter") or ctx.raw("panels")):
             m.append("Invertoare / panouri (configurare CEF)")
         if key in ("schema", "fisa_tehnica"):
@@ -293,20 +312,6 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                             "missing": [] if files else [f"Încarcă {prefix.lower()} în Catalog echipamente ({model})" + ("" if cid else " și alege modelul din catalog în CEF")]})
 
     # Put the bundle in a predictable submission order, not in the order features were added.
-    def dossier_order(p):
-        key = p.get("key", "")
-        priority = {
-            # Follow the practical submission sequence used in the ReEnergy dossier.
-            "priza": 5, "notificare": 10, "date_stocare": 15, "gdpr": 20,
-            "imputernicire": 25, "afm": 30, "executant": 35, "conformitate": 40,
-            "receptie": 45, "pif_pv": 50, "pif": 55, "reglaj": 60,
-            "schema": 70, "fisa_tehnica": 75, "certificat": 80, "factura": 82, "cf": 84,
-            "metrologie_pram": 90, "anre_firma": 95,
-        }
-        if key.startswith("cat_"):
-            return (85, p.get("title", "").lower())
-        return (priority.get(key, 500), p.get("title", "").lower())
-
     pos.sort(key=dossier_order)
     for i, p in enumerate(pos):
         p["nr"] = i + 1
