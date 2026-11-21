@@ -885,8 +885,28 @@ def drawing_header(S, PW, PH, rec, client, settings, res, approval):
     summary = " · ".join(summary_parts)
     title = "SCHEMĂ MONOFILARĂ"
     y = PH - 17
-    S.text(22, y + 1.2, company, 7.2, True)
-    S.text(22, y - 2.2, "INSTALAȚII FOTOVOLTAICE", 4.2, color=GREY)
+    logo_data = settings.get("_header_logo_bytes")
+    if not logo_data:
+        logo_file = settings.get("header_logo") or {}
+        logo_path = settings.get("_header_logo_path") or (logo_file.get("storage_path") if isinstance(logo_file, dict) else None)
+        if logo_path and docgen.IMG_LOADER:
+            try:
+                logo_data = docgen.IMG_LOADER(logo_path)
+            except Exception:
+                logo_data = None
+    text_x = 22
+    if logo_data:
+        try:
+            logo = ImageReader(io.BytesIO(logo_data))
+            iw, ih = logo.getSize()
+            scale = min(22 / iw, 10 / ih)
+            logo_w, logo_h = iw * scale, ih * scale
+            c.drawImage(logo, 22, y - 1.5 - logo_h / 2, logo_w, logo_h, mask="auto")
+            text_x = 22 + logo_w + 3
+        except Exception:
+            pass
+    S.text(text_x, y + 1.2, company, 7.2, True)
+    S.text(text_x, y - 2.2, "INSTALAȚII FOTOVOLTAICE", 4.2, color=GREY)
     S.text(PW / 2, y, title, 10, True, anchor="c")
     S.text(PW / 2, y - 4.2, summary, 5, color=GREY, anchor="c")
     supply = "TRIFAZAT" if res["base"]["grid"]["tri"] else "MONOFAZAT"
