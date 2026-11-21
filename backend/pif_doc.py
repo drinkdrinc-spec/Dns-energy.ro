@@ -3,7 +3,7 @@ import io
 import json
 from html import escape
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 
@@ -48,7 +48,14 @@ def render(rec: dict, client: dict, s: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=12 * mm, rightMargin=12 * mm, topMargin=12 * mm, bottomMargin=12 * mm, title="PV PIF")
     T = lambda rows, w: D.pdf_table(rows, w, True, 7.4, 273)
-    story = [P("PROCES-VERBAL DE EFECTUARE A TESTELOR ȘI VERIFICĂRILOR LA PUNEREA ÎN FUNCȚIUNE", "h"),
+    logo = D._company_logo(s, 24 * mm, 13 * mm)
+    company = P(f"<b>{e(s.get('company') or 'DNS HOSTESS S.R.L.')}</b><br/>Atestat ANRE {e(s.get('anre_attest')) or M}", "small")
+    contact = Paragraph(f"{e(s.get('phone'))}<br/>{e(s.get('email'))}<br/>{e(s.get('address'))}", D.S["hdrr"])
+    header = Table([[logo or "", company, contact]], colWidths=[28 * mm, 133 * mm, 112 * mm])
+    header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LINEBELOW", (0, 0), (-1, -1), 0.6, D.GRID),
+                                ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                                ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+    story = [header, Spacer(1, 6), P("PROCES-VERBAL DE EFECTUARE A TESTELOR ȘI VERIFICĂRILOR LA PUNEREA ÎN FUNCȚIUNE", "h"),
              P("a instalației fotovoltaice de producere a energiei electrice (SR EN IEC 62446-1, I7/2011, HD 60364-6)", "sub"),
              P(f"Beneficiar: <b>{e(client.get('name') or rec.get('client_name'))}</b> · Adresa: {e(client.get('address') or rec.get('address'))} · POD: {e(rec.get('pod')) or M} · "
                f"Executant: <b>{e(s.get('company'))}</b> (atestat ANRE {e(s.get('anre_attest')) or M}) · Data testelor: {e(D.ro_date(p.get('date'))) or M}"),
