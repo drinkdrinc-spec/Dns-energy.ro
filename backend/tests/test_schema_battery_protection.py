@@ -192,16 +192,32 @@ def _sheet_data(rec):
     )
 
 
+class _CanvasCapture:
+    def setFillColor(self, *args, **kwargs):
+        pass
+
+    def rect(self, *args, **kwargs):
+        pass
+
+    def stringWidth(self, text, font, size):
+        return len(text) * size * 0.5
+
+
+class _TextCapture:
+    def __init__(self):
+        self.values = []
+        self.c = _CanvasCapture()
+
+    def enclosure(self, *args, **kwargs):
+        pass
+
+    def text(self, *args, **kwargs):
+        self.values.append(str(args[2]))
+
+
 def test_backup_schema_note_states_islanding_separation_and_reconnect_delay():
-    class TextCapture:
-        def __init__(self):
-            self.values = []
-
-        def text(self, *args, **kwargs):
-            self.values.append(str(args[2]))
-
     rec = deepcopy(DEMO_REC)
-    capture = TextCapture()
+    capture = _TextCapture()
 
     SLD.execution_notes(capture, (0, 0, 500, 500), rec)
 
@@ -277,7 +293,7 @@ def test_battery_only_hybrid_has_zero_export_and_is_identified_in_sheet():
     checked = CEF.check(rec["cef"])
     data = _sheet_data(rec)
     equipment = next(section[2] for section in data["sections"] if section[0] == "2. Lista echipamentelor")
-    capture = type("TextCapture", (), {"values": [], "text": lambda self, *args, **kwargs: self.values.append(str(args[2]))})()
+    capture = _TextCapture()
     SLD.execution_notes(capture, (0, 0, 500, 500), rec)
 
     assert checked["totals"]["export_kw"] == pv_export
