@@ -17,7 +17,7 @@ DEMO_REC = {
             "vdc_max": 1000, "mppt_min": 160, "mppt_max": 850, "mppt_count": 2, "imax_mppt": 20,
             "panel_model": "Modul monocristalin 450 W (exemplu)", "panel_w": 450, "panel_voc": 41.0, "panel_vmp": 34.5, "panel_isc": 13.9, "panel_coef_voc": -0.27,
             "strings": [{"panels": 12, "mppt": 1}, {"panels": 12, "mppt": 2}],
-            "battery_mode": "own", "battery": {"model": "Baterie LV 10 kWh (exemplu)", "kwh": 10, "voltage": 51.2, "modules": 1, "coupling": "DC", "i_max": 100, "fuse_a": 125, "cable_section": 35, "cable_length": 2},
+            "battery_mode": "own", "battery": {"model": "Baterie LV 10 kWh (exemplu)", "kwh": 10, "voltage": 51.2, "modules": 1, "coupling": "DC", "i_max": 100, "fuse_a": 125, "cable_section": 50, "cable_length": 2},
             "backup": {"enabled": True, "type": "parțial", "breaker": "C16 A 4P", "circuits": "iluminat, centrală termică, frigider"},
             "rcd_type": "Tip A", "rcd_ma": 300,
             "ac": {"cable_type": "CYY-F", "material": "Cu", "install": "C", "length_m": 15, "section": 4, "pe_section": 4, "breaker_a": 20, "icu_ka": 6},
