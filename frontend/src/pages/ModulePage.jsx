@@ -61,7 +61,10 @@ function installedPanelKwp(pros) {
       calculated += number(string.panels) * panelW * count / 1000;
     }
   }
-  if (hasPvStrings && complete && calculated > 0) return Number(calculated.toFixed(3));
+  if (hasPvStrings) {
+    if (complete && calculated > 0) return Number(calculated.toFixed(3));
+    return pros.cef?.total_kwp || pros.panel_kwp || pros._kwp || "";
+  }
   const legacyPanels = number(pros.panel_count);
   const legacyW = number(pros.panel_w);
   if (legacyPanels > 0 && legacyW > 0) return Number((legacyPanels * legacyW / 1000).toFixed(3));
