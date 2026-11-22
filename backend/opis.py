@@ -394,7 +394,8 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
         p["nr"] = i + 1
         o = opis.get(p["key"]) or {}
         p["upload"] = o.get("upload")
-        if p["key"] in ("schema", "fisa_tehnica") and p["upload"] and (p["upload"].get("sld_hash") != st_sld["fingerprint"] or st_sld["status"] != "approved"):
+        p["uploads"] = o.get("uploads") or []
+        if p["key"] in ("schema", "fisa_tecnica") and p["upload"] and (p["upload"].get("sld_hash") != st_sld["fingerprint"] or st_sld["status"] != "approved"):
             p["upload"] = None
             if o.get("upload", {}).get("sld_hash"):
                 p["missing"].append("Versiunea semnată anterior nu mai corespunde configurației — necesită verificare și semnare nouă")
@@ -406,13 +407,14 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
         elif p["key"] in ("schema", "fisa_tehnica") and st_sld["status"] != "approved":
             o = {k: v for k, v in o.items() if k != "status"}
         gen_missing = p["missing"]
+        has_upload = bool(o.get("upload") or o.get("uploads"))
         if p["source"] == "manual":
-            auto = "atașat" if o.get("upload") else "de completat"
+            auto = "atașat" if has_upload else "de completat"
         else:
-            auto = "de completat" if gen_missing else ("atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else "generat")
+            auto = "de completat" if gen_missing else ("atașat" if (has_upload or (p["source"] != "generat" and p["files"])) else "generat")
         p["auto_status"] = auto
         p["status"] = o.get("status") or auto
-        if o.get("upload"):
+        if has_upload:
             p["missing"] = []
     total = sum(len(p["missing"]) for p in pos) + len(common)
     return {"positions": pos, "common_missing": common, "missing_total": total, "complete": total == 0, "titles": [p["title"] for p in pos]}
@@ -483,16 +485,18 @@ def mark_draft(pdf: bytes, text="CIORNĂ") -> bytes:
 
 
 async def position_pdf(p, rec, client, settings, titles, get_object, force_generated=False):
-    if p.get("upload") and not force_generated:
+    uploads = [*(p.get("uploads") or []), *([p["upload"]] if p.get("upload") else [])]
+    if uploads and not force_generated:
         out = []
-        # Keep source documents/photos already in the client record when a
-        # dossier-card upload adds another file to the same category.
+        # Keep source documents/photos already in the client record when the
+        # dossier card adds more files to the same category.
         if p.get("source") == "client":
             for file in p.get("files") or []:
                 data, ct = get_object(file["storage_path"])
                 out.append(file_pdf(data, file.get("content_type") or ct))
-        data, ct = get_object(p["upload"]["storage_path"])
-        out.append(file_pdf(data, p["upload"].get("content_type") or ct))
+        for file in uploads:
+            data, ct = get_object(file["storage_path"])
+            out.append(file_pdf(data, file.get("content_type") or ct))
         return out
     if p.get("docx_only"):
         return []
