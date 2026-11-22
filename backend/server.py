@@ -3125,7 +3125,7 @@ async def get_client(owner: str, rec: dict) -> dict:
         c = await db.clients.find_one({"owner": owner, "id": rec["client_id"]}, {"_id": 0})
     if not c and not rec.get("client_id") and rec.get("client_name"):
         c = await db.clients.find_one({"owner": owner, "name": rec["client_name"]}, {"_id": 0})
-    return c or {}
+    return OPIS.dossier_client_snapshot(rec, c or {})
 
 def _normalize_atr_match(value: str) -> str:
     import unicodedata
