@@ -191,9 +191,9 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     res_sld = SZ.compute(rec, client)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
-        if key == "imputernicire" and cdocs.get("imputernicire"):
+        if key == "imputernicire":
             pos.append({"key": key, "title": "Împuternicire / mandat", "source": "client",
-                        "slots": ["imputernicire"], "files": cdocs["imputernicire"], "missing": []})
+                        "slots": ["imputernicire"], "files": cdocs.get("imputernicire") or [], "missing": []})
             continue
         if key == "date_stocare" and not docgen.storage(ctx):
             continue
@@ -324,10 +324,10 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
 
     for key, slots, title in [("factura", ["factura"], "Factură furnizor de energie"),
                               ("certificat", ["certificat", "constatator"] if pj else ["ci"], "Certificat de înregistrare" if pj else "Act de identitate"),
-                              ("cf", ["cf"], "Extras de carte funciară")]:
+                              ("cf", ["cf"], "Extras de carte funciară — dacă este solicitat de operator")]:
         files = [f for s in slots for f in (cdocs.get(s) or [])]
         pos.append({"key": key, "title": title, "source": "client", "slots": slots, "files": files,
-                    "missing": [] if files else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
+                    "missing": [] if files or key == "cf" and not rec.get("cf_required") else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
 
     # Add photo and extra-document upload rows shown on the dossier card.
     # Installation photos belong in the main packet; work photos follow the
