@@ -11,6 +11,11 @@ const DEFAULT_TEG_CIRCUITS = [
 export function GridCard({ grid, set, catalog, res }) {
   const s = (k) => (v) => set({ ...grid, [k]: v });
   const gr = res?.grid;
+  const autoInverterCables = (res?.inverters || []).map((item, index) => {
+    const section = item.proposals?.ac?.section;
+    if (!section) return null;
+    return `INV ${index + 1}: ${item.tri ? "5" : "3"}×${section} mm²`;
+  }).filter(Boolean).join(" · ");
   const circuits = Array.isArray(grid.circuits) ? grid.circuits : DEFAULT_TEG_CIRCUITS;
   const meterSeparate = (grid.smart_meter_mode || (grid.meter_enabled ? "Contor separat" : "Inclus în invertor")) === "Contor separat";
   const setCircuit = (index, patch) => set({ ...grid, circuits: circuits.map((row, i) => i === index ? { ...row, ...patch } : row) });
@@ -42,7 +47,7 @@ export function GridCard({ grid, set, catalog, res }) {
           <F label="SPD DC" value={grid.spd_dc || "SPD 2P · 600 V"} onChange={s("spd_dc")} options={["SPD 2P · 600 V", "SPD 2P · 1000 V", "SPD 2P · 1500 V", "SPD integrat în invertor"]} testid="grid-spd-dc" />
           <F label="SPD AC" value={grid.spd_ac || ""} onChange={s("spd_ac")} options={["SPD 2P · Tip 2 · Up 1,5 kV", "SPD 4P · Tip 2 · Up 1,5 kV", "SPD 2P · Tip 1+2", "SPD 4P · Tip 1+2"]} testid="grid-spd" />
           <F label="Conductor solar" value={grid.solar_conductor || "H1Z2Z2-K 6 mm²"} onChange={s("solar_conductor")} testid="grid-solar-conductor" />
-          <F label="Cablu AC invertor → BMP/TEG" value={grid.inverter_ac_cable || ""} onChange={s("inverter_ac_cable")} testid="grid-inverter-ac-cable" />
+          <F label="Cabluri AC propuse pe invertor" value={grid.inverter_ac_cable || autoInverterCables} onChange={s("inverter_ac_cable")} testid="grid-inverter-ac-cable" />
           <F label="Siguranță generală TEG" value={grid.teg_main_protection || ""} onChange={s("teg_main_protection")} testid="grid-teg-main-protection" />
           <F label="Priză de pământ" value={grid.grounding_status || "—"} onChange={s("grounding_status")} options={["—", "Nouă", "Existentă"]} testid="grid-ground-status" />
         </div>
@@ -68,7 +73,7 @@ export function GridCard({ grid, set, catalog, res }) {
       <details className="mt-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
         <summary className="cursor-pointer text-xs font-semibold">Detalii tehnice · cabluri, protecții și măsurători</summary>
         <div className="grid sm:grid-cols-3 gap-3 mt-3">
-          <F label="Cablu coloană BMP → TG" value={grid.column_cable} onChange={s("column_cable")} testid="grid-column" />
+          <F label="Cablu coloană BMP → TG" value={grid.column_cable || gr?.main_column_cable_proposal} onChange={s("column_cable")} testid="grid-column" />
           <F label="Raport TC (dacă măsură prin TC)" value={grid.ct_ratio} onChange={s("ct_ratio")} testid="grid-ct" />
           <F label="Întreruptor general TG" value={grid.tg_breaker} onChange={s("tg_breaker")} testid="grid-tg" />
           <F label="SPD AC" value={grid.spd_ac} onChange={s("spd_ac")} options={["tip 1+2", "tip 2", "tip 1"]} testid="grid-spd" />

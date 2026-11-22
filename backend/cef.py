@@ -3,20 +3,24 @@ import math
 T_MIN_DEFAULT = -10.0
 T_CELL_HOT = 70.0
 RHO = {"Cu": 0.0225, "Al": 0.036}
-SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120]
+SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240]
+INVERTER_AC_SECTIONS_1PH = [6, 10, 16]
+INVERTER_AC_SECTIONS_3PH = [6, 10, 16, 25, 35, 50]
+FEEDER_SECTIONS = [16, 25, 35, 50, 70, 95, 120, 150, 185, 240]
 BREAKERS = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250]
 # Motor-operated anti-islanding breaker frames; exact device and fault-level checks remain required.
 MAIN_BREAKERS = [100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000]
 MAIN_PROTECTION = sorted(set(BREAKERS + [315, 400, 500, 630, 800, 1000, 1250, 1600, 2000]))
 GPV = [10, 12, 15, 16, 20, 25, 30, 32]
-# IEC 60364-5-52, Cu PVC 70°C, 3 conductori încărcați, 30°C (A)
+# IEC 60364-5-52 Tables B.52.4 (A1–D) and B.52.10 (E), Cu/PVC 70°C,
+# three loaded conductors, reference ambient conditions (A).
 IZ_AC = {
-    "A1": [13.5, 18, 24, 31, 42, 56, 73, 89, 108, 136, 164, 188],
-    "B1": [15.5, 21, 28, 36, 50, 68, 89, 110, 134, 171, 207, 239],
-    "B2": [15, 20, 27, 34, 46, 62, 80, 99, 118, 149, 179, 206],
-    "C": [17.5, 24, 32, 41, 57, 76, 96, 119, 144, 184, 223, 259],
-    "D": [18, 24, 30, 38, 50, 64, 82, 98, 116, 143, 169, 192],
-    "E": [18.5, 25, 34, 43, 60, 80, 101, 126, 153, 196, 238, 276],
+    "A1": [13.5, 18, 24, 31, 42, 56, 73, 89, 108, 136, 164, 188, 216, 245, 286],
+    "B1": [15.5, 21, 28, 36, 50, 68, 89, 110, 134, 171, 207, 239, 262, 296, 346],
+    "B2": [15, 20, 27, 34, 46, 62, 80, 99, 118, 149, 179, 206, 225, 255, 297],
+    "C": [17.5, 24, 32, 41, 57, 76, 96, 119, 144, 184, 223, 259, 299, 341, 403],
+    "D": [18, 24, 30, 38, 50, 64, 82, 98, 116, 143, 169, 192, 217, 243, 280],
+    "E": [18.5, 25, 34, 43, 60, 80, 101, 126, 153, 196, 238, 276, 379, 434, 514],
 }
 # cablu solar H1Z2Z2-K, aer liber, 1 conductor
 IZ_DC = [30, 41, 55, 70, 98, 132, 176, 218, 276, 347, 416, 488]
@@ -84,6 +88,8 @@ def iz(section, material, install, phases_loaded, k, dc=False):
     if section not in SECTIONS:
         return 0
     i = SECTIONS.index(section)
+    if dc and i >= len(IZ_DC):
+        return 0
     base = IZ_DC[i] if dc else IZ_AC.get(install or "C", IZ_AC["C"])[i]
     if not dc and phases_loaded == 2:
         base *= 1.15
@@ -353,7 +359,8 @@ def check(cef: dict) -> dict:
         cur_in, cur_s = n(ac.get("breaker_a")), n(ac.get("section"))
         p_in = up(BREAKERS, ib) if ib else None
         p_s = None
-        for sct in SECTIONS:
+        ac_choices = INVERTER_AC_SECTIONS_3PH if tri else INVERTER_AC_SECTIONS_1PH
+        for sct in ac_choices:
             if p_in and iz(sct, mat, inst, loaded, k) >= p_in and (not L or vdrop_ac(ib, L, sct, mat, tri) <= 3):
                 p_s = sct; break
         prop["ac"] = {"breaker_a": p_in, "section": p_s, "ib": round(ib, 1) if phase_known else None,
@@ -370,7 +377,10 @@ def check(cef: dict) -> dict:
             prop["ac"].update({"iz": round(izv, 1), "du": round(du, 2)})
         elif p_nom:
             if phase_known:
-                w.append(f"{tag}: completează disjunctorul și secțiunea cablului AC (propunere: {p_in} A, {p_s} mm² {mat}).")
+                if p_s is None:
+                    w.append(f"{tag}: curentul cere o secțiune peste limita automată DNS ({max(ac_choices):g} mm²); proiectantul dimensionează cabluri paralele sau o soluție dedicată.")
+                else:
+                    w.append(f"{tag}: completează disjunctorul și secțiunea cablului AC (propunere: {p_in} A, {p_s} mm² {mat}).")
             else:
                 w.append(f"{tag}: fazele racordului/invertorului nu sunt precizate; secțiunea și protecția AC nu se propun până la confirmarea monofazat/trifazat.")
 
@@ -389,18 +399,24 @@ def check(cef: dict) -> dict:
         voc_values = [x["voc_cold"] for x in strings if x.get("voc_cold") is not None]
         voc_cold_max = max(voc_values) if voc_values else 0
         p_ds = None
-        for sct in SECTIONS[1:]:
+        for sct in SECTIONS[3:]:
             if i_dc and iz(sct, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True) >= i_dc and (
                 not dL or (drop_complete and all(vdrop_dc(current, dL, sct, dmat, voltage) <= 1
                                                  for current, voltage in dc_operating))
             ):
                 p_ds = sct; break
         par = max([len(ss) for ss in per_mppt.values()] or [0])
-        fuse = up(GPV, 1.5 * isc1) if par >= 3 and isc_complete else None
+        fuse = n(dc.get("fuse_a")) or (15 if strings else None)
         spd_ucpv = up([600, 800, 1000, 1100, 1200, 1500], voc_cold_max * 1.0) if voc_cold_max else None
-        fuse_note = ("necesare (≥3 stringuri în paralel)" if isc_complete else "de dimensionat după fișa panoului")
+        fuse_note = "15 A / string, conform setării DNS; verifică Isc și siguranța maximă admisă din fișa panoului"
+        if isc_complete and fuse:
+            fuse_min, fuse_max = 1.5 * isc1, 2.4 * isc1
+            if not fuse_min <= fuse <= fuse_max:
+                e.append(f"{tag}: siguranța gPV de {fuse:g} A nu se încadrează în intervalul de calcul {fuse_min:.1f}–{fuse_max:.1f} A (1,5–2,4 × Isc); verifică fișa panoului și redimensionează înainte de aprobare.")
+        elif strings:
+            w.append(f"{tag}: separatorul fuzibil de 15 A este propus; Isc sau limita siguranței serie lipsește din fișa panoului și trebuie verificată.")
         if par < 3:
-            fuse_note = "nu sunt necesare (≤2 stringuri în paralel/MPPT)"
+            fuse_note += "; pentru cel mult 2 stringuri/MPPT, necesitatea protecției se confirmă în proiect"
         prop["dc"] = {"section": p_ds, "fuse": fuse, "fuse_note": fuse_note,
                       "spd_ucpv": spd_ucpv, "i_design": round(i_dc, 1) if i_dc is not None else None}
         if ds and strings:
@@ -473,18 +489,19 @@ def check(cef: dict) -> dict:
     column_section = None
     column_du = None
     column_iz = None
+    column_protection = n(grid.get("bmp_a")) or main_proposal
     column_length = n(grid.get("column_length"))
     column_material = grid.get("column_material") or "Cu"
     column_install = grid.get("column_install") or "D"
     if main_proposal:
-        for sct in SECTIONS:
+        for sct in FEEDER_SECTIONS:
             ampacity = iz(sct, column_material, column_install, 3 if tri_grid else 2, n(grid.get("column_k_correction"), 1))
             drop = vdrop_ac(i_br, column_length, sct, column_material, tri_grid)
-            if ampacity >= main_proposal and (not column_length or drop <= 3):
+            if ampacity >= column_protection and (not column_length or drop <= 3):
                 column_section, column_du, column_iz = sct, drop, ampacity
                 break
         if column_section is None:
-            warnings.append("Coloana BMP–TG nu poate fi dimensionată automat în limitele tabelului disponibil (max. 120 mm² / pozare selectată). Pentru curenți mari sunt necesare conductoare în paralel și proiect dedicat; aplicația nu ghicește secțiunea.")
+            warnings.append("Coloana BMP–TG depășește domeniul automat 4×16–3×240+120 mm² pentru pozarea selectată; este necesar proiect dedicat și verificarea conductorului N/PE. Capacitatea de curent folosește tabele IEC 60364-5-52 de referință și trebuie corectată pentru cablu, temperatură și grupare.")
     selected_section = n(grid.get("column_section"))
     selected_breaker = n(grid.get("bmp_a")) or main_proposal or 0
     if selected_section and supply_known:
@@ -502,7 +519,9 @@ def check(cef: dict) -> dict:
                        "panels": sum(s["panels"] * i.get("count", 1) for i in out_inv for s in i["strings"]),
                        "inverters": sum(i.get("count", 1) for i in out_inv)},
             "grid": {"tri": tri_grid if supply_known else None, "bransament_kw": br_kw, "i_br": round(i_br, 1) if br_kw and supply_known else 0,
-                     "main_proposal": main_proposal, "main_section_proposal": column_section, "main_section_iz": round(column_iz, 1) if column_iz else None, "main_section_du": round(column_du, 2) if column_du is not None else None, "anti_breaker_proposal": anti_breaker_proposal, "anti_breaker_note": "întreruptor motorizat cu bobină de declanșare; confirmați curba, Icu/Ics și schema din ATR" if anti_breaker_proposal else None, "anti": anti, "anti_auto": anti_auto, "anti_backup": backup_enabled},
+                     "main_proposal": main_proposal, "main_section_proposal": column_section,
+                     "main_column_cable_proposal": ((f"3×{column_section:g}+120 mm²" if column_section >= 150 else f"4×{column_section:g} mm²") if column_section and tri_grid else (f"3×{column_section:g} mm²" if column_section else None)),
+                     "main_section_iz": round(column_iz, 1) if column_iz else None, "main_section_du": round(column_du, 2) if column_du is not None else None, "anti_breaker_proposal": anti_breaker_proposal, "anti_breaker_note": "întreruptor motorizat cu bobină de declanșare; confirmați curba, Icu/Ics și schema din ATR" if anti_breaker_proposal else None, "anti": anti, "anti_auto": anti_auto, "anti_backup": backup_enabled},
             "inverters": out_inv, "shared_battery_proposals": shared_battery_proposals,
             "errors": errors, "warnings": warnings, "tmin": tmin,
             "note": "Valorile propuse sunt orientative (IEC 60364-5-52 / I7). Se validează de personal autorizat ANRE conform instrucțiunilor producătorului."}

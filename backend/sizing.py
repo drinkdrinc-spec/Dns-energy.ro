@@ -237,11 +237,12 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         voc_max = r["voc_cold_max"]
         if strings:
             # DC cable
-            dmat, dL, ds = dc.get("material") or "Cu", n(dc.get("length_m")), n(dc.get("section"))
+            dmat, dL = dc.get("material") or "Cu", n(dc.get("length_m"))
+            ds = n(dc.get("section")) or n(pd.get("section"))
             o.need(f"cef.inverters.{i}.dc.length_m", "Lungime cablu DC (m)", dc.get("length_m"), T, blocking=False)
-            o.need(f"cef.inverters.{i}.dc.section", "Secțiune cablu DC (mm²)", dc.get("section"), T)
+            o.need(f"cef.inverters.{i}.dc.section", "Secțiune cablu DC (mm²)", ds, T)
             o.it(T, "DC — curent de dimensionare", g(1.25 * isc1, " A", 1), "calculat", "Ib,DC = 1,25 · Isc,STC (IEC 62548)")
-            o.it(T, "DC — secțiune propusă", g(pd["section"], " mm²"), "calculat", "Iz ≥ 1,25·Isc și ΔU ≤ 1%")
+            o.it(T, "DC — secțiune propusă", g(pd["section"], " mm²"), "calculat", "H1Z2Z2-K minimum 6 mm²; Iz ≥ 1,25·Isc și ΔU ≤ 1%")
             if ds:
                 izd = iz(ds, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True)
                 cable_drops = [
@@ -268,30 +269,37 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                  note=f"propus {sw_v} V / {sw_a} A, categorie DC-PV2 (SR EN 60947-3)")
             o.need(f"cef.inverters.{i}.dc.switch", "Separator DC (Ue/Ie, model)", dc.get("switch") or inv.get("dc_switch_integrated"), T)
             par = max([len(x) for x in per.values()] or [0])
-            if par >= 3:
+            fa = n(dc.get("fuse_a")) or 15
+            isc_complete = bool(strings) and all(n(string.get("isc")) > 0 for string in strings)
+            if isc_complete:
                 fmin, fmax = 1.5 * isc1, 2.4 * isc1
-                fa = n(dc.get("fuse_a"))
-                o.it(T, "Siguranțe gPV", g(fa, " A") or g(pd["fuse"], " A (propus)"), "introdus" if fa else "calculat", "1,5·Isc ≤ In ≤ 2,4·Isc",
-                     (fmin <= fa <= fmax) if fa else None, f"{fmin:.1f}–{fmax:.1f} A")
-                o.need(f"cef.inverters.{i}.dc.fuse_a", "Siguranțe gPV (A)", dc.get("fuse_a"), T)
+                fuse_ok = fmin <= fa <= fmax
+                fuse_note = f"{fmin:.1f}–{fmax:.1f} A din Isc; confirmă și limita serie din fișa panoului"
             else:
-                o.it(T, "Siguranțe gPV", "nu sunt necesare", "calculat", "≤ 2 stringuri în paralel / MPPT (IEC 62548)")
+                fuse_ok = None
+                fuse_note = "15 A propus; confirmă Isc și limita serie din fișa panoului"
+            if par < 3:
+                fuse_note += "; necesitatea protecției la ≤2 stringuri/MPPT se confirmă în proiect"
+            o.it(T, "Separator fuzibil gPV / string", g(fa, " A"), "introdus" if dc.get("fuse_a") else "propus DNS",
+                 "1,5·Isc ≤ In ≤ 2,4·Isc (când se cere protecție de string)", fuse_ok, fuse_note)
             spd = n(dc.get("spd_ucpv"))
             o.need(f"cef.inverters.{i}.dc.spd_ucpv", "SPD DC Ucpv (V)", dc.get("spd_ucpv"), T)
             o.it(T, "SPD DC Ucpv", g(spd, " V") or g(pd["spd_ucpv"], " V (propus)"), "introdus" if spd else "calculat", "Ucpv ≥ Voc,min",
                  (spd >= voc_max) if spd else None, f"≥ {voc_max:.0f} V")
         # AC
         tri = r["tri"]
-        mat, L, sct, ina = ac.get("material") or "Cu", n(ac.get("length_m")), n(ac.get("section")), n(ac.get("breaker_a"))
+        mat, L = ac.get("material") or "Cu", n(ac.get("length_m"))
+        sct, ina = n(ac.get("section")) or n(pa.get("section")), n(ac.get("breaker_a")) or n(pa.get("breaker_a"))
         ib = pa["ib"]
         o.need(f"cef.inverters.{i}.ac.length_m", "Lungime cablu AC (m)", ac.get("length_m"), T, blocking=False)
-        o.need(f"cef.inverters.{i}.ac.section", "Secțiune cablu AC (mm²)", ac.get("section"), T)
-        o.need(f"cef.inverters.{i}.ac.breaker_a", "Întreruptor AC (A)", ac.get("breaker_a"), T)
+        o.need(f"cef.inverters.{i}.ac.section", "Secțiune cablu AC (mm²)", sct, T)
+        o.need(f"cef.inverters.{i}.ac.breaker_a", "Întreruptor AC (A)", ina, T)
         o.need(f"cef.inverters.{i}.rcd_type", "Tip protecție diferențială (din manualul invertorului)", inv.get("rcd_type"), T)
         if ib:
             o.it(T, "AC — curent de calcul Ib", g(ib, " A", 1), "calculat", "Ib = Pmax/(√3·400·0,95)" if tri else "Ib = Pmax/(230·0,95)")
             o.it(T, "AC — întreruptor propus", g(pa["breaker_a"], f" A {pa['poles']}"), "calculat", "In ≥ Ib (valoare standard)")
-            o.it(T, "AC — secțiune propusă", g(pa["section"], " mm²"), "calculat", "Iz ≥ In și ΔU ≤ 3% (HD 60364-5-52)")
+            cores = "5" if tri else "3"
+            o.it(T, "AC — secțiune propusă", f"{cores}×{g(pa['section'], ' mm²')}" if pa.get("section") else None, "calculat", "monofazat 3×6–3×16 mm²; trifazat 5×6–5×50 mm²; Iz ≥ In și ΔU ≤ 3% (HD 60364-5-52)")
         if ina and r.get("phase_known"):
             inv_in.append(ina)
         if sct and r.get("phase_known"):
@@ -361,14 +369,14 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         o.it(G, "Selectivitate (cascadă)", f"INV {max(inv_in):g} A < TG {tg:g} A" + (f" ≤ BMP {bmp:g} A" if bmp else ""), "calculat",
              "In aval < In amonte (raport ≥ 1,6 recomandat pentru selectivitate amperometrică)", ok,
              "selectivitatea totală se confirmă din tabelele producătorului aparatelor")
-    cs, cl = n(grid.get("column_section")), n(grid.get("column_length"))
+    cs, cl = n(grid.get("column_section")) or n(gr.get("main_section_proposal")), n(grid.get("column_length"))
     if cs and gr["i_br"]:
         cm = grid.get("column_material") or "Cu"
         izc = iz(cs, cm, grid.get("column_install") or "D", 3 if tri_grid else 2, 1)
         duc = vdrop_ac(gr["i_br"], cl, cs, cm, tri_grid)
         o.it(G, "Coloană BMP→TG: Iz ≥ In BMP", f"{izc:.0f} A ≥ {bmp or gr['main_proposal']:g} A", "calculat", "HD 60364-5-52", izc >= (bmp or gr["main_proposal"] or 0))
         o.it(G, "Coloană BMP→TG: cădere de tensiune", g(duc, " %") or "0 %", "calculat", "ΔU la Ibr", duc <= 3 if cl else None)
-        o.cables.append({"id": "W0", "from": "-BMP", "to": "-TG", "type": grid.get("column_cable") or None, "cores": "3L+N+PE" if tri_grid else "L+N+PE",
+        o.cables.append({"id": "W0", "from": "-BMP", "to": "-TG", "type": grid.get("column_cable") or gr.get("main_column_cable_proposal"), "cores": "3L+N (PE separat)" if tri_grid else "L+N+PE",
                          "section": cs, "material": cm, "length": cl or None, "ib": gr["i_br"], "iz": round(izc), "du": round(duc, 2), "loss": None, "pe": pe_for(cs)})
     o.it(G, "Sistem de legare la pământ", grid.get("earthing"), "introdus" if grid.get("earthing") else "de confirmat")
     o.it(G, "Ik la punctul de racord", g(ik, " kA"), "introdus" if ik else "de confirmat", note="se preia din ATR / comunicat OD — nu se estimează")
