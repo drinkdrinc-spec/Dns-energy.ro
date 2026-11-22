@@ -572,6 +572,43 @@ def _deer_cell(cell, value):
         cell.text = value
 
 
+def _deer_address_parts(address):
+    """Split only explicitly labeled Romanian address components; preserve free text otherwise."""
+    import re
+
+    raw = _deer_value(address)
+    if not raw:
+        return {}
+
+    patterns = {
+        "number": r"\b(?:nr\.?|num(?:ă|a)r(?:ul)?)\s*[:.]?\s*([A-Za-z0-9][A-Za-z0-9/-]*)",
+        "block": r"\bbl\.?\s*[:.]?\s*([A-Za-z0-9/-]+)",
+        "stair": r"\bsc\.?\s*[:.]?\s*([A-Za-z0-9/-]+)",
+        "floor": r"\bet\.?\s*[:.]?\s*([A-Za-z0-9/-]+)",
+        "apartment": r"\bap\.?\s*[:.]?\s*([A-Za-z0-9/-]+)",
+    }
+    result = {}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, raw, flags=re.IGNORECASE)
+        if match:
+            result[key] = match.group(1)
+
+    street = re.search(
+        r"\b(?:strada|str\.?|bulevardul|bulevard|bd\.?|calea|aleea|intrarea)\s+(.+?)"
+        r"(?=\s*(?:nr\.?|num(?:ă|a)r(?:ul)?|bl\.?|sc\.?|et\.?|ap\.?)\s|[,;]|$)",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if street:
+        result["street"] = street.group(1).strip(" ,.;")
+    else:
+        # Many client records store one complete address string (sometimes
+        # including locality and county). Put that complete source value in
+        # the street line rather than silently dropping it or guessing parts.
+        result["street"] = raw
+    return result
+
+
 def _deer_table_row(table, index, values):
     while len(table.rows) <= index:
         table.add_row()
@@ -639,17 +676,31 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
     import re
     applicant = next((p for p in doc.paragraphs if "Utilizatorul" in p.text), None)
     if applicant:
+        applicant_address = _deer_address_parts(c.get("hq_address") or rec.get("hq_address"))
+        client_kind = str(c.get("kind") or rec.get("applicant_type") or "").strip().casefold()
+        is_company = client_kind in ("pj", "company", "firmă", "firma", "persoană juridică", "persoana juridica") or "jurid" in client_kind
+        applicant_id = c.get("idcode") or c.get("cui") or c.get("cnp") or rec.get("idcode") or rec.get("cui") or rec.get("cnp")
         fields = {
-            0: c.get("name"),
-            1: c.get("county"),
-            2: c.get("locality"),
-            10: c.get("phone"),
-            13: c.get("email"),
-            14: c.get("cui") or (c.get("idcode") if str(rec.get("applicant_type") or "").lower() in ("pj", "persoană juridică", "persoana juridica") else None),
-            15: c.get("idcode") if str(rec.get("applicant_type") or "").lower() not in ("pj", "persoană juridică", "persoana juridica") else None,
-            16: c.get("registration_no"),
-            17: c.get("rep_name"),
-            18: c.get("rep_role"),
+            0: c.get("name") or rec.get("client_name"),
+            1: c.get("hq_county") or c.get("county") or rec.get("county"),
+            2: c.get("hq_locality") or c.get("locality") or rec.get("locality"),
+            3: c.get("postal_code") or rec.get("postal_code"),
+            4: applicant_address.get("street"),
+            5: applicant_address.get("number"),
+            6: applicant_address.get("block"),
+            7: applicant_address.get("stair"),
+            8: applicant_address.get("floor"),
+            9: applicant_address.get("apartment"),
+            10: c.get("phone") or rec.get("phone"),
+            13: c.get("email") or rec.get("email"),
+            14: (c.get("cui") or applicant_id) if is_company else None,
+            15: None if is_company else applicant_id,
+            16: c.get("registration_no") or c.get("regcom") or rec.get("regcom"),
+            17: c.get("rep_name") or rec.get("rep_name"),
+            18: c.get("rep_role") or rec.get("rep_role"),
+            19: c.get("iban") or c.get("bank_account") or rec.get("iban"),
+            20: c.get("bank") or rec.get("bank"),
+            21: c.get("bank_branch") or rec.get("bank_branch"),
         }
         counter = 0
         def replace_field(match):
@@ -837,10 +888,15 @@ def render_deer_official_docx(rec: dict, client: dict, settings: dict, pros: dic
     if is_annex2:
         request = next((p for p in doc.paragraphs if "notific prin prezenta racordarea" in p.text.lower()), None)
         if request:
-            # Replace only explicit fields; never split or reinterpret a free-form address.
+            # Split only labeled address fields. A free-form address is kept
+            # whole in the street field instead of being dropped or guessed.
             import re
+            location_address = _deer_address_parts(rec.get("address") or c.get("address"))
             field_values = {
-                0: c.get("county"), 1: c.get("locality"),
+                0: c.get("county") or rec.get("county"), 1: c.get("locality") or rec.get("locality"),
+                2: location_address.get("street"), 3: location_address.get("number"),
+                4: location_address.get("block"), 5: location_address.get("stair"),
+                6: location_address.get("floor"), 7: location_address.get("apartment"),
                 8: rec.get("cf_nr") or c.get("cf_nr"),
                 9: rec.get("cadastral_nr") or c.get("cadastral_nr"),
                 10: rec.get("pod") or c.get("pod"),
