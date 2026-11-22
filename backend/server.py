@@ -3434,6 +3434,8 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         raise HTTPException(status_code=404, detail="Poziție inexistentă")
     name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
     if fmt == "docx":
+        if p.get("official_operator_form"):
+            raise HTTPException(status_code=400, detail="Formularul oficial al operatorului se descarcă în PDF, în formatul publicat de distribuitor.")
         if key == "fisa_tehnica":
             docx = SLD.tech_sheet_docx(rec, client, settings, SZ.compute(rec, client), SZ.state(rec, client, settings))
             return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
