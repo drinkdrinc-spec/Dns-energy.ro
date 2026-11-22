@@ -2872,6 +2872,8 @@ async def catalog_files(owner: str, rec: dict) -> list:
                 out.append({"catalog_id": cid, "model": it.get("brand_model"), "kind": label, **f})
     return out
 
+_catalog_document_import_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
+
 async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
     """Fetch missing official PDFs for equipment selected in a dossier; never block the save on source failures."""
     owner = user["id"]
@@ -2897,32 +2899,46 @@ async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
     async def import_one(catalog_id: str, kind: str, direct_url: str, supplier: str,
                          category: str, product_url: str) -> None:
         async with semaphore:
-            attempted = set()
-            if direct_url:
-                attempted.add(direct_url)
-                try:
-                    await catalog_import_document(catalog_id, _TrustedCatalogImportRequest({"kind": kind, "url": direct_url}), user)
+            lock_key = (owner, catalog_id, kind)
+            lock = _catalog_document_import_locks.setdefault(lock_key, asyncio.Lock())
+            async with lock:
+                # The dossier page requests the attachment list and generated
+                # document list separately. Recheck under a per-model lock so
+                # concurrent requests share one download instead of storing
+                # duplicate PDFs and slowing the mobile page.
+                current = await db.catalog.find_one(
+                    {"owner": owner, "id": catalog_id}, {"_id": 0}
+                )
+                current_doc = (current or {}).get(kind)
+                if (isinstance(current_doc, dict) and current_doc.get("storage_path")
+                        and has_gridfs_object(current_doc["storage_path"])):
                     return
-                except Exception as exc:
-                    reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
-                    logger.info("Catalog PDF auto-import direct link failed for %s (%s): %s", catalog_id, kind, reason)
-            if supplier and category and product_url:
-                try:
-                    recovered_url = await SUPPLIER_CATALOG.get_public_product_document(
-                        supplier, category, product_url, kind
-                    )
-                    if recovered_url and recovered_url not in attempted:
-                        await catalog_import_document(
-                            catalog_id,
-                            _TrustedCatalogImportRequest({"kind": kind, "url": recovered_url}),
-                            user,
-                        )
+                attempted = set()
+                if direct_url:
+                    attempted.add(direct_url)
+                    try:
+                        await catalog_import_document(catalog_id, _TrustedCatalogImportRequest({"kind": kind, "url": direct_url}), user)
                         return
-                except Exception as exc:
-                    reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
-                    logger.info("Catalog PDF recovery from product page skipped for %s (%s): %s", catalog_id, kind, reason)
-            if direct_url or product_url:
-                logger.warning("Catalog PDF could not be recovered for %s (%s)", catalog_id, kind)
+                    except Exception as exc:
+                        reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                        logger.info("Catalog PDF auto-import direct link failed for %s (%s): %s", catalog_id, kind, reason)
+                if supplier and category and product_url:
+                    try:
+                        recovered_url = await SUPPLIER_CATALOG.get_public_product_document(
+                            supplier, category, product_url, kind
+                        )
+                        if recovered_url and recovered_url not in attempted:
+                            await catalog_import_document(
+                                catalog_id,
+                                _TrustedCatalogImportRequest({"kind": kind, "url": recovered_url}),
+                                user,
+                            )
+                            return
+                    except Exception as exc:
+                        reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                        logger.info("Catalog PDF recovery from product page skipped for %s (%s): %s", catalog_id, kind, reason)
+                if direct_url or product_url:
+                    logger.warning("Catalog PDF could not be recovered for %s (%s)", catalog_id, kind)
 
     if candidates:
         await asyncio.gather(*(import_one(*candidate) for candidate in candidates))
