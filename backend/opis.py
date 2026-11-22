@@ -279,7 +279,7 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     # Keep commissioning-only records outside the submission packet until that workflow stage.
     # They remain editable in the PIF section and are included once measurements exist or the dossier reaches PIF.
     workflow_stage = str(rec.get("workflow_status") or rec.get("status") or "").strip().casefold()
-    pif_documents_active = workflow_stage in {"probe și punere în funcțiune", "prosumator activ"} or PIFDOC.filled(rec)
+    pif_documents_active = workflow_stage in {"probe și punere în funcțiune", "pv teste / pif", "prosumator activ", "finalizat"} or PIFDOC.filled(rec)
     if not pif_documents_active:
         pos = [item for item in pos if item.get("key") not in {"pif", "receptie", "pif_pv"}]
 
