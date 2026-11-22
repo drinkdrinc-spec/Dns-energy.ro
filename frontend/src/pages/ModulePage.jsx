@@ -864,8 +864,8 @@ export default function ModulePage({ moduleKey }) {
 
       {key === "prosumator" && !form && <section className="mb-6 overflow-hidden rounded-2xl border shadow-sm" aria-label="Flux dosar prosumator" data-testid="prosumer-workflow" style={{ borderColor: "var(--line)", background: "#fff" }}>
         <div className="grid lg:grid-cols-[1.35fr_1fr]">
-          <div className="p-5 sm:p-7 lg:p-8" style={{ background: "linear-gradient(135deg, #f0f6ff 0%, #ffffff 72%)" }}>
-            <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--blue)" }}>Dosar nou · prosumator</div>
+          <div className="p-5 sm:p-7 lg:p-8" style={{ background: "linear-gradient(135deg, #f2f8f2 0%, #ffffff 72%)" }}>
+            <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--green)" }}>Dosar nou · prosumator</div>
             <h2 className="mt-2 max-w-2xl text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: "#13243d" }}>Pornește din actele clientului</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "var(--muted)" }}>Încarcă CI, factura și cartea funciară. Aplicația extrage datele disponibile, le salvează la client și deschide dosarul pentru verificare.</p>
             <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -906,7 +906,7 @@ export default function ModulePage({ moduleKey }) {
               ["03", "Control tehnic", "Verifică dimensionarea, protecțiile, cablurile și schema."],
               ["04", "Depunere", "Descarcă separat dosarul, schema, PRAM și documentele PIF."],
             ].map(([n, title, body]) => <li key={n} className="flex gap-3 rounded-xl px-3 py-3" style={{ background: "#f8fafd" }}>
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: "#eaf1ff", color: "var(--blue)" }}>{n}</span>
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: "#edf7ef", color: "var(--green)" }}>{n}</span>
               <span><b className="block text-sm">{title}</b><span className="mt-1 block text-xs leading-5" style={{ color: "var(--muted)" }}>{body}</span></span>
             </li>)}
           </ol>
