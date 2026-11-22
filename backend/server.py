@@ -3399,6 +3399,26 @@ async def dossier_item(item_id: str, key: str, request: Request, user: dict = De
         cur["upload"] = body["upload"]
     if body.get("clear_upload"):
         cur.pop("upload", None)
+    multi_file_keys = {"fotografii_instalatie", "fotografii_lucrare", "alt_document"}
+    if "add_uploads" in body:
+        if key not in multi_file_keys or not isinstance(body["add_uploads"], list) or len(body["add_uploads"]) > 20:
+            raise HTTPException(status_code=400, detail="Lista de fișiere nu este validă pentru această poziție")
+        additions = [item for item in body["add_uploads"] if isinstance(item, dict) and item.get("storage_path")]
+        if len(additions) != len(body["add_uploads"]):
+            raise HTTPException(status_code=400, detail="Unul dintre fișiere nu este valid")
+        current_uploads = cur.get("uploads") or []
+        if len(current_uploads) + len(additions) > 50:
+            raise HTTPException(status_code=413, detail="Poți atașa cel mult 50 de fișiere la această categorie")
+        cur["uploads"] = current_uploads + additions
+    if "remove_upload_index" in body:
+        if key not in multi_file_keys or not isinstance(body["remove_upload_index"], int):
+            raise HTTPException(status_code=400, detail="Fișierul selectat nu poate fi eliminat")
+        uploads = cur.get("uploads") or []
+        index = body["remove_upload_index"]
+        if index < 0 or index >= len(uploads):
+            raise HTTPException(status_code=404, detail="Fișierul nu mai este atașat")
+        uploads.pop(index)
+        cur["uploads"] = uploads
     await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {f"opis.{key}": cur, "updated_at": datetime.now(timezone.utc).isoformat()}})
     await audit(user, "opis", "prosumator", item_id, [key] + list(body.keys()))
     return {"ok": True}
