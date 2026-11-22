@@ -210,9 +210,6 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                     (client.get("phone") or rec.get("phone"), "Telefonul solicitantului"),
                     (client.get("email") or rec.get("email"), "E-mailul solicitantului"),
                     (client.get("cui") or client.get("cnp") or client.get("idcode") or rec.get("cui") or rec.get("cnp") or rec.get("idcode"), "CNP/CUI"),
-                    (client.get("registration_no") or client.get("regcom") or rec.get("regcom"), "Numărul Registrului Comerțului"),
-                    (client.get("rep_name") or rec.get("rep_name"), "Reprezentantul legal"),
-                    (client.get("rep_role") or rec.get("rep_role"), "Calitatea reprezentantului"),
                     (rec.get("address") or client.get("address"), "Adresa locului de consum"),
                     (rec.get("pod") or client.get("pod"), "POD"),
                     (rec.get("cf_nr") or client.get("cf_nr"), "Numărul cărții funciare"),
@@ -220,6 +217,12 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                     (rec.get("p_evac_kw") or rec.get("power"), "Puterea evacuată kW"),
                     (rec.get("p_evac_kva"), "Puterea evacuată kVA"),
                 ]
+                if pj:
+                    official_fields.extend([
+                        (client.get("registration_no") or client.get("regcom") or rec.get("regcom"), "Numărul Registrului Comerțului"),
+                        (client.get("rep_name") or rec.get("rep_name"), "Reprezentantul legal"),
+                        (client.get("rep_role") or rec.get("rep_role"), "Calitatea reprezentantului"),
+                    ])
                 for value, label in official_fields:
                     if value in (None, ""):
                         official_missing.append(label)
