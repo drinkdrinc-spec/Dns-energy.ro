@@ -79,18 +79,18 @@ def storage_missing_fields(battery):
 
 
 def dossier_order(p):
-    """Submission order matching the client-first application packet layout."""
+    """Order the packet like the supplied Delgaz/Reenergy dossier example."""
     key = p.get("key", "")
     priority = {
-        # Client source documents open the packet: identity/company records,
-        # electricity bill, then land/property evidence.
+        # Client identity, energy bill, and property papers come first.
         "certificat": 5, "factura": 10, "cf": 15,
-        # Distributor/application documents and signed declarations follow.
-        "notificare": 20, "gdpr": 25,
-        "afm": 30, "executant": 35, "conformitate": 40,
-        "date_stocare": 45, "reglaj": 50, "receptie": 55,
-        "pif_pv": 60, "pif": 65, "priza": 70, "imputernicire": 75,
-        # Engineering sheets and manufacturer evidence close the packet.
+        # Operator form, then the commissioning/serials papers and installer evidence.
+        "notificare": 20, "date_stocare": 25, "receptie": 30,
+        "pif_pv": 35, "pif": 38, "executant": 40, "conformitate": 45,
+        "reglaj": 50, "priza": 55, "afm": 60, "imputernicire": 65,
+        "gdpr": 68,
+        # The authenticity statement/opis precedes the technical appendices.
+        "declaratie_autenticitate": 75, "opis": 76,
         "schema": 80, "fotografii_instalatie": 82, "fisa_tehnica": 85,
         "metrologie_pram": 90, "anre_firma": 95,
         "fotografii_lucrare": 110, "alt_document": 115,
