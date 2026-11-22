@@ -44,7 +44,10 @@ class LlmChat:
         self.system_message = system_message
         self.messages = list(initial_messages or [{"role": "system", "content": system_message}])
         self.model = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
-        self.client = AsyncOpenAI(api_key=api_key)
+        # Bound the upstream wait so a slow AI provider cannot hold a mobile
+        # document upload open past the web service's request timeout. The
+        # caller can then continue with the local PDF/OCR extraction path.
+        self.client = AsyncOpenAI(api_key=api_key, timeout=20.0, max_retries=0)
 
     def with_model(self, provider: str, model: str):
         if provider != "openai":

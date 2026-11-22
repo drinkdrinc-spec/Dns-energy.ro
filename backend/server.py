@@ -1735,7 +1735,9 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
     try:
         if ct in office_types:
             if use_gpt:
-                fields = await extract_gpt_text(extract_office_text(data, ct), doc_type)
+                fields = await asyncio.wait_for(
+                    extract_gpt_text(extract_office_text(data, ct), doc_type), timeout=22
+                )
             else:
                 fields = extract_office_local(data, ct, doc_type)
         else:

@@ -11,6 +11,9 @@ from ai_provider import LlmChat, UserMessage, FileContentWithMimeType, ImageCont
 OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER — Muntenia Nord", "Delgaz Grid",
              "Distribuție Energie Oltenia", "Rețele Electrice România", "Alt operator"]
 
+AI_EXTRACTION_TIMEOUT_SECONDS = 22
+LOCAL_OCR_TIMEOUT_SECONDS = 30
+
 PROMPT = f"""Ești expert în dosare de racordare prosumatori din România. Extrage datele din documentul atașat și răspunde DOAR cu un obiect JSON valid, fără text suplimentar, cu cheile:
 client_name (nume beneficiar/titular), owner_name (proprietar CF), cnp (CNP sau CUI), address (adresa loc de consum), hq_address (domiciliu din CI), consumption_address (adresa de pe factură), id_series (serie CI), id_number (număr CI), cf_nr (număr carte funciară), cadastral_nr (număr cadastral), county (județ), locality (localitate/municipiu dacă apare explicit), pod (POD), nlc (numărul/codul locului de consum distinct de POD, numai dacă apare clar), postal_code (cod poștal, numai dacă apare clar), supplier (furnizor energie), phone, email, doc_type (tip document), summary (rezumat scurt),
 operator (alege EXACT una dintre: {OPERATORS}; Bihor/Cluj/Satu Mare/Sălaj/Maramureș/Bistrița => "DEER — Transilvania Nord"; Alba/Brașov/Covasna/Harghita/Mureș/Sibiu => "DEER — Transilvania Sud"; Prahova/Buzău/Brăila/Galați/Vrancea/Focșani => "DEER — Muntenia Nord"),
@@ -49,7 +52,7 @@ def _images(content: bytes, mime: str) -> list:
         import pymupdf
         doc = pymupdf.open(stream=content, filetype="pdf")
         out = []
-        for page in list(doc)[:12]:
+        for page in list(doc)[:6]:
             r = page.rect
             zoom = min(1600 / max(r.width, r.height), 2.5)
             out.append(ImageContent(image_base64=base64.b64encode(page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("png")).decode()))
@@ -377,10 +380,13 @@ def _ocr_document_text(content: bytes, mime: str) -> str:
             image.save(png, format="PNG", optimize=True)
         doc = pymupdf.open(stream=png.getvalue(), filetype="png")
 
-    pages = list(range(min(len(doc), 12)))
+    # Intake files are normally CI, invoices, or land-book extracts. Keep the
+    # local fallback bounded so a long scan cannot monopolize the small API
+    # instance after an upstream AI timeout.
+    pages = list(range(min(len(doc), 6)))
     text = pymupdf4llm.to_markdown(
         doc, pages=pages, force_ocr=True, ocr_function=rapidocr_api.exec_ocr,
-        ocr_language="ro", ocr_dpi=200, show_progress=False,
+        ocr_language="ro", ocr_dpi=160, show_progress=False,
     )
     return str(text or "").strip()
 
@@ -390,7 +396,10 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
     # local OCR for scans and photos. Missing values are never guessed.
     if use_ai:
         try:
-            return await extract_gpt(content, mime, doc_type)
+            return await asyncio.wait_for(
+                extract_gpt(content, mime, doc_type),
+                timeout=AI_EXTRACTION_TIMEOUT_SECONDS,
+            )
         except Exception:
             pass
 
@@ -408,7 +417,10 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
                 pass
 
     try:
-        ocr_text = await asyncio.to_thread(_ocr_document_text, content, mime)
+        ocr_text = await asyncio.wait_for(
+            asyncio.to_thread(_ocr_document_text, content, mime),
+            timeout=LOCAL_OCR_TIMEOUT_SECONDS,
+        )
     except Exception as exc:
         raise ValueError("Nu am putut citi scanul. Încearcă un PDF mai clar sau fotografiază pagina dreaptă, cu lumină bună.") from exc
     if not ocr_text:
