@@ -3174,6 +3174,10 @@ async def dossier_ctx(owner, item_id: str, verify_files: bool = False):
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     rec = CEF.from_legacy(rec)
     await auto_fill_cef_from_catalog(owner, rec)
+    # Import the exact selected models' official datasheets and declarations
+    # before building the dossier checklist. Otherwise the card reports these
+    # documents as missing even when the catalog already has trusted source URLs.
+    await auto_import_selected_catalog_documents({"id": owner}, rec)
     client = await get_client(owner, rec)
     base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
     settings, warns = await effective_settings(owner, rec, base)
