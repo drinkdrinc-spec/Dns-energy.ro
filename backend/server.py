@@ -1990,6 +1990,35 @@ async def generate_deer_annex1(item_id: str, authorization: str = Header(None), 
                     headers={"Content-Disposition": disp("attachment", filename)})
 
 
+@api_router.get("/docs/anexa2/{item_id}")
+async def generate_deer_annex2(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    """Download DEER's official existing-consumption prosumer notice, prefilled from the dossier."""
+    user = await user_from_token(authorization, auth)
+    rec = await check_access(user, "prosumator", item_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Dosar inexistent")
+    rec = CEF.from_legacy(rec)
+    await auto_fill_cef_from_catalog(user["id"], rec)
+    client = await get_client(user["id"], rec)
+    operator = str(rec.get("operator") or client.get("operator") or "").casefold()
+    if "deer" not in operator and "distributie energie electrica" not in operator and "distribuție energie electrică" not in operator:
+        raise HTTPException(status_code=422, detail="Formularul oficial Anexa 2 este disponibil pentru dosarele DEER.")
+    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    settings, _ = await effective_settings(user["id"], rec, base)
+    official_rec = {**rec, "deer_case": "Anexa 2"}
+    try:
+        content = ATR.render_deer_official_docx(official_rec, client, settings, rec)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Nu s-a putut precompleta Anexa 2 DEER")
+        raise HTTPException(status_code=502, detail="Formularul oficial DEER Anexa 2 nu a putut fi generat. Încearcă din nou.") from exc
+    safe_name = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in str(client.get("name") or "prosumator")).strip().replace(" ", "_")
+    filename = f"DEER_Anexa2_{safe_name or 'prosumator'}.docx"
+    return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": disp("attachment", filename)})
+
+
 @api_router.get("/docs/sizing/{item_id}")
 async def doc_sizing(item_id: str, user: dict = Depends(get_current_user)):
     rec = await check_access(user, "prosumator", item_id)
