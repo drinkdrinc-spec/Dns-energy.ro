@@ -13,9 +13,11 @@ OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER �
              "Distribuție Energie Oltenia", "Rețele Electrice România", "Alt operator"]
 
 AI_EXTRACTION_TIMEOUT_SECONDS = 22
-LOCAL_OCR_TIMEOUT_SECONDS = 30
-OCR_MAX_PAGES = 6
-OCR_DPI = 135
+LOCAL_OCR_TIMEOUT_SECONDS = 60
+LOCAL_OCR_QUEUE_TIMEOUT_SECONDS = 12
+OCR_MAX_PAGES = 2
+OCR_DPI = 110
+_LOCAL_OCR_LOCK = asyncio.Lock()
 
 logger = logging.getLogger("d-energy.ai_extract")
 
@@ -405,6 +407,40 @@ def _ocr_document_text(content: bytes, mime: str) -> str:
     return "\n\n".join(chunks).strip()
 
 
+def _release_local_ocr_lock(task: asyncio.Task) -> None:
+    """Release the OCR slot only after the underlying thread really finishes.
+
+    Cancelling ``asyncio.to_thread`` does not stop its worker thread. Keeping
+    the slot until the thread exits prevents timed-out mobile uploads from
+    stacking multiple RapidOCR models in the 512 MiB production instance.
+    """
+    try:
+        if not task.cancelled():
+            error = task.exception()
+            if error:
+                logger.error("Local OCR worker ended with an error", exc_info=(type(error), error, error.__traceback__))
+    except asyncio.CancelledError:
+        pass
+    finally:
+        _LOCAL_OCR_LOCK.release()
+
+
+async def _run_local_ocr(content: bytes, mime: str) -> str:
+    try:
+        await asyncio.wait_for(_LOCAL_OCR_LOCK.acquire(), timeout=LOCAL_OCR_QUEUE_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError as exc:
+        raise ValueError("O altă citire de document este încă în curs. Reîncearcă în câteva secunde; fișierul rămâne atașat dosarului.") from exc
+
+    worker = asyncio.create_task(asyncio.to_thread(_ocr_document_text, content, mime))
+    worker.add_done_callback(_release_local_ocr_lock)
+    try:
+        return await asyncio.wait_for(asyncio.shield(worker), timeout=LOCAL_OCR_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError as exc:
+        # The worker continues until its current page finishes. It retains the
+        # lock, so another upload cannot start a second model in parallel.
+        raise ValueError("Citirea scanului durează prea mult. Încarcă doar paginile necesare sau un fișier mai mic; originalul rămâne atașat dosarului.") from exc
+
+
 async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai: bool = True) -> dict:
     # Prefer paid AI when enabled, then read selectable text and finally use
     # local OCR for scans and photos. Missing values are never guessed.
@@ -431,10 +467,7 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
                 pass
 
     try:
-        ocr_text = await asyncio.wait_for(
-            asyncio.to_thread(_ocr_document_text, content, mime),
-            timeout=LOCAL_OCR_TIMEOUT_SECONDS,
-        )
+        ocr_text = await _run_local_ocr(content, mime)
     except Exception as exc:
         logger.exception("Local OCR pipeline failed (mime=%s)", mime)
         raise ValueError("Nu am putut citi scanul. Încearcă un PDF mai clar sau fotografiază pagina dreaptă, cu lumină bună.") from exc
