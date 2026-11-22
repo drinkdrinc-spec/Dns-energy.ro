@@ -67,12 +67,16 @@ def test_dossier_positions_follow_submission_order():
         {"key": "notificare", "title": "Notificare"},
         {"key": "priza", "title": "PRAM"},
         {"key": "cat_datasheet_battery", "title": "Fișă baterie"},
+        {"key": "cf", "title": "Extras de carte funciară"},
+        {"key": "factura", "title": "Factură furnizor de energie"},
+        {"key": "certificat", "title": "Act de identitate"},
     ]
 
     ordered = sorted(positions, key=dossier_order)
 
     assert [position["key"] for position in ordered] == [
-        "priza", "notificare", "date_stocare", "schema", "cat_datasheet_battery"
+        "certificat", "factura", "cf", "notificare", "date_stocare",
+        "priza", "schema", "cat_datasheet_battery",
     ]
 
 def _marker_pdf(text):

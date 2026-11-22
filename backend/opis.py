@@ -78,17 +78,23 @@ def storage_missing_fields(battery):
 
 
 def dossier_order(p):
-    """Submission order, with PRAM and the distributor packet first."""
+    """Submission order matching the client-first application packet layout."""
     key = p.get("key", "")
     priority = {
-        "priza": 5, "notificare": 10, "date_stocare": 15, "gdpr": 20,
-        "imputernicire": 25, "afm": 30, "executant": 35, "conformitate": 40,
-        "receptie": 45, "pif_pv": 50, "pif": 55, "reglaj": 60,
-        "schema": 70, "fisa_tehnica": 75, "certificat": 80, "factura": 82, "cf": 84,
+        # Client source documents open the packet: identity/company records,
+        # electricity bill, then land/property evidence.
+        "certificat": 5, "factura": 10, "cf": 15,
+        # Distributor/application documents and signed declarations follow.
+        "notificare": 20, "gdpr": 25, "imputernicire": 30,
+        "afm": 35, "executant": 40, "conformitate": 45,
+        "date_stocare": 50, "reglaj": 55, "receptie": 60,
+        "pif_pv": 65, "pif": 70, "priza": 75,
+        # Engineering sheets and manufacturer evidence close the packet.
+        "schema": 80, "fisa_tehnica": 85,
         "metrologie_pram": 90, "anre_firma": 95,
     }
     if key.startswith("cat_"):
-        return (85, p.get("title", "").lower())
+        return (88, p.get("title", "").lower())
     return (priority.get(key, 500), p.get("title", "").lower())
 
 
