@@ -14,7 +14,8 @@ import pif_doc as PIFDOC
 
 STATUSES = ["de completat", "generat", "necesită semnătură", "atașat"]
 CLIENT_SLOTS = {"factura": "Factură furnizor de energie", "certificat": "Certificat de înregistrare", "constatator": "Certificat constatator",
-                "ci": "Act de identitate", "cf": "Extras de carte funciară"}
+                "ci": "Act de identitate", "cf": "Extras de carte funciară", "imputernicire": "Împuternicire / mandat",
+                "fotografii_instalatie": "Fotografii instalație", "fotografii_lucrare": "Fotografii lucrare", "alt_document": "Alt document"}
 L = {"name": "Nume / denumire client", "idcode": "CNP / CUI", "hq_address": "Domiciliu / sediu social", "phone": "Telefon client",
      "address": "Adresă loc de consum", "county": "Județ loc de consum", "pod": "POD (cod unic de identificare)", "operator": "Operator de distribuție",
      "regcom": "Nr. Registrul Comerțului client", "rep_name": "Reprezentant legal client", "rep_role": "Calitate reprezentant", "ci_series": "Serie/nr. act identitate",
@@ -90,8 +91,9 @@ def dossier_order(p):
         "date_stocare": 50, "reglaj": 55, "receptie": 60,
         "pif_pv": 65, "pif": 70, "priza": 75,
         # Engineering sheets and manufacturer evidence close the packet.
-        "schema": 80, "fisa_tehnica": 85,
+        "schema": 80, "fotografii_instalatie": 82, "fisa_tehnica": 85,
         "metrologie_pram": 90, "anre_firma": 95,
+        "fotografii_lucrare": 110, "alt_document": 115,
     }
     if key.startswith("cat_"):
         return (88, p.get("title", "").lower())
@@ -175,6 +177,7 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     opis = rec.get("opis") or {}
     req_common = COMMON + (["regcom", "rep_name", "rep_role"] if pj else [])
     pos = []
+    cdocs = client.get("docs") or {}
 
     common = [L.get(k, k) for k in req_common if ctx.raw(k) in (None, "")] + [EL.get(k, k) for k in EXEC if settings.get(k) in (None, "")]
     if not settings.get("_stamp_path"):
@@ -188,6 +191,10 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     res_sld = SZ.compute(rec, client)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
+        if key == "imputernicire" and cdocs.get("imputernicire"):
+            pos.append({"key": key, "title": "Împuternicire / mandat", "source": "client",
+                        "slots": ["imputernicire"], "files": cdocs["imputernicire"], "missing": []})
+            continue
         if key == "date_stocare" and not docgen.storage(ctx):
             continue
         if key == "notificare" and ctx.power_increase:
@@ -296,13 +303,24 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     if not pif_documents_active:
         pos = [item for item in pos if item.get("key") not in {"pif", "receptie", "pif_pv"}]
 
-    cdocs = client.get("docs") or {}
     for key, slots, title in [("factura", ["factura"], "Factură furnizor de energie"),
                               ("certificat", ["certificat", "constatator"] if pj else ["ci"], "Certificat de înregistrare" if pj else "Act de identitate"),
                               ("cf", ["cf"], "Extras de carte funciară")]:
         files = [f for s in slots for f in (cdocs.get(s) or [])]
         pos.append({"key": key, "title": title, "source": "client", "slots": slots, "files": files,
                     "missing": [] if files else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
+
+    # Add photo and extra-document upload rows shown on the dossier card.
+    # Installation photos belong in the main packet; work photos follow the
+    # technical annex. Client uploads remain original files in storage.
+    for key, slot, title in (
+        ("fotografii_instalatie", "fotografii_instalatie", "Fotografii instalație"),
+        ("fotografii_lucrare", "fotografii_lucrare", "Fotografii lucrare — anexă tehnică"),
+        ("alt_document", "alt_document", "Alt document client"),
+    ):
+        files = cdocs.get(slot) or []
+        pos.append({"key": key, "title": title, "source": "client", "slots": [slot],
+                    "files": files, "missing": []})
 
     # Include original company and PRAM evidence in the dossier packet.
     # These documents must be uploaded by the company; never synthesize them.
@@ -466,8 +484,16 @@ def mark_draft(pdf: bytes, text="CIORNĂ") -> bytes:
 
 async def position_pdf(p, rec, client, settings, titles, get_object, force_generated=False):
     if p.get("upload") and not force_generated:
+        out = []
+        # Keep source documents/photos already in the client record when a
+        # dossier-card upload adds another file to the same category.
+        if p.get("source") == "client":
+            for file in p.get("files") or []:
+                data, ct = get_object(file["storage_path"])
+                out.append(file_pdf(data, file.get("content_type") or ct))
         data, ct = get_object(p["upload"]["storage_path"])
-        return [file_pdf(data, p["upload"].get("content_type") or ct)]
+        out.append(file_pdf(data, p["upload"].get("content_type") or ct))
+        return out
     if p.get("docx_only"):
         return []
     if p.get("key") in ("schema", "fisa_tehnica"):
@@ -552,7 +578,8 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
             # Match the reference submission layout: the authenticity
             # declaration closes the administrative forms, then the single-line
             # diagram and manufacturer evidence follow as a technical appendix.
-            is_technical_appendix = p.get("key") in ("schema", "fisa_tehnica") or p.get("source") == "catalog"
+            is_technical_appendix = (p.get("key") in ("schema", "fisa_tehnica", "fotografii_lucrare")
+                                     or p.get("source") == "catalog")
             (technical_parts if is_technical_appendix else main_parts).extend(position_parts)
         except Exception as e:
             logger.error(f"bundle skip {p['key']}: {e}")
