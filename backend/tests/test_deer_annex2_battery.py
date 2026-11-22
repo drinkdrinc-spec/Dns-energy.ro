@@ -152,3 +152,44 @@ def test_deer_official_annex_requires_a_recognized_procedure():
         atr_doc.render_deer_official_docx(
             {"operator": "DEER", "deer_case": "procedură necunoscută"}, {}, {}, {}
         )
+
+def test_annex2_prefills_saved_address_and_uses_client_kind_for_cui():
+    client = {
+        "kind": "Persoană juridică",
+        "name": "DNS Test SRL",
+        "county": "Bihor",
+        "locality": "Oradea",
+        "postal_code": "410001",
+        "hq_address": "Strada Sediului nr. 8, bl. A, sc. 2, et. 3, ap. 4",
+        "address": "Strada Exemplului nr. 12, bl. B, sc. 1, et. 2, ap. 6",
+        "phone": "0700000000",
+        "email": "office@example.test",
+        "idcode": "RO12345678",
+        "regcom": "J05/123/2020",
+        "rep_name": "Administrator Test",
+        "rep_role": "Administrator",
+        "iban": "RO00TEST0000000000000000",
+        "bank": "Banca Test",
+        "bank_branch": "Oradea",
+        "cf_nr": "CF123",
+        "cadastral_nr": "456",
+        "pod": "POD-TEST",
+    }
+    rec = {
+        "operator": "DEER",
+        "deer_case": "Loc existent — notificare — Anexa 2",
+        "p_evac_kw": 10,
+        "p_evac_kva": 10,
+    }
+    doc = Document(io.BytesIO(atr_doc.render_deer_official_docx(
+        rec, client, {}, {"operator": "DEER", "cef": {"inverters": []}}
+    )))
+    applicant = next(p.text for p in doc.paragraphs if "Utilizatorul" in p.text)
+    location = next(p.text for p in doc.paragraphs if "notific prin prezenta" in p.text.lower())
+
+    for value in ("410001", "Sediului", "8", "A", "2", "3", "4", "RO12345678", "J05/123/2020", "Administrator Test", "RO00TEST", "Banca Test"):
+        assert value in applicant
+    assert "1800101123456" not in applicant
+    for value in ("Exemplului", "12", "B", "1", "2", "6", "CF123", "456", "POD-TEST"):
+        assert value in location
+
