@@ -205,6 +205,13 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                 pos.append({"key": key, "title": "Cerere de racordare — Anexa 1 DEER (formular oficial Word precompletat)",
                             "source": "generat", "docs": [], "docx_only": True,
                             "missing": ["Verifică formularul oficial și completează/semnează câmpurile rămase necompletate."]})
+            elif "delgaz" in operator_name:
+                pos.append({"key": key, "title": "Cerere de racordare — formular oficial Delgaz Grid (Anexa 1)",
+                            "source": "official", "docs": [],
+                            "official_operator_form": {"operator_key": "delgaz", "annex_no": 1,
+                                "title": "Cerere de racordare prosumator — Anexa 1 Delgaz Grid",
+                                "url": "https://delgaz.ro/getattachment/91755a0d-890c-4357-917a-ac5128ec735a/Cerere_de_racordare_prosumator-Anexa-1.pdf"},
+                            "missing": ["Verifică formularul oficial, completează câmpurile rămase necompletate și semnează-l."] + missing(keys, ekeys)})
             else:
                 pos.append({"key": key, "title": "Cerere de racordare — Anexa 1 a operatorului",
                             "source": "manual", "files": [],
@@ -248,6 +255,18 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                             "official_doc_endpoint": "anexa2",
                             "official_form_label": "Anexa 2 DEER",
                             "missing": ["Descarcă formularul oficial, verifică datele, semnează-l și încarcă PDF-ul semnat.", *official_missing]})
+                continue
+            if "delgaz" in operator_name:
+                form_missing = list(dict.fromkeys(
+                    ["Verifică formularul oficial, completează eventualele câmpuri rămase goale și semnează-l."]
+                    + missing(keys, ekeys) + missing(*DOC_COMMON.get(key, ([], [])))))
+                pos.append({"key": key,
+                            "title": "Notificare racordare prosumator — formular oficial Delgaz Grid (Anexa 2, DEGR E P46-F11 Ed.4)",
+                            "source": "official", "docs": ["notificare"],
+                            "official_operator_form": {"operator_key": "delgaz", "annex_no": 2,
+                                "title": "Notificare racordare prosumator — Anexa 2, DEGR E P46-F11 Ed.4",
+                                "url": "https://delgaz.ro/getattachment/90cf84fa-708e-46a7-b60b-266364c50098/Notificare_racordare_prosumator-Anexa-2.pdf"},
+                            "missing": form_missing})
                 continue
         if key == "priza" and rec.get("pram_source") == "none":
             if PIFDOC.filled(rec):
@@ -500,6 +519,18 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
         return out
     if p.get("docx_only"):
         return []
+    official_form = p.get("official_operator_form")
+    if official_form:
+        import atr_routes as ATR_ROUTES
+        operator_key = official_form["operator_key"]
+        official_bytes, _ = await ATR_ROUTES._fetch_registry_annex(official_form, operator_key)
+        official_bytes, filled_fields = ATR_ROUTES._prefill_official_pdf(official_bytes, rec, client, rec)
+        parts = []
+        if not filled_fields:
+            parts.append(ATR_ROUTES.ATR.render_operator_annex_prep(
+                rec, client, rec, operator_key, official_form["annex_no"], official_form["title"]))
+        parts.append(official_bytes)
+        return parts
     if p.get("key") in ("schema", "fisa_tehnica"):
         res = SZ.compute(rec, client)
         st = SZ.state(rec, client, settings)
