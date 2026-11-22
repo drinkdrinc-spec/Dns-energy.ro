@@ -22,12 +22,20 @@ function Row({ p, id, statuses, reload }) {
   const multiUpload = ["fotografii_instalatie", "fotografii_lucrare", "alt_document"].includes(p.key);
   const uploadedFiles = [...(p.uploads || []), ...(p.upload ? [p.upload] : [])];
   const canView = !p.docx_only && (p.source === "generat" || !!p.official_operator_form || uploadedFiles.length > 0 || p.files.length > 0);
+  const sourceLabel = p.source === "generat" ? "Generat din datele dosarului"
+    : p.source === "client" ? "Document încărcat în fișa clientului"
+      : p.source === "manual" ? "Document oficial — atașează PDF-ul aplicabil"
+        : p.source === "official" ? "Formular preluat din sursa oficială a operatorului"
+          : p.source === "company" ? "Documentul firmei din Setări → Firmă"
+            : p.source === "instrument" ? "Certificat al aparatului din Setări → Aparatele de măsură"
+              : p.source === "catalog" ? "Document tehnic din Catalog echipamente"
+                : "Document atașat dosarului";
   return (
     <tr className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border rounded-lg p-2 mb-2 bg-white md:mb-0 md:table-row md:border-0 md:rounded-none md:p-0" style={{ borderColor: "var(--line)" }} data-testid={`opis-row-${p.nr}`}>
       <td className="hidden md:table-cell px-2 py-2.5 font-bold">{p.nr}</td>
       <td className="col-span-2 md:col-span-1 md:table-cell px-2 py-2.5">
         <div className="flex items-start gap-2 font-semibold"><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: dotColor }} /><span><span className="md:hidden">{p.nr}. </span>{p.title}</span></div>
-        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{uploadedFiles.length ? `Încărcate: ${uploadedFiles.map((file) => file.original_filename).filter(Boolean).join(", ")}` : p.docx_only ? "Descarcă formularul Word, verifică datele și semnează-l. Încarcă apoi PDF-ul semnat aici ca să intre în dosarul complet." : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : p.source === "manual" ? "Document oficial — atașează PDF-ul aplicabil" : "Din catalog echipamente"}</div>
+        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{uploadedFiles.length ? `Încărcate: ${uploadedFiles.map((file) => file.original_filename).filter(Boolean).join(", ")}` : p.docx_only ? "Descarcă formularul Word, verifică datele și semnează-l. Încarcă apoi PDF-ul semnat aici ca să intre în dosarul complet." : sourceLabel}</div>
         {p.key === "gdpr" && <a className="text-[11px] underline inline-block mt-1" style={{ color: "var(--blue)" }} href="https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf" target="_blank" rel="noopener noreferrer">Deschide nota oficială DEER (PDF, versiunea octombrie 2026) ↗</a>}
         {p.missing.length > 0 && <div className="text-[11px] mt-1" style={{ color: "#76500a" }}>Lipsă: {p.missing.join(", ")}</div>}
       </td>
