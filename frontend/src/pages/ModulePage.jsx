@@ -44,7 +44,7 @@ function installedPanelKwp(pros) {
   let hasPvStrings = false;
   let complete = true;
   for (const inverter of inverters) {
-    if (inverter.battery_only || inverter.no_panels || /invertor de baterie\\s*\\(ac\\)/i.test(String(inverter.kind || inverter.type || ""))) continue;
+    if (inverter.battery_only || inverter.no_panels || String(inverter.kind || inverter.type || "").toLocaleLowerCase("ro-RO").includes("invertor de baterie (ac)")) continue;
     const count = Math.max(1, number(inverter.count || inverter.quantity) || 1);
     const strings = (inverter.strings || []).filter((string) => number(string.panels) > 0);
     if (!strings.length) continue;
