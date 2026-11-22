@@ -170,6 +170,14 @@ function prosumerWorkflowProgress(form, checklist) {
   return { completed, count: completed.filter(Boolean).length, nextIndex };
 }
 
+function ProsumerStepStatus({ complete, testId }) {
+  return <span className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold"
+    style={complete
+      ? { background: "#eaf7ef", color: "#18894f" }
+      : { background: "#fff4e8", color: "#c97922" }}
+    data-testid={testId}>{complete ? "Complet" : "De completat"}</span>;
+}
+
 function prosumerRecommendedAction(item) {
   const status = prosumerBoardStatus(item);
   return PROSUMER_STAGE_ACTIONS[status] || "";
@@ -823,7 +831,7 @@ export default function ModulePage({ moduleKey }) {
     ["POD", form?.pod || "Necompletat"],
     ["Operator", form?.operator || "Neales"],
   ];
-  const prosumerProgress = key === "prosumator" && editId ? prosumerWorkflowProgress(form, dossierChecklist) : null;
+  const prosumerProgress = key === "prosumator" ? prosumerWorkflowProgress(form, dossierChecklist) : null;
   const nextProsumerStep = prosumerProgress ? PROSUMER_GUIDED_STEPS[prosumerProgress.nextIndex] : null;
   const openProsumerStep = (stepId) => {
     const anchor = document.getElementById(stepId);
@@ -942,7 +950,7 @@ export default function ModulePage({ moduleKey }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-bold" style={{ borderColor: "#198754", color: "#198754" }} onClick={() => openProsumerStep(nextProsumerStep?.[0] || PROSUMER_GUIDED_STEPS[0][0])} data-testid="guided-next-step-action">Completează</button>
-                  <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "#198754" }} onClick={() => openAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`)} data-testid="guided-generate-dossier">Generează dosarul PDF</button>
+                  <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "#198754" }} onClick={() => openAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`)} data-testid="guided-generate-dossier">Regenerează dosarul</button>
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} onClick={() => {
                     const actions = document.querySelector('[data-testid="prosumer-quick-actions"]');
                     if (actions) { actions.open = true; actions.scrollIntoView({ behavior: "smooth", block: "center" }); }
@@ -1000,7 +1008,7 @@ export default function ModulePage({ moduleKey }) {
               </ol>
             </details>}
           </details>}
-          {key === "prosumator" ? <div id="dossier-section-client" className="scroll-mt-24"><ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} /></div> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
+          {key === "prosumator" ? <div id="dossier-section-client" className="scroll-mt-24"><ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} stepComplete={prosumerProgress?.completed[0]} /></div> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
             </div>
@@ -1043,24 +1051,24 @@ export default function ModulePage({ moduleKey }) {
 
           {key === "prosumator" && <div className="mt-5 space-y-4" data-testid="prosumer-guided-sections">
             <details id="dossier-section-installation" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-installation-card">
-              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>2. Instalația</p><h3 className="text-sm font-bold">CEF — invertoare, panouri și baterii</h3></div></summary>
+              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>2. Instalația</p><h3 className="text-sm font-bold">CEF — invertoare, panouri și baterii</h3></div><ProsumerStepStatus complete={prosumerProgress?.completed[1]} testId="guided-step-status-2" /></summary>
               <CefEditor value={form.cef} onChange={(v) => setVal("cef", v)} onSave={editId ? () => saveSection("Instalația") : undefined} saving={sectionSaving} />
               {editId && <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--line)" }}><h4 className="mb-2 text-sm font-bold">Schema monofilară</h4><SldPanel id={editId} form={form} setVal={setVal} /></div>}
             </details>
 
             <details id="dossier-section-acts" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-acts-card">
-              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>3. Acte și responsabili</p><h3 className="text-sm font-bold">Echipa dosarului</h3></div></summary>
+              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>3. Acte și responsabili</p><h3 className="text-sm font-bold">Echipa dosarului</h3></div><ProsumerStepStatus complete={prosumerProgress?.completed[2]} testId="guided-step-status-3" /></summary>
               <div className="space-y-4 px-4 py-4 sm:px-5">{editId && <DossierOpis id={editId} mode="attachments" onChecklist={setDossierChecklist} />}<AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierExtras form={form} setVal={setVal} part="pram" dossierId={editId} onSave={editId ? () => saveSection("Actele și PRAM") : undefined} saving={sectionSaving} /></div>
             </details>
 
             {editId && <details id="dossier-section-documents" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-documents-card">
-              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>4. Documente și semnare</p><h3 className="text-sm font-bold">Documente generate și semnături</h3></div></summary>
+              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>4. Documente și semnare</p><h3 className="text-sm font-bold">Documente generate și semnături</h3></div><ProsumerStepStatus complete={prosumerProgress?.completed[3]} testId="guided-step-status-4" /></summary>
               <div className="space-y-4"><DossierOpis id={editId} mode="generated" /><SimpleDossierBtn id={editId} /><AiDossierCheck id={editId} /><SignRequests dossierId={editId} /><GeneratedDocs id={editId} files={form.files} form={form} /></div>
             </details>}
             {key === "prosumator" && editId && <details id="dossier-section-submission" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-operator-progress">
               <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}>
                 <div><h3 className="text-sm font-bold">5. Depunere și distribuitor</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Urmărește etapa curentă și ce mai trebuie pregătit pentru operator.</p></div>
-                <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: form.operator_stage ? "#eaf1ff" : "#f1f5f9", color: form.operator_stage ? "var(--blue)" : "var(--muted)" }} data-testid="prosumer-stage-count">{form.operator_stage ? `Etapa ${currentOdStage + 1} din ${PROSUMER_OD_STAGES.length}` : "Etapă nealeasă"}</span>
+                <div className="flex flex-wrap items-center gap-2"><span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: form.operator_stage ? "#eaf1ff" : "#f1f5f9", color: form.operator_stage ? "var(--blue)" : "var(--muted)" }} data-testid="prosumer-stage-count">{form.operator_stage ? `Etapa ${currentOdStage + 1} din ${PROSUMER_OD_STAGES.length}` : "Etapă nealeasă"}</span><ProsumerStepStatus complete={prosumerProgress?.completed[4]} testId="guided-step-status-5" /></div>
               </summary>
               <div className="space-y-4 px-4 py-4 sm:px-5"><ClientConversation dossierId={editId} /><DossierActivity dossierId={editId} workflowHistory={form.workflow_history} /></div>
               <div className="grid grid-cols-9 gap-1.5" role="group" aria-label="Etapele dosarului la operator">
@@ -1082,7 +1090,7 @@ export default function ModulePage({ moduleKey }) {
               <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Stadiul se păstrează împreună cu dosarul când apeși „Salvează”. Actualizarea stadiului nu depune cereri în portalul operatorului.</p>
             </details>}
             <details id="dossier-section-commissioning" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-commissioning-card">
-              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>6. Punere în funcțiune</p><h3 className="text-sm font-bold">Serii echipamente și PV teste / PIF</h3></div></summary>
+              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>6. Punere în funcțiune</p><h3 className="text-sm font-bold">Serii echipamente și PV teste / PIF</h3></div><ProsumerStepStatus complete={prosumerProgress?.completed[5]} testId="guided-step-status-6" /></summary>
               {editId && <div className="mt-4 border-b pb-4" style={{ borderColor: "var(--line)" }}><PifPanel id={editId} /></div>}
               <DossierExtras form={form} setVal={setVal} part="commissioning" />
             </details>

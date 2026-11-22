@@ -91,7 +91,7 @@ function proposeStrings(inv, totalPanels) {
   return panelCounts.map((panels, i) => ({ panels, mppt: i + 1, auto_generated: true }));
 }
 
-export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBusyChange }) {
+export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBusyChange, stepComplete }) {
   const [supplierMarkup, setSupplierMarkup] = useSupplierMarkup();
   const [catalog, setCatalog] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -542,7 +542,9 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         <div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--green)" }}>1. Client și loc de consum</p>
           <h3 className="mt-1 text-lg font-bold">Client și loc de consum</h3>
           <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>Alege clientul și completează locul de consum. Datele disponibile se preiau din dosarul clientului.</p></div>
-        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Completare asistată</span>
+        <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={stepComplete
+          ? { background: "#eaf7ef", color: "#18894f" }
+          : { background: "#fff4e8", color: "#c97922" }} data-testid="guided-step-status-1">{stepComplete ? "Complet" : "De completat"}</span>
       </summary>
       <div className="mx-4 mt-4 grid gap-3 pb-3 sm:mx-5 sm:grid-cols-2">
         <label className="den-field sm:col-span-2"><span>{title(field(cfg, "client_name"), "Beneficiar / client")} *</span>
