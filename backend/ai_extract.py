@@ -382,7 +382,10 @@ def _ocr_document_text(content: bytes, mime: str) -> str:
             register_heif_opener()
         with Image.open(BytesIO(content)) as source:
             image = ImageOps.exif_transpose(source).convert("RGB")
-            image.thumbnail((2400, 2400))
+            # Keep phone camera originals from expanding into very large OCR
+            # pages on the small production instance; the upload itself stays
+            # untouched in storage.
+            image.thumbnail((1600, 1600))
             png = BytesIO()
             image.save(png, format="PNG", optimize=True)
         doc = pymupdf.open(stream=png.getvalue(), filetype="png")
@@ -441,6 +444,23 @@ async def _run_local_ocr(content: bytes, mime: str) -> str:
         raise ValueError("Citirea scanului durează prea mult. Încarcă doar paginile necesare sau un fișier mai mic; originalul rămâne atașat dosarului.") from exc
 
 
+def _document_fields_complete(fields: dict, doc_type: str) -> bool:
+    """Return whether the readable text already has the key intake fields."""
+    resolved_type = canonical_document_type(fields.get("doc_type")) or canonical_document_type(doc_type)
+    required = {
+        "ci": (("client_name",), ("cnp",), ("hq_address", "address"), ("id_series",), ("id_number",)),
+        "factura": (("pod",), ("consumption_address", "address"), ("operator",)),
+        "cf": (("owner_name", "client_name"), ("cf_nr",), ("cadastral_nr",)),
+    }.get(resolved_type)
+    if not required:
+        return bool(fields)
+
+    def present(value):
+        return value is not None and str(value).strip().casefold() not in ("", "null", "none")
+
+    return all(any(present(fields.get(key)) for key in aliases) for aliases in required)
+
+
 async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai: bool = True) -> dict:
     # Prefer paid AI when enabled, then read selectable text and finally use
     # local OCR for scans and photos. Missing values are never guessed.
@@ -454,13 +474,20 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
             pass
 
     text = ""
+    text_fields = {}
     if mime == "application/pdf":
         import pymupdf
         doc = pymupdf.open(stream=content, filetype="pdf")
         text = "\n".join(page.get_text("text") for page in list(doc)[:12]).strip()
         if text:
             try:
-                return _fallback_text_fields(text, doc_type)
+                text_fields = _fallback_text_fields(text, doc_type)
+                # A partial embedded OCR layer can look like selectable text but
+                # omit the fields needed to prepare a real dossier. Run image OCR
+                # before returning, then keep the clearer embedded values where
+                # both readers recognized the same field.
+                if _document_fields_complete(text_fields, doc_type):
+                    return text_fields
             except ValueError:
                 # Recognized words can still come from a scanned layer with no
                 # useful labels. OCR preserves the original page content too.
@@ -470,10 +497,28 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
         ocr_text = await _run_local_ocr(content, mime)
     except Exception as exc:
         logger.exception("Local OCR pipeline failed (mime=%s)", mime)
+        if text_fields:
+            # Preserve useful text already read from the document. The intake
+            # endpoint will list the still-missing fields and retain the upload.
+            text_fields["_engine"] = "Text PDF parțial — verifică datele lipsă"
+            return text_fields
         raise ValueError("Nu am putut citi scanul. Încearcă un PDF mai clar sau fotografiază pagina dreaptă, cu lumină bună.") from exc
     if not ocr_text:
+        if text_fields:
+            text_fields["_engine"] = "Text PDF parțial — verifică datele lipsă"
+            return text_fields
         raise ValueError("Nu am găsit text lizibil în document. Încearcă un PDF mai clar sau fotografiază pagina dreaptă, cu lumină bună.")
-    fields = _fallback_text_fields(ocr_text, doc_type)
+    try:
+        fields = _fallback_text_fields(ocr_text, doc_type)
+    except ValueError:
+        if text_fields:
+            text_fields["_engine"] = "Text PDF parțial — verifică datele lipsă"
+            return text_fields
+        raise
+    # Prefer embedded PDF text if OCR disagrees, and use OCR to fill only fields
+    # that the embedded layer did not provide.
+    fields = {**fields, **text_fields}
     fields["_engine"] = "OCR local (română)"
     fields["summary"] = "Date extrase local prin OCR din textul vizibil. Verifică valorile înainte de folosire; câmpurile neidentificate nu au fost deduse."
     return fields
+
