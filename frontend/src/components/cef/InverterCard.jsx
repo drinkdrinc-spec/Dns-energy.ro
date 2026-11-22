@@ -43,7 +43,7 @@ function batteryCatalogData(item, phases) {
   };
 }
 
-export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supplierMarkup = 15 }) {
+export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supply, supplierMarkup = 15 }) {
   const s = (k) => (v) => set({ ...inv, [k]: v });
   const catalogModelText = (model, idKey, fields) => {
     const next = { ...inv, [idKey]: undefined };
@@ -85,6 +85,10 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
     inv.battery?.catalog_id ? catalog.find((item) => item.id === inv.battery.catalog_id) : null,
   ].filter(Boolean).filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index);
   const pa = res?.proposals?.ac || {}, pd = res?.proposals?.dc || {};
+  const selectedPhase = String(inv.phases || supply || "").toLowerCase();
+  const isMono = selectedPhase.includes("mono");
+  const isTri = selectedPhase.includes("tri");
+  const acSections = isMono ? [6, 10, 16] : isTri ? [6, 10, 16, 25, 35, 50] : SECTIONS.filter((section) => section >= 6 && section <= 50);
   const apply = () => set({
     ...inv,
     ac: { ...(inv.ac || {}), breaker_a: inv.ac?.breaker_a || pa.breaker_a, section: inv.ac?.section || pa.section },
@@ -221,7 +225,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
           <F label="AC: material" value={inv.ac?.material || "Cu"} onChange={sub("ac", "material")} options={["Cu", "Al"]} testid={`${t}-ac-mat`} />
           <F label="AC: mod de pozare" value={inv.ac?.install || "C"} onChange={sub("ac", "install")} options={INSTALL} testid={`${t}-ac-install`} />
           <F label="AC: lungime (m)" type="number" value={inv.ac?.length_m} onChange={sub("ac", "length_m")} testid={`${t}-ac-len`} />
-          <F label={`AC: secțiune (mm²)${pa.section ? ` · propus ${pa.section}` : ""}`} value={inv.ac?.section} onChange={(v) => sub("ac", "section")(Number(v))} options={SECTIONS} testid={`${t}-ac-section`} />
+          <F label={`AC: secțiune (${isMono ? "3×" : isTri ? "5×" : "faze neconfirmate · 3×/5×"} mm²)${pa.section ? ` · propus ${pa.section}` : ""}`} value={inv.ac?.section} onChange={(v) => sub("ac", "section")(Number(v))} options={acSections} testid={`${t}-ac-section`} />
           <F label={`AC: disjunctor (A)${pa.breaker_a ? ` · Ib ${pa.ib} A, propus ${pa.breaker_a}` : ""}`} type="number" value={inv.ac?.breaker_a} onChange={sub("ac", "breaker_a")} testid={`${t}-ac-breaker`} />
           <F label="Factor corecție (grupare/temp.)" type="number" value={inv.ac?.k_correction} onChange={sub("ac", "k_correction")} testid={`${t}-ac-k`} />
           <F label="Diferențial invertor" value={inv.rcd} onChange={s("rcd")} testid={`${t}-rcd`} />
@@ -231,9 +235,9 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
           <F label="AC: Icu întreruptor (kA)" type="number" value={inv.ac?.icu_ka} onChange={sub("ac", "icu_ka")} testid={`${t}-ac-icu`} />
           <F label="DC: tip cablu" value={inv.dc?.cable_type} onChange={sub("dc", "cable_type")} testid={`${t}-dc-type`} />
           <F label="DC: lungime (m)" type="number" value={inv.dc?.length_m} onChange={sub("dc", "length_m")} testid={`${t}-dc-len`} />
-          <F label={`DC: secțiune (mm²)${pd.section ? ` · propus ${pd.section}` : ""}`} value={inv.dc?.section} onChange={(v) => sub("dc", "section")(Number(v))} options={SECTIONS.slice(1)} testid={`${t}-dc-section`} />
+          <F label={`DC: secțiune (mm², H1Z2Z2-K ≥ 6)${pd.section ? ` · propus ${pd.section}` : ""}`} value={inv.dc?.section} onChange={(v) => sub("dc", "section")(Number(v))} options={SECTIONS.slice(3, 12)} testid={`${t}-dc-section`} />
           <F label={`SPD DC Ucpv (V)${pd.spd_ucpv ? ` · propus ${pd.spd_ucpv}` : ""}`} type="number" value={inv.dc?.spd_ucpv} onChange={sub("dc", "spd_ucpv")} testid={`${t}-dc-spd`} />
-          <F label="Siguranțe gPV (A)" type="number" value={inv.dc?.fuse_a} onChange={sub("dc", "fuse_a")} testid={`${t}-dc-fuse`} />
+          <F label="Separator fuzibil gPV / string (A)" type="number" value={inv.dc?.fuse_a ?? 15} onChange={sub("dc", "fuse_a")} testid={`${t}-dc-fuse`} />
           <F label="Separator DC" value={inv.dc?.switch} onChange={sub("dc", "switch")} testid={`${t}-dc-switch`} />
         </div>
         <div className="flex flex-wrap items-center gap-3 mt-3">

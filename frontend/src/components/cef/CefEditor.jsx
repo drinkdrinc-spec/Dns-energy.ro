@@ -207,7 +207,7 @@ export function CefEditor({ value, onChange, onSave, saving = false }) {
       <Totals res={res} inverters={invs} sharedBatteries={cef.shared_batteries || []} />
       <GridCard grid={cef.grid || {}} set={(g) => set({ grid: g })} catalog={catalog} res={res} />
       {invs.map((inv, i) => (
-        <InverterCard key={inv.id || i} idx={i} inv={inv} catalog={catalog} shared={cef.shared_batteries || []} res={res?.inverters?.[i]} supplierMarkup={supplierMarkup}
+        <InverterCard key={inv.id || i} idx={i} inv={inv} catalog={catalog} shared={cef.shared_batteries || []} res={res?.inverters?.[i]} supply={cef.grid?.supply} supplierMarkup={supplierMarkup}
           set={(v) => set({ inverters: invs.map((x, j) => (j === i ? v : x)) })} remove={() => set({ inverters: invs.filter((_, j) => j !== i) })} />
       ))}
       <SharedBatteries list={cef.shared_batteries || []} set={(l) => set({ shared_batteries: l })} catalog={catalog} supplierMarkup={supplierMarkup} />

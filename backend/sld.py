@@ -286,7 +286,8 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             par = {}
             for k, s in enumerate(strings):
                 par.setdefault(s["mppt"], []).append(k)
-            fuses = max(len(v) for v in par.values()) >= 3
+            fuse_rating = n(dc.get("fuse_a")) or 15
+            fuses = True  # DNS standard: show a proposed fuse-separator on each PV string.
             rsd = inv.get("rsd") or {}
             if rsd.get("enabled"):
                 S.enclosure(73, max(ys) + 3, 115, max(ys) + 9,
@@ -308,6 +309,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                 S.wire(22, y, 72, y, "dc")
                 if fuses:
                     S.fuse(62, y)
+                    S.text(62, y + 3.8, f"-FU{i + 1}.{k + 1} {fuse_rating:g} A", 3.8, True, anchor="c")
                 S.wire(2, y - 4, 6, y - 4, "pe")
             panel_models = list(dict.fromkeys(str(s.get("panel_model") or inv.get("panel_model") or "[model panou lipsă]") for s in strings))
             S.text(6, min(ys) - 8.5, " · ".join(panel_models), 4.6, color=INK if all(model != "[model panou lipsă]" for model in panel_models) else RED, w=48)
@@ -331,10 +333,11 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.val(58, ty - 2.6, "Separator DC: ", sw, w=56, size=4.6)
             S.val(58, ty - 4.8, "SPD DC T2 Ucpv ", n(dc.get("spd_ucpv")), " V", w=56, size=4.6)
             if fuses:
-                S.val(58, ty - 7.0, "Siguranțe gPV ", n(dc.get("fuse_a")), " A / 1000 V", w=56, size=4.6)
+                S.val(58, ty - 7.0, "Separator fuzibil gPV: ", fuse_rating, " A/string*", w=56, size=4.0)
             by = min(ys) - 11.8
             S.text(58, by + 2.2, f"-W{i + 1}.DC  {dc.get('cable_type') or 'H1Z2Z2-K'}", 4.6, True, w=56)
-            S.val(58, by, "1×", n(dc.get("section")), f" mm² {dc.get('material') or 'Cu'} (+/−), L=" + (gv(n(dc.get('length_m')), ' m') or "[lipsă]"), w=56, size=4.6)
+            dc_section = n(dc.get("section")) or n(r["proposals"]["dc"].get("section")) or 6
+            S.val(58, by, "1×", dc_section, f" mm² {dc.get('material') or 'Cu'} (+/−), L=" + (gv(n(dc.get('length_m')), ' m') or "[lipsă]"), w=56, size=4.6)
             S.wire(2, min(ys) - 4, 2, pe_y, "pe")
         # inverter
         cx = 134
@@ -402,8 +405,10 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.wire(cx + hh, cy + dd, 181, cy + dd)
         cy += dd
         S.tick(max(158, cx + hh + 12), cy, conductors if r["tri"] else "L+N+PE")
+        ac_section = n(ac.get("section")) or n(r["proposals"]["ac"].get("section"))
+        cores_label = (("5" if r["tri"] else "3") + f"×{ac_section:g} mm²") if r.get("phase_known") and ac_section else "faze/secțiune de confirmat"
         S.text(cx + hh + 1, cy + 6.6, f"-W{i + 1}.AC  {ac.get('cable_type') or ''}".strip(), 4.6, True, w=28)
-        S.val(cx + hh + 1, cy + 4.4, "", n(ac.get("section")), f" mm² {ac.get('material') or 'Cu'}" + (f", PE {gv(n(ac.get('pe_section')))}" if n(ac.get("pe_section")) else ""), size=4.4, w=28)
+        S.text(cx + hh + 1, cy + 4.4, cores_label + f" {ac.get('material') or 'Cu'}" + (f", PE {gv(n(ac.get('pe_section')))}" if n(ac.get("pe_section")) else ""), 4.2, w=28)
         S.val(cx + hh + 1, cy + 2.2, "L=", n(ac.get("length_m")), " m", size=4.4, w=28)
         S.enclosure(174, cy - 7, 230, cy + 13, f"-TFV  Tablou fotovoltaic (INV {i + 1})")
         S.switch(186, cy, "Q")
@@ -491,7 +496,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         # column
         S.tick(326 + A, y, conductors)
         S.text(318 + A, y + 6.6, "-W0 coloană BMP→TG", 4.6, True, w=26)
-        S.val(318 + A, y + 4.4, "", grid.get("column_cable") or (gv(n(grid.get("column_section")), " mm²")), size=4.4, w=26)
+        S.val(318 + A, y + 4.4, "", grid.get("column_cable") or base["grid"].get("main_column_cable_proposal") or (gv(n(grid.get("column_section")), " mm²")), size=4.4, w=26)
         if n(grid.get("column_length")):
             S.text(318 + A, y + 2.2, f"L={n(grid.get('column_length')):g} m", 4.4)
         # BMP
@@ -995,8 +1000,8 @@ def protections(rec, res):
         if r["strings"]:
             out.append((f"-Q{i + 1}.D", "Separator de sarcină DC (DC-PV2)", dc.get("switch"), f"-TDC{i + 1}"))
             out.append((f"-FA{i + 1}.DC", "Descărcător SPD DC tip 2", gv(n(dc.get("spd_ucpv")), " V Ucpv"), f"-TDC{i + 1}"))
-            if r["proposals"]["dc"]["fuse"]:
-                out.append((f"-F{i + 1}.S", "Siguranțe gPV pe stringuri", gv(n(dc.get("fuse_a")), " A gPV"), f"-TDC{i + 1}"))
+            fuse_rating = n(dc.get("fuse_a")) or n(r["proposals"]["dc"].get("fuse")) or 15
+            out.append((f"-FU{i + 1}.S", "Separator fuzibil gPV pe fiecare string", f"{fuse_rating:g} A propus; verifică Isc și fișa modulului", f"-TDC{i + 1}"))
             rsd = inv.get("rsd") or {}
             if rsd.get("enabled"):
                 voltage_rows = [(300, "current_300v_a"), (600, "current_600v_a"), (800, "current_800v_a"), (1000, "current_1000v_a"), (1200, "current_1200v_a"), (1500, "current_1500v_a")]
@@ -1054,7 +1059,7 @@ def sheet_data(rec, client, settings, res, approval):
         ["Măsură / smart meter", f"{grid.get('measure_mode') or ('prin TC' if grid.get('ct_ratio') else 'directă')} / {grid.get('smart_meter_mode') or grid.get('meter') or 'model neprecizat'}"],
         ["Alimentare TEG / backup", f"{grid.get('teg_supply') or 'Auto (derivat)'} / {grid.get('backup_mode') or '—'}"],
         ["Protecții TEG", f"SPD DC: {grid.get('spd_dc') or '[de completat]'} · SPD AC: {grid.get('spd_ac') or '[de completat]'} · generală: {grid.get('teg_main_protection') or gv(n(grid.get('tg_breaker_a')), ' A') or '[de completat]'}"],
-        ["Cabluri CEF", f"Solar: {grid.get('solar_conductor') or '[de completat]'} · AC invertor → BMP/TEG: {grid.get('inverter_ac_cable') or '[de completat]'}"],
+        ["Cabluri CEF", f"Solar: {grid.get('solar_conductor') or 'H1Z2Z2-K 6 mm²'} · AC invertor → BMP/TEG: {grid.get('inverter_ac_cable') or 'secțiunile W1…Wn din calcul'}"],
         ["Circuite TEG", "; ".join(f"{c.get('name') or f'Circuit {i + 1}'} — {c.get('breaker') or 'siguranță de completat'} {c.get('poles') or ''} {c.get('rcd') or ''}".strip() for i, c in enumerate(grid.get('circuits') or []) if isinstance(c, dict)) or None],
         ["Putere instalată DC", gv(t["kwp"], " kWp")], ["Putere invertoare AC (nominal / maxim)", f"{t['inverters_kw']:g} / {t['inverters_kw_max']:g} kW" if t["inverters_kw"] else None],
         ["Putere maximă evacuată", gv(t["export_kw"], " kW")], ["Capacitate stocare", gv(t["storage_kwh"], " kWh") or "fără stocare"],
