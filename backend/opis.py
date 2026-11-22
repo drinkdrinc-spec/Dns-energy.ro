@@ -1,5 +1,6 @@
 import io
 import datetime
+import zipfile
 from html import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -704,6 +705,94 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
     out = io.BytesIO()
     w.write(out)
     return out.getvalue()
+
+
+def _merge_pdf_parts(parts, logger):
+    writer = PdfWriter()
+    for part in parts:
+        try:
+            for page in PdfReader(io.BytesIO(part)).pages:
+                writer.add_page(page)
+        except Exception as exc:
+            logger.error(f"package PDF merge skip: {exc}")
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def _package_group(key, source):
+    if key in ("fotografii_instalatie", "fotografii_lucrare"):
+        return 3
+    if key in ("priza", "pif", "pif_pv", "receptie", "serii", "reglaj"):
+        return 1
+    if key in ("schema", "fisa_tecnica", "date_stocare") or source == "catalog":
+        return 2
+    return 0
+
+
+async def export_package_zip(positions_info, rec, client, settings, get_object, logger, file_count=4):
+    """Build the selected, ordered submission package without duplicating evidence."""
+    count = max(1, min(4, int(file_count or 4)))
+    titles = positions_info["titles"]
+    groups = [[], [], [], []]
+    unavailable = []
+    for position in positions_info["positions"]:
+        try:
+            parts = await position_pdf(position, rec, client, settings, titles, get_object)
+            if position.get("_official_form_unavailable"):
+                unavailable.append(f"{position.get('title') or position.get('key')} — formular oficial indisponibil; atașează originalul verificat")
+            if position.get("source") == "generat" and position.get("missing") and position.get("key") not in ("schema", "fisa_tecnica"):
+                parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in parts]
+            groups[_package_group(position.get("key"), position.get("source"))].extend(parts)
+        except Exception as exc:
+            logger.error(f"package skip {position.get('key')}: {exc}")
+            unavailable.append(position.get("title") or position.get("key") or "Document atașat")
+
+    if unavailable and positions_info.get("complete"):
+        positions_info["complete"] = False
+    authenticity = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
+                                 draft=not positions_info.get("complete", False))
+    if unavailable:
+        authenticity = mark_draft(authenticity, "CIORNĂ — FIȘIER LIPSĂ")
+    # The authenticity declaration follows the administrative and commissioning
+    # documents, once, in every layout. Keep it in the last of those groups.
+    authenticity_group = 1 if groups[1] else 0
+    groups[authenticity_group].append(authenticity)
+    report = _incomplete_report(positions_info, unavailable)
+    if report:
+        groups[authenticity_group].append(report)
+    positions_info["export_has_unavailable_items"] = bool(unavailable)
+
+    # Merge adjacent sections for compact layouts, keeping submission order stable.
+    layouts = {
+        1: [("Dosar_complet", [0, 1, 2, 3])],
+        2: [("Dosar_depunere", [0, 1]), ("Anexe_tehnice", [2, 3])],
+        3: [("Acte_si_procedura", [0, 1]), ("Schema_si_fise_tehnice", [2]), ("Fotografii", [3])],
+        4: [("Acte_si_formulare", [0]), ("Probe_PRAM_PIF", [1]), ("Schema_si_fise_tehnice", [2]), ("Fotografii", [3])],
+    }
+    archive = io.BytesIO()
+    manifest = ["Pachet DNS Energy — documentele rămân în ordinea de depunere.",
+                "Documentele marcate CIORNĂ au date sau fișiere de verificat; nu sunt prezentate ca documente finale."]
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        file_index = 0
+        for title, group_indices in layouts[count]:
+            parts = [part for index in group_indices for part in groups[index]]
+            if not parts:
+                continue
+            file_index += 1
+            pdf = _merge_pdf_parts(parts, logger)
+            if rec.get("is_test"):
+                pdf = mark_test(pdf)
+            bundle.writestr(f"{file_index:02d}_{title}.pdf", pdf)
+            manifest.append(f"{file_index:02d}_{title}.pdf")
+        if unavailable:
+            manifest.append("Fișiere neincluse / formulare oficiale indisponibile:")
+            manifest.extend(f"- {item}" for item in unavailable)
+        if positions_info.get("common_missing"):
+            manifest.append("Date comune de verificat:")
+            manifest.extend(f"- {item}" for item in positions_info["common_missing"])
+        bundle.writestr("00_CITESTE.txt", "\n".join(manifest))
+    return archive.getvalue()
 
 
 def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int = 38) -> bytes:

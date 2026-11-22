@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, downloadAuthenticatedFile, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
-import { Eye, FileDown, FileType2, Upload, X, AlertTriangle, Lock, Unlock } from "lucide-react";
+import { Eye, FileDown, FileType2, Upload, X, AlertTriangle, Lock, Unlock, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { uploadFile } from "./ClientDocs";
 import { AiPrecheck } from "@/components/ai/AiPrecheck";
@@ -65,6 +65,7 @@ export function DossierOpis({ id, mode = "all", onChecklist }) {
   const [showReport, setShowReport] = useState(false);
   const [pre, setPre] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [packageExporting, setPackageExporting] = useState(false);
   const exportLock = useRef(false);
   const { user } = useAuth();
   const load = () => api.get(`/dossier/${id}`).then(async (r) => {
@@ -127,6 +128,11 @@ export function DossierOpis({ id, mode = "all", onChecklist }) {
             try { await downloadAuthenticatedFile(`/dossier/${id}/export`, "Dosar_prosumator.pdf"); }
             finally { exportLock.current = false; setExporting(false); }
           }} data-testid="opis-export"><FileDown size={15} /> {exporting ? "Se pregătește PDF-ul… păstrează pagina deschisă" : `Export dosar complet PDF${d.complete ? "" : " (CIORNĂ)"}`}</Btn>
+          <Btn variant="secondary" disabled={packageExporting} aria-busy={packageExporting} onClick={async () => {
+            setPackageExporting(true);
+            try { await downloadAuthenticatedFile(`/dossier/${encodeURIComponent(id)}/package.zip`, "Pachet_dosar_prosumator.zip"); }
+            finally { setPackageExporting(false); }
+          }} data-testid="opis-package-export"><Archive size={14} /> {packageExporting ? "Se pregătește ZIP-ul…" : "Pachet ZIP pentru depunere"}</Btn>
         </div>}
       </div>
       {mode !== "attachments" && d.finalized && <p className="text-xs mb-2" style={{ color: "#166534" }} data-testid="opis-finalized">Finalizat la {new Date(d.finalized).toLocaleString("ro-RO")} — modificările din setări nu mai afectează acest dosar.</p>}

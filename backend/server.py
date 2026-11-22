@@ -1316,7 +1316,8 @@ async def audit_log(module: Optional[str] = None, item_id: Optional[str] = None,
 async def get_settings(user: dict = Depends(get_current_user)):
     doc = await db.settings.find_one({"owner": user["id"]})
     if not doc:
-        return {"company": "DNS HOSTESS S.R.L.", "brand": "D-ENERGY", "rep": "", "phone": "", "address": ""}
+        return {"company": "DNS HOSTESS S.R.L.", "brand": "D-ENERGY", "rep": "", "phone": "", "address": "",
+                "dossier_package_parts": 4, "dossier_package_by_operator": {}}
     return clean(doc)
 
 @api_router.put("/settings")
@@ -3472,6 +3473,23 @@ async def dossier_export(item_id: str, authorization: str = Header(None), auth: 
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
 
 SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "pif_pv", "schema", "fisa_tehnica")
+
+@api_router.get("/dossier/{item_id}/package.zip")
+async def dossier_package(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
+    operator_key = ATR.op_key(rec.get("operator"), client.get("operator"))
+    overrides = settings.get("dossier_package_by_operator") or {}
+    selected_parts = overrides.get(operator_key) if operator_key else None
+    try:
+        file_count = max(1, min(4, int(selected_parts or settings.get("dossier_package_parts", 4))))
+    except (TypeError, ValueError):
+        file_count = 4
+    package = await OPIS.export_package_zip(info, rec, client, settings, get_object, logger, file_count)
+    label = (client.get("name") or rec.get("client_name") or "prosumator").replace(" ", "_")
+    suffix = "_CIORNA" if not info.get("complete") or info.get("export_has_unavailable_items") else ""
+    return Response(content=package, media_type="application/zip",
+                    headers={"Content-Disposition": disp('attachment', f"DOSAR_{label}{suffix}.zip")})
 
 @api_router.get("/dossier/{item_id}/simple")
 async def dossier_simple(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
