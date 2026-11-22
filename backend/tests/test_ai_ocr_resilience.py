@@ -13,7 +13,7 @@ def test_local_ocr_keeps_readable_pages_when_one_page_fails(monkeypatch):
             self.closed = False
 
         def __len__(self):
-            return 3
+            return 7
 
         def close(self):
             self.closed = True
@@ -42,8 +42,8 @@ def test_local_ocr_keeps_readable_pages_when_one_page_fails(monkeypatch):
 
     result = ai_extract._ocr_document_text(b"pdf", "application/pdf")
 
-    assert result == "page 1 text"
-    assert [call["pages"] for call in calls] == [[0], [1]]
+    assert result == "page 1 text\n\npage 3 text\n\npage 4 text\n\npage 5 text\n\npage 6 text"
+    assert [call["pages"] for call in calls] == [[0], [1], [2], [3], [4], [5]]
     assert all(call["ocr_dpi"] == ai_extract.OCR_DPI for call in calls)
     assert document.closed
 
