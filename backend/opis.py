@@ -202,11 +202,29 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
             is_deer = ("deer" in operator_name or "distributie energie electrica" in operator_name
                        or "distribuție energie electrică" in operator_name)
             if is_deer:
-                shared_keys, shared_exec = DOC_COMMON.get(key, ([], []))
-                official_missing = missing(keys, ekeys) + missing(shared_keys, shared_exec)
+                official_missing = []
+                official_fields = [
+                    (client.get("name") or rec.get("client_name"), "Numele solicitantului"),
+                    (client.get("county") or rec.get("county"), "Județul locului de consum"),
+                    (client.get("locality") or rec.get("locality"), "Localitatea locului de consum"),
+                    (client.get("phone") or rec.get("phone"), "Telefonul solicitantului"),
+                    (client.get("email") or rec.get("email"), "E-mailul solicitantului"),
+                    (client.get("cui") or client.get("cnp") or client.get("idcode") or rec.get("cui") or rec.get("cnp") or rec.get("idcode"), "CNP/CUI"),
+                    (client.get("registration_no") or client.get("regcom") or rec.get("regcom"), "Numărul Registrului Comerțului"),
+                    (client.get("rep_name") or rec.get("rep_name"), "Reprezentantul legal"),
+                    (client.get("rep_role") or rec.get("rep_role"), "Calitatea reprezentantului"),
+                    (rec.get("address") or client.get("address"), "Adresa locului de consum"),
+                    (rec.get("pod") or client.get("pod"), "POD"),
+                    (rec.get("cf_nr") or client.get("cf_nr"), "Numărul cărții funciare"),
+                    (rec.get("cadastral_nr") or client.get("cadastral_nr"), "Numărul cadastral"),
+                    (rec.get("p_evac_kw") or rec.get("power"), "Puterea evacuată kW"),
+                    (rec.get("p_evac_kva"), "Puterea evacuată kVA"),
+                ]
+                for value, label in official_fields:
+                    if value in (None, ""):
+                        official_missing.append(label)
                 if not (rec.get("cef") or {}).get("inverters"):
                     official_missing.append("Configurare CEF (invertoare, stringuri)")
-                official_missing = list(dict.fromkeys(official_missing))
                 pos.append({"key": key, "title": "Notificare oficială DEER — Anexa 2",
                             "source": "generat", "docs": [], "docx_only": True,
                             "official_doc_endpoint": "anexa2",
