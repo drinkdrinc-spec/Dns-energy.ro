@@ -2299,6 +2299,23 @@ async def seed_catalog(owner: str):
                     )
                 except Exception as exc:
                     logger.warning("Could not refresh the Deye SUN-8K-SG05 datasheet from its official source: %s", exc)
+            aiko_model = item.get("brand_model") == "AIKO-A500-MAH60Mb"
+            aiko_conformity = row.get("conformity") if isinstance(row.get("conformity"), dict) else {}
+            aiko_conformity_url = str(row.get("conformity_url") or row.get("conformity_source_url") or "").strip()
+            seed_managed_aiko_conformity = aiko_model and aiko_conformity_url in ("", item.get("conformity_url"))
+            if (seed_managed_aiko_conformity and not aiko_conformity.get("storage_path")
+                    and aiko_conformity.get("source_url") in (None, "", item.get("conformity_url"))):
+                try:
+                    await catalog_import_document(
+                        row["id"],
+                        _TrustedCatalogImportRequest({
+                            "kind": "conformity",
+                            "url": item["conformity_url"],
+                        }),
+                        {"id": owner},
+                    )
+                except Exception as exc:
+                    logger.warning("Could not import the AIKO-A500-MAH60Mb family CE declaration hosted by Solsol: %s", exc)
             continue
         if _catalog_seed_key(item.get("category"), item.get("brand_model")) in deleted_seed_keys:
             continue
