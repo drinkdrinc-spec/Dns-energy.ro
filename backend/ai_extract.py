@@ -1,5 +1,6 @@
 import base64
 import asyncio
+import logging
 import os
 import json
 import re
@@ -13,6 +14,10 @@ OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER �
 
 AI_EXTRACTION_TIMEOUT_SECONDS = 22
 LOCAL_OCR_TIMEOUT_SECONDS = 30
+OCR_MAX_PAGES = 6
+OCR_DPI = 135
+
+logger = logging.getLogger("d-energy.ai_extract")
 
 PROMPT = f"""Ești expert în dosare de racordare prosumatori din România. Extrage datele din documentul atașat și răspunde DOAR cu un obiect JSON valid, fără text suplimentar, cu cheile:
 client_name (nume beneficiar/titular), owner_name (proprietar CF), cnp (CNP sau CUI), address (adresa loc de consum), hq_address (domiciliu din CI), consumption_address (adresa de pe factură), id_series (serie CI), id_number (număr CI), cf_nr (număr carte funciară), cadastral_nr (număr cadastral), county (județ), locality (localitate/municipiu dacă apare explicit), pod (POD), nlc (numărul/codul locului de consum distinct de POD, numai dacă apare clar), postal_code (cod poștal, numai dacă apare clar), supplier (furnizor energie), phone, email, doc_type (tip document), summary (rezumat scurt),
@@ -380,15 +385,24 @@ def _ocr_document_text(content: bytes, mime: str) -> str:
             image.save(png, format="PNG", optimize=True)
         doc = pymupdf.open(stream=png.getvalue(), filetype="png")
 
-    # Intake files are normally CI, invoices, or land-book extracts. Keep the
-    # local fallback bounded so a long scan cannot monopolize the small API
-    # instance after an upstream AI timeout.
-    pages = list(range(min(len(doc), 6)))
-    text = pymupdf4llm.to_markdown(
-        doc, pages=pages, force_ocr=True, ocr_function=rapidocr_api.exec_ocr,
-        ocr_language="ro", ocr_dpi=160, show_progress=False,
-    )
-    return str(text or "").strip()
+    # Keep local OCR bounded, but isolate pages: one malformed scan page must
+    # not discard readable pages elsewhere in the same upload. Processing each
+    # page separately also limits peak memory on the small production instance.
+    chunks = []
+    for page_index in range(min(len(doc), OCR_MAX_PAGES)):
+        try:
+            text = pymupdf4llm.to_markdown(
+                doc, pages=[page_index], force_ocr=True,
+                ocr_function=rapidocr_api.exec_ocr,
+                ocr_language="ro", ocr_dpi=OCR_DPI, show_progress=False,
+            )
+        except Exception:
+            logger.exception("Local OCR failed on page %s (mime=%s)", page_index + 1, mime)
+            continue
+        if str(text or "").strip():
+            chunks.append(str(text).strip())
+    doc.close()
+    return "\n\n".join(chunks).strip()
 
 
 async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai: bool = True) -> dict:
@@ -422,6 +436,7 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
             timeout=LOCAL_OCR_TIMEOUT_SECONDS,
         )
     except Exception as exc:
+        logger.exception("Local OCR pipeline failed (mime=%s)", mime)
         raise ValueError("Nu am putut citi scanul. Încearcă un PDF mai clar sau fotografiază pagina dreaptă, cu lumină bună.") from exc
     if not ocr_text:
         raise ValueError("Nu am găsit text lizibil în document. Încearcă un PDF mai clar sau fotografiază pagina dreaptă, cu lumină bună.")
@@ -429,3 +444,4 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
     fields["_engine"] = "OCR local (română)"
     fields["summary"] = "Date extrase local prin OCR din textul vizibil. Verifică valorile înainte de folosire; câmpurile neidentificate nu au fost deduse."
     return fields
+
