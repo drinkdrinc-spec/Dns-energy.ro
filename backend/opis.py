@@ -523,7 +523,15 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
     if official_form:
         import atr_routes as ATR_ROUTES
         operator_key = official_form["operator_key"]
-        official_bytes, _ = await ATR_ROUTES._fetch_registry_annex(official_form, operator_key)
+        try:
+            official_bytes, _ = await ATR_ROUTES._fetch_registry_annex(official_form, operator_key)
+        except Exception as exc:
+            worksheet = ATR_ROUTES.ATR.render_operator_annex_prep(
+                rec, client, rec, operator_key, official_form["annex_no"], official_form["title"])
+            notice = _official_form_unavailable_pdf(official_form, exc)
+            p["_official_form_unavailable"] = True
+            return [mark_draft(worksheet, "FORMULAR OFICIAL INDISPONIBIL"),
+                    mark_draft(notice, "FORMULAR OFICIAL INDISPONIBIL")]
         official_bytes, filled_fields = ATR_ROUTES._prefill_official_pdf(official_bytes, rec, client, rec)
         parts = []
         if not filled_fields:
@@ -569,6 +577,29 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
     return out
 
 
+def _official_form_unavailable_pdf(form, reason):
+    """Return a clear fallback page with the official source; never substitute a generated form."""
+    url = str(form.get("url") or "").strip()
+    title = escape(str(form.get("title") or "formularul oficial al operatorului"))
+    reason_text = escape(str(reason)[:300])
+    story = [
+        Paragraph("FORMULARUL OFICIAL NU A PUTUT FI DESCĂRCAT", docgen.S["h"]),
+        Paragraph(title, docgen.S["b"]),
+        Spacer(1, 5 * mm),
+        Paragraph("Fișa de precompletare din acest dosar este doar un document de lucru. Nu înlocuiește formularul oficial și nu trebuie depusă în locul lui.", docgen.S["p"]),
+        Paragraph("Descărcați formularul de la operator, completați-l, verificați datele și semnați-l înainte de depunere.", docgen.S["p"]),
+    ]
+    if url.startswith("https://"):
+        story.append(Paragraph(f'<link href="{escape(url, quote=True)}" color="blue">Deschideți sursa oficială a formularului</link>', docgen.S["p"]))
+    story.append(Spacer(1, 4 * mm))
+    story.append(Paragraph(f"Detaliu tehnic: {reason_text}", docgen.S["small"]))
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
+                            topMargin=20 * mm, bottomMargin=18 * mm, title="Formular oficial indisponibil")
+    doc.build(story)
+    return buf.getvalue()
+
+
 def _incomplete_report(positions_info, unavailable):
     rows = []
     for position in positions_info.get("positions", []):
@@ -608,6 +639,8 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
     for p in positions_info["positions"]:
         try:
             position_parts = await position_pdf(p, rec, client, settings, titles, get_object)
+            if p.get("_official_form_unavailable"):
+                unavailable.append(f"{p.get('title') or p.get('key') or 'Formular oficial'} — formularul oficial nu a putut fi descărcat; fișa din pachet este doar de lucru")
             if p.get("source") == "generat" and p.get("missing") and p.get("key") not in ("schema", "fisa_tehnica"):
                 position_parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in position_parts]
             # Match the reference submission layout: the authenticity
@@ -621,6 +654,9 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
             unavailable.append(p.get("title") or p.get("key") or "Document atașat")
     if unavailable and positions_info["complete"]:
         authenticity_page = mark_draft(authenticity_page, "CIORNĂ — FIȘIER LIPSĂ")
+    positions_info["export_has_unavailable_items"] = bool(unavailable)
+    if unavailable:
+        positions_info["complete"] = False
     # Keep the internal review/index page out of the official-document order;
     # it remains the final page so staff can see what still needs attention.
     report = _incomplete_report(positions_info, unavailable)
@@ -650,5 +686,6 @@ def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int =
     watermark(w, text, size)
     o = io.BytesIO(); w.write(o)
     return o.getvalue()
+
 
 
