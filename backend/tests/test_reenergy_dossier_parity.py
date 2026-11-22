@@ -1,6 +1,7 @@
 import asyncio
 import io
 import sys
+import zipfile
 from types import SimpleNamespace
 
 from pypdf import PdfReader
@@ -8,7 +9,7 @@ from reportlab.pdfgen import canvas
 
 import docgen
 import opis
-from opis import dossier_order, storage_missing_fields
+from opis import _package_group, dossier_order, storage_missing_fields
 
 
 def _storage_context(batteries):
@@ -82,6 +83,55 @@ def test_dossier_positions_follow_submission_order():
         "certificat", "factura", "cf", "notificare", "date_stocare",
         "priza", "schema", "fotografii_instalatie", "cat_datasheet_battery", "fotografii_lucrare",
     ]
+
+
+def test_installation_photos_stay_in_submission_pdf_and_work_photos_close_technical_annexes():
+    assert _package_group("fotografii_instalatie", "client") == 0
+    assert _package_group("fotografii_lucrare", "client") == 3
+    assert _package_group("schema", "generat") == 2
+    assert _package_group("priza", "generat") == 1
+
+
+def test_submission_zip_keeps_installation_photos_with_forms_and_work_photos_last(monkeypatch):
+    async def fake_position_pdf(position, *_args, **_kwargs):
+        return [_marker_pdf(position["marker"])]
+
+    monkeypatch.setattr(opis, "position_pdf", fake_position_pdf)
+    monkeypatch.setattr(opis.docgen, "render", lambda *_args, **_kwargs: _marker_pdf("AUTHENTICITY"))
+    monkeypatch.setattr(opis, "_incomplete_report", lambda *_args: None)
+
+    class Logger:
+        def error(self, *_args, **_kwargs):
+            raise AssertionError("Unexpected ZIP export error")
+
+    info = {
+        "titles": {},
+        "complete": True,
+        "positions": [
+            {"key": "notificare", "source": "manual", "marker": "OFFICIAL FORM"},
+            {"key": "fotografii_instalatie", "source": "client", "marker": "INSTALLATION PHOTOS"},
+            {"key": "priza", "source": "generat", "marker": "PRAM"},
+            {"key": "schema", "source": "generat", "marker": "SINGLE-LINE DIAGRAM"},
+            {"key": "cat_datasheet_panel", "source": "catalog", "marker": "PANEL DATASHEET"},
+            {"key": "fotografii_lucrare", "source": "client", "marker": "WORK PHOTOS"},
+        ],
+    }
+    output = asyncio.run(opis.export_package_zip(info, {}, {}, {}, None, Logger(), 4))
+
+    with zipfile.ZipFile(io.BytesIO(output)) as archive:
+        assert archive.namelist() == [
+            "01_Acte_si_formulare.pdf", "02_Probe_PRAM_PIF.pdf",
+            "03_Schema_si_fise_tehnice.pdf", "04_Fotografii.pdf", "00_CITESTE.txt",
+        ]
+        pdf_text = {
+            name: " ".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(archive.read(name))).pages)
+            for name in archive.namelist() if name.endswith(".pdf")
+        }
+
+    assert "INSTALLATION PHOTOS" in pdf_text["01_Acte_si_formulare.pdf"]
+    assert "WORK PHOTOS" in pdf_text["04_Fotografii.pdf"]
+    assert "AUTHENTICITY" in pdf_text["02_Probe_PRAM_PIF.pdf"]
+
 
 def test_client_slot_export_keeps_originals_and_dossier_upload(monkeypatch):
     monkeypatch.setattr(opis, "file_pdf", lambda data, _content_type: data)

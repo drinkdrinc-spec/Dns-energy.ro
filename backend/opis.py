@@ -721,7 +721,11 @@ def _merge_pdf_parts(parts, logger):
 
 
 def _package_group(key, source):
-    if key in ("fotografii_instalatie", "fotografii_lucrare"):
+    # Installation photos belong in the submission dossier; work photos are
+    # appended after the technical annexes, matching the Reenergy checklist.
+    if key == "fotografii_instalatie":
+        return 0
+    if key == "fotografii_lucrare":
         return 3
     if key in ("priza", "pif", "pif_pv", "receptie", "serii", "reglaj"):
         return 1
