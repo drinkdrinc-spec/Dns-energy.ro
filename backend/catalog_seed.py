@@ -31,6 +31,30 @@ def missing_seed_values(existing: dict, seed: dict) -> dict:
         is_missing = current is None or current == "" or (field in NUMERIC_SEED_FIELDS and current == 0)
         if is_missing and seed.get(field) not in (None, ""):
             updates[field] = seed[field]
+
+    # Repair only the exact Solis links previously written by our own seed.
+    # Catalog links entered or changed by a user are left untouched.
+    known_stale_solis_links = {
+        "Solis S6-EH3P15K02-NV-YD-L": {
+            "datasheet_url": {
+                "https://storage-official-website.oss-eu-central-1.aliyuncs.com/solisstorage/products/S6-EH3P%288-18%29K02-NV-YD-L/S6-EH3P%288-18%29K-Global-Datasheet-V3.8_20260208223612.pdf",
+            },
+            "source_url": {"https://www.solisstorage.com/en/product/20260209214915.html"},
+        },
+        "Invertor Hibrid Trifazat Solis 15 kW LV - S6-EH3P15K02-NV-YD-L": {
+            "datasheet_url": {
+                "https://www.solisinverters.com/uploads/file/S6-EH3P%288-18%29K-MY-Flyer-V2%2C4.pdf",
+            },
+            "conformity_url": {
+                "https://www.solisinverters.com/uploads/file/Solis_certificate_EN_18031_EN_IEC_61000-1(-2)(-3)(-4)_EN_55011_EN_62920_EN_300328_EN_62479_EN_301489_EN_62109-1(-2)_EN_62477_S6-EH3P(5-18)K02-NV-YD-L_S6-EH3P(7-10)K02-LV-YD-L_RED_V03.pdf",
+            },
+            "source_url": {"https://www.solisinverters.com/my/energy_storage_inverters22/S6-EH3P%288-15%29K-L_my.html"},
+        },
+    }
+    model = existing.get("brand_model") or seed.get("brand_model")
+    for field, stale_values in known_stale_solis_links.get(model, {}).items():
+        if existing.get(field) in stale_values and seed.get(field) not in (None, ""):
+            updates[field] = seed[field]
     return updates
 
 SEED = [
