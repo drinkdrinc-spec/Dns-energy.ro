@@ -22,6 +22,7 @@ import requests
 from client_search import build_client_search_queries, NUMERIC_CLIENT_SEARCH_FIELDS
 from client_portal import is_client_upload_path, public_client_messages
 from password_reset import admin_reset_nonce_hash, reset_lookup_hash, reset_rate_key, reset_token_hash, trusted_reset_origin
+from auth_policy import private_mode_account_allowed
 import io
 import zipfile
 from datetime import datetime, timezone, timedelta
@@ -98,9 +99,7 @@ async def get_current_user(request: Request) -> dict:
             raise HTTPException(status_code=401, detail="Sesiunea a fost revocată. Autentifică-te din nou.")
         if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
             admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-            is_admin_account = bool(admin_email) and user.get("email", "").lower() == admin_email and user.get("role") == "admin"
-            approved_partner = user.get("account_type") in ("installer", "partner") and user.get("status") == "active"
-            if not (is_admin_account or approved_partner):
+            if not private_mode_account_allowed(user, admin_email):
                 raise HTTPException(status_code=403, detail="Acces permis administratorului și partenerilor aprobați DNS Energy")
         user.pop("password_hash", None)
         user.pop("_id", None)
@@ -504,7 +503,7 @@ async def login(body: LoginReq, request: Request):
         }, upsert=True)
         raise HTTPException(status_code=401, detail="Email sau parolă incorectă")
     await db.login_attempts.delete_many({"identifier": ident})
-    if private_mode and email != admin_email and user.get("account_type") not in ("installer", "partner"):
+    if private_mode and not private_mode_account_allowed(user, admin_email):
         raise HTTPException(status_code=403, detail="Acces permis administratorului și partenerilor aprobați DNS Energy")
     if user.get("status", "active") != "active":
         raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
@@ -1699,8 +1698,8 @@ async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> 
         raise HTTPException(status_code=401, detail="Utilizator inexistent")
     if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
         admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-        if not admin_email or user.get("email", "").lower() != admin_email or user.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Acces permis exclusiv administratorului DNS Energy")
+        if not private_mode_account_allowed(user, admin_email):
+            raise HTTPException(status_code=403, detail="Acces permis administratorului și partenerilor aprobați DNS Energy")
     if user.get("status", "active") != "active":
         raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
     return await finish_user(user)
