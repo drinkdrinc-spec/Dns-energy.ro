@@ -411,12 +411,14 @@ def check(cef: dict) -> dict:
         fuse_note = "15 A / string, conform setării DNS; verifică Isc și siguranța maximă admisă din fișa panoului"
         if isc_complete and fuse:
             fuse_min, fuse_max = 1.5 * isc1, 2.4 * isc1
-            if not fuse_min <= fuse <= fuse_max:
+            if par >= 3 and not fuse_min <= fuse <= fuse_max:
                 e.append(f"{tag}: siguranța gPV de {fuse:g} A nu se încadrează în intervalul de calcul {fuse_min:.1f}–{fuse_max:.1f} A (1,5–2,4 × Isc); verifică fișa panoului și redimensionează înainte de aprobare.")
+            elif par < 3 and not fuse_min <= fuse <= fuse_max:
+                w.append(f"{tag}: siguranța gPV propusă de {fuse:g} A nu se încadrează în intervalul orientativ {fuse_min:.1f}–{fuse_max:.1f} A; la cel mult 2 stringuri/MPPT necesitatea protecției nu se stabilește doar din numărul stringurilor. Verifică fișa modulului și curentul de backfeed al invertorului înainte de execuție.")
         elif strings:
             w.append(f"{tag}: separatorul fuzibil de 15 A este propus; Isc sau limita siguranței serie lipsește din fișa panoului și trebuie verificată.")
         if par < 3:
-            fuse_note += "; pentru cel mult 2 stringuri/MPPT, necesitatea protecției se confirmă în proiect"
+            fuse_note += "; pentru cel mult 2 stringuri/MPPT, necesitatea se confirmă din limita de curent invers a modulului și backfeed-ul invertorului"
         prop["dc"] = {"section": p_ds, "fuse": fuse, "fuse_note": fuse_note,
                       "spd_ucpv": spd_ucpv, "i_design": round(i_dc, 1) if i_dc is not None else None}
         if ds and strings:
