@@ -271,15 +271,20 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             par = max([len(x) for x in per.values()] or [0])
             fa = n(dc.get("fuse_a")) or 15
             isc_complete = bool(strings) and all(n(string.get("isc")) > 0 for string in strings)
-            if isc_complete:
+            if isc_complete and par >= 3:
                 fmin, fmax = 1.5 * isc1, 2.4 * isc1
                 fuse_ok = fmin <= fa <= fmax
                 fuse_note = f"{fmin:.1f}–{fmax:.1f} A din Isc; confirmă și limita serie din fișa panoului"
+            elif isc_complete:
+                fmin, fmax = 1.5 * isc1, 2.4 * isc1
+                fuse_ok = None
+                fuse_note = (f"{fmin:.1f}–{fmax:.1f} A orientativ; la cel mult 2 stringuri/MPPT necesitatea nu se stabilește doar din numărul stringurilor; "
+                             "confirmă limita modulului și backfeed-ul invertorului")
             else:
                 fuse_ok = None
                 fuse_note = "15 A propus; confirmă Isc și limita serie din fișa panoului"
             if par < 3:
-                fuse_note += "; necesitatea protecției la ≤2 stringuri/MPPT se confirmă în proiect"
+                fuse_note += "; siguranța rămâne propunere până la confirmarea proiectantului"
             o.it(T, "Separator fuzibil gPV / string", g(fa, " A"), "introdus" if dc.get("fuse_a") else "propus DNS",
                  "1,5·Isc ≤ In ≤ 2,4·Isc (când se cere protecție de string)", fuse_ok, fuse_note)
             spd = n(dc.get("spd_ucpv"))
