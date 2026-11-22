@@ -18,13 +18,15 @@ function Row({ p, id, statuses, reload }) {
   const officialFormUrl = `/docs/${p.official_doc_endpoint || "anexa1"}/${encodeURIComponent(id)}`;
   const officialFormFilename = p.official_doc_endpoint === "anexa2" ? `DEER_Anexa2_${String(id).slice(0, 8)}.docx` : `Anexa_1_DEER_${String(id).slice(0, 8)}.docx`;
   const [bg, fg] = STATUS_STYLE[p.status] || STATUS_STYLE.generat;
-  const canView = !p.docx_only && (p.source === "generat" || !!p.upload || p.files.length > 0);
+  const multiUpload = ["fotografii_instalatie", "fotografii_lucrare", "alt_document"].includes(p.key);
+  const uploadedFiles = [...(p.uploads || []), ...(p.upload ? [p.upload] : [])];
+  const canView = !p.docx_only && (p.source === "generat" || uploadedFiles.length > 0 || p.files.length > 0);
   return (
     <tr className="border-t align-top" style={{ borderColor: "var(--line)" }} data-testid={`opis-row-${p.nr}`}>
       <td className="px-2 py-2.5 font-bold">{p.nr}</td>
       <td className="px-2 py-2.5">
         <div className="font-semibold">{p.title}</div>
-        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{p.upload ? `Încărcat: ${p.upload.original_filename}` : p.docx_only ? "Descarcă formularul Word, verifică datele și semnează-l. Încarcă apoi PDF-ul semnat aici ca să intre în dosarul complet." : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : p.source === "manual" ? "Document oficial — atașează PDF-ul aplicabil" : "Din catalog echipamente"}</div>
+        <div className="text-[11px]" style={{ color: "var(--muted)" }}>{uploadedFiles.length ? `Încărcate: ${uploadedFiles.map((file) => file.original_filename).filter(Boolean).join(", ")}` : p.docx_only ? "Descarcă formularul Word, verifică datele și semnează-l. Încarcă apoi PDF-ul semnat aici ca să intre în dosarul complet." : p.source === "generat" ? "Generat din datele dosarului" : p.source === "client" ? "Din fișa clientului" : p.source === "manual" ? "Document oficial — atașează PDF-ul aplicabil" : "Din catalog echipamente"}</div>
         {p.key === "gdpr" && <a className="text-[11px] underline inline-block mt-1" style={{ color: "var(--blue)" }} href="https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf" target="_blank" rel="noopener noreferrer">Deschide nota oficială DEER (PDF, versiunea octombrie 2026) ↗</a>}
         {p.missing.length > 0 && <div className="text-[11px] mt-1" style={{ color: "#76500a" }}>Lipsă: {p.missing.join(", ")}</div>}
       </td>
@@ -39,9 +41,10 @@ function Row({ p, id, statuses, reload }) {
         {canView && <button type="button" className="p-1.5 inline-flex items-center gap-1 rounded hover:bg-[#eef4ff]" title={p.key === "schema" ? "Descarcă schema monofilară PDF" : p.key === "priza" ? "Descarcă buletinul PRAM PDF" : "Descarcă PDF"} aria-label={p.key === "schema" ? "Descarcă schema monofilară PDF" : p.key === "priza" ? "Descarcă buletinul PRAM PDF" : `Descarcă PDF ${p.title}`} onClick={() => downloadAuthenticatedFile(`${filePath}?download=1`, `document-${p.key}.pdf`)} data-testid={`opis-pdf-${p.nr}`}><FileDown size={15} style={{ color: "var(--blue)" }} />{p.key === "schema" ? <span className="text-[11px]">Schema PDF</span> : p.key === "priza" ? <span className="text-[11px]">PRAM PDF</span> : null}</button>}
         {p.source === "generat" && p.key !== "schema" && !p.docx_only && <button type="button" className="p-1.5 inline-block rounded hover:bg-[#eef4ff]" title="Descarcă Word" onClick={() => downloadAuthenticatedFile(`${filePath}?fmt=docx`, `document-${p.key}.docx`)} data-testid={`opis-docx-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /></button>}
         {p.docx_only && <button type="button" className="p-1.5 inline-flex items-center gap-1 rounded hover:bg-[#eef4ff]" title={`Descarcă ${officialFormLabel} precompletat`} onClick={() => downloadAuthenticatedFile(officialFormUrl, officialFormFilename)} data-testid={`opis-deer-official-form-${p.nr}`}><FileType2 size={15} style={{ color: "var(--blue)" }} /><span className="text-[11px]">{officialFormLabel} Word</span></button>}
-        <input ref={ref} type="file" accept="application/pdf,image/*" className="hidden" data-testid={`opis-upload-input-${p.nr}`}
-          onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; await put({ upload: await uploadFile(f), status: null }); toast.success("Document atașat"); ref.current.value = ""; }} />
-        <button className="p-1.5 rounded hover:bg-[#eef4ff]" title={p.docx_only ? `Încarcă ${officialFormLabel} completat și semnat (PDF)` : "Încarcă document existent / semnat"} aria-label={p.docx_only ? `Încarcă ${officialFormLabel} completat și semnat (PDF)` : `Încarcă document ${p.title}`} onClick={() => ref.current.click()} data-testid={`opis-upload-${p.nr}`}><Upload size={15} style={{ color: "var(--blue)" }} />{p.docx_only && <span className="text-[11px]">PDF semnat</span>}</button>
+        <input ref={ref} type="file" accept="application/pdf,image/*" multiple={multiUpload} className="hidden" data-testid={`opis-upload-input-${p.nr}`}
+          onChange={async (e) => { const files = Array.from(e.target.files || []); if (!files.length) return; try { if (multiUpload) await put({ add_uploads: await Promise.all(files.map(uploadFile)), status: null }); else await put({ upload: await uploadFile(files[0]), status: null }); toast.success(files.length > 1 ? `${files.length} fișiere atașate` : "Document atașat"); } catch (error) { toast.error(error?.response?.data?.detail || "Nu am putut atașa documentul"); } finally { ref.current.value = ""; } }} />
+        <button className="p-1.5 rounded hover:bg-[#eef4ff]" title={multiUpload ? "Încarcă unul sau mai multe fișiere" : p.docx_only ? `Încarcă ${officialFormLabel} completat și semnat (PDF)` : "Încarcă document existent / semnat"} aria-label={multiUpload ? `Încarcă fișiere pentru ${p.title}` : p.docx_only ? `Încarcă ${officialFormLabel} completat și semnat (PDF)` : `Încarcă document ${p.title}`} onClick={() => ref.current.click()} data-testid={`opis-upload-${p.nr}`}><Upload size={15} style={{ color: "var(--blue)" }} />{p.docx_only && <span className="text-[11px]">PDF semnat</span>}</button>
+        {p.uploads?.map((file, index) => <button key={file.storage_path || index} className="p-1.5 rounded hover:bg-[#fff0f0]" title={`Elimină ${file.original_filename || "fișierul"}`} onClick={() => put({ remove_upload_index: index })} data-testid={`opis-clear-${p.nr}-${index}`}><X size={15} style={{ color: "#b33333" }} /></button>)}
         {p.upload && <button className="p-1.5 rounded hover:bg-[#fff0f0]" title="Elimină documentul încărcat" onClick={() => put({ clear_upload: true })} data-testid={`opis-clear-${p.nr}`}><X size={15} style={{ color: "#b33333" }} /></button>}
       </td>
     </tr>
@@ -60,7 +63,7 @@ export function DossierOpis({ id, mode = "all" }) {
   if (!d) return null;
   const positions = mode === "attachments" ? d.positions.filter((p) => p.source !== "generat")
     : mode === "generated" ? d.positions.filter((p) => p.source === "generat") : d.positions;
-  const fileCount = positions.reduce((count, p) => count + (p.upload ? 1 : 0) + (p.files || []).length, 0);
+  const fileCount = positions.reduce((count, p) => count + (p.upload ? 1 : 0) + (p.uploads || []).length + (p.files || []).length, 0);
   const doLock = async () => {
     try { await api.post(`/dossier/${id}/${d.finalized ? "reopen" : "finalize"}`); toast.success(d.finalized ? "Dosar redeschis" : "Dosar finalizat — datele din setări sunt înghețate"); load(); }
     catch (e) { toast.error(e.response?.data?.detail || "Operațiunea a eșuat"); throw e; }
