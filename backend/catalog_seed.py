@@ -45,12 +45,13 @@ SEED = [
 
     {"category": "Invertor", "brand_model": "Invertor Hibrid Trifazat Solis 15 kW LV - S6-EH3P15K02-NV-YD-L",
      "manufacturer": "Solis", "type": "Hibrid", "phases": "Trifazat", "p_nom_kw": 15, "p_max_kw": 15,
-     "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850, "mppt_count": 2, "bat_i_max": 290,
+     "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850, "mppt_count": 2,
+     "imax_mppt": 40, "isc_max_mppt": 50, "bat_i_max": 290,
      "battery_voltage": "LV 40–60 V",
-     "datasheet_url": "https://www.solisinverters.com/uploads/file/S6-EH3P%288-18%29K-IN-Flyer-V2%2C3.pdf",
+     "datasheet_url": "https://www.solisinverters.com/uploads/file/S6-EH3P%288-18%29K-MY-Flyer-V2%2C4.pdf",
      "conformity_url": "https://www.solisinverters.com/uploads/file/Solis_certificate_EN_18031_EN_IEC_61000-1(-2)(-3)(-4)_EN_55011_EN_62920_EN_300328_EN_62479_EN_301489_EN_62109-1(-2)_EN_62477_S6-EH3P(5-18)K02-NV-YD-L_S6-EH3P(7-10)K02-LV-YD-L_RED_V03.pdf",
-     "source_url": "https://www.solisinverters.com/uk/energy_storage_inverters22/S6-EH3P%288-18%29K02-NV-YD-L_uk.html",
-     "notes": "Fișă oficială Solis pentru familia 8–18 kW; certificatul TÜV RED listează modelul S6-EH3P15K02-NV-YD-L. Curentul MPPT și Isc/MPPT nu sunt precompletate aici deoarece trebuie corelate cu varianta/regiunea și revizia exactă a manualului european."},
+     "source_url": "https://www.solisinverters.com/my/energy_storage_inverters22/S6-EH3P%288-15%29K-L_my.html",
+     "notes": "Fișa tehnică oficială Solis V2.4 și certificatul TÜV pentru modelul exact confirmă 15 kW, 2 MPPT, 40 A curent maxim și 50 A Isc pe MPPT, domeniu MPPT 200–850 V și Udc maxim 1.000 V. Curent baterie maxim 290 A, 40–60 V. Certificatul CE pentru EN 50549-1/-10 este listat separat pe pagina producătorului; verificați revizia și acceptarea OD pentru instalația concretă."},
     {"category": "Panou", "brand_model": "AIKO-A500-MAH60Mb", "manufacturer": "AIKO",
      "w": 500, "voc": 45.02, "vmp": 37.90, "isc": 14.05, "imp": 13.20,
      "coef_voc": -0.22, "temp_pmax": -0.26,
@@ -260,5 +261,6 @@ SEED = [
      "notes": "Fișă oficială Sigenergy pentru HomePro SP/TP: 30 kW, 45,6 A; funcția backup depinde de sistemul Energy Controller + baterie și de condițiile de sarcină din fișă. Declarația de conformitate pentru HomePro TP nu este atașată."},
 
 ]
+
 
 
