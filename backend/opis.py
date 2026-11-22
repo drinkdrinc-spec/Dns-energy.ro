@@ -482,25 +482,30 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
     w = PdfWriter()
     authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
                                       draft=not positions_info["complete"])
-    parts = []
+    main_parts = []
+    technical_parts = []
     unavailable = []
     for p in positions_info["positions"]:
         try:
             position_parts = await position_pdf(p, rec, client, settings, titles, get_object)
             if p.get("source") == "generat" and p.get("missing") and p.get("key") not in ("schema", "fisa_tehnica"):
                 position_parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in position_parts]
-            parts += position_parts
+            # Match the reference submission layout: the authenticity
+            # declaration closes the administrative forms, then the single-line
+            # diagram and manufacturer evidence follow as a technical appendix.
+            is_technical_appendix = p.get("key") in ("schema", "fisa_tehnica") or p.get("source") == "catalog"
+            (technical_parts if is_technical_appendix else main_parts).extend(position_parts)
         except Exception as e:
             logger.error(f"bundle skip {p['key']}: {e}")
             unavailable.append(p.get("title") or p.get("key") or "Document atașat")
     if unavailable and positions_info["complete"]:
         authenticity_page = mark_draft(authenticity_page, "CIORNĂ — FIȘIER LIPSĂ")
-    # Keep the review/index page after submission documents; the bundle opens
-    # with real PRAM evidence and official application forms.
+    # Keep the internal review/index page out of the official-document order;
+    # it remains the final page so staff can see what still needs attention.
     report = _incomplete_report(positions_info, unavailable)
+    parts = main_parts + [authenticity_page] + technical_parts
     if report:
         parts.append(report)
-    parts.append(authenticity_page)
     for b in parts:
         try:
             for pg in PdfReader(io.BytesIO(b)).pages:
@@ -524,4 +529,5 @@ def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int =
     watermark(w, text, size)
     o = io.BytesIO(); w.write(o)
     return o.getvalue()
+
 
