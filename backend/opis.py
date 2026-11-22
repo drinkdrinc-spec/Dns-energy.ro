@@ -86,10 +86,10 @@ def dossier_order(p):
         # electricity bill, then land/property evidence.
         "certificat": 5, "factura": 10, "cf": 15,
         # Distributor/application documents and signed declarations follow.
-        "notificare": 20, "gdpr": 25, "imputernicire": 30,
-        "afm": 35, "executant": 40, "conformitate": 45,
-        "date_stocare": 50, "reglaj": 55, "receptie": 60,
-        "pif_pv": 65, "pif": 70, "priza": 75,
+        "notificare": 20, "gdpr": 25,
+        "afm": 30, "executant": 35, "conformitate": 40,
+        "date_stocare": 45, "reglaj": 50, "receptie": 55,
+        "pif_pv": 60, "pif": 65, "priza": 70, "imputernicire": 75,
         # Engineering sheets and manufacturer evidence close the packet.
         "schema": 80, "fotografii_instalatie": 82, "fisa_tehnica": 85,
         "metrologie_pram": 90, "anre_firma": 95,
