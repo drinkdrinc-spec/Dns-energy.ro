@@ -33,7 +33,7 @@ def _storage_row(ctx):
 
 def test_generated_documents_use_reviewed_dossier_identity_with_client_fallback():
     ctx = docgen.Ctx(
-        {"kind": "Persoană juridică", "name": "DNS Dossier", "idcode": "RO123"},
+        {"kind": "Persoană juridică", "name": "DNS Dossier", "cnp": "RO123"},
         {},
         {"kind": "Persoană fizică", "name": "DNS Client", "idcode": "123"},
     )
@@ -49,6 +49,19 @@ def test_generated_documents_fall_back_to_master_client_when_dossier_field_is_em
 
     assert ctx.name == "Client existent"
     assert ctx.raw("phone") == "0740000000"
+
+
+def test_dossier_snapshot_overrides_stale_client_identity_and_keeps_other_client_fields():
+    snapshot = opis.dossier_client_snapshot(
+        {"kind": "Persoană juridică", "client_name": "DNS Firmă", "cnp": "RO123", "county": "Bihor"},
+        {"kind": "Persoană fizică", "name": "Nume vechi", "idcode": "123", "county": "Cluj", "email": "office@example.test"},
+    )
+
+    assert snapshot["kind"] == "Persoană juridică"
+    assert snapshot["name"] == "DNS Firmă"
+    assert snapshot["idcode"] == "RO123"
+    assert snapshot["county"] == "Bihor"
+    assert snapshot["email"] == "office@example.test"
 
 
 def test_storage_document_calculates_total_capacity_from_modules():

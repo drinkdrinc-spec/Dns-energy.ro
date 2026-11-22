@@ -79,6 +79,22 @@ def storage_missing_fields(battery):
     return [f"{model}: completează/verifică " + ", ".join(missing)] if missing else []
 
 
+def dossier_client_snapshot(rec, client):
+    """Overlay reviewed dossier values on the linked client, preserving client fallbacks."""
+    rec, snapshot = rec or {}, dict(client or {})
+    for key in docgen.CLIENT_KEYS:
+        if rec.get(key) not in (None, ""):
+            snapshot[key] = rec[key]
+    for key, aliases in docgen.ALIASES.items():
+        if rec.get(key) not in (None, ""):
+            continue
+        for alias in aliases:
+            if rec.get(alias) not in (None, ""):
+                snapshot[key] = rec[alias]
+                break
+    return snapshot
+
+
 def dossier_order(p):
     """Order the packet like the supplied signed Reenergy dossier example."""
     key = p.get("key", "")
@@ -202,6 +218,10 @@ async def prosumer_official_operator_form(rec, client, pros, power_increase):
 
 
 async def build_positions(db, owner, rec, client, settings, public_documents=None):
+    # Keep the dossier's reviewed identity and consumption snapshot authoritative
+    # throughout the opis, official-form checks and generated documents. The linked
+    # client remains the fallback for values that were not captured on this dossier.
+    client = dossier_client_snapshot(rec, client)
     kind = str(client.get("kind") or "").strip().casefold()
     pj = "jurid" in kind or kind in ("pj", "company", "firmă", "firma")
     ctx = docgen.Ctx(docgen.CEF.flatten(rec), settings, client)

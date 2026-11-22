@@ -121,8 +121,7 @@ class Ctx:
         for src in order:
             if src.get(k) not in (None, ""):
                 return src.get(k)
-        for a in ALIASES.get(k, []):
-            for src in order:
+            for a in ALIASES.get(k, []):
                 if src.get(a) not in (None, ""):
                     return src.get(a)
         return None
