@@ -283,7 +283,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
             o.it(T, "Separator fuzibil gPV / string", g(fa, " A"), "introdus" if dc.get("fuse_a") else "propus DNS",
                  "1,5·Isc ≤ In ≤ 2,4·Isc (când se cere protecție de string)", fuse_ok, fuse_note)
             spd = n(dc.get("spd_ucpv"))
-            o.need(f"cef.inverters.{i}.dc.spd_ucpv", "SPD DC Ucpv (V)", dc.get("spd_ucpv"), T)
+            o.need(f"cef.inverters.{i}.dc.spd_ucpv", "SPD DC Ucpv (V)", dc.get("spd_ucpv") or pd.get("spd_ucpv"), T)
             o.it(T, "SPD DC Ucpv", g(spd, " V") or g(pd["spd_ucpv"], " V (propus)"), "introdus" if spd else "calculat", "Ucpv ≥ Voc,min",
                  (spd >= voc_max) if spd else None, f"≥ {voc_max:.0f} V")
         # AC
