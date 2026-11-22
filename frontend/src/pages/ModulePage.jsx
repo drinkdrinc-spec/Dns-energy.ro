@@ -773,7 +773,10 @@ export default function ModulePage({ moduleKey }) {
     const parsed = Number(String(value ?? "").replace(",", "."));
     return Number.isFinite(parsed) ? parsed : 0;
   };
+  const photovoltaicInverters = dossierInverters.filter((inverter) => !(inverter.battery_only || inverter.no_panels));
   const inverterCapacityKw = dossierInverters.reduce((sum, inverter) =>
+    sum + metricNumber(inverter.p_nom_kw || inverter.p_max_kw) * Math.max(1, metricNumber(inverter.count || inverter.quantity) || 1), 0);
+  const photovoltaicInverterCapacityKw = photovoltaicInverters.reduce((sum, inverter) =>
     sum + metricNumber(inverter.p_nom_kw || inverter.p_max_kw) * Math.max(1, metricNumber(inverter.count || inverter.quantity) || 1), 0);
   const installedPanelCount = dossierInverters.reduce((sum, inverter) =>
     sum + (inverter.strings || []).reduce((count, string) => count + metricNumber(string.panels), 0)
@@ -798,6 +801,7 @@ export default function ModulePage({ moduleKey }) {
     form?.relay,
     form?.breaker,
   ].filter((value) => String(value || "").trim()).join(" · ") || "De completat";
+  const cefExportKw = metricNumber(form?.power || form?.cef?.total_export_kw || form?.cef?.totals?.export_kw);
   const dossierSummary = key === "mono" ? [
     ["Tip schemă", form?.type || "Nespecificată"],
     ["Tensiune AC", form?.voltage || "Nespecificată"],
@@ -805,6 +809,12 @@ export default function ModulePage({ moduleKey }) {
     ["Tensiune DC", form?.dc_voltage || "De completat"],
     ["Cablu baterie", form?.dc_section || "De calculat / confirmat"],
     ["Protecții", monoProtectionSummary],
+  ] : key === "prosumator" ? [
+    ["FV", installedPanelKwp(form) ? `${installedPanelKwp(form)} kWp` : "Neconfigurat", "prosumer-summary-fv"],
+    ["Invertoare FV", photovoltaicInverters.length ? `${Number(photovoltaicInverterCapacityKw.toFixed(2))} kW` : "Neconfigurat", "prosumer-summary-inverters"],
+    ["Putere CEF (min)", cefExportKw ? `${Number(cefExportKw.toFixed(2))} kW` : "De verificat", "prosumer-summary-cef"],
+    ["Stocare", storageCapacityKwh ? `${Number(storageCapacityKwh.toFixed(2))} kWh` : "Fără baterie", "prosumer-summary-storage"],
+    ["Panouri", installedPanelCount ? `${installedPanelCount} buc.` : "Neconfigurat", "prosumer-summary-panels"],
   ] : [
     ["Panouri", installedPanelCount ? `${installedPanelCount} · ${installedPanelKwp(form) || "—"} kWp` : "Neconfigurat"],
     ["Invertoare", dossierInverters.length ? `${dossierInverters.length} · ${Number(inverterCapacityKw.toFixed(2))} kW` : "Neconfigurat"],
@@ -917,7 +927,7 @@ export default function ModulePage({ moduleKey }) {
         <div className={`den-panel mb-6 ${key === "prosumator" ? "dns-prosumer-workflow" : ""}`} data-testid="module-form">
           <h2 className="text-lg font-bold mb-5">{editId ? "Editează înregistrarea" : cfg.addLabel}</h2>
             {editId && <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" data-testid="prosumer-dossier-summary">
-              {dossierSummary.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }}>
+              {dossierSummary.map(([label, value, testId]) => <div key={label} className="min-w-0 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid={testId}>
                 <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>{label}</div>
                 <div className="mt-1 truncate text-xs font-bold" title={String(value)} style={{ color: "#24364f" }}>{value}</div>
               </div>)}
