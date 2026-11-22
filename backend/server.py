@@ -55,11 +55,10 @@ async def readyz():
     return {"status": "ready", "checks": {"mongodb": "ok"}}
 
 
-# Existing Render service was provisioned with /docs as its health check.
-# In private mode FastAPI's interactive docs are disabled, so keep this path
-# as a harmless health alias until the service configuration is updated.
+# Render's current API service still probes /docs. In private mode keep this
+# compatibility URL as a liveness check only; MongoDB readiness stays on /readyz.
 if PRIVATE_MODE:
-    app.add_api_route("/docs", readyz, methods=["GET"], include_in_schema=False, name="render_health_compat")
+    app.add_api_route("/docs", healthz, methods=["GET"], include_in_schema=False, name="render_health_compat")
 
 
 logging.basicConfig(level=logging.INFO)
