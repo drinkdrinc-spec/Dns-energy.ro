@@ -1071,9 +1071,9 @@ export default function ModulePage({ moduleKey }) {
               <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Stadiul se păstrează împreună cu dosarul când apeși „Salvează”. Actualizarea stadiului nu depune cereri în portalul operatorului.</p>
             </details>}
             <details id="dossier-section-commissioning" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-commissioning-card">
-              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>6. Punere în funcțiune</p><h3 className="text-sm font-bold">PRAM, reglaje și verificări</h3></div></summary>
+              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>6. Punere în funcțiune</p><h3 className="text-sm font-bold">Serii echipamente și PV teste / PIF</h3></div></summary>
+              {editId && <div className="mt-4 border-b pb-4" style={{ borderColor: "var(--line)" }}><PifPanel id={editId} /></div>}
               <DossierExtras form={form} setVal={setVal} part="commissioning" />
-              {editId && <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--line)" }}><PifPanel id={editId} /></div>}
             </details>
           </div>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
@@ -1539,6 +1539,7 @@ export default function ModulePage({ moduleKey }) {
     </div>
   );
 }
+
 
 
 
