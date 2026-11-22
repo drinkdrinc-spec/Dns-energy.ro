@@ -368,6 +368,9 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
 
 def _ocr_document_text(content: bytes, mime: str) -> str:
     """Read scanned PDFs and photos locally with the Romanian RapidOCR model."""
+    # Bound PyMuPDF4LLM intermediate analysis renders as well as later OCR renders.
+    # This avoids memory spikes on oversized scans; the stored original is untouched.
+    os.environ.setdefault("PYMUPDF_MAX_OCRSIZE", "3")
     import pymupdf
     import pymupdf4llm
     from pymupdf4llm.ocr import rapidocr_api
