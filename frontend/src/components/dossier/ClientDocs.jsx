@@ -4,7 +4,9 @@ import { Upload, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const SLOTS = [["factura", "Factură furnizor de energie"], ["certificat", "Certificat de înregistrare (PJ)"], ["constatator", "Certificat constatator (PJ)"],
-  ["ci", "Act de identitate (PF / reprezentant)"], ["cf", "Extras de carte funciară"], ["semnate", "Documente semnate electronic (salvate automat)"]];
+  ["ci", "Act de identitate (PF / reprezentant)"], ["cf", "Extras de carte funciară"], ["imputernicire", "Împuternicire / mandat"],
+  ["fotografii_instalatie", "Fotografii instalație (intră în dosar)"], ["fotografii_lucrare", "Fotografii lucrare (la finalul anexelor tehnice)"],
+  ["alt_document", "Alt document"], ["semnate", "Documente semnate electronic (salvate automat)"]];
 
 export const uploadFile = async (file) => {
   const fd = new FormData(); fd.append("file", file);
@@ -56,7 +58,9 @@ function fieldsFromExtraction(data, client, slot) {
 }
 
 async function readAndUpload(file, slot) {
-  if (slot === "semnate") return { file: await uploadFile(file), fields: {}, warning: "" };
+  if (["semnate", "imputernicire", "fotografii_instalatie", "fotografii_lucrare", "alt_document"].includes(slot)) {
+    return { file: await uploadFile(file), fields: {}, warning: "" };
+  }
   const docType = slot === "ci" ? "ci" : slot === "factura" ? "factura" : slot === "cf" ? "cf" : "other";
   const fd = new FormData();
   fd.append("file", file);
