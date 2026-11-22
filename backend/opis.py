@@ -197,6 +197,22 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                             "source": "manual", "files": [],
                             "missing": ["Deschide formularul oficial curent al operatorului în Registrul de formulare și atașează-l după completare."]})
             continue
+        if key == "notificare":
+            operator_name = str(rec.get("operator") or client.get("operator") or "").casefold()
+            is_deer = ("deer" in operator_name or "distributie energie electrica" in operator_name
+                       or "distribuție energie electrică" in operator_name)
+            if is_deer:
+                shared_keys, shared_exec = DOC_COMMON.get(key, ([], []))
+                official_missing = missing(keys, ekeys) + missing(shared_keys, shared_exec)
+                if not (rec.get("cef") or {}).get("inverters"):
+                    official_missing.append("Configurare CEF (invertoare, stringuri)")
+                official_missing = list(dict.fromkeys(official_missing))
+                pos.append({"key": key, "title": "Notificare oficială DEER — Anexa 2",
+                            "source": "generat", "docs": [], "docx_only": True,
+                            "official_doc_endpoint": "anexa2",
+                            "official_form_label": "Anexa 2 DEER",
+                            "missing": ["Descarcă formularul oficial, verifică datele, semnează-l și încarcă PDF-ul semnat.", *official_missing]})
+                continue
         if key == "priza" and rec.get("pram_source") == "none":
             if PIFDOC.filled(rec):
                 pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
