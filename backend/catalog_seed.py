@@ -69,7 +69,7 @@ SEED = [
      "vdc_max": 500, "mppt_min": 150, "mppt_max": 425, "mppt_count": 2,
      "imax_mppt": 32, "isc_max_mppt": 48, "bat_i_max": 190,
      "battery_voltage": "LV 40–60 V",
-     "datasheet_url": "https://www.deyeinverter.com/deyeinverter/2024/09/27/datasheet_sun-3.6-8k-sg05lp1-eu-am2-p_240927_en.pdf",
+     "datasheet_url": "https://hqcdn.hqsmartcloud.com/deyeinverter/2026/09/12/BDatasheetSUN-36-10K-SG05LP1-EU-AM2-P20260911en.pdf",
      "conformity_url": "https://www.deyeinverter.com/deyeinverter/2024/11/25/hybridinverter_eudeclaration-sun-3.6-8k-sg05lp1-eusun-3.6-8k-sg05lp1-eu-sm2sun-3.6-8k-sg05lp1-eu-sm2-psun-3.6-8k-sg05lp1-eu-am2-p%2B241125001.pdf",
      "source_url": "https://www.deyeinverter.com/product/hybrid-inverter-1/sun3-6-5-6-7-7-6-8-10ksg05lp1euam2p-3-610kw-single-phase-2-mppt-hybrid-inverter-lv-battery-supported.html",
      "notes": "Fișa tehnică oficială și declarația UE de conformitate includ modelul SUN-8K-SG05LP1-EU-AM2-P. Valorile MPPT sunt 150–425 V, 2 trackere, 32 A curent de funcționare și 48 A Isc pe intrare; 190 A este limita maximă de încărcare/descărcare a bateriei. Verificați codul complet de pe etichetă și revizia livrată."},

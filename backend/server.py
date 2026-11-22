@@ -2236,7 +2236,7 @@ async def seed_catalog(owner: str):
     deleted_seed_keys = set(settings.get("catalog_deleted_seed_keys") or [])
     await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
     seed_projection = {key: 1 for item in CATALOG_SEED for key in item}
-    seed_projection.update({"id": 1, "category": 1, "brand_model": 1, "conformity": 1, "_id": 0})
+    seed_projection.update({"id": 1, "category": 1, "brand_model": 1, "conformity": 1, "datasheet": 1, "_id": 0})
     existing = await db.catalog.find({"owner": owner}, seed_projection).to_list(10000)
     by_key = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()): x for x in existing}
     missing = []
@@ -2279,6 +2279,25 @@ async def seed_catalog(owner: str):
                     )
                 except Exception as exc:
                     logger.warning("Could not refresh the Jinko 54HL4M-BDV certificate from its official source: %s", exc)
+            deye_model = item.get("brand_model") == "Deye SUN-8K-SG05LP1-EU-AM2-P"
+            old_deye_datasheet_url = "https://www.deyeinverter.com/deyeinverter/2024/09/27/datasheet_sun-3.6-8k-sg05lp1-eu-am2-p_240927_en.pdf"
+            current_deye_datasheet_url = str(row.get("datasheet_url") or row.get("datasheet_source_url") or "").strip()
+            deye_datasheet = row.get("datasheet") if isinstance(row.get("datasheet"), dict) else {}
+            seed_managed_deye_url = deye_model and current_deye_datasheet_url in ("", old_deye_datasheet_url, item.get("datasheet_url"))
+            if deye_model and current_deye_datasheet_url in ("", old_deye_datasheet_url):
+                source_updates["datasheet_url"] = item["datasheet_url"]
+            if seed_managed_deye_url and (not deye_datasheet.get("storage_path") or deye_datasheet.get("source_url") == old_deye_datasheet_url):
+                try:
+                    await catalog_import_document(
+                        row["id"],
+                        _TrustedCatalogImportRequest({
+                            "kind": "datasheet",
+                            "url": item["datasheet_url"],
+                        }),
+                        {"id": owner},
+                    )
+                except Exception as exc:
+                    logger.warning("Could not refresh the Deye SUN-8K-SG05 datasheet from its official source: %s", exc)
             continue
         if _catalog_seed_key(item.get("category"), item.get("brand_model")) in deleted_seed_keys:
             continue
