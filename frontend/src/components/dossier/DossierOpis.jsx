@@ -67,7 +67,7 @@ export function DossierOpis({ id, mode = "all", onChecklist }) {
   const [exporting, setExporting] = useState(false);
   const exportLock = useRef(false);
   const { user } = useAuth();
-  const load = () => api.get(`/dossier/${id}`).then((r) => {
+  const load = () => api.get(`/dossier/${id}`).then(async (r) => {
     const data = r.data;
     setD(data);
     if (onChecklist && Array.isArray(data.positions)) {
@@ -76,10 +76,20 @@ export function DossierOpis({ id, mode = "all", onChecklist }) {
         const position = byKey.get(key);
         return Boolean(position) && !(position.missing || []).length;
       };
+      // A generated schema with filled fields is still not complete until its
+      // technical review has been approved. Uploaded specialist drawings are
+      // complete once the actual PDF is attached.
+      let schemaReady = false;
+      try {
+        const sld = (await api.get(`/sld/${id}`)).data;
+        schemaReady = sld.source === "uploaded"
+          ? Boolean(sld.upload?.storage_path)
+          : sld.approval?.status === "approved";
+      } catch { /* Keep the step open when the review status cannot be loaded. */ }
       const requiredActKeys = ["factura", "certificat", "anre_firma", "metrologie_pram", "priza"];
       const commissioning = data.positions.filter((position) => ["pif", "pif_pv"].includes(position.key));
       onChecklist({
-        installation: ready("schema"),
+        installation: ready("schema") && schemaReady,
         acts: requiredActKeys.every((key) => !byKey.has(key) || ready(key)),
         documents: data.complete === true,
         commissioning: commissioning.some((position) => position.key === "pif") && commissioning.every((position) => !(position.missing || []).length),
