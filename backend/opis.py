@@ -207,6 +207,8 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                     (client.get("name") or rec.get("client_name"), "Numele solicitantului"),
                     (client.get("county") or rec.get("county"), "Județul locului de consum"),
                     (client.get("locality") or rec.get("locality"), "Localitatea locului de consum"),
+                    (client.get("postal_code") or rec.get("postal_code"), "Codul poștal al solicitantului"),
+                    (client.get("hq_address") or rec.get("hq_address"), "Domiciliul/sediul solicitantului"),
                     (client.get("phone") or rec.get("phone"), "Telefonul solicitantului"),
                     (client.get("email") or rec.get("email"), "E-mailul solicitantului"),
                     (client.get("cui") or client.get("cnp") or client.get("idcode") or rec.get("cui") or rec.get("cnp") or rec.get("idcode"), "CNP/CUI"),
