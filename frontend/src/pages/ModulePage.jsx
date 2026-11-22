@@ -40,13 +40,28 @@ function installedPanelKwp(pros) {
     return Number.isFinite(parsed) ? parsed : 0;
   };
   const inverters = pros.cef?.inverters || [];
-  const calculated = inverters.reduce((total, inverter) => {
-    const panelW = number(inverter.panel_w);
-    const panels = (inverter.strings || []).reduce((sum, string) => sum + number(string.panels), 0);
+  let calculated = 0;
+  let hasPvStrings = false;
+  let complete = true;
+  for (const inverter of inverters) {
+    if (inverter.battery_only || inverter.no_panels || /invertor de baterie\\s*\\(ac\\)/i.test(String(inverter.kind || inverter.type || ""))) continue;
     const count = Math.max(1, number(inverter.count || inverter.quantity) || 1);
-    return total + panels * panelW * count / 1000;
-  }, 0);
-  if (calculated > 0) return Number(calculated.toFixed(3));
+    const strings = (inverter.strings || []).filter((string) => number(string.panels) > 0);
+    if (!strings.length) continue;
+    hasPvStrings = true;
+    for (const string of strings) {
+      const stringModel = String(string.panel_model || "").trim().toLocaleLowerCase("ro-RO");
+      const inverterModel = String(inverter.panel_model || "").trim().toLocaleLowerCase("ro-RO");
+      const sameModel = !stringModel || (inverterModel && stringModel === inverterModel);
+      const panelW = number(string.panel_w) || (sameModel ? number(inverter.panel_w) : 0);
+      if (!panelW) {
+        complete = false;
+        continue;
+      }
+      calculated += number(string.panels) * panelW * count / 1000;
+    }
+  }
+  if (hasPvStrings && complete && calculated > 0) return Number(calculated.toFixed(3));
   const legacyPanels = number(pros.panel_count);
   const legacyW = number(pros.panel_w);
   if (legacyPanels > 0 && legacyW > 0) return Number((legacyPanels * legacyW / 1000).toFixed(3));
