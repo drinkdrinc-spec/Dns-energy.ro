@@ -21,7 +21,7 @@ function Row({ p, id, statuses, reload }) {
   const dotColor = p.status === "atașat" ? "#1f8f4e" : p.status === "de completat" ? "#f08a24" : "#cfcfcf";
   const multiUpload = ["fotografii_instalatie", "fotografii_lucrare", "alt_document"].includes(p.key);
   const uploadedFiles = [...(p.uploads || []), ...(p.upload ? [p.upload] : [])];
-  const canView = !p.docx_only && (p.source === "generat" || uploadedFiles.length > 0 || p.files.length > 0);
+  const canView = !p.docx_only && (p.source === "generat" || !!p.official_operator_form || uploadedFiles.length > 0 || p.files.length > 0);
   return (
     <tr className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 border rounded-lg p-2 mb-2 bg-white md:mb-0 md:table-row md:border-0 md:rounded-none md:p-0" style={{ borderColor: "var(--line)" }} data-testid={`opis-row-${p.nr}`}>
       <td className="hidden md:table-cell px-2 py-2.5 font-bold">{p.nr}</td>

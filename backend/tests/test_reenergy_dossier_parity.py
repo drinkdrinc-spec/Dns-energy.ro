@@ -1,5 +1,7 @@
 import asyncio
 import io
+import sys
+from types import SimpleNamespace
 
 from pypdf import PdfReader
 from reportlab.pdfgen import canvas
@@ -95,6 +97,75 @@ def test_client_slot_export_keeps_originals_and_dossier_upload(monkeypatch):
     ))
 
     assert result == [b"client-photo-1", b"dossier-photo-2"]
+
+
+def test_official_operator_form_failure_returns_explicit_fallback_instead_of_blank(monkeypatch):
+    async def unavailable(*_args, **_kwargs):
+        raise ValueError("HTTP 403")
+
+    atr_module = SimpleNamespace(
+        _fetch_registry_annex=unavailable,
+        ATR=SimpleNamespace(render_operator_annex_prep=lambda *_args, **_kwargs: _marker_pdf("WORKSHEET ONLY")),
+    )
+    monkeypatch.setitem(sys.modules, "atr_routes", atr_module)
+    position = {
+        "key": "notificare",
+        "official_operator_form": {
+            "operator_key": "delgaz",
+            "annex_no": 2,
+            "title": "Formular oficial Delgaz",
+            "url": "https://delgaz.ro/forms/anexa-2.pdf",
+        },
+    }
+
+    parts = asyncio.run(opis.position_pdf(position, {}, {}, {}, {}, lambda _path: None))
+
+    pages = [
+        page
+        for part in parts
+        for page in PdfReader(io.BytesIO(part)).pages
+    ]
+    text = " ".join(page.extract_text() or "" for page in pages)
+    assert "WORKSHEET ONLY" in text
+    assert "FORMULARUL OFICIAL NU A PUTUT FI DESCĂRCAT" in text
+    links = [
+        annotation.get_object().get("/A", {}).get("/URI")
+        for page in pages
+        for annotation in page.get("/Annots", [])
+    ]
+    assert "https://delgaz.ro/forms/anexa-2.pdf" in links
+    assert position["_official_form_unavailable"] is True
+
+
+def test_bundle_keeps_official_form_fallback_and_marks_export_incomplete(monkeypatch):
+    fallback = _marker_pdf("OFFICIAL FORM UNAVAILABLE — USE OFFICIAL LINK")
+
+    async def unavailable_form(position, *_args, **_kwargs):
+        position["_official_form_unavailable"] = True
+        return [fallback]
+
+    monkeypatch.setattr(opis, "position_pdf", unavailable_form)
+    monkeypatch.setattr(opis.docgen, "render", lambda *_args, **_kwargs: _marker_pdf("AUTHENTICITY"))
+
+    class Logger:
+        def warning(self, *_args, **_kwargs):
+            pass
+
+        def error(self, *_args, **_kwargs):
+            raise AssertionError("Unexpected PDF bundle error")
+
+    info = {
+        "titles": {},
+        "complete": True,
+        "positions": [{"key": "notificare", "title": "Formular oficial Delgaz"}],
+    }
+    output = asyncio.run(opis.export_bundle(info, {}, {}, {}, None, Logger()))
+    text = " ".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(output)).pages)
+
+    assert "OFFICIAL FORM UNAVAILABLE" in text
+    assert "AUTHENTICITY" in text
+    assert "CIORNĂ" in text
+    assert info["export_has_unavailable_items"] is True
 
 
 def _marker_pdf(text):
