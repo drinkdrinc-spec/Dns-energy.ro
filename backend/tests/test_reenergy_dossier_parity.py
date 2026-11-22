@@ -1,4 +1,11 @@
+import asyncio
+import io
+
+from pypdf import PdfReader
+from reportlab.pdfgen import canvas
+
 import docgen
+import opis
 from opis import dossier_order, storage_missing_fields
 
 
@@ -67,3 +74,45 @@ def test_dossier_positions_follow_submission_order():
     assert [position["key"] for position in ordered] == [
         "priza", "notificare", "date_stocare", "schema", "cat_datasheet_battery"
     ]
+
+def _marker_pdf(text):
+    stream = io.BytesIO()
+    pdf = canvas.Canvas(stream)
+    pdf.drawString(40, 760, text)
+    pdf.save()
+    return stream.getvalue()
+
+
+def test_export_bundle_places_authenticity_before_schema_and_equipment(monkeypatch):
+    async def fake_position_pdf(position, *_args, **_kwargs):
+        return [_marker_pdf(position["marker"])]
+
+    monkeypatch.setattr(opis, "position_pdf", fake_position_pdf)
+    monkeypatch.setattr(opis.docgen, "render", lambda *_args, **_kwargs: _marker_pdf("AUTHENTICITY"))
+    monkeypatch.setattr(opis, "_incomplete_report", lambda *_args: _marker_pdf("INTERNAL REVIEW"))
+
+    class Logger:
+        def error(self, *_args, **_kwargs):
+            raise AssertionError("Unexpected PDF bundle error")
+
+    positions_info = {
+        "titles": {},
+        "complete": True,
+        "positions": [
+            {"key": "notificare", "source": "manual", "marker": "OFFICIAL FORM"},
+            {"key": "schema", "source": "generat", "marker": "SINGLE-LINE DIAGRAM"},
+            {"key": "cat_datasheet_panel", "source": "catalog", "marker": "PANEL DATASHEET"},
+        ],
+    }
+    output = asyncio.run(opis.export_bundle(positions_info, {}, {}, {}, None, Logger()))
+    pages = PdfReader(io.BytesIO(output)).pages
+    page_text = [page.extract_text() for page in pages]
+
+    assert len(page_text) == 5
+    expected = ["OFFICIAL FORM", "AUTHENTICITY", "SINGLE-LINE DIAGRAM", "PANEL DATASHEET", "INTERNAL REVIEW"]
+    actual = [
+        next(marker for marker in expected if marker in text)
+        for text in page_text
+    ]
+    assert actual == expected
+
