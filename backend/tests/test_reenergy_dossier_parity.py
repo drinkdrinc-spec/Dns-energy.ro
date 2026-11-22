@@ -31,6 +31,26 @@ def _storage_row(ctx):
     return table[1][1]
 
 
+def test_generated_documents_use_reviewed_dossier_identity_with_client_fallback():
+    ctx = docgen.Ctx(
+        {"kind": "Persoană juridică", "name": "DNS Dossier", "idcode": "RO123"},
+        {},
+        {"kind": "Persoană fizică", "name": "DNS Client", "idcode": "123"},
+    )
+
+    assert ctx.pj is True
+    assert ctx.name == "DNS Dossier"
+    assert ctx.raw("idcode") == "RO123"
+    assert ctx.raw("phone") is None
+
+
+def test_generated_documents_fall_back_to_master_client_when_dossier_field_is_empty():
+    ctx = docgen.Ctx({"name": ""}, {}, {"name": "Client existent", "phone": "0740000000"})
+
+    assert ctx.name == "Client existent"
+    assert ctx.raw("phone") == "0740000000"
+
+
 def test_storage_document_calculates_total_capacity_from_modules():
     ctx = _storage_context([{
         "model": "Dyness Test",
