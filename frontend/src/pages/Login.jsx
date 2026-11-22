@@ -74,7 +74,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-[100dvh] grid lg:grid-cols-2 bg-white">
+    <div className="min-h-[100dvh] grid grid-cols-1 lg:grid-cols-2 bg-white">
       <div className="hidden lg:flex flex-col justify-between p-12 text-white relative overflow-hidden" style={{ backgroundImage: "linear-gradient(160deg, rgba(14,50,91,.84), rgba(12,25,44,.9)), url('/d-energy-blue-brand.jpg')", backgroundSize: "cover", backgroundPosition: "center" }}>
         <div className="flex items-center gap-3">
           <BrandMark size={48} />
