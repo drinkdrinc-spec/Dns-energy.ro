@@ -52,14 +52,32 @@ function Row({ p, id, statuses, reload }) {
   );
 }
 
-export function DossierOpis({ id, mode = "all" }) {
+export function DossierOpis({ id, mode = "all", onChecklist }) {
   const [d, setD] = useState(null);
   const [showReport, setShowReport] = useState(false);
   const [pre, setPre] = useState(false);
   const [exporting, setExporting] = useState(false);
   const exportLock = useRef(false);
   const { user } = useAuth();
-  const load = () => api.get(`/dossier/${id}`).then((r) => setD(r.data)).catch(() => {});
+  const load = () => api.get(`/dossier/${id}`).then((r) => {
+    const data = r.data;
+    setD(data);
+    if (onChecklist && Array.isArray(data.positions)) {
+      const byKey = new Map(data.positions.map((position) => [position.key, position]));
+      const ready = (key) => {
+        const position = byKey.get(key);
+        return Boolean(position) && !(position.missing || []).length;
+      };
+      const requiredActKeys = ["factura", "certificat", "anre_firma", "metrologie_pram", "priza"];
+      const commissioning = data.positions.filter((position) => ["pif", "pif_pv"].includes(position.key));
+      onChecklist({
+        installation: ready("schema"),
+        acts: requiredActKeys.every((key) => !byKey.has(key) || ready(key)),
+        documents: data.complete === true,
+        commissioning: commissioning.some((position) => position.key === "pif") && commissioning.every((position) => !(position.missing || []).length),
+      });
+    }
+  }).catch(() => {});
   useEffect(() => { load(); }, [id]); // eslint-disable-line
   if (!d) return null;
   const positions = mode === "attachments" ? d.positions.filter((p) => p.source !== "generat")

@@ -170,6 +170,35 @@ async def authorization_files(db, owner, rec, settings):
             add_file(meter_file)
     return files
 
+
+async def prosumer_official_operator_form(rec, client, pros, power_increase):
+    """Resolve the official operator annex for the dossier's actual request."""
+    import atr_routes as ATR_ROUTES
+
+    operator = str(rec.get("operator") or client.get("operator") or "")
+    operator_key = ATR_ROUTES.ATR.op_key(operator)
+    if operator_key not in {"rer", "delgaz", "oltenia"}:
+        return None
+
+    cef = pros.get("cef") or {}
+    grid = cef.get("grid") or {}
+    request_rec = {
+        **rec,
+        "request_type": "spor" if power_increase else "mod_fara",
+        "supply": rec.get("supply") or pros.get("supply") or grid.get("supply") or "",
+    }
+    annex_no, forms = await ATR_ROUTES._registry_forms_for_request(operator_key, request_rec, pros)
+    if annex_no is None or not forms:
+        return None
+    form = forms[0]
+    return {
+        **form,
+        "operator_key": operator_key,
+        "annex_no": annex_no,
+        "title": form.get("title") or f"Anexa {annex_no} — formular oficial prosumator",
+    }
+
+
 async def build_positions(db, owner, rec, client, settings, public_documents=None):
     kind = str(client.get("kind") or "").strip().casefold()
     pj = "jurid" in kind or kind in ("pj", "company", "firmă", "firma")
@@ -191,9 +220,9 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     res_sld = SZ.compute(rec, client)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
-        if key == "imputernicire" and cdocs.get("imputernicire"):
+        if key == "imputernicire":
             pos.append({"key": key, "title": "Împuternicire / mandat", "source": "client",
-                        "slots": ["imputernicire"], "files": cdocs["imputernicire"], "missing": []})
+                        "slots": ["imputernicire"], "files": cdocs.get("imputernicire") or [], "missing": []})
             continue
         if key == "date_stocare" and not docgen.storage(ctx):
             continue
@@ -205,17 +234,17 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                 pos.append({"key": key, "title": "Cerere de racordare — Anexa 1 DEER (formular oficial Word precompletat)",
                             "source": "generat", "docs": [], "docx_only": True,
                             "missing": ["Verifică formularul oficial și completează/semnează câmpurile rămase necompletate."]})
-            elif "delgaz" in operator_name:
-                pos.append({"key": key, "title": "Cerere de racordare — formular oficial Delgaz Grid (Anexa 1)",
-                            "source": "official", "docs": [],
-                            "official_operator_form": {"operator_key": "delgaz", "annex_no": 1,
-                                "title": "Cerere de racordare prosumator — Anexa 1 Delgaz Grid",
-                                "url": "https://delgaz.ro/getattachment/91755a0d-890c-4357-917a-ac5128ec735a/Cerere_de_racordare_prosumator-Anexa-1.pdf"},
-                            "missing": ["Verifică formularul oficial, completează câmpurile rămase necompletate și semnează-l."] + missing(keys, ekeys)})
             else:
-                pos.append({"key": key, "title": "Cerere de racordare — Anexa 1 a operatorului",
-                            "source": "manual", "files": [],
-                            "missing": ["Deschide formularul oficial curent al operatorului în Registrul de formulare și atașează-l după completare."]})
+                official_form = await prosumer_official_operator_form(rec, client, rec, True)
+                if official_form:
+                    pos.append({"key": key,
+                                "title": f"Cerere de racordare — {official_form['title']}",
+                                "source": "official", "docs": [], "official_operator_form": official_form,
+                                "missing": ["Verifică formularul oficial, completează câmpurile rămase necompletate și semnează-l."] + missing(keys, ekeys)})
+                else:
+                    pos.append({"key": key, "title": "Cerere de racordare — formularul oficial al operatorului",
+                                "source": "manual", "files": [],
+                                "missing": ["Deschide formularul oficial curent al operatorului în Registrul de formulare și atașează-l după completare."]})
             continue
         if key == "notificare":
             operator_name = str(rec.get("operator") or client.get("operator") or "").casefold()
@@ -256,16 +285,15 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                             "official_form_label": "Anexa 2 DEER",
                             "missing": ["Descarcă formularul oficial, verifică datele, semnează-l și încarcă PDF-ul semnat.", *official_missing]})
                 continue
-            if "delgaz" in operator_name:
+            official_form = await prosumer_official_operator_form(rec, client, rec, False)
+            if official_form:
                 form_missing = list(dict.fromkeys(
                     ["Verifică formularul oficial, completează eventualele câmpuri rămase goale și semnează-l."]
                     + missing(keys, ekeys) + missing(*DOC_COMMON.get(key, ([], [])))))
                 pos.append({"key": key,
-                            "title": "Notificare racordare prosumator — formular oficial Delgaz Grid (Anexa 2, DEGR E P46-F11 Ed.4)",
+                            "title": f"Notificare / cerere prosumator — {official_form['title']}",
                             "source": "official", "docs": ["notificare"],
-                            "official_operator_form": {"operator_key": "delgaz", "annex_no": 2,
-                                "title": "Notificare racordare prosumator — Anexa 2, DEGR E P46-F11 Ed.4",
-                                "url": "https://delgaz.ro/getattachment/90cf84fa-708e-46a7-b60b-266364c50098/Notificare_racordare_prosumator-Anexa-2.pdf"},
+                            "official_operator_form": official_form,
                             "missing": form_missing})
                 continue
         if key == "priza" and rec.get("pram_source") == "none":
@@ -324,10 +352,10 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
 
     for key, slots, title in [("factura", ["factura"], "Factură furnizor de energie"),
                               ("certificat", ["certificat", "constatator"] if pj else ["ci"], "Certificat de înregistrare" if pj else "Act de identitate"),
-                              ("cf", ["cf"], "Extras de carte funciară")]:
+                              ("cf", ["cf"], "Extras de carte funciară — dacă este solicitat de operator")]:
         files = [f for s in slots for f in (cdocs.get(s) or [])]
         pos.append({"key": key, "title": title, "source": "client", "slots": slots, "files": files,
-                    "missing": [] if files else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
+                    "missing": [] if files or key == "cf" and not rec.get("cf_required") else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
 
     # Add photo and extra-document upload rows shown on the dossier card.
     # Installation photos belong in the main packet; work photos follow the

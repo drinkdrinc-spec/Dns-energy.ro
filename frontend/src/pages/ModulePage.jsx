@@ -147,7 +147,7 @@ const PROSUMER_GUIDED_STEPS = [
   ["dossier-section-commissioning", "6. Punere în funcțiune"],
 ];
 
-function prosumerWorkflowProgress(form) {
+function prosumerWorkflowProgress(form, checklist) {
   const text = (value) => String(value ?? "").trim();
   const cef = form?.cef || {};
   const inverters = Array.isArray(cef.inverters) ? cef.inverters : [];
@@ -157,15 +157,14 @@ function prosumerWorkflowProgress(form) {
   });
   const hasBatteryOnly = inverters.some((inverter) => inverter.battery_mode === "own" && !inverter.panel_model && !inverter.panel);
   const hasConfiguredInverter = inverters.some((inverter) => text(inverter.brand_model || inverter.model || inverter.inverter));
-  const hasFiles = Array.isArray(form?.files) && form.files.length > 0;
   const status = text(form?.workflow_status || form?.status);
   const completed = [
     Boolean(text(form?.client_name) && text(form?.address) && text(form?.pod) && text(form?.operator)),
-    Boolean(hasConfiguredInverter && (hasPanels || hasBatteryOnly)),
-    Boolean(text(form?.assigned_to) || text(form?.signers?.executant)),
-    hasFiles,
+    checklist ? checklist.installation : Boolean(hasConfiguredInverter && (hasPanels || hasBatteryOnly)),
+    Boolean(checklist?.acts && (text(form?.assigned_to) || text(form?.signers?.executant))),
+    checklist ? checklist.documents : Boolean(form?.finalized),
     Boolean(text(form?.operator_stage) || (status && status !== "Dosar în pregătire")),
-    Boolean(text(form?.commissioning_date || form?.pif_date) && text(form?.grounding_ohm)),
+    checklist ? checklist.commissioning : Boolean(text(form?.commissioning_date || form?.pif_date) && text(form?.grounding_ohm)),
   ];
   const nextIndex = Math.max(0, completed.findIndex((done) => !done));
   return { completed, count: completed.filter(Boolean).length, nextIndex };
@@ -303,6 +302,8 @@ export default function ModulePage({ moduleKey }) {
   const [filterLocality, setFilterLocality] = useState("");
   const [recordsView, setRecordsView] = useState("list");
   const [savedAt, setSavedAt] = useState(0);
+  const [dossierChecklist, setDossierChecklist] = useState(null);
+  useEffect(() => { setDossierChecklist(null); }, [editId]);
   const [diuPre, setDiuPre] = useState(false);
   const [prosPre, setProsPre] = useState(false);
   const [catalogImportsBusy, setCatalogImportsBusy] = useState(false);
@@ -812,7 +813,7 @@ export default function ModulePage({ moduleKey }) {
     ["POD", form?.pod || "Necompletat"],
     ["Operator", form?.operator || "Neales"],
   ];
-  const prosumerProgress = key === "prosumator" && editId ? prosumerWorkflowProgress(form) : null;
+  const prosumerProgress = key === "prosumator" && editId ? prosumerWorkflowProgress(form, dossierChecklist) : null;
   const nextProsumerStep = prosumerProgress ? PROSUMER_GUIDED_STEPS[prosumerProgress.nextIndex] : null;
   const openProsumerStep = (stepId) => {
     const anchor = document.getElementById(stepId);
@@ -1039,7 +1040,7 @@ export default function ModulePage({ moduleKey }) {
 
             <details id="dossier-section-acts" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-acts-card">
               <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>3. Acte și responsabili</p><h3 className="text-sm font-bold">Echipa dosarului</h3></div></summary>
-              <div className="space-y-4 px-4 py-4 sm:px-5">{editId && <DossierOpis id={editId} mode="attachments" />}<AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierExtras form={form} setVal={setVal} part="pram" dossierId={editId} onSave={editId ? () => saveSection("Actele și PRAM") : undefined} saving={sectionSaving} /></div>
+              <div className="space-y-4 px-4 py-4 sm:px-5">{editId && <DossierOpis id={editId} mode="attachments" onChecklist={setDossierChecklist} />}<AssignBox value={form.assigned_to} onChange={(v) => setVal("assigned_to", v)} /><DossierExtras form={form} setVal={setVal} part="pram" dossierId={editId} onSave={editId ? () => saveSection("Actele și PRAM") : undefined} saving={sectionSaving} /></div>
             </details>
 
             {editId && <details id="dossier-section-documents" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-documents-card">
@@ -1071,9 +1072,9 @@ export default function ModulePage({ moduleKey }) {
               <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Stadiul se păstrează împreună cu dosarul când apeși „Salvează”. Actualizarea stadiului nu depune cereri în portalul operatorului.</p>
             </details>}
             <details id="dossier-section-commissioning" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-commissioning-card">
-              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>6. Punere în funcțiune</p><h3 className="text-sm font-bold">PRAM, reglaje și verificări</h3></div></summary>
+              <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>6. Punere în funcțiune</p><h3 className="text-sm font-bold">Serii echipamente și PV teste / PIF</h3></div></summary>
+              {editId && <div className="mt-4 border-b pb-4" style={{ borderColor: "var(--line)" }}><PifPanel id={editId} /></div>}
               <DossierExtras form={form} setVal={setVal} part="commissioning" />
-              {editId && <div className="mt-4 border-t pt-4" style={{ borderColor: "var(--line)" }}><PifPanel id={editId} /></div>}
             </details>
           </div>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
