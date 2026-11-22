@@ -80,8 +80,24 @@ def test_dossier_positions_follow_submission_order():
     ordered = sorted(positions, key=dossier_order)
 
     assert [position["key"] for position in ordered] == [
-        "certificat", "factura", "cf", "notificare", "date_stocare",
-        "priza", "schema", "fotografii_instalatie", "cat_datasheet_battery", "fotografii_lucrare",
+        "priza", "notificare", "certificat", "factura", "cf", "date_stocare",
+        "fotografii_instalatie", "schema", "cat_datasheet_battery", "fotografii_lucrare",
+    ]
+
+
+def test_full_packet_order_matches_the_signed_reenergy_reference():
+    positions = [{"key": key} for key in (
+        "priza", "notificare", "date_stocare", "gdpr", "imputernicire", "afm",
+        "executant", "conformitate", "receptie", "pif", "reglaj",
+        "declaratie_autenticitate", "schema", "cat_datasheet_inverter", "fotografii_lucrare",
+    )]
+
+    ordered = sorted(positions, key=dossier_order)
+
+    assert [position["key"] for position in ordered] == [
+        "priza", "notificare", "date_stocare", "gdpr", "imputernicire", "afm",
+        "executant", "conformitate", "receptie", "pif", "reglaj",
+        "declaratie_autenticitate", "schema", "cat_datasheet_inverter", "fotografii_lucrare",
     ]
 
 
@@ -108,15 +124,16 @@ def test_submission_zip_keeps_installation_photos_with_forms_and_work_photos_las
         "titles": {},
         "complete": True,
         "positions": [
+            {"key": "priza", "source": "generat", "marker": "PRAM"},
             {"key": "notificare", "source": "manual", "marker": "OFFICIAL FORM"},
             {"key": "fotografii_instalatie", "source": "client", "marker": "INSTALLATION PHOTOS"},
-            {"key": "priza", "source": "generat", "marker": "PRAM"},
             {"key": "schema", "source": "generat", "marker": "SINGLE-LINE DIAGRAM"},
             {"key": "cat_datasheet_panel", "source": "catalog", "marker": "PANEL DATASHEET"},
             {"key": "fotografii_lucrare", "source": "client", "marker": "WORK PHOTOS"},
         ],
     }
-    output = asyncio.run(opis.export_package_zip(info, {}, {}, {}, None, Logger(), 4))
+    output = asyncio.run(opis.export_package_zip(dict(info), {}, {}, {}, None, Logger(), 4))
+    single_output = asyncio.run(opis.export_package_zip(dict(info), {}, {}, {}, None, Logger(), 1))
 
     with zipfile.ZipFile(io.BytesIO(output)) as archive:
         assert archive.namelist() == [
@@ -131,6 +148,14 @@ def test_submission_zip_keeps_installation_photos_with_forms_and_work_photos_las
     assert "INSTALLATION PHOTOS" in pdf_text["01_Acte_si_formulare.pdf"]
     assert "WORK PHOTOS" in pdf_text["04_Fotografii.pdf"]
     assert "AUTHENTICITY" in pdf_text["02_Probe_PRAM_PIF.pdf"]
+
+    with zipfile.ZipFile(io.BytesIO(single_output)) as archive:
+        pages = PdfReader(io.BytesIO(archive.read("01_Dosar_complet.pdf"))).pages
+        page_text = [page.extract_text() or "" for page in pages]
+    expected = ["PRAM", "OFFICIAL FORM", "INSTALLATION PHOTOS", "AUTHENTICITY",
+                "SINGLE-LINE DIAGRAM", "PANEL DATASHEET", "WORK PHOTOS"]
+    actual = [next(marker for marker in expected if marker in text) for text in page_text]
+    assert actual == expected
 
 
 def test_client_slot_export_keeps_originals_and_dossier_upload(monkeypatch):

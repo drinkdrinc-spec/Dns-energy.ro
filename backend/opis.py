@@ -80,24 +80,25 @@ def storage_missing_fields(battery):
 
 
 def dossier_order(p):
-    """Order the packet like the supplied Delgaz/Reenergy dossier example."""
+    """Order the packet like the supplied signed Reenergy dossier example."""
     key = p.get("key", "")
     priority = {
-        # Client identity, energy bill, and property papers come first.
-        "certificat": 5, "factura": 10, "cf": 15,
-        # Operator form, then the commissioning/serials papers and installer evidence.
-        "notificare": 20, "date_stocare": 25, "receptie": 30,
-        "pif_pv": 35, "pif": 38, "executant": 40, "conformitate": 45,
-        "reglaj": 50, "priza": 55, "afm": 60, "imputernicire": 65,
-        "gdpr": 68,
-        # The authenticity statement/opis precedes the technical appendices.
-        "declaratie_autenticitate": 75, "opis": 76,
-        "schema": 80, "fotografii_instalatie": 82, "fisa_tehnica": 85,
-        "metrologie_pram": 90, "anre_firma": 95,
-        "fotografii_lucrare": 110, "alt_document": 115,
+        # Follow the signed example: PRAM, operator filing, and storage first.
+        "priza": 5, "metrologie_pram": 7, "notificare": 10,
+        # Client evidence follows the request so none is dropped from the packet.
+        "certificat": 15, "factura": 20, "cf": 25,
+        "date_stocare": 30, "gdpr": 35, "imputernicire": 40,
+        "afm": 45, "executant": 50, "anre_firma": 52, "conformitate": 55,
+        # Reception and commissioning records precede protection settings.
+        "receptie": 60, "pif": 65, "pif_pv": 70, "reglaj": 75,
+        "fotografii_instalatie": 78, "alt_document": 79,
+        # Close the paperwork before the technical appendix.
+        "declaratie_autenticitate": 80, "opis": 81,
+        "schema": 90, "fisa_tehnica": 95,
+        "fotografii_lucrare": 110,
     }
     if key.startswith("cat_"):
-        return (88, p.get("title", "").lower())
+        return (96, p.get("title", "").lower())
     return (priority.get(key, 500), p.get("title", "").lower())
 
 
@@ -727,7 +728,7 @@ def _package_group(key, source):
         return 0
     if key == "fotografii_lucrare":
         return 3
-    if key in ("priza", "pif", "pif_pv", "receptie", "serii", "reglaj"):
+    if key in ("priza", "metrologie_pram", "pif", "pif_pv", "receptie", "serii", "reglaj"):
         return 1
     if key in ("schema", "fisa_tecnica", "date_stocare") or source == "catalog":
         return 2
@@ -738,7 +739,7 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
     """Build the selected, ordered submission package without duplicating evidence."""
     count = max(1, min(4, int(file_count or 4)))
     titles = positions_info["titles"]
-    groups = [[], [], [], []]
+    ordered_parts = []
     unavailable = []
     for position in positions_info["positions"]:
         try:
@@ -747,7 +748,8 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
                 unavailable.append(f"{position.get('title') or position.get('key')} — formular oficial indisponibil; atașează originalul verificat")
             if position.get("source") == "generat" and position.get("missing") and position.get("key") not in ("schema", "fisa_tecnica"):
                 parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in parts]
-            groups[_package_group(position.get("key"), position.get("source"))].extend(parts)
+            group = _package_group(position.get("key"), position.get("source"))
+            ordered_parts.extend((group, part) for part in parts)
         except Exception as exc:
             logger.error(f"package skip {position.get('key')}: {exc}")
             unavailable.append(position.get("title") or position.get("key") or "Document atașat")
@@ -758,13 +760,14 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
                                  draft=not positions_info.get("complete", False))
     if unavailable:
         authenticity = mark_draft(authenticity, "CIORNĂ — FIȘIER LIPSĂ")
-    # The authenticity declaration follows the administrative and commissioning
-    # documents, once, in every layout. Keep it in the last of those groups.
-    authenticity_group = 1 if groups[1] else 0
-    groups[authenticity_group].append(authenticity)
+    # Keep the original dossier order, inserting the authenticity declaration
+    # after paperwork/commissioning records and before technical annexes.
+    authenticity_group = 1 if any(group == 1 for group, _ in ordered_parts) else 0
+    technical_start = next((i for i, (group, _) in enumerate(ordered_parts) if group >= 2), len(ordered_parts))
+    ordered_parts.insert(technical_start, (authenticity_group, authenticity))
     report = _incomplete_report(positions_info, unavailable)
     if report:
-        groups[authenticity_group].append(report)
+        ordered_parts.insert(technical_start + 1, (authenticity_group, report))
     positions_info["export_has_unavailable_items"] = bool(unavailable)
 
     # Merge adjacent sections for compact layouts, keeping submission order stable.
@@ -780,7 +783,8 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
         file_index = 0
         for title, group_indices in layouts[count]:
-            parts = [part for index in group_indices for part in groups[index]]
+            included_groups = set(group_indices)
+            parts = [part for group, part in ordered_parts if group in included_groups]
             if not parts:
                 continue
             file_index += 1
