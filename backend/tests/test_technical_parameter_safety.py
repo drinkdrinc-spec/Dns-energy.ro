@@ -54,6 +54,28 @@ def test_string_power_and_stc_values_remain_available_without_coefficients():
     assert string["vmp_stc"] == 370
 
 
+def test_default_string_fuse_does_not_block_when_parallel_count_does_not_require_it():
+    inverter = sample_inverter()
+    inverter["panel_isc"] = 13.9
+    checked = cef.check({"grid": {"supply": "Trifazat"}, "inverters": [inverter]})
+    sized = sizing.compute({"cef": {"grid": {"supply": "Trifazat"}, "inverters": [inverter]}})
+
+    assert not any("siguranța gPV" in error for error in checked["errors"])
+    fuse = next(item for item in sized["items"] if item["label"] == "Separator fuzibil gPV / string")
+    assert fuse["value"] == "15 A"
+    assert fuse["ok"] is None
+    assert any("siguranța gPV propusă" in warning for warning in checked["warnings"])
+
+
+def test_parallel_strings_keep_fuse_rating_block_when_protection_is_required():
+    inverter = sample_inverter()
+    inverter["panel_isc"] = 13.9
+    inverter["strings"] = [{"panels": 10, "mppt": 1} for _ in range(3)]
+    checked = cef.check({"grid": {"supply": "Trifazat"}, "inverters": [inverter]})
+
+    assert any("siguranța gPV de 15 A nu se încadrează" in error for error in checked["errors"])
+
+
 def test_battery_cable_proposal_uses_conservative_standard_table():
     result = cef.battery_cable_proposal({"i_max": 40, "voltage": 51.2})
     assert result["section"] == 10

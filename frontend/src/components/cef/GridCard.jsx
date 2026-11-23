@@ -8,7 +8,7 @@ const DEFAULT_TEG_CIRCUITS = [
   { name: "Forță", breaker: "C20", poles: "3P+N", rcd: "30mA" },
 ];
 
-export function GridCard({ grid, set, catalog, res }) {
+export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
   const s = (k) => (v) => set({ ...grid, [k]: v });
   const gr = res?.grid;
   const autoInverterCables = (res?.inverters || []).map((item, index) => {
@@ -20,6 +20,7 @@ export function GridCard({ grid, set, catalog, res }) {
   const meterSeparate = (grid.smart_meter_mode || (grid.meter_enabled ? "Contor separat" : "Inclus în invertor")) === "Contor separat";
   const setCircuit = (index, patch) => set({ ...grid, circuits: circuits.map((row, i) => i === index ? { ...row, ...patch } : row) });
   return (
+    <>
     <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="cef-grid-card">
       <h4 className="font-bold text-sm mb-3">Branșament & măsură</h4>
       <div className="grid sm:grid-cols-3 gap-3">
@@ -39,7 +40,8 @@ export function GridCard({ grid, set, catalog, res }) {
         </div>
         <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Modelul contorului apare sub simbolul lui în schema monofilară. Contorul OD rămâne comun, la punctul de racord.</p>
       </div>}
-      <div className="mt-4 rounded-lg border p-3" style={{ borderColor: "var(--line)" }}>
+      </div>
+      <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="cef-topology-card">
         <h4 className="font-bold text-sm mb-3">Topologie, protecții & TEG</h4>
         <div className="grid sm:grid-cols-2 gap-3">
           <F label="Alimentare TEG" value={grid.teg_supply || "Auto (derivat)"} onChange={s("teg_supply")} options={["Auto (derivat)", "Rețea (fără back-up)", "Load (2× BMP)", "Huawei Back-up Box"]} testid="grid-teg-supply" />
@@ -69,7 +71,6 @@ export function GridCard({ grid, set, catalog, res }) {
           <button type="button" className="mt-2 inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => set({ ...grid, circuits: [...circuits, { name: `Circuit ${circuits.length + 1}`, breaker: "C16", poles: "1P+N", rcd: "fără dif." }] })} data-testid="teg-circuit-add"><Plus size={14} /> Adaugă circuit</button>
           <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Valorile propuse trebuie confirmate cu proiectul și fișele echipamentelor.</p>
         </div>
-      </div>
       <details className="mt-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
         <summary className="cursor-pointer text-xs font-semibold">Detalii tehnice · cabluri, protecții și măsurători</summary>
         <div className="grid sm:grid-cols-3 gap-3 mt-3">
@@ -104,6 +105,8 @@ export function GridCard({ grid, set, catalog, res }) {
           <F label="Element de decuplare" value={grid.anti_breaker} onChange={s("anti_breaker")} testid="grid-anti-breaker" />
         </div>
       )}
-    </div>
+      {onSave && <div className="mt-4 flex justify-end"><button type="button" className="rounded-lg px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60" style={{ background: "var(--green)" }} onClick={onSave} disabled={saving} data-testid="save-cef-card">{saving ? "Se salvează…" : "Salvează"}</button></div>}
+      </div>
+    </>
   );
 }

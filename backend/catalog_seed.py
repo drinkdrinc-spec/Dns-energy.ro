@@ -31,6 +31,30 @@ def missing_seed_values(existing: dict, seed: dict) -> dict:
         is_missing = current is None or current == "" or (field in NUMERIC_SEED_FIELDS and current == 0)
         if is_missing and seed.get(field) not in (None, ""):
             updates[field] = seed[field]
+
+    # Repair only the exact Solis links previously written by our own seed.
+    # Catalog links entered or changed by a user are left untouched.
+    known_stale_solis_links = {
+        "Solis S6-EH3P15K02-NV-YD-L": {
+            "datasheet_url": {
+                "https://storage-official-website.oss-eu-central-1.aliyuncs.com/solisstorage/products/S6-EH3P%288-18%29K02-NV-YD-L/S6-EH3P%288-18%29K-Global-Datasheet-V3.8_20260208223612.pdf",
+            },
+            "source_url": {"https://www.solisstorage.com/en/product/20260209214915.html"},
+        },
+        "Invertor Hibrid Trifazat Solis 15 kW LV - S6-EH3P15K02-NV-YD-L": {
+            "datasheet_url": {
+                "https://www.solisinverters.com/uploads/file/S6-EH3P%288-18%29K-MY-Flyer-V2%2C4.pdf",
+            },
+            "conformity_url": {
+                "https://www.solisinverters.com/uploads/file/Solis_certificate_EN_18031_EN_IEC_61000-1(-2)(-3)(-4)_EN_55011_EN_62920_EN_300328_EN_62479_EN_301489_EN_62109-1(-2)_EN_62477_S6-EH3P(5-18)K02-NV-YD-L_S6-EH3P(7-10)K02-LV-YD-L_RED_V03.pdf",
+            },
+            "source_url": {"https://www.solisinverters.com/my/energy_storage_inverters22/S6-EH3P%288-15%29K-L_my.html"},
+        },
+    }
+    model = existing.get("brand_model") or seed.get("brand_model")
+    for field, stale_values in known_stale_solis_links.get(model, {}).items():
+        if existing.get(field) in stale_values and seed.get(field) not in (None, ""):
+            updates[field] = seed[field]
     return updates
 
 SEED = [
@@ -39,24 +63,27 @@ SEED = [
      "p_nom_kw": 15, "p_max_kw": 15, "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850,
      "mppt_count": 2, "imax_mppt": 40, "isc_max_mppt": 50, "bat_i_max": 290,
      "battery_voltage": "LV 40–60 V",
-     "datasheet_url": "https://storage-official-website.oss-eu-central-1.aliyuncs.com/solisstorage/products/S6-EH3P%288-18%29K02-NV-YD-L/S6-EH3P%288-18%29K-Global-Datasheet-V3.8_20260208223612.pdf",
-     "source_url": "https://www.solisstorage.com/en/product/20260209214915.html",
-     "notes": "Parametrii pentru varianta de 15 kW din fișa oficială Solis S6-EH3P(8-18)K02-NV-YD-L: 40 A curent maxim/MPPT, 50 A Isc/MPPT, 2 MPPT, 4 stringuri total, 290 A curent maxim baterie și 40–60 V. Verificați codul și revizia de pe plăcuța invertorului."},
+     "datasheet_url": "https://www.solisinverters.com/uploads/file/S6-EH3P%288-18%29K-FR-Flyer-V2%2C3.pdf",
+     "conformity_url": "https://www.solisinverters.com/uploads/file/Solis_certificate_EN_50549-1_EN_50549-10_S6-EH3P%288-18%29K02-NV-YD-L_EUR_V02.pdf",
+     "source_url": "https://www.solisinverters.com/fr/energy_storage_inverters22/S6-EH3P%288-18%29K02-NV-YD-L_fr.html",
+     "notes": "Fișa europeană Solis pentru familia S6-EH3P(8–18)K02-NV-YD-L include valorile variantei de 15 kW: 2 MPPT, 40 A și Isc 50 A/MPPT, maximum 3 stringuri PV, 200–850 V MPPT, 1.000 V maxim DC, 290 A baterie și 40–60 V. Certificatul EN 50549-1/-10 V02 listează explicit S6-EH3P15K02-NV-YD-L. Confirmați revizia firmware și acceptarea de către OD pentru dosarul concret."},
 
-    {"category": "Invertor", "brand_model": "Invertor Hibrid Trifazat Solis 15 kW LV - S6-EH3P15K02-NV-YD-L",
+{"category": "Invertor", "brand_model": "Invertor Hibrid Trifazat Solis 15 kW LV - S6-EH3P15K02-NV-YD-L",
      "manufacturer": "Solis", "type": "Hibrid", "phases": "Trifazat", "p_nom_kw": 15, "p_max_kw": 15,
-     "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850, "mppt_count": 2, "bat_i_max": 290,
+     "vdc_max": 1000, "mppt_min": 200, "mppt_max": 850, "mppt_count": 2,
+     "imax_mppt": 40, "isc_max_mppt": 50, "bat_i_max": 290,
      "battery_voltage": "LV 40–60 V",
-     "datasheet_url": "https://www.solisinverters.com/uploads/file/S6-EH3P%288-18%29K-IN-Flyer-V2%2C3.pdf",
-     "conformity_url": "https://www.solisinverters.com/uploads/file/Solis_certificate_EN_18031_EN_IEC_61000-1(-2)(-3)(-4)_EN_55011_EN_62920_EN_300328_EN_62479_EN_301489_EN_62109-1(-2)_EN_62477_S6-EH3P(5-18)K02-NV-YD-L_S6-EH3P(7-10)K02-LV-YD-L_RED_V03.pdf",
-     "source_url": "https://www.solisinverters.com/uk/energy_storage_inverters22/S6-EH3P%288-18%29K02-NV-YD-L_uk.html",
-     "notes": "Fișă oficială Solis pentru familia 8–18 kW; certificatul TÜV RED listează modelul S6-EH3P15K02-NV-YD-L. Curentul MPPT și Isc/MPPT nu sunt precompletate aici deoarece trebuie corelate cu varianta/regiunea și revizia exactă a manualului european."},
+     "datasheet_url": "https://www.solisinverters.com/uploads/file/S6-EH3P%288-18%29K-FR-Flyer-V2%2C3.pdf",
+     "conformity_url": "https://www.solisinverters.com/uploads/file/Solis_certificate_EN_50549-1_EN_50549-10_S6-EH3P%288-18%29K02-NV-YD-L_EUR_V02.pdf",
+     "source_url": "https://www.solisinverters.com/fr/energy_storage_inverters22/S6-EH3P%288-18%29K02-NV-YD-L_fr.html",
+     "notes": "Fișa europeană Solis pentru familia S6-EH3P(8–18)K02-NV-YD-L include valorile variantei de 15 kW: 2 MPPT, 40 A și Isc 50 A/MPPT, maximum 3 stringuri PV, 200–850 V MPPT, 1.000 V maxim DC, 290 A baterie și 40–60 V. Certificatul EN 50549-1/-10 V02 listează explicit S6-EH3P15K02-NV-YD-L. Confirmați revizia firmware și acceptarea de către OD pentru dosarul concret."},
     {"category": "Panou", "brand_model": "AIKO-A500-MAH60Mb", "manufacturer": "AIKO",
      "w": 500, "voc": 45.02, "vmp": 37.90, "isc": 14.05, "imp": 13.20,
      "coef_voc": -0.22, "temp_pmax": -0.26,
      "datasheet_url": "https://aikosolar.com/wp-content/uploads/2025/12/Neostar-2S60_AIKO-A-MAH60Mb_500-520W-1954x1134x30mm_DsDr_DE_20251215.pdf",
+     "conformity_url": "https://solsol.eu/pl/file/view/1703/aiko_doc_en.pdf",
      "source_url": "https://aikosolar.com/wp-content/uploads/2025/12/Neostar-2S60_AIKO-A-MAH60Mb_500-520W-1954x1134x30mm_DsDr_DE_20251215.pdf",
-     "notes": "Parametri STC pentru SKU-ul AIKO-A500-MAH60Mb din fișa oficială. Certificatul aplicabil acestui cod exact nu este atașat în sursa oficială consultată; nu este marcat ca document de conformitate verificat."},
+     "notes": "Parametri STC pentru SKU-ul AIKO-A500-MAH60Mb din fișa oficială AIKO. Declarația CE emisă de Aiko Energy Germany GmbH listează familia AIKO-Axxx-MAH60Mb (xxx = puterea nominală) și include astfel A500; copia declarației este găzduită de Solsol, nu pe domeniul producătorului. Confirmați revizia și acceptarea documentului pentru echipamentul livrat înainte de depunere."},
     {"category": "Baterie", "brand_model": "Dyness 16.07KWH POWERBRICK PLUS", "manufacturer": "Dyness",
      "kwh": 16.07, "ah": 314, "voltage": 51.2, "tech": "LV", "i_max": 200, "coupling": "DC",
      "i_max_source_url": "https://www.dyness.com/Public/Uploads/uploadfile/files/20251226/DynessPowerBrickPlusDatasheetEN20251210.pdf",
@@ -259,5 +286,6 @@ SEED = [
      "notes": "Fișă oficială Sigenergy pentru HomePro SP/TP: 30 kW, 45,6 A; funcția backup depinde de sistemul Energy Controller + baterie și de condițiile de sarcină din fișă. Declarația de conformitate pentru HomePro TP nu este atașată."},
 
 ]
+
 
 

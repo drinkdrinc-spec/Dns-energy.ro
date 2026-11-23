@@ -7,14 +7,14 @@ import { useAuth } from "@/context/AuthContext";
 
 export default function Settings() {
   const { logout } = useAuth();
-  const [f, setF] = useState({ company: "", brand: "", rep: "", phone: "", address: "" });
+  const [f, setF] = useState({ company: "", brand: "", rep: "", phone: "", address: "", dossier_package_parts: 4, dossier_package_by_operator: {} });
   const [loaded, setLoaded] = useState(false);
   const [companyExtract, setCompanyExtract] = useState(null);
   const [companyExtracting, setCompanyExtracting] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  useEffect(() => { api.get("/settings").then((r) => setF({ company: "", brand: "", rep: "", phone: "", address: "", ...r.data })).catch(() => {}).finally(() => setLoaded(true)); }, []);
+  useEffect(() => { api.get("/settings").then((r) => setF({ company: "", brand: "", rep: "", phone: "", address: "", dossier_package_parts: 4, dossier_package_by_operator: {}, ...r.data })).catch(() => {}).finally(() => setLoaded(true)); }, []);
 
   const uploadSettingFile = async (key, file) => {
     if (!file) return;
@@ -112,6 +112,31 @@ export default function Settings() {
               <input className="den-input" disabled={!loaded} value={f[k] || ""} onChange={(e) => set(k, e.target.value)} data-testid={`set-${k}`} />
             </div>
           ))}
+        </div>
+        <div className="mt-5 border-t pt-4" style={{ borderColor: "var(--line)" }} data-testid="dossier-package-settings">
+          <h3 className="font-bold text-sm mb-1">Organizarea pachetului de depunere</h3>
+          <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Alege în câte PDF-uri să fie împărțit ZIP-ul. Actele, probele PRAM/PIF, anexele tehnice și fotografiile rămân în ordine și fiecare document își păstrează starea reală.</p>
+          <label className="den-field max-w-sm"><span>Număr de fișiere PDF în pachet</span>
+            <select className="den-input" value={Number(f.dossier_package_parts || 4)} onChange={(e) => set("dossier_package_parts", Number(e.target.value))} disabled={!loaded} data-testid="set-dossier-package-parts">
+              <option value={1}>1 PDF — dosar complet</option>
+              <option value={2}>2 PDF-uri — depunere și anexe tehnice</option>
+              <option value={3}>3 PDF-uri — acte, anexe tehnice, fotografii</option>
+              <option value={4}>4 PDF-uri — acte, PRAM/PIF, tehnic, fotografii</option>
+            </select>
+          </label>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2" data-testid="dossier-package-operator-overrides">
+            {[["deer", "DEER"], ["delgaz", "Delgaz Grid"], ["rer", "Rețele Electrice România"], ["oltenia", "Distribuție Oltenia"]].map(([key, label]) => <label className="den-field" key={key}>
+              <span>{label} — format dedicat (opțional)</span>
+              <select className="den-input" disabled={!loaded} value={f.dossier_package_by_operator?.[key] || ""} onChange={(e) => {
+                const next = { ...(f.dossier_package_by_operator || {}) };
+                if (e.target.value) next[key] = Number(e.target.value); else delete next[key];
+                set("dossier_package_by_operator", next);
+              }} data-testid={`set-dossier-package-${key}`}>
+                <option value="">Folosește formatul implicit</option>
+                <option value={1}>1 PDF — dosar complet</option><option value={2}>2 PDF-uri</option><option value={3}>3 PDF-uri</option><option value={4}>4 PDF-uri</option>
+              </select>
+            </label>)}
+          </div>
         </div>
         <div className="mt-5 border-t pt-4" style={{ borderColor: "var(--line)" }}>
         <h3 className="font-bold text-sm mb-1">Documente firmă și semnare automată</h3>

@@ -1316,7 +1316,8 @@ async def audit_log(module: Optional[str] = None, item_id: Optional[str] = None,
 async def get_settings(user: dict = Depends(get_current_user)):
     doc = await db.settings.find_one({"owner": user["id"]})
     if not doc:
-        return {"company": "DNS HOSTESS S.R.L.", "brand": "D-ENERGY", "rep": "", "phone": "", "address": ""}
+        return {"company": "DNS HOSTESS S.R.L.", "brand": "D-ENERGY", "rep": "", "phone": "", "address": "",
+                "dossier_package_parts": 4, "dossier_package_by_operator": {}}
     return clean(doc)
 
 @api_router.put("/settings")
@@ -2299,6 +2300,23 @@ async def seed_catalog(owner: str):
                     )
                 except Exception as exc:
                     logger.warning("Could not refresh the Deye SUN-8K-SG05 datasheet from its official source: %s", exc)
+            aiko_model = item.get("brand_model") == "AIKO-A500-MAH60Mb"
+            aiko_conformity = row.get("conformity") if isinstance(row.get("conformity"), dict) else {}
+            aiko_conformity_url = str(row.get("conformity_url") or row.get("conformity_source_url") or "").strip()
+            seed_managed_aiko_conformity = aiko_model and aiko_conformity_url in ("", item.get("conformity_url"))
+            if (seed_managed_aiko_conformity and not aiko_conformity.get("storage_path")
+                    and aiko_conformity.get("source_url") in (None, "", item.get("conformity_url"))):
+                try:
+                    await catalog_import_document(
+                        row["id"],
+                        _TrustedCatalogImportRequest({
+                            "kind": "conformity",
+                            "url": item["conformity_url"],
+                        }),
+                        {"id": owner},
+                    )
+                except Exception as exc:
+                    logger.warning("Could not import the AIKO-A500-MAH60Mb family CE declaration hosted by Solsol: %s", exc)
             continue
         if _catalog_seed_key(item.get("category"), item.get("brand_model")) in deleted_seed_keys:
             continue
@@ -3107,7 +3125,7 @@ async def get_client(owner: str, rec: dict) -> dict:
         c = await db.clients.find_one({"owner": owner, "id": rec["client_id"]}, {"_id": 0})
     if not c and not rec.get("client_id") and rec.get("client_name"):
         c = await db.clients.find_one({"owner": owner, "name": rec["client_name"]}, {"_id": 0})
-    return c or {}
+    return OPIS.dossier_client_snapshot(rec, c or {})
 
 def _normalize_atr_match(value: str) -> str:
     import unicodedata
@@ -3382,6 +3400,26 @@ async def dossier_item(item_id: str, key: str, request: Request, user: dict = De
         cur["upload"] = body["upload"]
     if body.get("clear_upload"):
         cur.pop("upload", None)
+    multi_file_keys = {"fotografii_instalatie", "fotografii_lucrare", "alt_document"}
+    if "add_uploads" in body:
+        if key not in multi_file_keys or not isinstance(body["add_uploads"], list) or len(body["add_uploads"]) > 20:
+            raise HTTPException(status_code=400, detail="Lista de fișiere nu este validă pentru această poziție")
+        additions = [item for item in body["add_uploads"] if isinstance(item, dict) and item.get("storage_path")]
+        if len(additions) != len(body["add_uploads"]):
+            raise HTTPException(status_code=400, detail="Unul dintre fișiere nu este valid")
+        current_uploads = cur.get("uploads") or []
+        if len(current_uploads) + len(additions) > 50:
+            raise HTTPException(status_code=413, detail="Poți atașa cel mult 50 de fișiere la această categorie")
+        cur["uploads"] = current_uploads + additions
+    if "remove_upload_index" in body:
+        if key not in multi_file_keys or not isinstance(body["remove_upload_index"], int):
+            raise HTTPException(status_code=400, detail="Fișierul selectat nu poate fi eliminat")
+        uploads = cur.get("uploads") or []
+        index = body["remove_upload_index"]
+        if index < 0 or index >= len(uploads):
+            raise HTTPException(status_code=404, detail="Fișierul nu mai este atașat")
+        uploads.pop(index)
+        cur["uploads"] = uploads
     await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {f"opis.{key}": cur, "updated_at": datetime.now(timezone.utc).isoformat()}})
     await audit(user, "opis", "prosumator", item_id, [key] + list(body.keys()))
     return {"ok": True}
@@ -3397,6 +3435,8 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         raise HTTPException(status_code=404, detail="Poziție inexistentă")
     name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
     if fmt == "docx":
+        if p.get("official_operator_form"):
+            raise HTTPException(status_code=400, detail="Formularul oficial al operatorului se descarcă în PDF, în formatul publicat de distribuitor.")
         if key == "fisa_tehnica":
             docx = SLD.tech_sheet_docx(rec, client, settings, SZ.compute(rec, client), SZ.state(rec, client, settings))
             return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -3433,6 +3473,23 @@ async def dossier_export(item_id: str, authorization: str = Header(None), auth: 
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
 
 SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "pif_pv", "schema", "fisa_tehnica")
+
+@api_router.get("/dossier/{item_id}/package.zip")
+async def dossier_package(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
+    user = await user_from_token(authorization, auth)
+    rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
+    operator_key = ATR.op_key(rec.get("operator"), client.get("operator"))
+    overrides = settings.get("dossier_package_by_operator") or {}
+    selected_parts = overrides.get(operator_key) if operator_key else None
+    try:
+        file_count = max(1, min(4, int(selected_parts or settings.get("dossier_package_parts", 4))))
+    except (TypeError, ValueError):
+        file_count = 4
+    package = await OPIS.export_package_zip(info, rec, client, settings, get_object, logger, file_count)
+    label = (client.get("name") or rec.get("client_name") or "prosumator").replace(" ", "_")
+    suffix = "_CIORNA" if not info.get("complete") or info.get("export_has_unavailable_items") else ""
+    return Response(content=package, media_type="application/zip",
+                    headers={"Content-Disposition": disp('attachment', f"DOSAR_{label}{suffix}.zip")})
 
 @api_router.get("/dossier/{item_id}/simple")
 async def dossier_simple(item_id: str, authorization: str = Header(None), auth: str = Query(None)):

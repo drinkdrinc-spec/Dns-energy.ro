@@ -107,7 +107,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [operatorManuallySet, setOperatorManuallySet] = useState(false);
   const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
   const inputs = useRef({});
-  const createRequestId = useRef("");
+  const createRequest = useRef({ id: "", fingerprint: "" });
   const normalizeIdentity = (value) => String(value || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
   const existingClientIdentity = normalizeIdentity(selectedClient?.idcode || selectedClient?.cui);
   const draftIdentity = normalizeIdentity(values.cnp);
@@ -256,14 +256,27 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       doc_type: ({ ci: "Carte de identitate", factura: "Factură energie", cf: "Carte funciară", altele: "Document suplimentar" })[kind],
     })));
     const workflowBlockers = requiredDataMissing.map((field) => `Lipsește ${field}`);
-    const requestId = createRequestId.current || (createRequestId.current = (globalThis.crypto?.randomUUID?.() || `intake-${Date.now()}-${Math.random().toString(36).slice(2)}`));
-    const payload = { ...values, intake_request_id: requestId, client_name: values.client_name.trim(), files: filesForDossier,
+    const payload = { ...values, client_name: values.client_name.trim(), files: filesForDossier,
       workflow_status: requiredDataMissing.length ? "Date de completat" : "Dosar în pregătire",
       workflow_blockers: workflowBlockers,
       notes: [...Object.values(notes).flat(), values.notes].filter(Boolean).join("\n") };
+    // Reuse the idempotency key only when retrying the exact same intake.
+    // If the user corrected data or selected another client after a failed
+    // attempt, a new key prevents the API from returning the older dossier.
+    const fingerprint = JSON.stringify(payload);
+    if (!createRequest.current.id || createRequest.current.fingerprint !== fingerprint) {
+      createRequest.current = {
+        id: globalThis.crypto?.randomUUID?.() || ("intake-" + Date.now() + "-" + Math.random().toString(36).slice(2)),
+        fingerprint,
+      };
+    }
+    payload.intake_request_id = createRequest.current.id;
     try {
       setBusy("create");
-      const { data } = await api.post("/import/prosumator", payload, { dnsRetry503: true });
+      // The backend deduplicates intake_request_id, so retries after a dropped
+      // mobile connection cannot create a second client or dossier.
+      const { data } = await api.post("/import/prosumator", payload, { dnsRetrySafe: true });
+      if (!data?.id) throw new Error("Serverul nu a confirmat numărul dosarului creat. Încearcă din nou cu aceleași date.");
       if (data.intake_warnings?.length) toast.warning(`Dosarul a fost creat. ${data.intake_warnings.join(" ")}`);
       else if (data.related_dossier) toast.warning(
         `Dosar nou creat. Există deja dosarul ${data.related_dossier.number || ""} pentru acest POD; am păstrat ambele cereri.`
@@ -271,8 +284,14 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       else toast.success(requiredDataMissing.length
         ? `Ciornă creată. Completează: ${requiredDataMissing.join(", ")}.`
         : "Clientul și dosarul au fost create cu documentele în opis.");
-      setOpen(false); setStep(0); onCreated(data);
-      createRequestId.current = "";
+      setOpen(false); setStep(0);
+      createRequest.current = { id: "", fingerprint: "" };
+      try {
+        await onCreated?.(data);
+      } catch (openError) {
+        console.error("Dosarul a fost creat, dar pagina lui nu s-a putut deschide:", openError);
+        toast.warning("Dosarul a fost creat și îl găsești în lista Dosare; pagina nu s-a deschis automat.");
+      }
       setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
       setSelectedClient(null); setSelectedSiteId("new"); setClientSearch(""); setOperatorManuallySet(false);
     } catch (e) {

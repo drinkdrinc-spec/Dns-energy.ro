@@ -90,6 +90,10 @@
 .dns-prosumer-workflow [data-testid="prosumer-guided-sections"] > details > summary { border-color:#ece2d4 !important; }
 .dns-prosumer-workflow [data-testid="cef-grid-card"] { border-radius:12px; }
 .dns-prosumer-workflow [data-testid="cef-grid-card"] button[style*="--blue"] { color:var(--green) !important; }
+.dns-prosumer-workflow .grid > * { min-width:0; }
+.dns-prosumer-workflow input,
+.dns-prosumer-workflow select,
+.dns-prosumer-workflow textarea { min-width:0; max-width:100%; }
 
 ::-webkit-scrollbar { width:10px; height:10px; }
 ::-webkit-scrollbar-thumb { background:#cbd6e6; border-radius:8px; }

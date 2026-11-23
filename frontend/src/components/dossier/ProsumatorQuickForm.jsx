@@ -91,7 +91,7 @@ function proposeStrings(inv, totalPanels) {
   return panelCounts.map((panels, i) => ({ panels, mppt: i + 1, auto_generated: true }));
 }
 
-export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBusyChange }) {
+export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBusyChange, stepComplete }) {
   const [supplierMarkup, setSupplierMarkup] = useSupplierMarkup();
   const [catalog, setCatalog] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -542,9 +542,18 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         <div><p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--green)" }}>1. Client și loc de consum</p>
           <h3 className="mt-1 text-lg font-bold">Client și loc de consum</h3>
           <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>Alege clientul și completează locul de consum. Datele disponibile se preiau din dosarul clientului.</p></div>
-        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Completare asistată</span>
+        <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={stepComplete
+          ? { background: "#eaf7ef", color: "#18894f" }
+          : { background: "#fff4e8", color: "#c97922" }} data-testid="guided-step-status-1">{stepComplete ? "Complet" : "De completat"}</span>
       </summary>
-      <div className="mx-4 mt-4 grid gap-3 pb-3 sm:mx-5 sm:grid-cols-2">
+      <div className="mx-4 mt-4 rounded-xl border p-3 sm:mx-5" style={{ borderColor: "var(--line)" }} data-testid="prosumer-client-identity">
+        <h4 className="mb-3 text-sm font-semibold">Client și date de identitate</h4>
+        <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg p-1" style={{ background: "var(--panel)" }} role="group" aria-label="Tip beneficiar">
+          {[['Persoană fizică', 'Persoană fizică'], ['Persoană juridică', 'Persoană juridică']].map(([value, label]) => <button key={value} type="button" className="rounded-md px-3 py-2 text-sm font-semibold" aria-pressed={String(form.kind || selectedClient?.kind || "Persoană fizică").toLowerCase().includes(value === "Persoană juridică" ? "jurid" : "fiz")}
+            style={String(form.kind || selectedClient?.kind || "Persoană fizică").toLowerCase().includes(value === "Persoană juridică" ? "jurid" : "fiz") ? { background: "white", color: "var(--green)", boxShadow: "0 1px 3px #0001" } : { color: "var(--muted)" }}
+            onClick={() => setVal("kind", value)}>{label}</button>)}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
         <label className="den-field sm:col-span-2"><span>{title(field(cfg, "client_name"), "Beneficiar / client")} *</span>
           <select className="den-input" value={selectedClient?.id || (form.client_name && !clients.some((x) => x.label === form.client_name) ? "__document_import__" : "")} onChange={(e) => {
             const v = e.target.value;
@@ -552,6 +561,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
             const name = v === "__document_import__" ? form.client_name : (c?.label || "");
             setVal("client_name", name); setVal("client_id", c?.id || "");
             for (const [k, value] of [
+              ["kind", c?.kind || "Persoană fizică"], ["regcom", c?.regcom || ""], ["ci_series", c?.ci_series || c?.id_series || ""],
+              ["rep_name", c?.rep_name || ""], ["rep_role", c?.rep_role || ""], ["iban", c?.iban || ""], ["bank", c?.bank || ""],
               ["cnp", c?.cnp || c?.idcode || ""], ["phone", c?.phone || ""], ["email", c?.email || ""],
               ["hq_address", c?.hq_address || ""], ["address", c?.address || ""], ["county", c?.county || ""],
               ["pod", c?.pod || ""], ["operator", c?.operator || ""], ["cf_nr", c?.cf_nr || ""],
@@ -564,17 +575,44 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
             return <option key={c.id} value={c.id}>{c.label}{duplicateName ? " · " + detail : ""}</option>;
           })}</select>
         </label>
-        {input("address", "Adresa locului de consum")}
-        {input("pod", "POD")}
-        {input("power", "Putere solicitată (kW)", "number")}
+        {String(form.kind || selectedClient?.kind || "Persoană fizică").toLowerCase().includes("jurid") ? <>
+          {input("rep_name", "Reprezentant legal")}
+          {input("rep_role", "Calitate reprezentant")}
+          {input("regcom", "Nr. Registrul Comerțului")}
+          {input("cnp", "CUI")}
+          {input("hq_address", "Sediu social")}
+          {input("phone", "Telefon")}
+          {input("email", "Email")}
+          {input("iban", "IBAN")}
+          {input("bank", "Banca")}
+        </> : <>
+          {input("cnp", "CNP")}
+          {input("ci_series", "Serie și număr CI")}
+          {input("hq_address", "Domiciliu (din CI)")}
+          {input("phone", "Telefon")}
+          {input("email", "Email")}
+        </>}
+        </div>
+      </div>
+      <div className="mx-4 mt-3 rounded-xl border p-3 sm:mx-5" style={{ borderColor: "var(--line)" }} data-testid="prosumer-consumption-location">
+        <h4 className="mb-3 text-sm font-semibold">Loc de consum</h4>
+        <div className="grid gap-3 pb-3 sm:grid-cols-2">
+          {input("address", "Adresă loc de consum")}
+          {input("locality", "Localitate")}
+          {input("county", "Județ")}
+          {input("postal_code", "Cod poștal")}
+          {input("pod", "POD")}
+          {input("nlc", "Cod loc de consum / NLC")}
+          {input("supplier", "Furnizor")}
+          {input("cf_nr", "Carte funciară")}
+          {input("cadastral_nr", "Număr cadastral")}
+          {input("operator", "Operator de distribuție", "text", field(cfg, "operator")?.options)}
+          {input("power", "Putere solicitată (kW)", "number")}
+        </div>
       </div>
       <div className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--line)" }}>
         <h4 className="mb-3 text-sm font-semibold">Date administrative și branșament</h4>
         <div className="grid gap-3 pb-3 sm:grid-cols-2">
-          {input("cnp", "CNP / CUI")}
-          {input("phone", "Telefon")}
-          {input("email", "Email")}
-          {input("hq_address", "Adresă din CI / sediu")}
           {input("request_type", title(field(cfg, "request_type"), "Tip cerere"), "text", field(cfg, "request_type")?.options)}
           {isPowerIncrease && <>
             {input("approved_power_kw", "Putere aprobată existentă (kW)", "number")}
@@ -592,7 +630,6 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
               <button type="button" className="text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => setVal("receptors", [...receptors, {}])} data-testid="power-increase-add-receptor">+ Adaugă receptor</button>
             </div>
           </>}
-          {input("operator", "Operator de distribuție", "text", field(cfg, "operator")?.options)}
           {input("supply", title(field(cfg, "supply"), "Branșament"), "text", field(cfg, "supply")?.options)}
           {input("bransament_kw", "Putere branșament (kW)", "number")}
           <label className="den-field sm:col-span-2"><span className="flex items-center gap-2"><input type="checkbox" checked={form.address_same_as_ci === true} onChange={(e) => { setVal("address_same_as_ci", e.target.checked); if (e.target.checked) setVal("address", form.hq_address || ""); }} /> Locul de consum are aceeași adresă ca în CI</span></label>

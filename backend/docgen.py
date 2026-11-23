@@ -105,7 +105,7 @@ CLIENT_KEYS = {"name", "idcode", "kind", "regcom", "ci_series", "rep_name", "rep
 
 
 class Ctx:
-    """Dossier data resolved from client sheet (client fields) / dossier record -> executant settings. Missing = None."""
+    """Resolve the saved dossier snapshot first, with the client sheet as fallback; settings hold executant data."""
 
     def __init__(self, rec, settings, client, opis_titles=None):
         self.r, self.s, self.c = rec, settings or {}, client or {}
@@ -114,12 +114,14 @@ class Ctx:
 
     def raw(self, k):
         self.used.add(k)
-        order = (self.c, self.r) if (k in CLIENT_KEYS and self.c) else (self.r, self.c)
+        # The dossier form is editable after client selection. Generated documents must
+        # reflect the values the operator reviewed and saved on this dossier, while the
+        # master client record remains a fallback for fields not copied into the dossier.
+        order = (self.r, self.c)
         for src in order:
             if src.get(k) not in (None, ""):
                 return src.get(k)
-        for a in ALIASES.get(k, []):
-            for src in order:
+            for a in ALIASES.get(k, []):
                 if src.get(a) not in (None, ""):
                     return src.get(a)
         return None

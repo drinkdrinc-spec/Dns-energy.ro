@@ -1,5 +1,6 @@
 import io
 import datetime
+import zipfile
 from html import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -14,7 +15,8 @@ import pif_doc as PIFDOC
 
 STATUSES = ["de completat", "generat", "necesită semnătură", "atașat"]
 CLIENT_SLOTS = {"factura": "Factură furnizor de energie", "certificat": "Certificat de înregistrare", "constatator": "Certificat constatator",
-                "ci": "Act de identitate", "cf": "Extras de carte funciară"}
+                "ci": "Act de identitate", "cf": "Extras de carte funciară", "imputernicire": "Împuternicire / mandat",
+                "fotografii_instalatie": "Fotografii instalație", "fotografii_lucrare": "Fotografii lucrare", "alt_document": "Alt document"}
 L = {"name": "Nume / denumire client", "idcode": "CNP / CUI", "hq_address": "Domiciliu / sediu social", "phone": "Telefon client",
      "address": "Adresă loc de consum", "county": "Județ loc de consum", "pod": "POD (cod unic de identificare)", "operator": "Operator de distribuție",
      "regcom": "Nr. Registrul Comerțului client", "rep_name": "Reprezentant legal client", "rep_role": "Calitate reprezentant", "ci_series": "Serie/nr. act identitate",
@@ -77,18 +79,42 @@ def storage_missing_fields(battery):
     return [f"{model}: completează/verifică " + ", ".join(missing)] if missing else []
 
 
+def dossier_client_snapshot(rec, client):
+    """Overlay reviewed dossier values on the linked client, preserving client fallbacks."""
+    rec, snapshot = rec or {}, dict(client or {})
+    for key in docgen.CLIENT_KEYS:
+        if rec.get(key) not in (None, ""):
+            snapshot[key] = rec[key]
+    for key, aliases in docgen.ALIASES.items():
+        if rec.get(key) not in (None, ""):
+            continue
+        for alias in aliases:
+            if rec.get(alias) not in (None, ""):
+                snapshot[key] = rec[alias]
+                break
+    return snapshot
+
+
 def dossier_order(p):
-    """Submission order, with PRAM and the distributor packet first."""
+    """Order the packet like the supplied signed Reenergy dossier example."""
     key = p.get("key", "")
     priority = {
-        "priza": 5, "notificare": 10, "date_stocare": 15, "gdpr": 20,
-        "imputernicire": 25, "afm": 30, "executant": 35, "conformitate": 40,
-        "receptie": 45, "pif_pv": 50, "pif": 55, "reglaj": 60,
-        "schema": 70, "fisa_tehnica": 75, "certificat": 80, "factura": 82, "cf": 84,
-        "metrologie_pram": 90, "anre_firma": 95,
+        # Follow the signed example: PRAM, operator filing, and storage first.
+        "priza": 5, "metrologie_pram": 7, "notificare": 10,
+        # Client evidence follows the request so none is dropped from the packet.
+        "certificat": 15, "factura": 20, "cf": 25,
+        "date_stocare": 30, "gdpr": 35, "imputernicire": 40,
+        "afm": 45, "executant": 50, "anre_firma": 52, "conformitate": 55,
+        # Reception and commissioning records precede protection settings.
+        "receptie": 60, "pif": 65, "pif_pv": 70, "reglaj": 75,
+        "fotografii_instalatie": 78, "alt_document": 79,
+        # Close the paperwork before the technical appendix.
+        "declaratie_autenticitate": 80, "opis": 81,
+        "schema": 90, "fisa_tehnica": 95,
+        "fotografii_lucrare": 110,
     }
     if key.startswith("cat_"):
-        return (85, p.get("title", "").lower())
+        return (96, p.get("title", "").lower())
     return (priority.get(key, 500), p.get("title", "").lower())
 
 
@@ -162,13 +188,47 @@ async def authorization_files(db, owner, rec, settings):
             add_file(meter_file)
     return files
 
+
+async def prosumer_official_operator_form(rec, client, pros, power_increase):
+    """Resolve the official operator annex for the dossier's actual request."""
+    import atr_routes as ATR_ROUTES
+
+    operator = str(rec.get("operator") or client.get("operator") or "")
+    operator_key = ATR_ROUTES.ATR.op_key(operator)
+    if operator_key not in {"rer", "delgaz", "oltenia"}:
+        return None
+
+    cef = pros.get("cef") or {}
+    grid = cef.get("grid") or {}
+    request_rec = {
+        **rec,
+        "request_type": "spor" if power_increase else "mod_fara",
+        "supply": rec.get("supply") or pros.get("supply") or grid.get("supply") or "",
+    }
+    annex_no, forms = await ATR_ROUTES._registry_forms_for_request(operator_key, request_rec, pros)
+    if annex_no is None or not forms:
+        return None
+    form = forms[0]
+    return {
+        **form,
+        "operator_key": operator_key,
+        "annex_no": annex_no,
+        "title": form.get("title") or f"Anexa {annex_no} — formular oficial prosumator",
+    }
+
+
 async def build_positions(db, owner, rec, client, settings, public_documents=None):
+    # Keep the dossier's reviewed identity and consumption snapshot authoritative
+    # throughout the opis, official-form checks and generated documents. The linked
+    # client remains the fallback for values that were not captured on this dossier.
+    client = dossier_client_snapshot(rec, client)
     kind = str(client.get("kind") or "").strip().casefold()
     pj = "jurid" in kind or kind in ("pj", "company", "firmă", "firma")
     ctx = docgen.Ctx(docgen.CEF.flatten(rec), settings, client)
     opis = rec.get("opis") or {}
     req_common = COMMON + (["regcom", "rep_name", "rep_role"] if pj else [])
     pos = []
+    cdocs = client.get("docs") or {}
 
     common = [L.get(k, k) for k in req_common if ctx.raw(k) in (None, "")] + [EL.get(k, k) for k in EXEC if settings.get(k) in (None, "")]
     if not settings.get("_stamp_path"):
@@ -182,6 +242,10 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     res_sld = SZ.compute(rec, client)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
+        if key == "imputernicire":
+            pos.append({"key": key, "title": "Împuternicire / mandat", "source": "client",
+                        "slots": ["imputernicire"], "files": cdocs.get("imputernicire") or [], "missing": []})
+            continue
         if key == "date_stocare" and not docgen.storage(ctx):
             continue
         if key == "notificare" and ctx.power_increase:
@@ -193,9 +257,16 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                             "source": "generat", "docs": [], "docx_only": True,
                             "missing": ["Verifică formularul oficial și completează/semnează câmpurile rămase necompletate."]})
             else:
-                pos.append({"key": key, "title": "Cerere de racordare — Anexa 1 a operatorului",
-                            "source": "manual", "files": [],
-                            "missing": ["Deschide formularul oficial curent al operatorului în Registrul de formulare și atașează-l după completare."]})
+                official_form = await prosumer_official_operator_form(rec, client, rec, True)
+                if official_form:
+                    pos.append({"key": key,
+                                "title": f"Cerere de racordare — {official_form['title']}",
+                                "source": "official", "docs": [], "official_operator_form": official_form,
+                                "missing": ["Verifică formularul oficial, completează câmpurile rămase necompletate și semnează-l."] + missing(keys, ekeys)})
+                else:
+                    pos.append({"key": key, "title": "Cerere de racordare — formularul oficial al operatorului",
+                                "source": "manual", "files": [],
+                                "missing": ["Deschide formularul oficial curent al operatorului în Registrul de formulare și atașează-l după completare."]})
             continue
         if key == "notificare":
             operator_name = str(rec.get("operator") or client.get("operator") or "").casefold()
@@ -235,6 +306,17 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                             "official_doc_endpoint": "anexa2",
                             "official_form_label": "Anexa 2 DEER",
                             "missing": ["Descarcă formularul oficial, verifică datele, semnează-l și încarcă PDF-ul semnat.", *official_missing]})
+                continue
+            official_form = await prosumer_official_operator_form(rec, client, rec, False)
+            if official_form:
+                form_missing = list(dict.fromkeys(
+                    ["Verifică formularul oficial, completează eventualele câmpuri rămase goale și semnează-l."]
+                    + missing(keys, ekeys) + missing(*DOC_COMMON.get(key, ([], [])))))
+                pos.append({"key": key,
+                            "title": f"Notificare / cerere prosumator — {official_form['title']}",
+                            "source": "official", "docs": ["notificare"],
+                            "official_operator_form": official_form,
+                            "missing": form_missing})
                 continue
         if key == "priza" and rec.get("pram_source") == "none":
             if PIFDOC.filled(rec):
@@ -290,13 +372,24 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     if not pif_documents_active:
         pos = [item for item in pos if item.get("key") not in {"pif", "receptie", "pif_pv"}]
 
-    cdocs = client.get("docs") or {}
     for key, slots, title in [("factura", ["factura"], "Factură furnizor de energie"),
                               ("certificat", ["certificat", "constatator"] if pj else ["ci"], "Certificat de înregistrare" if pj else "Act de identitate"),
-                              ("cf", ["cf"], "Extras de carte funciară")]:
+                              ("cf", ["cf"], "Extras de carte funciară — dacă este solicitat de operator")]:
         files = [f for s in slots for f in (cdocs.get(s) or [])]
         pos.append({"key": key, "title": title, "source": "client", "slots": slots, "files": files,
-                    "missing": [] if files else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
+                    "missing": [] if files or key == "cf" and not rec.get("cf_required") else [f"Încarcă în fișa clientului: {', '.join(CLIENT_SLOTS[s] for s in slots)}"]})
+
+    # Add photo and extra-document upload rows shown on the dossier card.
+    # Installation photos belong in the main packet; work photos follow the
+    # technical annex. Client uploads remain original files in storage.
+    for key, slot, title in (
+        ("fotografii_instalatie", "fotografii_instalatie", "Fotografii instalație"),
+        ("fotografii_lucrare", "fotografii_lucrare", "Fotografii lucrare — anexă tehnică"),
+        ("alt_document", "alt_document", "Alt document client"),
+    ):
+        files = cdocs.get(slot) or []
+        pos.append({"key": key, "title": title, "source": "client", "slots": [slot],
+                    "files": files, "missing": []})
 
     # Include original company and PRAM evidence in the dossier packet.
     # These documents must be uploaded by the company; never synthesize them.
@@ -370,7 +463,8 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
         p["nr"] = i + 1
         o = opis.get(p["key"]) or {}
         p["upload"] = o.get("upload")
-        if p["key"] in ("schema", "fisa_tehnica") and p["upload"] and (p["upload"].get("sld_hash") != st_sld["fingerprint"] or st_sld["status"] != "approved"):
+        p["uploads"] = o.get("uploads") or []
+        if p["key"] in ("schema", "fisa_tecnica") and p["upload"] and (p["upload"].get("sld_hash") != st_sld["fingerprint"] or st_sld["status"] != "approved"):
             p["upload"] = None
             if o.get("upload", {}).get("sld_hash"):
                 p["missing"].append("Versiunea semnată anterior nu mai corespunde configurației — necesită verificare și semnare nouă")
@@ -382,13 +476,14 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
         elif p["key"] in ("schema", "fisa_tehnica") and st_sld["status"] != "approved":
             o = {k: v for k, v in o.items() if k != "status"}
         gen_missing = p["missing"]
+        has_upload = bool(o.get("upload") or o.get("uploads"))
         if p["source"] == "manual":
-            auto = "atașat" if o.get("upload") else "de completat"
+            auto = "atașat" if has_upload else "de completat"
         else:
-            auto = "de completat" if gen_missing else ("atașat" if (o.get("upload") or (p["source"] != "generat" and p["files"])) else "generat")
+            auto = "de completat" if gen_missing else ("atașat" if (has_upload or (p["source"] != "generat" and p["files"])) else "generat")
         p["auto_status"] = auto
         p["status"] = o.get("status") or auto
-        if o.get("upload"):
+        if has_upload:
             p["missing"] = []
     total = sum(len(p["missing"]) for p in pos) + len(common)
     return {"positions": pos, "common_missing": common, "missing_total": total, "complete": total == 0, "titles": [p["title"] for p in pos]}
@@ -459,11 +554,41 @@ def mark_draft(pdf: bytes, text="CIORNĂ") -> bytes:
 
 
 async def position_pdf(p, rec, client, settings, titles, get_object, force_generated=False):
-    if p.get("upload") and not force_generated:
-        data, ct = get_object(p["upload"]["storage_path"])
-        return [file_pdf(data, p["upload"].get("content_type") or ct)]
+    uploads = [*(p.get("uploads") or []), *([p["upload"]] if p.get("upload") else [])]
+    if uploads and not force_generated:
+        out = []
+        # Keep source documents/photos already in the client record when the
+        # dossier card adds more files to the same category.
+        if p.get("source") == "client":
+            for file in p.get("files") or []:
+                data, ct = get_object(file["storage_path"])
+                out.append(file_pdf(data, file.get("content_type") or ct))
+        for file in uploads:
+            data, ct = get_object(file["storage_path"])
+            out.append(file_pdf(data, file.get("content_type") or ct))
+        return out
     if p.get("docx_only"):
         return []
+    official_form = p.get("official_operator_form")
+    if official_form:
+        import atr_routes as ATR_ROUTES
+        operator_key = official_form["operator_key"]
+        try:
+            official_bytes, _ = await ATR_ROUTES._fetch_registry_annex(official_form, operator_key)
+        except Exception as exc:
+            worksheet = ATR_ROUTES.ATR.render_operator_annex_prep(
+                rec, client, rec, operator_key, official_form["annex_no"], official_form["title"])
+            notice = _official_form_unavailable_pdf(official_form, exc)
+            p["_official_form_unavailable"] = True
+            return [mark_draft(worksheet, "FORMULAR OFICIAL INDISPONIBIL"),
+                    mark_draft(notice, "FORMULAR OFICIAL INDISPONIBIL")]
+        official_bytes, filled_fields = ATR_ROUTES._prefill_official_pdf(official_bytes, rec, client, rec)
+        parts = []
+        if not filled_fields:
+            parts.append(ATR_ROUTES.ATR.render_operator_annex_prep(
+                rec, client, rec, operator_key, official_form["annex_no"], official_form["title"]))
+        parts.append(official_bytes)
+        return parts
     if p.get("key") in ("schema", "fisa_tehnica"):
         res = SZ.compute(rec, client)
         st = SZ.state(rec, client, settings)
@@ -500,6 +625,29 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
         data, ct = get_object(f["storage_path"])
         out.append(file_pdf(data, f.get("content_type") or ct))
     return out
+
+
+def _official_form_unavailable_pdf(form, reason):
+    """Return a clear fallback page with the official source; never substitute a generated form."""
+    url = str(form.get("url") or "").strip()
+    title = escape(str(form.get("title") or "formularul oficial al operatorului"))
+    reason_text = escape(str(reason)[:300])
+    story = [
+        Paragraph("FORMULARUL OFICIAL NU A PUTUT FI DESCĂRCAT", docgen.S["h"]),
+        Paragraph(title, docgen.S["b"]),
+        Spacer(1, 5 * mm),
+        Paragraph("Fișa de precompletare din acest dosar este doar un document de lucru. Nu înlocuiește formularul oficial și nu trebuie depusă în locul lui.", docgen.S["p"]),
+        Paragraph("Descărcați formularul de la operator, completați-l, verificați datele și semnați-l înainte de depunere.", docgen.S["p"]),
+    ]
+    if url.startswith("https://"):
+        story.append(Paragraph(f'<link href="{escape(url, quote=True)}" color="blue">Deschideți sursa oficială a formularului</link>', docgen.S["p"]))
+    story.append(Spacer(1, 4 * mm))
+    story.append(Paragraph(f"Detaliu tehnic: {reason_text}", docgen.S["small"]))
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
+                            topMargin=20 * mm, bottomMargin=18 * mm, title="Formular oficial indisponibil")
+    doc.build(story)
+    return buf.getvalue()
 
 
 def _incomplete_report(positions_info, unavailable):
@@ -541,18 +689,24 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
     for p in positions_info["positions"]:
         try:
             position_parts = await position_pdf(p, rec, client, settings, titles, get_object)
+            if p.get("_official_form_unavailable"):
+                unavailable.append(f"{p.get('title') or p.get('key') or 'Formular oficial'} — formularul oficial nu a putut fi descărcat; fișa din pachet este doar de lucru")
             if p.get("source") == "generat" and p.get("missing") and p.get("key") not in ("schema", "fisa_tehnica"):
                 position_parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in position_parts]
             # Match the reference submission layout: the authenticity
             # declaration closes the administrative forms, then the single-line
             # diagram and manufacturer evidence follow as a technical appendix.
-            is_technical_appendix = p.get("key") in ("schema", "fisa_tehnica") or p.get("source") == "catalog"
+            is_technical_appendix = (p.get("key") in ("schema", "fisa_tehnica", "fotografii_lucrare")
+                                     or p.get("source") == "catalog")
             (technical_parts if is_technical_appendix else main_parts).extend(position_parts)
         except Exception as e:
             logger.error(f"bundle skip {p['key']}: {e}")
             unavailable.append(p.get("title") or p.get("key") or "Document atașat")
     if unavailable and positions_info["complete"]:
         authenticity_page = mark_draft(authenticity_page, "CIORNĂ — FIȘIER LIPSĂ")
+    positions_info["export_has_unavailable_items"] = bool(unavailable)
+    if unavailable:
+        positions_info["complete"] = False
     # Keep the internal review/index page out of the official-document order;
     # it remains the final page so staff can see what still needs attention.
     report = _incomplete_report(positions_info, unavailable)
@@ -572,6 +726,101 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
     out = io.BytesIO()
     w.write(out)
     return out.getvalue()
+
+
+def _merge_pdf_parts(parts, logger):
+    writer = PdfWriter()
+    for part in parts:
+        try:
+            for page in PdfReader(io.BytesIO(part)).pages:
+                writer.add_page(page)
+        except Exception as exc:
+            logger.error(f"package PDF merge skip: {exc}")
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def _package_group(key, source):
+    # Installation photos belong in the submission dossier; work photos are
+    # appended after the technical annexes, matching the Reenergy checklist.
+    if key == "fotografii_instalatie":
+        return 0
+    if key == "fotografii_lucrare":
+        return 3
+    if key in ("priza", "metrologie_pram", "pif", "pif_pv", "receptie", "serii", "reglaj"):
+        return 1
+    if key in ("schema", "fisa_tecnica", "date_stocare") or source == "catalog":
+        return 2
+    return 0
+
+
+async def export_package_zip(positions_info, rec, client, settings, get_object, logger, file_count=4):
+    """Build the selected, ordered submission package without duplicating evidence."""
+    count = max(1, min(4, int(file_count or 4)))
+    titles = positions_info["titles"]
+    ordered_parts = []
+    unavailable = []
+    for position in positions_info["positions"]:
+        try:
+            parts = await position_pdf(position, rec, client, settings, titles, get_object)
+            if position.get("_official_form_unavailable"):
+                unavailable.append(f"{position.get('title') or position.get('key')} — formular oficial indisponibil; atașează originalul verificat")
+            if position.get("source") == "generat" and position.get("missing") and position.get("key") not in ("schema", "fisa_tecnica"):
+                parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in parts]
+            group = _package_group(position.get("key"), position.get("source"))
+            ordered_parts.extend((group, part) for part in parts)
+        except Exception as exc:
+            logger.error(f"package skip {position.get('key')}: {exc}")
+            unavailable.append(position.get("title") or position.get("key") or "Document atașat")
+
+    if unavailable and positions_info.get("complete"):
+        positions_info["complete"] = False
+    authenticity = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
+                                 draft=not positions_info.get("complete", False))
+    if unavailable:
+        authenticity = mark_draft(authenticity, "CIORNĂ — FIȘIER LIPSĂ")
+    # Keep the original dossier order, inserting the authenticity declaration
+    # after paperwork/commissioning records and before technical annexes.
+    authenticity_group = 1 if any(group == 1 for group, _ in ordered_parts) else 0
+    technical_start = next((i for i, (group, _) in enumerate(ordered_parts) if group >= 2), len(ordered_parts))
+    ordered_parts.insert(technical_start, (authenticity_group, authenticity))
+    report = _incomplete_report(positions_info, unavailable)
+    if report:
+        ordered_parts.insert(technical_start + 1, (authenticity_group, report))
+    positions_info["export_has_unavailable_items"] = bool(unavailable)
+
+    # Merge adjacent sections for compact layouts, keeping submission order stable.
+    layouts = {
+        1: [("Dosar_complet", [0, 1, 2, 3])],
+        2: [("Dosar_depunere", [0, 1]), ("Anexe_tehnice", [2, 3])],
+        3: [("Acte_si_procedura", [0, 1]), ("Schema_si_fise_tehnice", [2]), ("Fotografii", [3])],
+        4: [("Acte_si_formulare", [0]), ("Probe_PRAM_PIF", [1]), ("Schema_si_fise_tehnice", [2]), ("Fotografii", [3])],
+    }
+    archive = io.BytesIO()
+    manifest = ["Pachet DNS Energy — documentele rămân în ordinea de depunere.",
+                "Documentele marcate CIORNĂ au date sau fișiere de verificat; nu sunt prezentate ca documente finale."]
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        file_index = 0
+        for title, group_indices in layouts[count]:
+            included_groups = set(group_indices)
+            parts = [part for group, part in ordered_parts if group in included_groups]
+            if not parts:
+                continue
+            file_index += 1
+            pdf = _merge_pdf_parts(parts, logger)
+            if rec.get("is_test"):
+                pdf = mark_test(pdf)
+            bundle.writestr(f"{file_index:02d}_{title}.pdf", pdf)
+            manifest.append(f"{file_index:02d}_{title}.pdf")
+        if unavailable:
+            manifest.append("Fișiere neincluse / formulare oficiale indisponibile:")
+            manifest.extend(f"- {item}" for item in unavailable)
+        if positions_info.get("common_missing"):
+            manifest.append("Date comune de verificat:")
+            manifest.extend(f"- {item}" for item in positions_info["common_missing"])
+        bundle.writestr("00_CITESTE.txt", "\n".join(manifest))
+    return archive.getvalue()
 
 
 def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int = 38) -> bytes:

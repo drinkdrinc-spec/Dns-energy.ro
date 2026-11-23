@@ -74,7 +74,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-[100dvh] grid grid-cols-1 lg:grid-cols-2 bg-white">
+    <div className="min-h-[100dvh] grid min-w-0 w-full grid-cols-1 lg:grid-cols-2 bg-white" style={{ overflowX: "clip" }}>
       <div className="hidden lg:flex flex-col justify-between p-12 text-white relative overflow-hidden" style={{ backgroundImage: "linear-gradient(160deg, rgba(14,50,91,.84), rgba(12,25,44,.9)), url('/d-energy-blue-brand.jpg')", backgroundSize: "cover", backgroundPosition: "center" }}>
         <div className="flex items-center gap-3">
           <BrandMark size={48} />
@@ -87,8 +87,8 @@ export default function Login() {
         <div className="text-xs" style={{ color: "#7f91ae" }}>© {new Date().getFullYear()} D-ENERGY · DNS HOSTESS S.R.L.</div>
       </div>
 
-      <div className="flex items-center justify-center px-5 py-8 sm:p-12" style={{ background: "var(--bg)" }}>
-        <form onSubmit={submit} className={`w-full ${reg ? "max-w-2xl" : "max-w-sm"} den-panel`} data-testid="login-form">
+      <div className="flex min-w-0 w-full items-center justify-center px-5 py-8 sm:p-12" style={{ background: "var(--bg)" }}>
+        <form onSubmit={submit} className={`min-w-0 w-full ${reg ? "max-w-2xl" : "max-w-sm"} den-panel`} style={{ maxWidth: "min(100%, calc(100vw - 2.5rem))" }} data-testid="login-form">
           <div className="lg:hidden mb-8 min-h-[150px] rounded-2xl overflow-hidden" role="img" aria-label="D-Energy — Energie pentru un viitor sustenabil" style={{ backgroundImage: "linear-gradient(rgba(8,36,70,.12), rgba(8,36,70,.12)), url('/d-energy-blue-brand.jpg')", backgroundSize: "cover", backgroundPosition: "center" }} />
           <h1 className="text-2xl font-extrabold">{reg ? "Cont nou" : forgot ? "Resetează parola" : "Conectează-te"}</h1>
           <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>{reg ? "Contul devine activ după aprobarea administratorului. Apoi alegeți și plătiți abonamentul." : forgot ? "Îți trimitem un link temporar dacă adresa aparține unui cont activ." : "Intră în contul tău DNS Energy pentru a continua."}</p>
