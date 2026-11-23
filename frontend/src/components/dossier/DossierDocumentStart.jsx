@@ -302,7 +302,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     finally { setBusy(""); }
   };
 
-  const field = (key, label) => <label className="den-field" key={key}><span>{label}</span>
+  const field = (key, label, className = "") => <label className={`den-field ${className}`.trim()} key={key}><span>{label}</span>
     <input className="den-input" value={values[key] || ""} onChange={(e) => {
       const value = e.target.value;
       if (key === "operator") setOperatorManuallySet(Boolean(value.trim()));
@@ -376,26 +376,26 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           <div className="space-y-3 pt-3">
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Date client din acte</div>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <label className="den-field"><span>Tip client</span><select className="den-input" value={values.kind || ""} onChange={(e) => setValues((prev) => ({ ...prev, kind: e.target.value }))} data-testid="intake-client-kind"><option value="">Alege...</option><option value="Persoană fizică">Persoană fizică</option><option value="Persoană juridică">Persoană juridică</option></select></label>
               {field("client_name", "Nume client *")}{field("cnp", "CNP / CUI")}
               {field("id_series", "Serie CI")}{field("id_number", "Număr CI")}
-              {field("hq_address", "Domiciliu din CI")}
+              {field("hq_address", "Domiciliu din CI", "col-span-2")}
             </div>
           </section>
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Imobil (dacă ai cartea funciară)</div>
-            <div className="grid sm:grid-cols-2 gap-3">{field("cf_nr", "Număr carte funciară")}{field("cadastral_nr", "Număr cadastral")}</div>
+            <div className="grid grid-cols-2 gap-3">{field("cf_nr", "Număr carte funciară")}{field("cadastral_nr", "Număr cadastral")}</div>
           </section>
           <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
             <summary className="cursor-pointer text-xs font-semibold">Alte date client (opțional)</summary>
-            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            <div className="grid grid-cols-2 gap-3 mt-3">
               {field("phone", "Telefon")}{field("email", "E-mail")}
             </div>
           </details>
           <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
             <summary className="cursor-pointer text-xs font-semibold">Date pentru regularizarea prosumatorului (opțional)</summary>
-            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            <div className="grid grid-cols-2 gap-3 mt-3">
               {field("bank", "Bancă")}{field("iban", "IBAN")}
             </div>
           </details>
@@ -413,8 +413,8 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           </label>}
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Loc de consum din factură</div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {field("address", "Adresa locului de consum")}{field("pod", "POD")}
+            <div className="grid grid-cols-2 gap-3">
+              {field("address", "Adresa locului de consum", "col-span-2")}{field("pod", "POD")}
               {field("operator", "Operator de distribuție")}{field("county", "Județ")}{field("locality", "Localitate")}
             </div>
             <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Operatorul se propune după prefixul POD-ului sau județul din factură. Verifică propunerea; pentru rețele locale sau industriale selectează operatorul indicat în actele locului de consum.</p>
@@ -428,13 +428,13 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           </section>
           <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
             <summary className="cursor-pointer text-xs font-semibold">Furnizor (dacă apare pe factură)</summary>
-            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            <div className="grid grid-cols-2 gap-3 mt-3">
               {field("supplier", "Furnizor energie")}
             </div>
           </details>
           <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
             <summary className="cursor-pointer text-xs font-semibold">Coduri suplimentare din factură (opțional)</summary>
-            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            <div className="grid grid-cols-2 gap-3 mt-3">
               {field("nlc", "Cod loc de consum / NLC")}{field("postal_code", "Cod poștal")}
             </div>
             <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>AI le completează numai dacă sunt vizibile în documentele încărcate; verifică valorile înainte de folosire.</p>
@@ -465,6 +465,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     </Dialog>
   </>;
 }
+
 
 
 
