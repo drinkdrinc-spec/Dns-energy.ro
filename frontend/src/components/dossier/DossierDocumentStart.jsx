@@ -107,6 +107,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [operatorManuallySet, setOperatorManuallySet] = useState(false);
   const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
   const inputs = useRef({});
+  const stepScrollRef = useRef(null);
   const createRequest = useRef({ id: "", fingerprint: "" });
   const normalizeIdentity = (value) => String(value || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
   const existingClientIdentity = normalizeIdentity(selectedClient?.idcode || selectedClient?.cui);
@@ -114,6 +115,9 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const clientIdentityMismatch = Boolean(selectedClient && existingClientIdentity && draftIdentity && existingClientIdentity !== draftIdentity);
 
   useEffect(() => { if (autoOpen) setOpen(true); }, [autoOpen]);
+  useEffect(() => {
+    if (open) stepScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [step, open]);
 
   const selectExistingClient = async (result) => {
     try {
@@ -249,8 +253,14 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   };
 
   const create = async () => {
-    if (clientIdentityMismatch) return toast.error("CNP/CUI din acte diferă de clientul selectat. Alege «Creează client separat» sau verifică actele înainte de salvare.");
-    if (!values.client_name.trim()) return toast.error("Completează sau corectează numele clientului din CI.");
+    if (clientIdentityMismatch) {
+      setStep(0); setClientDetailsOpen(true);
+      return toast.error("CNP/CUI diferă de clientul selectat. Verifică actele sau alege «Creează client separat».");
+    }
+    if (!values.client_name.trim()) {
+      setStep(0); setClientDetailsOpen(true);
+      return toast.error("Numele clientului este necesar pentru creare. Completează-l sau încarcă CI-ul.");
+    }
     const filesForDossier = Object.entries(files).flatMap(([kind, list]) => list.map((f) => ({
       ...f, kind,
       doc_type: ({ ci: "Carte de identitate", factura: "Factură energie", cf: "Carte funciară", altele: "Document suplimentar" })[kind],
@@ -327,9 +337,9 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
 
   return <>
-    <Btn variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Începe dosarul din documente</Btn>
+    <Btn type="button" variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Începe dosarul din documente</Btn>
     <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setStep(0); }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dossier-document-start-dialog">
+      <DialogContent ref={stepScrollRef} className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dossier-document-start-dialog">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles size={18} style={{ color: "var(--blue)" }} /> Dosar nou din documente</DialogTitle></DialogHeader>
         <p className="text-xs" style={{ color: "var(--muted)" }}>Trei pași scurți. Încarcă actele, verifică datele extrase și apoi creează dosarul. AI preia doar informația identificată în documente.</p>
         <div className="grid grid-cols-3 gap-2" role="group" aria-label="Pașii pentru dosarul nou">
@@ -365,7 +375,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             <div className="font-bold text-sm">{title}</div><p className="text-[11px] my-1" style={{ color: "var(--muted)" }}>{help}</p>
             <input ref={(el) => { inputs.current[kind] = el; }} type="file" accept={kind === "altele" ? ".pdf,image/*,.doc,.docx,.xls,.xlsx" : "application/pdf,image/*"} multiple={kind === "altele"} className="hidden"
               onChange={(e) => extract(kind, e.target.files)} data-testid={`intake-file-${kind}`} />
-            <button onClick={() => inputs.current[kind]?.click()} disabled={!!busy} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }}>
+            <button type="button" onClick={() => inputs.current[kind]?.click()} disabled={!!busy} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }}>
               <Upload size={13} /> {busy === kind ? "AI citește…" : "Încarcă și citește"}
             </button>
             {(files[kind] || []).map((f) => <div key={f.storage_path} className="mt-1 text-[11px] flex gap-1 items-center"><FileText size={12} />{f.original_filename}</div>)}
@@ -452,7 +462,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           </label>)}
           {requiredDataMissing.length > 0 ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900" role="status" data-testid="intake-missing-data">
             <b>Ciornă — date de completat</b>
-            <p className="mt-1">Dosarul poate fi salvat acum și completat ulterior. Pentru pregătirea depunerii lipsesc: {requiredDataMissing.join(", ")}.</p>
+            <p className="mt-1">{!values.client_name.trim() ? "Completează numele clientului pentru a crea dosarul. " : "Dosarul poate fi salvat acum și completat ulterior. "}Pentru pregătirea depunerii lipsesc: {requiredDataMissing.filter((field) => field !== "numele clientului").join(", ") || (values.client_name.trim() ? "nimic din datele de bază" : "datele de identificare ale clientului")}.</p>
           </div> : <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900" role="status" data-testid="intake-data-ready">
             <b>Datele de bază sunt prezente.</b>
             <p className="mt-1">Verifică valorile extrase și documentele înainte de pregătirea pentru depunere.</p>
@@ -460,8 +470,8 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           <div className="mt-3 rounded-lg p-3 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Documentele încărcate rămân atașate dosarului și apar în opis. Verifică datele extrase; formularele exacte depind de operator și se verifică înainte de depunere.</div>
         </section>}
         {notes.altele?.length > 0 && <div className="rounded-lg bg-slate-50 p-3 text-xs"><b>Documente suplimentare:</b><ul className="list-disc pl-5">{notes.altele.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
-        <div className="flex justify-between gap-2 pt-2"><div>{step > 0 && <Btn variant="secondary" onClick={() => setStep((current) => current - 1)} disabled={!!busy}>Înapoi</Btn>}</div><div className="flex gap-2"><Btn variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
-          {step < 2 ? <Btn onClick={() => { if (step === 0 && !values.client_name.trim()) return toast.error("Încarcă CI-ul sau completează numele clientului pentru a continua."); setStep((current) => current + 1); }} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn onClick={create} disabled={!!busy || !values.client_name.trim() || clientIdentityMismatch} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…" : "Creează dosarul"}</Btn>}</div></div>
+        <div className="flex justify-between gap-2 pt-2"><div>{step > 0 && <Btn type="button" variant="secondary" onClick={() => setStep((current) => current - 1)} disabled={!!busy}>Înapoi</Btn>}</div><div className="flex gap-2"><Btn type="button" variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
+          {step < 2 ? <Btn type="button" onClick={() => setStep((current) => current + 1)} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn type="button" onClick={create} disabled={!!busy} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…” : "Creează dosarul"}</Btn>}</div></div>
       </DialogContent>
     </Dialog>
   </>;
