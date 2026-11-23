@@ -14,6 +14,23 @@ import sld as SLD
 import pif_doc as PIFDOC
 
 STATUSES = ["de completat", "generat", "necesită semnătură", "atașat"]
+
+
+class SubmissionPackageIncomplete(ValueError):
+    """Raised when a submission package contains missing or unavailable evidence."""
+
+
+def _require_complete_submission(positions_info):
+    if positions_info.get("complete") and not positions_info.get("export_has_unavailable_items"):
+        return
+    missing = int(positions_info.get("missing_total") or 0)
+    if missing:
+        raise SubmissionPackageIncomplete(
+            f"Dosarul are {missing} elemente de completat sau verificat. Completează opisul înainte de exportul pentru depunere."
+        )
+    raise SubmissionPackageIncomplete(
+        "Unul sau mai multe documente nu au putut fi incluse. Verifică opisul și reîncearcă exportul."
+    )
 CLIENT_SLOTS = {"factura": "Factură furnizor de energie", "certificat": "Certificat de înregistrare", "constatator": "Certificat constatator",
                 "ci": "Act de identitate", "cf": "Extras de carte funciară", "imputernicire": "Împuternicire / mandat",
                 "fotografii_instalatie": "Fotografii instalație", "fotografii_lucrare": "Fotografii lucrare", "alt_document": "Alt document"}
@@ -696,7 +713,9 @@ def _pram_repeat_after(positions):
     return commissioning[-1] if commissioning else None
 
 
-async def export_bundle(positions_info, rec, client, settings, get_object, logger):
+async def export_bundle(positions_info, rec, client, settings, get_object, logger, require_complete=False):
+    if require_complete:
+        _require_complete_submission(positions_info)
     titles = positions_info["titles"]
     w = PdfWriter()
     authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
@@ -731,6 +750,8 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
     positions_info["export_has_unavailable_items"] = bool(unavailable)
     if unavailable:
         positions_info["complete"] = False
+    if require_complete:
+        _require_complete_submission(positions_info)
     # Keep the internal review/index page out of the official-document order;
     # it remains the final page so staff can see what still needs attention.
     report = _incomplete_report(positions_info, unavailable)
@@ -817,7 +838,9 @@ def _source_file_entries(positions, get_object, max_total=100 * 1024 * 1024):
     return {"files": files, "unavailable": unavailable}
 
 
-async def export_package_zip(positions_info, rec, client, settings, get_object, logger, file_count=4):
+async def export_package_zip(positions_info, rec, client, settings, get_object, logger, file_count=4, require_complete=False):
+    if require_complete:
+        _require_complete_submission(positions_info)
     """Build the selected, ordered submission package without duplicating evidence."""
     count = max(1, min(4, int(file_count or 4)))
     titles = positions_info["titles"]
@@ -860,6 +883,8 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
     if report:
         ordered_parts.insert(technical_start + 1, (authenticity_group, report))
     positions_info["export_has_unavailable_items"] = bool(unavailable)
+    if require_complete:
+        _require_complete_submission(positions_info)
 
     # Merge adjacent sections for compact layouts, keeping submission order stable.
     layouts = {
