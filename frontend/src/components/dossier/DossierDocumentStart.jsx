@@ -2,15 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileText, Plus, Sparkles, Upload } from "lucide-react";
+import { Plus, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
-
-const TYPES = [
-  ["ci", "1. Carte de identitate", "Actul clientului; se extrag numele, CNP-ul și domiciliul."],
-  ["factura", "2. Factură de energie", "Se extrag POD-ul, operatorul și adresa locului de consum."],
-  ["cf", "3. Carte funciară", "Se extrag numărul CF și numărul cadastral."],
-  ["altele", "4. Alte documente", "PDF, imagini, DOCX și XLSX pot fi citite și rezumate; DOC/XLS și alte formate se atașează pentru verificare manuală."],
-];
 
 const EMPTY = { client_name: "", kind: "", bank: "", iban: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", postal_code: "", pod: "", nlc: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", existing_supply: "", supply: "Trifazat", unconnected_property: false, afm: "Nu", request_type: "Racordare prosumator — fără spor de putere" };
 const emptyValues = () => ({ ...EMPTY, doc_date: new Date().toISOString().slice(0, 10) });
@@ -109,7 +102,6 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [isNewClient, setIsNewClient] = useState(false);
   const [selectedSiteId, setSelectedSiteId] = useState("new");
   const [operatorManuallySet, setOperatorManuallySet] = useState(false);
-  const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
   const inputs = useRef({});
   const stepScrollRef = useRef(null);
   const createRequest = useRef({ id: "", fingerprint: "" });
@@ -243,7 +235,6 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     }
     setFiles((prev) => ({ ...prev, [kind]: mergedFiles }));
     setValues(mergedValues);
-    if (kind === "ci" || kind === "cf") setClientDetailsOpen(true);
     if (kind === "ci" && !selectedClient) setIsNewClient(true);
     if (summaries.length) setNotes((prev) => ({ ...prev, altele: [...(prev.altele || []), ...summaries] }));
     if (extractionWarnings.length) setNotes((prev) => ({ ...prev, [kind]: [...(prev[kind] || []), ...extractionWarnings] }));
@@ -263,12 +254,17 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       return toast.error("Alege un client existent sau bifează «Client nou».");
     }
     if (clientIdentityMismatch) {
-      setStep(0); setClientDetailsOpen(true);
+      setStep(0);
       return toast.error("CNP/CUI diferă de clientul selectat. Verifică actele sau alege «Creează client separat».");
     }
     if (!values.client_name.trim()) {
-      setStep(0); setClientDetailsOpen(true);
+      setStep(0);
       return toast.error("Numele clientului este necesar pentru creare. Completează-l sau încarcă CI-ul.");
+    }
+    if (requiredDataMissing.length) {
+      const missingClientIdentity = requiredDataMissing.some((item) => item === "CNP / CUI");
+      setStep(missingClientIdentity ? 0 : 1);
+      return toast.error(`Completează datele obligatorii înainte de creare: ${requiredDataMissing.join(", ")}.`);
     }
     const filesForDossier = Object.entries(files).flatMap(([kind, list]) => list.map((f) => ({
       ...f, kind,
@@ -394,6 +390,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           <div className="mb-3 grid grid-cols-2 rounded-lg bg-slate-50 p-1" role="group" aria-label="Tip client">
             {["Persoană fizică", "Persoană juridică"].map((kind) => <button key={kind} type="button" className="min-h-10 rounded-md px-3 text-sm font-semibold" aria-pressed={values.kind === kind} onClick={() => setValues((prev) => ({ ...prev, kind }))} style={{ color: values.kind === kind ? "var(--green)" : "var(--muted)", background: values.kind === kind ? "#fff" : "transparent", boxShadow: values.kind === kind ? "0 1px 3px #14213d20" : "none" }}>{kind}</button>)}
           </div>
+          <input ref={(el) => { inputs.current.ci = el; }} type="file" accept="application/pdf,image/*" className="hidden" onChange={(event) => extract("ci", event.target.files)} data-testid="intake-file-ci" />
           <button type="button" className="mb-3 text-xs font-semibold" style={{ color: "var(--blue)" }} onClick={() => inputs.current.ci?.click()} disabled={!!busy} data-testid="intake-scan-ci"><Upload size={13} className="mr-1 inline" />Scanează CI (poză sau PDF) — completează nume și CNP</button>
           <div className="grid grid-cols-2 gap-3">
             {values.kind === "Persoană juridică" ? <>
@@ -405,46 +402,6 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             </>}
           </div>
         </section>}
-        <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-          <summary className="cursor-pointer text-xs font-semibold">Acte și documente (opțional)</summary>
-        <div className="grid sm:grid-cols-2 gap-2 pt-3">
-          {TYPES.map(([kind, title, help]) => <div key={kind} className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
-            <div className="font-bold text-sm">{title}</div><p className="text-[11px] my-1" style={{ color: "var(--muted)" }}>{help}</p>
-            <input ref={(el) => { inputs.current[kind] = el; }} type="file" accept={kind === "altele" ? ".pdf,image/*,.doc,.docx,.xls,.xlsx" : "application/pdf,image/*"} multiple={kind === "altele"} className="hidden"
-              onChange={(e) => extract(kind, e.target.files)} data-testid={`intake-file-${kind}`} />
-            <button type="button" onClick={() => inputs.current[kind]?.click()} disabled={!!busy} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }}>
-              <Upload size={13} /> {busy === kind ? "AI citește…" : "Încarcă și citește"}
-            </button>
-            {(files[kind] || []).map((f) => <div key={f.storage_path} className="mt-1 text-[11px] flex gap-1 items-center"><FileText size={12} />{f.original_filename}</div>)}
-            {notes[kind]?.length > 0 && <ul className="mt-2 list-disc pl-4 text-[11px] text-amber-700">{notes[kind].map((note, i) => <li key={i}>{note}</li>)}</ul>}
-          </div>)}
-        </div>
-        </details>
-        <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} open={isNewClient || clientDetailsOpen} onToggle={(event) => setClientDetailsOpen(event.currentTarget.open)}>
-          <summary className="cursor-pointer text-xs font-semibold">Verifică datele clientului{values.client_name ? ` · ${values.client_name}` : ""}{values.cnp ? ` · ${values.cnp}` : ""}</summary>
-          <div className="space-y-3 pt-3">
-          <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
-            <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Detalii CI (opțional)</div>
-            <div className="grid grid-cols-2 gap-3">{field("id_series", "Serie CI")}{field("id_number", "Număr CI")}</div>
-          </section>
-          <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
-            <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Imobil (dacă ai cartea funciară)</div>
-            <div className="grid grid-cols-2 gap-3">{field("cf_nr", "Număr carte funciară")}{field("cadastral_nr", "Număr cadastral")}</div>
-          </section>
-          <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-            <summary className="cursor-pointer text-xs font-semibold">Alte date client (opțional)</summary>
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              {field("phone", "Telefon")}{field("email", "E-mail")}
-            </div>
-          </details>
-          <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-            <summary className="cursor-pointer text-xs font-semibold">Date pentru regularizarea prosumatorului (opțional)</summary>
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              {field("bank", "Bancă")}{field("iban", "IBAN")}
-            </div>
-          </details>
-          </div>
-        </details>
         </>}
         {step === 1 && <div className="space-y-3 pt-2">
           {selectedClient && <label className="den-field">
@@ -503,14 +460,6 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             <label className="den-field"><span>Data cererii</span><input className="den-input" type="date" value={values.doc_date || ""} onChange={(event) => setValues((prev) => ({ ...prev, doc_date: event.target.value }))} data-testid="intake-request-date" /></label>
           </div>
           <label className="mt-3 inline-flex items-center gap-2 text-xs font-medium" data-testid="intake-afm"><input type="checkbox" checked={values.afm === "Da"} onChange={(event) => setValues((prev) => ({ ...prev, afm: event.target.checked ? "Da" : "Nu" }))} /> Finanțare AFM (Casa Verde)</label>
-          {requiredDataMissing.length > 0 ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900" role="status" data-testid="intake-missing-data">
-            <b>Ciornă — date de completat</b>
-            <p className="mt-1">{!values.client_name.trim() ? "Completează numele clientului pentru a crea dosarul. " : "Dosarul poate fi salvat acum și completat ulterior. "}Pentru pregătirea depunerii lipsesc: {requiredDataMissing.filter((field) => field !== "numele clientului").join(", ") || (values.client_name.trim() ? "nimic din datele de bază" : "datele de identificare ale clientului")}.</p>
-          </div> : <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900" role="status" data-testid="intake-data-ready">
-            <b>Datele de bază sunt prezente.</b>
-            <p className="mt-1">Verifică valorile extrase și documentele înainte de pregătirea pentru depunere.</p>
-          </div>}
-          <div className="mt-3 rounded-lg p-3 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Documentele încărcate rămân atașate dosarului și apar în opis. Verifică datele extrase; formularele exacte depind de operator și se verifică înainte de depunere.</div>
         </section>}
         {notes.altele?.length > 0 && <div className="rounded-lg bg-slate-50 p-3 text-xs"><b>Documente suplimentare:</b><ul className="list-disc pl-5">{notes.altele.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
         <div className="flex justify-between gap-2 pt-2"><div>{step > 0 && <Btn type="button" variant="secondary" onClick={() => setStep((current) => current - 1)} disabled={!!busy}>Înapoi</Btn>}</div><div className="flex gap-2"><Btn type="button" variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
