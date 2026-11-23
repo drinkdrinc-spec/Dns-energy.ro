@@ -4457,10 +4457,16 @@ def public_client_access(r: dict) -> bool:
 async def client_portal_payload(r: dict) -> dict:
     rec = await db.prosumator.find_one(
         {"id": r.get("dossier_id"), "owner": r.get("owner")},
-        {"_id": 0, "workflow_status": 1, "status": 1, "operator_stage": 1, "client_messages": 1},
+        {"_id": 0, "workflow_status": 1, "status": 1, "operator_stage": 1, "workflow_history": 1, "client_messages": 1},
     )
     current = str((rec or {}).get("workflow_status") or (rec or {}).get("status") or
                   (rec or {}).get("operator_stage") or "Dosar în pregătire")
+    current_stage = client_portal_stage(current)
+    stage_updated_at = None
+    for event in reversed((rec or {}).get("workflow_history") or []):
+        if isinstance(event, dict) and client_portal_stage(event.get("to")) == current_stage and current_stage is not None:
+            stage_updated_at = event.get("at")
+            break
     requests = await db.sign_requests.find(
         {"owner": r.get("owner"), "dossier_id": r.get("dossier_id"), "signer_email": r.get("signer_email"),
          "module": {"$in": ["prosumator", None]}, "revoked": {"$ne": True}},
@@ -4476,7 +4482,8 @@ async def client_portal_payload(r: dict) -> dict:
     } for item in requests]
     return {
         "status": current,
-        "stage_index": client_portal_stage(current),
+        "stage_index": current_stage,
+        "stage_updated_at": stage_updated_at,
         "stages": CLIENT_PORTAL_STAGES,
         "documents": documents,
         "signed_document_available": bool((r.get("signed_file") or {}).get("storage_path")),

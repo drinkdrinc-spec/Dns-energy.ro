@@ -49,17 +49,17 @@ function ClientAttachments({ files, setFiles }) {
 function ClientPortal({ info, token, messages, reply, setReply, files, setFiles, onReply, busy, notice, onRefresh, refreshing }) {
   const portal = info.portal;
   const activeIndex = Number.isInteger(portal.stage_index) ? portal.stage_index : -1;
-  const progress = activeIndex < 0 ? 0 : (activeIndex / Math.max(portal.stages.length - 1, 1)) * 100;
+  const progress = activeIndex < 0 ? 0 : ((activeIndex + 1) / Math.max(portal.stages.length, 1)) * 100;
   return <>
     <header className="mb-4 rounded-2xl border bg-white p-5 text-center shadow-sm" style={{ borderColor: "#e4e8ee" }} data-testid="client-portal-header">
       <div className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: "#8792a2" }}>Dosar prosumator</div>
       <h1 className="mt-3 text-xl font-extrabold">{info.client_name}</h1>
       <p className="mt-1 text-xs" style={{ color: "#657286" }}>{info.company}</p>
-      {info.signed_at && <p className="mt-2 text-[11px]" style={{ color: "#8792a2" }}>Document semnat · {new Date(info.signed_at).toLocaleString("ro-RO")}</p>}
+      {info.signed_at && <p className="mt-2 text-[11px]" style={{ color: "#8792a2" }}>Documente semnate</p>}
     </header>
     <section className="mb-4 rounded-2xl border bg-white p-4 sm:p-5" style={{ borderColor: "#e4e8ee" }} data-testid="client-portal-status">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#8792a2" }}>Stadiu curent</p><h2 className="mt-1 text-base font-extrabold">{portal.status}</h2>{activeIndex >= 0 && <p className="mt-1 text-[11px]" style={{ color: "#8792a2" }}>Etapa {activeIndex + 1} din {portal.stages.length}</p>}</div>
+        <div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#8792a2" }}>Stadiu curent</p><h2 className="mt-1 text-base font-extrabold">{portal.status}</h2>{activeIndex >= 0 && <p className="mt-1 text-[11px]" style={{ color: "#8792a2" }}>Etapa {activeIndex + 1} din {portal.stages.length}{portal.stage_updated_at ? ` · ${new Date(portal.stage_updated_at).toLocaleDateString("ro-RO")}` : ""}</p>}</div>
         <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold disabled:opacity-60" style={{ borderColor: "#e4e8ee", color: "#218163" }} data-testid="client-portal-refresh"><RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />Actualizează</button>
       </div>
       <div className="mt-4 h-1.5 overflow-hidden rounded-full" style={{ background: "#edf0f3" }} aria-label="Progres dosar"><div className="h-full rounded-full transition-[width]" style={{ width: `${progress}%`, background: "#218163" }} /></div>
@@ -70,7 +70,7 @@ function ClientPortal({ info, token, messages, reply, setReply, files, setFiles,
           const passed = complete || current;
           return <li key={stage} className="relative flex min-h-8 items-start gap-3 text-xs" aria-current={current ? "step" : undefined}>
             <span className="relative flex w-3 shrink-0 justify-center self-stretch"><span className="z-10 mt-1 h-2.5 w-2.5 rounded-full border-2" style={{ borderColor: passed ? "#218163" : "#d5dbe2", background: complete ? "#218163" : "#fff" }} />{index < portal.stages.length - 1 && <span className="absolute bottom-0 top-3 w-px" style={{ background: complete ? "#218163" : "#e4e8ee" }} />}</span>
-            <span className="pb-3" style={{ color: passed ? "#27364a" : "#8792a2", fontWeight: current ? 750 : 500 }}>{stage}</span>
+            <span className="pb-3" style={{ color: passed ? "#27364a" : "#8792a2", fontWeight: current ? 750 : 500 }}>{stage}{current && portal.stage_updated_at && <span className="mt-1 block text-[10px] font-normal" style={{ color: "#8792a2" }}>{new Date(portal.stage_updated_at).toLocaleDateString("ro-RO")}</span>}</span>
           </li>;
         })}
       </ol>
