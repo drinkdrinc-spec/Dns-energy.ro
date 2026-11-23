@@ -920,15 +920,20 @@ async def create_item(module: str, request: Request, user: dict = Depends(get_cu
         data.pop("assigned_to", None)
     await db[module].insert_one(dict(data))
     await audit(user, "creare", module, data["id"], list(data.keys()))
+    post_save_warnings = []
     if module == "prosumator":
         try:
             await sync_catalog_files_to_documents(user, data)
+            post_save_warnings.extend(data.get("_catalog_sync_warnings") or [])
             data = await db[module].find_one({"id": data["id"], "owner": user["id"]}) or data
         except Exception as e:
             # The dossier is already saved; optional catalog documents must not turn
             # a successful create into a client-visible failure.
             logger.exception("Catalog document sync failed after prosumer dossier create: %s", e)
-    return clean(data)
+    response = clean(data)
+    if post_save_warnings:
+        response["intake_warnings"] = post_save_warnings
+    return response
 
 @api_router.get("/data/{module}/{item_id}")
 async def get_item(module: str, item_id: str, user: dict = Depends(get_current_user)):
@@ -974,6 +979,7 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă")
     await audit(user, "modificare", module, item_id, list(data.keys()))
+    post_save_warnings = []
     if module == "prosumator":
         try:
             await request_approval(user, item_id, request.headers.get("origin") or "", True)
@@ -983,9 +989,21 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
             logger.error(f"auto approval request: {e}")
     doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
     if module == "prosumator":
-        await sync_catalog_files_to_documents(user, doc)
+        try:
+            await sync_catalog_files_to_documents(user, doc)
+            post_save_warnings.extend(doc.get("_catalog_sync_warnings") or [])
+        except Exception as e:
+            # Saving the dossier is the primary operation. A temporary supplier PDF
+            # outage must not turn a successful save into a client-visible failure.
+            logger.exception("Catalog document sync failed after prosumer dossier update %s: %s", item_id, e)
+            post_save_warnings.append(
+                "Dosarul a fost salvat. Unele fișe tehnice nu s-au putut atașa acum; reîncearcă sincronizarea din cardul documentelor."
+            )
         doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
-    return clean(doc)
+    response = clean(doc)
+    if post_save_warnings:
+        response["intake_warnings"] = post_save_warnings
+    return response
 
 @api_router.patch("/data/{module}/{item_id}/status")
 async def update_dossier_workflow_status(module: str, item_id: str, request: Request, user: dict = Depends(get_current_user)):
@@ -1684,6 +1702,7 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
 import docgen
 import power_docx as POWERDOCX
 from ai_extract import extract_pdf, extract_gpt, extract_office_text, extract_gpt_text, extract_office_local, canonical_document_type
+from dossier_identity import identity_codes_conflict
 
 async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> dict:
     token = authorization[7:] if authorization and authorization.startswith("Bearer ") else auth
@@ -1818,7 +1837,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         if not client:
             raise HTTPException(status_code=404, detail="Clientul selectat nu există în contul curent")
         stored_identity = str(client.get("idcode") or client.get("cui") or "").strip()
-        if identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+        if identity_codes_conflict(identity_code, stored_identity):
             raise HTTPException(status_code=409, detail="CNP/CUI din documente nu corespunde clientului selectat")
     if not client and identity_code:
         client = await db.clients.find_one({**scope_q(user, "clients"),
@@ -1827,7 +1846,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
     stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
     # A same-name client with a different CNP/CUI is a separate person/company.
-    if client and identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+    if client and identity_codes_conflict(identity_code, stored_identity):
         client = None
 
     related_dossier = None
@@ -1920,6 +1939,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
     post_save_warnings = []
     try:
         await sync_catalog_files_to_documents(user, pros)
+        post_save_warnings.extend(pros.get("_catalog_sync_warnings") or [])
     except Exception as exc:
         logger.exception("Catalog document sync failed after dossier create %s: %s", pros.get("id"), exc)
         post_save_warnings.append("Dosarul a fost salvat; atașarea automată a documentelor din catalog va fi reluată la generarea PDF-ului.")
@@ -2940,8 +2960,8 @@ async def catalog_files(owner: str, rec: dict) -> list:
 
 _catalog_document_import_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
 
-async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
-    """Fetch missing official PDFs for equipment selected in a dossier; never block the save on source failures."""
+async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> list[dict]:
+    """Fetch missing official PDFs for selected equipment and return files that remain unavailable."""
     owner = user["id"]
     candidates = []
     for catalog_id in catalog_ids(rec):
@@ -2956,14 +2976,14 @@ async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
             direct_url = (item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
                           or (existing.get("source_url") if isinstance(existing, dict) else ""))
             supplier, product_url = catalog_product_source(item)
-            if direct_url or (product_url and supplier):
-                candidates.append((catalog_id, kind, str(direct_url or ""), supplier,
-                                   str(item.get("category") or ""), product_url))
+            candidates.append((catalog_id, kind, str(direct_url or ""), supplier,
+                               str(item.get("category") or ""), product_url,
+                               str(item.get("brand_model") or "model necunoscut")))
 
     semaphore = asyncio.Semaphore(3)
 
     async def import_one(catalog_id: str, kind: str, direct_url: str, supplier: str,
-                         category: str, product_url: str) -> None:
+                         category: str, product_url: str, model: str) -> dict | None:
         async with semaphore:
             lock_key = (owner, catalog_id, kind)
             lock = _catalog_document_import_locks.setdefault(lock_key, asyncio.Lock())
@@ -2978,13 +2998,13 @@ async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
                 current_doc = (current or {}).get(kind)
                 if (isinstance(current_doc, dict) and current_doc.get("storage_path")
                         and has_gridfs_object(current_doc["storage_path"])):
-                    return
+                    return None
                 attempted = set()
                 if direct_url:
                     attempted.add(direct_url)
                     try:
                         await catalog_import_document(catalog_id, _TrustedCatalogImportRequest({"kind": kind, "url": direct_url}), user)
-                        return
+                        return None
                     except Exception as exc:
                         reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
                         logger.info("Catalog PDF auto-import direct link failed for %s (%s): %s", catalog_id, kind, reason)
@@ -2999,20 +3019,27 @@ async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> None:
                                 _TrustedCatalogImportRequest({"kind": kind, "url": recovered_url}),
                                 user,
                             )
-                            return
+                            return None
                     except Exception as exc:
                         reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
                         logger.info("Catalog PDF recovery from product page skipped for %s (%s): %s", catalog_id, kind, reason)
-                if direct_url or product_url:
-                    logger.warning("Catalog PDF could not be recovered for %s (%s)", catalog_id, kind)
+                logger.warning("Catalog PDF could not be recovered for %s (%s)", catalog_id, kind)
+                return {"model": model, "kind": kind}
 
     if candidates:
-        await asyncio.gather(*(import_one(*candidate) for candidate in candidates))
+        results = await asyncio.gather(*(import_one(*candidate) for candidate in candidates))
+        return [result for result in results if result]
+    return []
 
 
 async def sync_catalog_files_to_documents(user: dict, rec: dict) -> int:
     """Attach selected equipment datasheets and conformity declarations to the client dossier."""
-    await auto_import_selected_catalog_documents(user, rec)
+    missing = await auto_import_selected_catalog_documents(user, rec)
+    labels = {"datasheet": "fișa tehnică", "conformity": "declarația de conformitate"}
+    rec["_catalog_sync_warnings"] = [
+        f"{item['model']} — {labels.get(item['kind'], 'documentul tehnic')} nu a putut fi preluat; verifică linkul în Catalog echipamente și reîncearcă."
+        for item in missing
+    ]
     owner = user["id"]
     client_name = rec.get("client_name", "")
     client = await db.clients.find_one(
@@ -3055,7 +3082,7 @@ async def attach_catalog(item_id: str, user: dict = Depends(get_current_user)):
     if not rec:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     added = await sync_catalog_files_to_documents(user, rec)
-    return {"added": added}
+    return {"added": added, "warnings": rec.get("_catalog_sync_warnings") or []}
 
 def merge_pdfs(base: bytes, extra: list) -> bytes:
     w = PdfWriter()

@@ -45,22 +45,32 @@ export function AiImportButton({ onExtracted }) {
 
 function CatalogFiles({ id }) {
   const [list, setList] = useState([]);
-  useEffect(() => { api.get(`/prosumator/${id}/catalog-files`).then((r) => setList(r.data)).catch(() => {}); }, [id]);
+  const [syncing, setSyncing] = useState(false);
+  const load = () => api.get(`/prosumator/${id}/catalog-files`).then((r) => setList(r.data)).catch(() => {});
+  useEffect(() => { load(); }, [id]);
   const attach = async () => {
-    const { data } = await api.post(`/prosumator/${id}/attach-catalog`);
-    toast.success(data.added ? `${data.added} documente adăugate la client` : "Documentele sunt deja la client");
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const { data } = await api.post(`/prosumator/${id}/attach-catalog`);
+      await load();
+      if (data.warnings?.length) toast.warning(data.warnings.join(" "));
+      else toast.success(data.added ? `${data.added} documente adăugate la client` : "Documentele sunt deja la client");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Fișele tehnice nu s-au putut sincroniza acum.");
+    } finally { setSyncing(false); }
   };
   return (
     <div className="mt-4" data-testid="catalog-files">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
         <h4 className="font-bold text-xs uppercase tracking-wider" style={{ color: "var(--blue)" }}>Fișe din catalog pentru echipamentele CEF ({list.length})</h4>
-        {list.length > 0 && <div className="flex gap-2">
-          <Btn variant="secondary" onClick={attach} data-testid="attach-catalog-btn"><BookOpen size={14} /> Re-sincronizează fișele</Btn>
+        <div className="flex gap-2">
+          <Btn variant="secondary" disabled={syncing} onClick={attach} data-testid="attach-catalog-btn"><BookOpen size={14} /> {syncing ? "Se sincronizează…" : "Sincronizează fișele"}</Btn>
           <Btn variant="secondary" onClick={() => openAuthenticatedFile(docUrl("all", id) + "?attach=1")} data-testid="doc-all-attach"><FileDown size={14} /> Dosar + fișe tehnice</Btn>
-        </div>}
+        </div>
       </div>
-      <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Fișele tehnice și declarațiile de conformitate se atașează automat la dosar când salvezi echipamentele selectate. Re-sincronizează doar dacă ai încărcat documente noi în catalog.</p>
-      {list.length === 0 ? <p className="text-xs" style={{ color: "var(--muted)" }}>Alege echipamentele din catalog în configurarea CEF și încarcă fișele în Catalog echipamente.</p> : (
+      <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Aplicația preia automat documentele echipamentelor alese. Dacă o sursă nu răspunde, folosește sincronizarea pentru a reîncerca și vezi exact ce fișă lipsește.</p>
+      {list.length === 0 ? <p className="text-xs" style={{ color: "var(--muted)" }}>Nu sunt încă fișe salvate pentru echipamentele selectate. Sincronizează pentru a încerca preluarea din sursele oficiale.</p> : (
         <div className="flex flex-wrap gap-2 text-xs">
           {list.map((f) => <button type="button" key={f.storage_path} onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)}
             className="inline-flex items-center gap-1 rounded-lg border bg-white px-2 py-1.5" style={{ borderColor: "var(--line)" }} data-testid="catalog-file-link"><FileText size={12} /> {f.kind} — {f.model}</button>)}

@@ -125,11 +125,11 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
           {!item.conformity_url && item.conformity?.storage_path && <span style={{ color: "var(--green, #168363)" }}>Conformitatea este salvată în catalog</span>}
         </div>)}
       </div>}
-      <div className="grid sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <CatalogPick items={catalog} category="Invertor" selectedId={inv.catalog_id} testid={`${t}-pick`} onQueryChange={(model) => catalogModelText(model, "catalog_id", ["type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "red_limit_mode"])} onPick={(it) => { const battery = inv.battery?.catalog_id ? { ...inv.battery, voltage: batteryVoltageForPhase(inv.battery, it.phases) } : inv.battery; set({ ...inv, ...(battery ? { battery } : {}), catalog_id: it.id, brand_model: it.brand_model, type: it.type, phases: it.phases, p_nom_kw: it.p_nom_kw, p_max_kw: it.p_max_kw, vdc_max: it.vdc_max, mppt_min: it.mppt_min, mppt_max: it.mppt_max, mppt_count: it.mppt_count, imax_mppt: it.imax_mppt, isc_max_mppt: it.isc_max_mppt, bat_i_max: it.bat_i_max, red_limit_mode: it.red_limit_mode || "Nu este declarată" }); }} />
-        <F label="Marcă și model" value={inv.brand_model} onChange={(model) => catalogModelText(model, "catalog_id", ["type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "red_limit_mode"])} testid={`${t}-model`} className="sm:col-span-2" />
+        <F label="Marcă și model" value={inv.brand_model} onChange={(model) => catalogModelText(model, "catalog_id", ["type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "red_limit_mode"])} testid={`${t}-model`} className="col-span-2" />
         <F label="Limită injecție în rețea (kW)" type="number" value={inv.p_limit_kw} onChange={s("p_limit_kw")} testid={`${t}-plim`} />
-        <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Detalii invertor · completate din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
+        <details className="col-span-2 sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Detalii invertor · completate din fișa tehnică</summary><div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
         <F label="Tip" value={inv.type} onChange={s("type")} options={["Hibrid", "On-grid", "Invertor de baterie (AC)"]} testid={`${t}-type`} />
         <F label="Faze" value={inv.phases} onChange={s("phases")} options={["Trifazat", "Monofazat"]} testid={`${t}-phases`} />
         {inv.phases === "Monofazat" && <F label="Faza de racord" value={inv.phase} onChange={s("phase")} options={["L1", "L2", "L3"]} testid={`${t}-phase`} />}
@@ -152,11 +152,11 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
       <div className="mt-2"><Check label="Echipament existent (extindere)" value={inv.existing} onChange={s("existing")} testid={`${t}-existing`} /></div>
 
       {!(inv.battery_only || inv.no_panels) && <Section title="Panouri și stringuri">
-        <div className="grid sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <CatalogPick items={catalog} category="Panou" selectedId={inv.panel_catalog_id} testid={`${t}-panel-pick`} onQueryChange={(model) => catalogModelText(model, "panel_catalog_id", ["panel_w", "panel_voc", "panel_vmp", "panel_isc", "panel_imp", "panel_coef_voc", "panel_coef_vmp"])} onPick={(it) => set({ ...inv, panel_catalog_id: it.id, panel_model: it.brand_model, panel_w: it.w, panel_voc: it.voc, panel_vmp: it.vmp, panel_isc: it.isc, panel_imp: it.imp, panel_coef_voc: it.coef_voc, panel_coef_vmp: it.coef_vmp })} />
           <F label="Model panou" value={inv.panel_model} onChange={(model) => catalogModelText(model, "panel_catalog_id", ["panel_w", "panel_voc", "panel_vmp", "panel_isc", "panel_imp", "panel_coef_voc", "panel_coef_vmp"])} testid={`${t}-panel-model`} />
           <F label="Putere panou (W)" type="number" value={inv.panel_w} onChange={s("panel_w")} testid={`${t}-panel-w`} />
-          <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Parametri panou din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
+          <details className="col-span-2 sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Parametri panou din fișa tehnică</summary><div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
           <F label="Coef. Voc (%/°C)" type="number" value={inv.panel_coef_voc} onChange={s("panel_coef_voc")} testid={`${t}-panel-coef`} />
           <F label="Voc (V)" type="number" value={inv.panel_voc} onChange={s("panel_voc")} testid={`${t}-panel-voc`} />
           <F label="Vmp (V)" type="number" value={inv.panel_vmp} onChange={s("panel_vmp")} testid={`${t}-panel-vmp`} />
@@ -181,17 +181,17 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
       </Section>}
 
       <Section title="Stocare și backup">
-        <div className="grid sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <F label="Baterie" value={inv.battery_mode || "none"} onChange={(v) => set({ ...inv, battery_mode: v, ...(v === "shared" && !inv.shared_battery_id && shared.length === 1 ? { shared_battery_id: shared[0].id } : {}) })} options={[["none", "Fără baterie"], ["own", "Baterie proprie"], ["shared", "Baterie comună"]]} testid={`${t}-bat-mode`} />
           {inv.battery_mode === "shared" && <F label="Baterie comună" value={inv.shared_battery_id} onChange={s("shared_battery_id")} options={shared.map((b, i) => [b.id, b.model || `Baterie comună ${i + 1}`])} testid={`${t}-bat-shared`} />}
           {inv.battery_mode === "own" && <>
             <CatalogPick items={catalog} category="Baterie" selectedId={inv.battery?.catalog_id} testid={`${t}-bat-pick`} onQueryChange={batteryModelText} onPick={(it) => set({ ...inv, battery: { ...(inv.battery || {}), ...batteryCatalogData(it, inv.phases) } })} />
             <F label="Model baterie" value={inv.battery?.model} onChange={batteryModelText} testid={`${t}-bat-model`} />
             <F label="Conectare baterie la invertor" value={inv.battery?.coupling || ""} onChange={sub("battery", "coupling")} options={["DC"]} testid={`${t}-bat-coupling`} />
-            <p className="sm:col-span-4 -mt-2 text-[11px] leading-4" style={{ color: "var(--muted)" }}>Bateria proprie se conectează în DC la invertorul selectat. Pentru BESS cuplată AC față de sistemul PV, adaugă un invertor BESS / PCS separat și configurează bateria ca „comună”.</p>
+            <p className="col-span-2 sm:col-span-4 -mt-2 text-[11px] leading-4" style={{ color: "var(--muted)" }}>Bateria proprie se conectează în DC la invertorul selectat. Pentru BESS cuplată AC față de sistemul PV, adaugă un invertor BESS / PCS separat și configurează bateria ca „comună”.</p>
             <F label="kWh / modul" type="number" value={inv.battery?.kwh} onChange={sub("battery", "kwh")} testid={`${t}-bat-kwh`} />
             <F label="Nr. module" type="number" value={inv.battery?.modules} onChange={sub("battery", "modules")} testid={`${t}-bat-modules`} />
-            <details className="sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Alte date baterie din fișa tehnică</summary><div className="grid sm:grid-cols-4 gap-3 mt-3">
+            <details className="col-span-2 sm:col-span-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Alte date baterie din fișa tehnică</summary><div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
             <F label="Ah" type="number" value={inv.battery?.ah} onChange={sub("battery", "ah")} testid={`${t}-bat-ah`} />
             <F label="Tensiune (V)" type="number" value={inv.battery?.voltage} onChange={sub("battery", "voltage")} testid={`${t}-bat-v`} />
 
@@ -210,7 +210,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
         {inv.battery_mode === "own" && <div className="mt-2"><Check label="Fără panouri (doar baterie)" value={inv.battery_only || inv.no_panels} onChange={(enabled) => set({ ...inv, battery_only: enabled, no_panels: enabled, ...(enabled ? { saved_pv_strings: inv.strings || [], strings: [] } : { strings: inv.strings?.length ? inv.strings : (inv.saved_pv_strings || []) }) })} testid={`${t}-battery-only`} /></div>}
         {(inv.battery_only || inv.no_panels) && <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Invertorul rămâne desenat cu bateria, fără ramură PV; puterea evacuată în RED este 0 kW.</p>}
         {inv.backup?.enabled && (
-          <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Setări avansate circuit backup</summary><div className="grid sm:grid-cols-3 gap-3 mt-3">
+          <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Setări avansate circuit backup</summary><div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
             <F label="Tip backup" value={inv.backup?.type} onChange={sub("backup", "type")} options={["parțial", "total"]} testid={`${t}-backup-type`} />
             <F label="Protecție backup" value={inv.backup?.breaker} onChange={sub("backup", "breaker")} testid={`${t}-backup-breaker`} />
             <F label="Circuite pe backup" value={inv.backup?.circuits} onChange={sub("backup", "circuits")} testid={`${t}-backup-circuits`} />
@@ -220,7 +220,7 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
 
       <details className="mt-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}><summary className="cursor-pointer text-xs font-semibold">Detalii tehnice · cabluri, protecții și valori calculate</summary>
       <Section title="Cabluri și protecții">
-        <div className="grid sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <F label="AC: tip cablu" value={inv.ac?.cable_type} onChange={sub("ac", "cable_type")} testid={`${t}-ac-type`} />
           <F label="AC: material" value={inv.ac?.material || "Cu"} onChange={sub("ac", "material")} options={["Cu", "Al"]} testid={`${t}-ac-mat`} />
           <F label="AC: mod de pozare" value={inv.ac?.install || "C"} onChange={sub("ac", "install")} options={INSTALL} testid={`${t}-ac-install`} />

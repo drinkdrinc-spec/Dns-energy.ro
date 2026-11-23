@@ -33,6 +33,7 @@ import { can } from "@/lib/plan";
 import { ProsumatorQuickForm } from "@/components/dossier/ProsumatorQuickForm";
 import { AtrQuickForm } from "@/components/dossier/AtrQuickForm";
 import { DiuQuickForm } from "@/components/dossier/DiuQuickForm";
+import { installationIsConfigured } from "@/lib/prosumerWorkflow.mjs";
 
 function installedPanelKwp(pros) {
   if (!pros) return "";
@@ -150,18 +151,10 @@ const PROSUMER_GUIDED_STEPS = [
 
 function prosumerWorkflowProgress(form, checklist) {
   const text = (value) => String(value ?? "").trim();
-  const cef = form?.cef || {};
-  const inverters = Array.isArray(cef.inverters) ? cef.inverters : [];
-  const hasPanels = inverters.some((inverter) => {
-    const strings = Array.isArray(inverter.strings) ? inverter.strings : [];
-    return Boolean(text(inverter.panel_model || inverter.panel)) && strings.some((row) => Number(String(row.panels ?? "").replace(",", ".")) > 0);
-  });
-  const hasBatteryOnly = inverters.some((inverter) => inverter.battery_mode === "own" && !inverter.panel_model && !inverter.panel);
-  const hasConfiguredInverter = inverters.some((inverter) => text(inverter.brand_model || inverter.model || inverter.inverter));
   const status = text(form?.workflow_status || form?.status);
   const completed = [
     Boolean(text(form?.client_name) && text(form?.address) && text(form?.pod) && text(form?.operator)),
-    checklist ? checklist.installation : Boolean(hasConfiguredInverter && (hasPanels || hasBatteryOnly)),
+    checklist ? checklist.installation : installationIsConfigured(form?.cef),
     Boolean(checklist?.acts && (text(form?.assigned_to) || text(form?.signers?.executant))),
     checklist ? checklist.documents : Boolean(form?.finalized),
     Boolean(text(form?.operator_stage) || (status && status !== "Dosar în pregătire")),
@@ -630,7 +623,8 @@ export default function ModulePage({ moduleKey }) {
       setForm((current) => ({ ...current, ...data }));
       setItems((current) => current.map((item) => item.id === editId ? { ...item, ...data } : item));
       setSavedAt(Date.now());
-      toast.success(`${label} salvată.`);
+      if (data?.intake_warnings?.length) toast.warning(`${label} salvată. ${data.intake_warnings.join(" ")}`);
+      else toast.success(`${label} salvată.`);
     } catch (error) {
       toast.error(error.response?.data?.detail || `Nu am putut salva ${label.toLowerCase()}.`);
     } finally { setSectionSaving(false); }
@@ -643,8 +637,16 @@ export default function ModulePage({ moduleKey }) {
     if (cfg.checklist) payload.checklist = checks;
     try {
       let savedId = editId;
-      if (editId) await api.put("/data/" + key + "/" + editId, payload);
-      else if (key === "prosumator") await api.post("/import/prosumator", payload);
+      let saveWarnings = [];
+      if (editId) {
+        const { data } = await api.put("/data/" + key + "/" + editId, payload);
+        saveWarnings = data?.intake_warnings || [];
+      }
+      else if (key === "prosumator") {
+        const { data } = await api.post("/import/prosumator", payload);
+        savedId = data?.id || null;
+        saveWarnings = data?.intake_warnings || [];
+      }
       else {
         const { data } = await api.post("/data/" + key, payload);
         savedId = data?.id || null;
@@ -662,7 +664,8 @@ export default function ModulePage({ moduleKey }) {
           ensuredDiu = data;
         } catch { ensureDiuFailed = true; }
       }
-      if (importFailed) toast.warning("DI-U creat; nu s-au putut prelua automat toate datele din dosarul prosumator.");
+      if (saveWarnings.length) toast.warning(saveWarnings.join(" "));
+      else if (importFailed) toast.warning("DI-U creat; nu s-au putut prelua automat toate datele din dosarul prosumator.");
       else if (ensureDiuFailed) toast.warning("Cererea de spor a fost salvată, dar DI-U nu s-a putut asocia automat. Verifică accesul la modulul DI-U.");
       else if (ensuredDiu) toast.success(`Spor salvat · DI-U ${ensuredDiu.created ? "creat" : "actualizat"} și asociat`);
       else toast.success("Salvat cu succes");
@@ -1093,7 +1096,7 @@ export default function ModulePage({ moduleKey }) {
             <details id="dossier-section-commissioning" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-commissioning-card">
               <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>6. Punere în funcțiune</p><h3 className="text-sm font-bold">Serii echipamente și PV teste / PIF</h3></div><ProsumerStepStatus complete={prosumerProgress?.completed[5]} testId="guided-step-status-6" /></summary>
               {editId && <div className="mt-4 border-b pb-4" style={{ borderColor: "var(--line)" }}><PifPanel id={editId} /></div>}
-              <DossierExtras form={form} setVal={setVal} part="commissioning" />
+              <DossierExtras form={form} setVal={setVal} part="commissioning" onSave={editId ? () => saveSection("Probe și PIF") : undefined} saving={sectionSaving} />
             </details>
           </div>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}

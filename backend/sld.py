@@ -11,7 +11,9 @@ from reportlab.lib.styles import ParagraphStyle
 import docgen  # registers LS / LSB fonts
 from cef import n, battery_cable_proposal
 
-PT = 0.3528
+# SLD geometry is expressed in millimetres after ``canvas.scale(mm, mm)``.
+# Keep label sizes within the compact spacing of the existing A3 drawing.
+PT = 0.5
 INK = colors.HexColor("#111111")
 RED = colors.HexColor("#c0392b")
 PEC = colors.HexColor("#1e8449")
@@ -936,7 +938,7 @@ def drawing_header(S, PW, PH, rec, client, settings, res, approval):
     S.text(text_x, y + 1.2, company, 7.2, True)
     S.text(text_x, y - 2.2, "INSTALAȚII FOTOVOLTAICE", 4.2, color=GREY)
     S.text(PW / 2, y, title, 10, True, anchor="c")
-    S.text(PW / 2, y - 4.2, summary, 5, color=GREY, anchor="c")
+    S.text(PW / 2, y - 4.2, summary, 5, color=GREY, anchor="c", w=PW - 105)
     supply = "TRIFAZAT" if res["base"]["grid"]["tri"] else "MONOFAZAT"
     backup = str(grid.get("backup_mode") or "LOAD").upper()
     badge = f"{backup} · {supply}"

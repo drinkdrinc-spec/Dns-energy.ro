@@ -441,7 +441,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
   };
 
   const input = (name, label, type = "text", opts) => (
-    <label key={name} className="den-field">
+    <label key={name} className={`den-field ${["hq_address", "address", "current_supply_desc"].includes(name) ? "col-span-2" : ""}`}>
       <span>{label}</span>
       {opts ? <select className="den-input" value={form[name] ?? ""} onChange={(e) => { const v = e.target.value; setVal(name, v); if (name === "supply") setVal("cef", { ...(form.cef || {}), grid: { ...(form.cef?.grid || {}), supply: v } }); }}><option value="">Alege...</option>{opts.map((o) => <option key={o} value={o}>{o}</option>)}</select>
         : <input className="den-input" type={type} step={type === "number" ? "any" : undefined} value={form[name] ?? ""} onChange={(e) => {
@@ -553,8 +553,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
             style={String(form.kind || selectedClient?.kind || "Persoană fizică").toLowerCase().includes(value === "Persoană juridică" ? "jurid" : "fiz") ? { background: "white", color: "var(--green)", boxShadow: "0 1px 3px #0001" } : { color: "var(--muted)" }}
             onClick={() => setVal("kind", value)}>{label}</button>)}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-        <label className="den-field sm:col-span-2"><span>{title(field(cfg, "client_name"), "Beneficiar / client")} *</span>
+        <div className="grid grid-cols-2 gap-3">
+        <label className="den-field col-span-2"><span>{title(field(cfg, "client_name"), "Beneficiar / client")} *</span>
           <select className="den-input" value={selectedClient?.id || (form.client_name && !clients.some((x) => x.label === form.client_name) ? "__document_import__" : "")} onChange={(e) => {
             const v = e.target.value;
             const c = v === "__document_import__" ? null : clients.find((x) => x.id === v);
@@ -596,7 +596,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       </div>
       <div className="mx-4 mt-3 rounded-xl border p-3 sm:mx-5" style={{ borderColor: "var(--line)" }} data-testid="prosumer-consumption-location">
         <h4 className="mb-3 text-sm font-semibold">Loc de consum</h4>
-        <div className="grid gap-3 pb-3 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3 pb-3">
           {input("address", "Adresă loc de consum")}
           {input("locality", "Localitate")}
           {input("county", "Județ")}
@@ -612,13 +612,13 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
       </div>
       <div className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--line)" }}>
         <h4 className="mb-3 text-sm font-semibold">Date administrative și branșament</h4>
-        <div className="grid gap-3 pb-3 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3 pb-3">
           {input("request_type", title(field(cfg, "request_type"), "Tip cerere"), "text", field(cfg, "request_type")?.options)}
           {isPowerIncrease && <>
             {input("approved_power_kw", "Putere aprobată existentă (kW)", "number")}
             {input("requested_kva", "Putere solicitată (kVA)", "number")}
             {input("current_supply_desc", "Branșament existent / modificări solicitate")}
-            <div className="sm:col-span-2 rounded-xl border p-3" style={{ borderColor: "var(--line)" }} data-testid="power-increase-receptors">
+            <div className="col-span-2 rounded-xl border p-3" style={{ borderColor: "var(--line)" }} data-testid="power-increase-receptors">
               <h4 className="text-sm font-semibold">Receptoare electrice</h4>
               <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Introdu consumatorii și puterile conform solicitării pentru spor.</p>
               {receptors.map((item, index) => <div key={index} className="mb-2 grid gap-2 sm:grid-cols-[1fr_8rem_1fr_auto]">
@@ -632,7 +632,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
           </>}
           {input("supply", title(field(cfg, "supply"), "Branșament"), "text", field(cfg, "supply")?.options)}
           {input("bransament_kw", "Putere branșament (kW)", "number")}
-          <label className="den-field sm:col-span-2"><span className="flex items-center gap-2"><input type="checkbox" checked={form.address_same_as_ci === true} onChange={(e) => { setVal("address_same_as_ci", e.target.checked); if (e.target.checked) setVal("address", form.hq_address || ""); }} /> Locul de consum are aceeași adresă ca în CI</span></label>
+          <label className="den-field col-span-2"><span className="flex items-center gap-2"><input type="checkbox" checked={form.address_same_as_ci === true} onChange={(e) => { setVal("address_same_as_ci", e.target.checked); if (e.target.checked) setVal("address", form.hq_address || ""); }} /> Locul de consum are aceeași adresă ca în CI</span></label>
         </div>
       </div>
       <p className="mx-4 mt-2 pb-4 text-xs sm:mx-5" style={{ color: "var(--muted)" }}>Importă CI, factura și actul de proprietate din zona de documente. Verifică datele extrase automat înainte de salvare.</p>
@@ -645,12 +645,12 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         {blockedSupplierModels.length} modele importate sunt ascunse din configurare deoarece par pachete cu baterie sau au puterea din denumire diferită de valoarea din catalog. Verifică fișa tehnică și corectează-le în Catalog echipamente înainte de folosire.
         {!!blockedSelectedModels.length && ` Selecția curentă conține ${blockedSelectedModels.length} model/e de verificat.`}
       </p>}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3">
         {catalogSelect("inverter", "Invertor")}
         {input("inverter_count", "Număr invertoare", "number")}
         {catalogSelect("panel", "Panou fotovoltaic")}
         {input("panel_count", form.panel_count_auto === true ? "Număr panouri (calculat)" : "Număr total panouri", "number")}
-        {form.panel_count_auto === true && <p className="sm:col-span-2 -mt-2 text-xs text-blue-800">Propunere: puterea solicitată ÷ puterea din fișa panoului, rotunjită în sus. Poți modifica numărul; verifică apoi stringurile și limitele invertorului.</p>}
+        {form.panel_count_auto === true && <p className="col-span-2 -mt-2 text-xs text-blue-800">Propunere: puterea solicitată ÷ puterea din fișa panoului, rotunjită în sus. Poți modifica numărul; verifică apoi stringurile și limitele invertorului.</p>}
         {catalogSelect("battery", "Baterie (opțional)")}
         {input("battery_count", "Număr baterii", "number")}
         <label className="den-field"><span>Deconectare rapidă DC (opțional)</span>
@@ -670,7 +670,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
           }
         }} /> Există la instalație</span></label>
         {form.smart_meter_present === true && catalogSelect("meter", "Model smart meter (opțional)")}
-        {catalogDocStatus && <p className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs leading-5" role="status" style={{ borderColor: "var(--line)", color: "var(--muted)", background: "#fff" }}>{catalogDocStatus}</p>}
+        {catalogDocStatus && <p className="col-span-2 rounded-lg border px-3 py-2 text-xs leading-5" role="status" style={{ borderColor: "var(--line)", color: "var(--muted)", background: "#fff" }}>{catalogDocStatus}</p>}
         <label className="den-field"><span>Backup</span><span className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={form.backup === true || form.backup === "Da"} onChange={(e) => { const on = e.target.checked; setVal("backup", on); setVal("anti_relay_present", on ? "DA" : "NU"); const cef = form.cef || { grid: {}, inverters: [], shared_batteries: [] }; setVal("cef", { ...cef, grid: { ...(cef.grid || {}), anti_required: on }, inverters: (cef.inverters || []).map((x, i) => i ? x : { ...x, backup: { ...(x.backup || {}), enabled: on } }) }); }} /> Include ieșire de rezervă</span></label>
       </div>
       {(() => { const strings = form.cef?.inverters?.[0]?.strings || []; return strings.some((x) => x.auto_generated)

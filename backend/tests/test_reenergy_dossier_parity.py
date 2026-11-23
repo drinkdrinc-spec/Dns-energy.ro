@@ -385,3 +385,39 @@ def test_submission_zip_preserves_reference_order_and_repeats_pram_after_pif(mon
 
     assert actual == expected
 
+
+def test_submission_zip_preserves_uploaded_originals_separately_from_compiled_pdfs(monkeypatch):
+    original = b"%PDF-1.4 signed original source bytes"
+
+    async def fake_position_pdf(_position, *_args, **_kwargs):
+        return [_marker_pdf("SIGNED SOURCE COPY")]
+
+    monkeypatch.setattr(opis, "position_pdf", fake_position_pdf)
+    monkeypatch.setattr(opis.docgen, "render", lambda *_args, **_kwargs: _marker_pdf("AUTHENTICITY"))
+    monkeypatch.setattr(opis, "_incomplete_report", lambda *_args: None)
+
+    class Logger:
+        def error(self, *_args, **_kwargs):
+            raise AssertionError("Unexpected ZIP export error")
+
+    source_file = {"storage_path": "client/signed-annex.pdf", "original_filename": "Anexa semnata.pdf",
+                   "content_type": "application/pdf"}
+    info = {"titles": {}, "complete": True, "positions": [{
+        "key": "notificare", "title": "Cerere oficială semnată", "source": "manual",
+        "files": [source_file], "upload": source_file,
+    }]}
+    package = asyncio.run(opis.export_package_zip(
+        info, {}, {}, {}, lambda path: (original, "application/pdf"), Logger(), 1
+    ))
+
+    with zipfile.ZipFile(io.BytesIO(package)) as archive:
+        names = archive.namelist()
+        source_names = [name for name in names if name.startswith("Documente originale/")]
+        assert len(source_names) == 1
+        assert archive.read(source_names[0]) == original
+        assert "01_Dosar_complet.pdf" in names
+        manifest = archive.read("00_CITESTE.txt").decode()
+
+    assert "verificarea semnăturilor" in manifest
+    assert "Anexa semnata.pdf" in source_names[0]
+

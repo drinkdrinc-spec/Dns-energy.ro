@@ -84,6 +84,7 @@ const requirementState = (item, docs, form) => {
 export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
   const [workflowStep, setWorkflowStep] = useState(0);
   const [pros, setPros] = useState([]);
+  const [instruments, setInstruments] = useState([]);
   const [pid, setPid] = useState(form.pros_id || "");
   const [docs, setDocs] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -99,7 +100,11 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
   });
   useEffect(() => { setPid(form.pros_id || ""); }, [id, form.pros_id]);
   const loadDocs = () => api.get(`/diu/${id}/docs`).then((r) => setDocs(r.data)).catch(() => {});
-  useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); loadDocs(); }, [id]); // eslint-disable-line
+  useEffect(() => {
+    api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {});
+    api.get("/data/instruments").then((r) => setInstruments(Array.isArray(r.data) ? r.data : [])).catch(() => setInstruments([]));
+    loadDocs();
+  }, [id]); // eslint-disable-line
   useEffect(() => { if (savedAt) loadDocs(); }, [savedAt]); // eslint-disable-line
 
   const importPros = async (selectedPid = pid) => {
@@ -167,7 +172,7 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
                 <div className="den-field" key={key}><label>{label}</label><input className="den-input" value={form[key] || ""} onChange={(e) => setVal(key, e.target.value)} data-testid={testid} /></div>)}
             </div>}
           </section>}
-          <DiuCircuits form={form} setVal={setVal} />
+          <DiuCircuits form={form} setVal={setVal} instruments={instruments} />
         </div>
       </details>
       <div id="diu-piese-generare" className="flex items-center justify-between flex-wrap gap-2 mt-5">
@@ -179,6 +184,10 @@ export function DiuDossier({ id, form, setVal, setForm, savedAt }) {
           <Btn variant="secondary" onClick={() => openAuthenticatedFile(pdf("all"))} data-testid="diu-export"><FileDown size={14} /> PDF DI-U</Btn>
         </div>
       </div>
+      {docs?.supporting_documents?.missing?.length > 0 && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900" role="status" data-testid="diu-supporting-missing">
+        <b>Anexe de verificat înainte de depunere</b>
+        <ul className="mt-1 list-disc pl-5">{docs.supporting_documents.missing.map((item) => <li key={item}>{item}</li>)}</ul>
+      </div>}
       <div className="mt-2 space-y-1">{(docs?.positions || []).map((p) => (
         <div key={p.key} className="flex items-start justify-between gap-2 rounded-lg bg-white border px-3 py-2 text-xs" style={{ borderColor: "var(--line)" }} data-testid={`diu-doc-${p.key}`}>
           <div><b>{p.nr}. {p.title}</b>{p.missing.length > 0 && <div style={{ color: "#76500a" }}>Lipsă: {p.missing.join(", ")}</div>}</div>

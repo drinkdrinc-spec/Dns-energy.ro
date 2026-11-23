@@ -13,10 +13,19 @@ import cef as CEF
 import diu_doc as DD
 import opis as OPIS
 from power_diu_sync import power_cef_diu_fields, power_cef_diu_sync, prosumer_cef_diu_sync
+import diu_support as DIU_SUPPORT
 
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
 OWN = ("receptie_", "pif_date", "pif_decision", "warranty_", "doc_date", "date")
 rcd = lambda v: str(v).replace("Tip", "").replace("tip", "").strip() if v else v
+
+
+async def diu_supporting_status(owner: str, record: dict, settings: dict):
+    instrument_id = record.get("instrument_id")
+    instrument = await db.instruments.find_one(
+        {"owner": owner, "id": instrument_id}, {"_id": 0}
+    ) if instrument_id else None
+    return DIU_SUPPORT.supporting_status(record, settings, instrument)
 
 
 async def diu_ctx(user: dict, item_id: str):
@@ -48,7 +57,9 @@ async def diu_ctx(user: dict, item_id: str):
 async def diu_docs(item_id: str, user: dict = Depends(get_current_user)):
     rec, r, client, s = await diu_ctx(user, item_id)
     pos = DD.positions(r, s)
-    return {"positions": pos, "complete": not any(p["missing"] for p in pos), "pros_id": rec.get("pros_id"),
+    supporting = await diu_supporting_status(user["id"], r, s)
+    return {"positions": pos, "supporting_documents": supporting,
+            "complete": not any(p["missing"] for p in pos) and not supporting["missing"], "pros_id": rec.get("pros_id"),
             "client": {"name": client.get("name") or r.get("client_name") or "", "email": client.get("email") or "", "phone": client.get("phone") or ""},
             "pros_name": r.get("client_name") if rec.get("pros_id") else None}
 
@@ -93,13 +104,15 @@ async def diu_pdf(item_id: str, doc: str = "all", fmt: str = "pdf", orig: int = 
 
 @api.get("/diu/{item_id}/package")
 async def diu_package(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    """Download the generated DI-U PDF together with selected client and equipment evidence."""
+    """Build an ordered DI-U submission PDF and include its source evidence in a ZIP."""
     user = await S.user_from_token(authorization, auth)
     rec, r, client, s = await diu_ctx(user, item_id)
     keys = [k for k, _ in DD.applicable_docs(r)]
     signed = r.get("signed") or {}
     pos = {p["key"]: p for p in DD.positions(r, s)}
-    draft = any(pos[k]["missing"] for k in keys if not signed.get(k))
+    supporting_status = await diu_supporting_status(user["id"], r, s)
+    draft = (any(pos[k]["missing"] for k in keys if not signed.get(k))
+             or bool(supporting_status["missing"]))
     writer = PdfWriter()
     for key in keys:
         is_signed = bool(signed.get(key))
@@ -113,10 +126,8 @@ async def diu_package(item_id: str, authorization: str = Header(None), auth: str
             OPIS.watermark(part_writer, "DOSAR DE TEST — NEOFICIAL", 38)
         for page in part_writer.pages:
             writer.add_page(page)
-    pdf_out = io.BytesIO()
-    writer.write(pdf_out)
-
     client_docs, client_issues = S.atr_client_documents(user, client)
+    authorization_files = await OPIS.authorization_files(db, user["id"], rec, s)
     evidence = []
     if rec.get("pros_id"):
         pros = await db.prosumator.find_one(
@@ -127,25 +138,71 @@ async def diu_package(item_id: str, authorization: str = Header(None), auth: str
     used = 0
     max_total = 100 * 1024 * 1024
     out = io.BytesIO()
+    signed_sources = DIU_SUPPORT.collect_signed_sources(
+        keys, signed, DD.TITLES, S.get_object, max_total
+    )
+    used = signed_sources["used"]
+    client_issues.extend(signed_sources["issues"])
+    if signed_sources["issues"]:
+        draft = True
+
+    def append_evidence(data: bytes, content_type: str, label: str):
+        nonlocal draft
+        ct = str(content_type or "").lower()
+        if "pdf" not in ct and not ct.startswith("image/"):
+            client_issues.append(f"{label} — originalul este inclus, dar formatul nu poate fi adăugat la PDF-ul complet.")
+            draft = True
+            return
+        try:
+            for page in PdfReader(io.BytesIO(OPIS.file_pdf(data, ct))).pages:
+                writer.add_page(page)
+        except Exception as exc:
+            client_issues.append(f"{label} — originalul este inclus, dar nu a putut fi adăugat la PDF-ul complet.")
+            S.logger.warning("DI-U evidence could not be merged into PDF (%s): %s", label, exc)
+            draft = True
+
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
-        bundle.writestr("DI-U/00_Dosar_DI-U.pdf" if not draft else "DI-U/00_Dosar_DI-U_CIORNA.pdf", pdf_out.getvalue())
-        manifest = ["Pachet DI-U — documente generate și documente justificative selectate."]
+        manifest = ["Pachet DI-U — formularele generate sunt urmate de documentele clientului, executantului și echipamentelor."]
+        # The combined PDF is a newly assembled reading copy. Preserve each
+        # signed source PDF byte-for-byte so its signature can be verified.
+        for item in signed_sources["files"]:
+            bundle.writestr(item["filename"], item["data"])
+            manifest.append(f"Original semnat: {item['filename']} — verificați semnătura în acest fișier; PDF-ul complet este o copie compilată.")
         if draft:
             manifest.append("ATENȚIE: dosarul PDF este ciornă; lipsesc date reale necesare completării/verificării.")
         for item in client_docs:
             data = item["data"]
             if used + len(data) > max_total:
                 client_issues.append(f"{item['label']} — omisă, limita de 100 MB a pachetului a fost atinsă.")
+                draft = True
                 continue
             used += len(data)
             name = str(item["name"]).replace("\\", "_").replace("/", "_")
             bundle.writestr(f"Documente client/{item['label']} — {name}", data)
             manifest.append(f"Client: {item['label']} — {name}")
+            append_evidence(data, item.get("content_type"), f"Document client {item['label']}")
+        for item in authorization_files:
+            try:
+                data, content_type = S.get_object(item["storage_path"])
+                if used + len(data) > max_total:
+                    client_issues.append("Document executant (ANRE / semnătură / metrologie) — omis, limita de 100 MB a fost atinsă.")
+                    draft = True
+                    continue
+                used += len(data)
+                name = str(item.get("original_filename") or "document").replace("\\", "_").replace("/", "_")
+                bundle.writestr(f"Documente executant/Document executant — {name}", data)
+                manifest.append(f"Document executant: {name}")
+                append_evidence(data, content_type or item.get("content_type"), "Document executant")
+            except Exception as exc:
+                client_issues.append(f"Document executant — {item.get('original_filename') or 'fișierul'} nu a putut fi citit.")
+                draft = True
+                S.logger.warning("DI-U company evidence could not be read: %s", exc)
         for item in evidence:
             try:
-                data, _ = S.get_object(item["storage_path"])
+                data, content_type = S.get_object(item["storage_path"])
                 if used + len(data) > max_total:
                     client_issues.append(f"{item.get('kind')} {item.get('model')} — omis, limita de 100 MB a fost atinsă.")
+                    draft = True
                     continue
                 used += len(data)
                 name = str(item.get("original_filename") or "document").replace("\\", "_").replace("/", "_")
@@ -153,13 +210,30 @@ async def diu_package(item_id: str, authorization: str = Header(None), auth: str
                 model = str(item.get("model") or "echipament")
                 bundle.writestr(f"Echipamente/{label} — {model} — {name}", data)
                 manifest.append(f"Echipament: {label} — {model} — {name}")
+                append_evidence(data, content_type or item.get("content_type"), f"Echipament {label} — {model}")
             except Exception as exc:
                 client_issues.append(f"{item.get('kind')} {item.get('model')} — fișierul nu a putut fi citit.")
+                draft = True
                 S.logger.warning("DI-U catalog evidence could not be read: %s", exc)
+        client_issues.extend(supporting_status["missing"])
         if client_issues:
+            draft = True
             manifest.append("")
-            manifest.append("Fișiere omise:")
+            manifest.append("Documente lipsă, omise sau care necesită verificare:")
             manifest.extend(f"- {issue}" for issue in client_issues)
+        if draft:
+            report = OPIS._incomplete_report(
+                {"positions": [pos[k] for k in keys if pos[k]["missing"] and not signed.get(k)],
+                 "common_missing": supporting_status["missing"]},
+                client_issues,
+            )
+            if report:
+                for page in PdfReader(io.BytesIO(report)).pages:
+                    writer.add_page(page)
+            manifest.insert(1, "PDF-ul include o listă de verificare finală. Originalele semnate sunt incluse separat în Documente semnate; verificați semnătura în original, nu în PDF-ul compilat.")
+        pdf_out = io.BytesIO()
+        writer.write(pdf_out)
+        bundle.writestr("DI-U/00_Dosar_DI-U.pdf" if not draft else "DI-U/00_Dosar_DI-U_CIORNA.pdf", pdf_out.getvalue())
         bundle.writestr("00_CITESTE.txt", "\n".join(manifest))
     name = (client.get("name") or r.get("client_name") or "dosar").replace(" ", "_")
     return Response(content=out.getvalue(), media_type="application/zip",

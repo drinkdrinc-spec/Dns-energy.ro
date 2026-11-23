@@ -117,3 +117,13 @@
     padding: 16px;
   }
 }
+
+/* Match the reference dossier's compact TEG rows on common phone widths. */
+@media (min-width: 380px) and (max-width: 639px) {
+  .dns-prosumer-workflow .teg-circuit-row[data-partial-backup="false"] {
+    grid-template-columns: minmax(60px, 1.1fr) minmax(52px, .9fr) minmax(52px, .9fr) minmax(62px, 1fr) 28px;
+  }
+  .dns-prosumer-workflow .teg-circuit-row[data-partial-backup="true"] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px;
+  }
+}
