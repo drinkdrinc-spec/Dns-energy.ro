@@ -103,6 +103,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [clientSearch, setClientSearch] = useState("");
   const [clientMatches, setClientMatches] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
+  const [isNewClient, setIsNewClient] = useState(false);
   const [selectedSiteId, setSelectedSiteId] = useState("new");
   const [operatorManuallySet, setOperatorManuallySet] = useState(false);
   const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
@@ -126,7 +127,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       const sites = clientConsumptionSites(client);
       const firstSite = sites[0] || null;
       const selected = { ...client, title: client.name || result.title, detail: result.detail, consumption_sites: sites };
-      setSelectedClient(selected); setSelectedSiteId(firstSite?.id || "new"); setClientSearch(""); setClientMatches([]);
+      setSelectedClient(selected); setIsNewClient(false); setSelectedSiteId(firstSite?.id || "new"); setClientSearch(""); setClientMatches([]);
       setValues((prev) => ({ ...EMPTY, ...prev, client_id: selected.id, client_name: selected.title || "", kind: selected.kind || "", bank: selected.bank || "", iban: selected.iban || "", cnp: selected.idcode || selected.cui || "", id_series: selected.id_series || "", id_number: selected.id_number || "", phone: selected.phone || "", email: selected.email || "", hq_address: selected.hq_address || "", ...Object.fromEntries(LOCATION_FIELDS.map((key) => [key, firstSite?.[key] || selected[key] || ""])), operator: firstSite?.operator || selected.operator || distributorSuggestion(firstSite?.pod || selected.pod, firstSite?.county || selected.county), address_same_as_ci: false }));
       setOperatorManuallySet(Boolean(selected.operator));
     } catch (error) {
@@ -240,6 +241,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     setFiles((prev) => ({ ...prev, [kind]: mergedFiles }));
     setValues(mergedValues);
     if (kind === "ci" || kind === "cf") setClientDetailsOpen(true);
+    if (kind === "ci" && !selectedClient) setIsNewClient(true);
     if (summaries.length) setNotes((prev) => ({ ...prev, altele: [...(prev.altele || []), ...summaries] }));
     if (extractionWarnings.length) setNotes((prev) => ({ ...prev, [kind]: [...(prev[kind] || []), ...extractionWarnings] }));
     const imported = mergedFiles.length - initialCount;
@@ -253,6 +255,10 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   };
 
   const create = async () => {
+    if (!selectedClient && !isNewClient) {
+      setStep(0);
+      return toast.error("Alege un client existent sau bifează «Client nou».");
+    }
     if (clientIdentityMismatch) {
       setStep(0); setClientDetailsOpen(true);
       return toast.error("CNP/CUI diferă de clientul selectat. Verifică actele sau alege «Creează client separat».");
@@ -303,7 +309,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         toast.warning("Dosarul a fost creat și îl găsești în lista Dosare; pagina nu s-a deschis automat.");
       }
       setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
-      setSelectedClient(null); setSelectedSiteId("new"); setClientSearch(""); setOperatorManuallySet(false);
+      setSelectedClient(null); setIsNewClient(false); setSelectedSiteId("new"); setClientSearch(""); setOperatorManuallySet(false);
     } catch (e) {
       toast.error(e.response?.data?.detail || (e.request
         ? "Conexiunea s-a întrerupt înainte de confirmare. Apasă din nou; dosarul nu se va duplica."
@@ -337,26 +343,31 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
 
   return <>
-    <Btn type="button" variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Începe dosarul din documente</Btn>
+    <Btn type="button" variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Dosar nou</Btn>
     <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setStep(0); }}>
       <DialogContent ref={stepScrollRef} className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dossier-document-start-dialog">
-        <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles size={18} style={{ color: "var(--blue)" }} /> Dosar nou din documente</DialogTitle></DialogHeader>
-        <p className="text-xs" style={{ color: "var(--muted)" }}>Trei pași scurți. Încarcă actele, verifică datele extrase și apoi creează dosarul. AI preia doar informația identificată în documente.</p>
+        <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles size={18} style={{ color: "var(--blue)" }} /> Dosar nou</DialogTitle></DialogHeader>
+        <p className="text-xs" style={{ color: "var(--muted)" }}>Trei pași scurți: client, loc de consum și tipul cererii. Poți completa datele manual sau le poți prelua din acte.</p>
         <div className="grid grid-cols-3 gap-2" role="group" aria-label="Pașii pentru dosarul nou">
-          {["Client și acte", "Loc de consum", "Tip dosar"].map((label, index) => <button key={label} type="button" onClick={() => index <= step && setStep(index)} aria-current={step === index ? "step" : undefined} className="rounded-lg border px-2 py-2 text-left text-xs font-semibold" style={{ borderColor: step === index ? "var(--blue)" : "var(--line)", background: step === index ? "#eaf1ff" : "#fff", color: step === index ? "var(--blue)" : "var(--muted)" }}><span className="mr-1">{index + 1}.</span>{label}</button>)}
+          {["Client", "Loc de consum", "Tip cerere"].map((label, index) => <button key={label} type="button" onClick={() => index <= step && setStep(index)} aria-current={step === index ? "step" : undefined} className="rounded-lg border px-2 py-2 text-left text-xs font-semibold" style={{ borderColor: step === index ? "var(--blue)" : "var(--line)", background: step === index ? "#eaf1ff" : "#fff", color: step === index ? "var(--blue)" : "var(--muted)" }}><span className="mr-1">{index + 1}.</span>{label}</button>)}
         </div>
         {step === 0 && <>
         <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
-          <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Client existent sau client nou</div>
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Client existent</div>
           {selectedClient ? <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: "#f2f7ff" }}>
             <span><b>{selectedClient.title}</b><span className="ml-2 text-xs" style={{ color: "var(--muted)" }}>{selectedClient.detail}</span></span>
-            <button type="button" className="text-xs font-semibold underline" onClick={() => { setSelectedClient(null); setSelectedSiteId("new"); setClientSearch(""); setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({}); }}>Schimbă clientul</button>
+            <button type="button" className="text-xs font-semibold underline" onClick={() => { setSelectedClient(null); setIsNewClient(false); setSelectedSiteId("new"); setClientSearch(""); setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({}); }}>Schimbă clientul</button>
           </div> : <>
-            <input className="den-input" value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Caută după nume, CNP/CUI sau telefon" aria-label="Caută un client existent" data-testid="intake-client-search" />
+            {!isNewClient && <><input className="den-input" value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Caută după nume, CNP/CUI sau telefon" aria-label="Caută un client existent" data-testid="intake-client-search" />
             {clientMatches.length > 0 && <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border" style={{ borderColor: "var(--line)" }} role="listbox" aria-label="Clienți găsiți">
               {clientMatches.map((client) => <button key={client.id} type="button" disabled={!!busy} className="block w-full border-b px-3 py-2 text-left last:border-b-0 hover:bg-slate-50 disabled:opacity-60" style={{ borderColor: "var(--line)" }} onClick={() => selectExistingClient(client)} data-testid={`intake-client-option-${client.id}`}><span className="block text-sm font-semibold">{busy === "client" ? "Încarc datele clientului…" : client.title}</span><span className="block text-xs" style={{ color: "var(--muted)" }}>{client.detail || "Date de contact necompletate"}</span></button>)}
             </div>}
-            {!clientMatches.length && clientSearch.trim().length >= 2 && <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Nu am găsit un client potrivit. Completează datele din CI mai jos pentru un client nou.</p>}
+            {!clientMatches.length && clientSearch.trim().length >= 2 && <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Nu am găsit clientul. Bifează opțiunea de mai jos pentru a-l adăuga.</p>}</>}
+            <label className="mt-3 inline-flex items-center gap-2 text-sm font-medium" data-testid="intake-new-client-toggle"><input type="checkbox" checked={isNewClient} onChange={(event) => {
+              const checked = event.target.checked;
+              setIsNewClient(checked); setSelectedClient(null); setSelectedSiteId("new"); setClientSearch(""); setClientMatches([]);
+              setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
+            }} /> Client nou (nu există în listă)</label>
           </>}
         </section>
         {clientIdentityMismatch && <div role="alert" className="rounded-lg border px-3 py-3 text-xs" style={{ borderColor: "#f0c8c8", background: "#fff6f6", color: "#8f2525" }} data-testid="intake-client-identity-mismatch">
@@ -370,7 +381,18 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             <span>Verifică datele clientului înainte de continuare.</span>
           </div>
         </div>}
-        <div className="grid sm:grid-cols-2 gap-2">
+        {isNewClient && <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Datele clientului</div>
+          <button type="button" className="mb-3 text-xs font-semibold" style={{ color: "var(--blue)" }} onClick={() => inputs.current.ci?.click()} disabled={!!busy} data-testid="intake-scan-ci"><Upload size={13} className="mr-1 inline" />Scanează CI (poză sau PDF) — completează nume și CNP</button>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="den-field"><span>Tip client</span><select className="den-input" value={values.kind || ""} onChange={(e) => setValues((prev) => ({ ...prev, kind: e.target.value }))} data-testid="intake-client-kind"><option value="">Alege...</option><option value="Persoană fizică">Persoană fizică</option><option value="Persoană juridică">Persoană juridică</option></select></label>
+            {field("client_name", "Nume și prenume *")}{field("cnp", "CNP / CUI")}{field("phone", "Telefon")}
+            {field("hq_address", "Domiciliu (din CI)", "col-span-2")}
+          </div>
+        </section>}
+        <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
+          <summary className="cursor-pointer text-xs font-semibold">Acte și documente (opțional)</summary>
+        <div className="grid sm:grid-cols-2 gap-2 pt-3">
           {TYPES.map(([kind, title, help]) => <div key={kind} className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="font-bold text-sm">{title}</div><p className="text-[11px] my-1" style={{ color: "var(--muted)" }}>{help}</p>
             <input ref={(el) => { inputs.current[kind] = el; }} type="file" accept={kind === "altele" ? ".pdf,image/*,.doc,.docx,.xls,.xlsx" : "application/pdf,image/*"} multiple={kind === "altele"} className="hidden"
@@ -382,17 +404,13 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             {notes[kind]?.length > 0 && <ul className="mt-2 list-disc pl-4 text-[11px] text-amber-700">{notes[kind].map((note, i) => <li key={i}>{note}</li>)}</ul>}
           </div>)}
         </div>
-        <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} open={clientDetailsOpen} onToggle={(event) => setClientDetailsOpen(event.currentTarget.open)}>
+        </details>
+        <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} open={isNewClient || clientDetailsOpen} onToggle={(event) => setClientDetailsOpen(event.currentTarget.open)}>
           <summary className="cursor-pointer text-xs font-semibold">Verifică datele clientului{values.client_name ? ` · ${values.client_name}` : ""}{values.cnp ? ` · ${values.cnp}` : ""}</summary>
           <div className="space-y-3 pt-3">
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
-            <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Date client din acte</div>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="den-field"><span>Tip client</span><select className="den-input" value={values.kind || ""} onChange={(e) => setValues((prev) => ({ ...prev, kind: e.target.value }))} data-testid="intake-client-kind"><option value="">Alege...</option><option value="Persoană fizică">Persoană fizică</option><option value="Persoană juridică">Persoană juridică</option></select></label>
-              {field("client_name", "Nume client *")}{field("cnp", "CNP / CUI")}
-              {field("id_series", "Serie CI")}{field("id_number", "Număr CI")}
-              {field("hq_address", "Domiciliu din CI", "col-span-2")}
-            </div>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Detalii CI (opțional)</div>
+            <div className="grid grid-cols-2 gap-3">{field("id_series", "Serie CI")}{field("id_number", "Număr CI")}</div>
           </section>
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Imobil (dacă ai cartea funciară)</div>
@@ -476,7 +494,6 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     </Dialog>
   </>;
 }
-
 
 
 
