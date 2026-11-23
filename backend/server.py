@@ -1684,6 +1684,7 @@ async def download(path: str, authorization: str = Header(None), auth: str = Que
 import docgen
 import power_docx as POWERDOCX
 from ai_extract import extract_pdf, extract_gpt, extract_office_text, extract_gpt_text, extract_office_local, canonical_document_type
+from dossier_identity import identity_codes_conflict
 
 async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> dict:
     token = authorization[7:] if authorization and authorization.startswith("Bearer ") else auth
@@ -1818,7 +1819,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         if not client:
             raise HTTPException(status_code=404, detail="Clientul selectat nu există în contul curent")
         stored_identity = str(client.get("idcode") or client.get("cui") or "").strip()
-        if identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+        if identity_codes_conflict(identity_code, stored_identity):
             raise HTTPException(status_code=409, detail="CNP/CUI din documente nu corespunde clientului selectat")
     if not client and identity_code:
         client = await db.clients.find_one({**scope_q(user, "clients"),
@@ -1827,7 +1828,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
         client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
     stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
     # A same-name client with a different CNP/CUI is a separate person/company.
-    if client and identity_code and stored_identity and identity_code.casefold() != stored_identity.casefold():
+    if client and identity_codes_conflict(identity_code, stored_identity):
         client = None
 
     related_dossier = None
@@ -4949,6 +4950,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
+
 
 
 
