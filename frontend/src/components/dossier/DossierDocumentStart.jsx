@@ -107,6 +107,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [operatorManuallySet, setOperatorManuallySet] = useState(false);
   const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
   const inputs = useRef({});
+  const stepScrollRef = useRef(null);
   const createRequest = useRef({ id: "", fingerprint: "" });
   const normalizeIdentity = (value) => String(value || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
   const existingClientIdentity = normalizeIdentity(selectedClient?.idcode || selectedClient?.cui);
@@ -114,6 +115,9 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const clientIdentityMismatch = Boolean(selectedClient && existingClientIdentity && draftIdentity && existingClientIdentity !== draftIdentity);
 
   useEffect(() => { if (autoOpen) setOpen(true); }, [autoOpen]);
+  useEffect(() => {
+    if (open) stepScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [step, open]);
 
   const selectExistingClient = async (result) => {
     try {
@@ -335,7 +339,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   return <>
     <Btn type="button" variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Începe dosarul din documente</Btn>
     <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setStep(0); }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dossier-document-start-dialog">
+      <DialogContent ref={stepScrollRef} className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dossier-document-start-dialog">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles size={18} style={{ color: "var(--blue)" }} /> Dosar nou din documente</DialogTitle></DialogHeader>
         <p className="text-xs" style={{ color: "var(--muted)" }}>Trei pași scurți. Încarcă actele, verifică datele extrase și apoi creează dosarul. AI preia doar informația identificată în documente.</p>
         <div className="grid grid-cols-3 gap-2" role="group" aria-label="Pașii pentru dosarul nou">
@@ -371,7 +375,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             <div className="font-bold text-sm">{title}</div><p className="text-[11px] my-1" style={{ color: "var(--muted)" }}>{help}</p>
             <input ref={(el) => { inputs.current[kind] = el; }} type="file" accept={kind === "altele" ? ".pdf,image/*,.doc,.docx,.xls,.xlsx" : "application/pdf,image/*"} multiple={kind === "altele"} className="hidden"
               onChange={(e) => extract(kind, e.target.files)} data-testid={`intake-file-${kind}`} />
-            <button onClick={() => inputs.current[kind]?.click()} disabled={!!busy} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }}>
+            <button type="button" onClick={() => inputs.current[kind]?.click()} disabled={!!busy} className="text-xs font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }}>
               <Upload size={13} /> {busy === kind ? "AI citește…" : "Încarcă și citește"}
             </button>
             {(files[kind] || []).map((f) => <div key={f.storage_path} className="mt-1 text-[11px] flex gap-1 items-center"><FileText size={12} />{f.original_filename}</div>)}
