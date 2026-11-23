@@ -72,6 +72,11 @@ const services = [
     title: "Dosare de prosumator și documentație ANRE",
     text: "Prin aplicația DNS Energy, instalatorii pregătesc dosare de prosumator și dosare pentru atestarea operatorilor economici, cu datele firmei și documentele organizate într-un singur loc.",
   },
+  {
+    icon: FileCheck2,
+    title: "Proiecte cu finanțare și achiziții publice",
+    text: "Lucrăm la proiecte fotovoltaice și electrice derulate prin programe precum PNRR, AFIR și AFM, precum și la achiziții prin SEAP/SICAP. Oferim sprijin tehnic de la definirea soluției și documentația lucrării până la execuție și punere în funcțiune, în funcție de cerințele fiecărui apel sau proceduri.",
+  },
 ];
 
 const equipmentCategories = [
