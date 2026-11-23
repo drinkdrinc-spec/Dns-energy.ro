@@ -96,6 +96,25 @@ def test_storage_document_does_not_invent_total_when_module_count_is_missing():
     ]
 
 
+
+def test_generated_operator_form_keeps_dns_energy_branding():
+    output = docgen.render(
+        ["notificare"],
+        {"client_name": "Client test", "cnp": "1234567890123", "address": "Str. Test 1",
+         "county": "Bihor", "pod": "POD-TEST", "operator": "DEER", "power": "5",
+         "doc_date": "2026-11-24"},
+        {"company": "DNS HOSTESS SRL", "rep": "Inginer test"},
+        {"name": "Client test", "idcode": "1234567890123", "address": "Str. Test 1",
+         "county": "Bihor", "pod": "POD-TEST", "operator": "DEER"},
+    )
+    reader = PdfReader(io.BytesIO(output))
+    text = " ".join(page.extract_text() or "" for page in reader.pages)
+
+    assert reader.metadata.title == "DNS Energy — Client test"
+    assert "DNS Energy · dns-energy.ro" in text
+    assert "re-energy.ro" not in text.casefold()
+
+
 def test_dossier_positions_follow_submission_order():
     positions = [
         {"key": "schema", "title": "Schemă"},
