@@ -421,4 +421,3 @@ def test_submission_zip_preserves_uploaded_originals_separately_from_compiled_pd
     assert "verificarea semnăturilor" in manifest
     assert "Anexa semnata.pdf" in source_names[0]
 
-

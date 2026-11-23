@@ -38,4 +38,3 @@ test("every inverter row must be configured, not only one row", () => {
 test("malformed legacy arrays do not crash the progress indicator", () => {
   assert.equal(installationIsConfigured({ inverters: [{ ...hybrid(), strings: {}, battery_mode: "shared" }], shared_batteries: {} }), false);
 });
-

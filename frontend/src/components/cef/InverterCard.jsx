@@ -252,4 +252,3 @@ export function InverterCard({ idx, inv, set, remove, catalog, shared, res, supp
 }
 
 
-

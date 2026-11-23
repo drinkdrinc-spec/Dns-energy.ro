@@ -546,7 +546,8 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
           ? { background: "#eaf7ef", color: "#18894f" }
           : { background: "#fff4e8", color: "#c97922" }} data-testid="guided-step-status-1">{stepComplete ? "Complet" : "De completat"}</span>
       </summary>
-      <div className="mx-4 mt-4 rounded-xl border p-3 sm:mx-5" style={{ borderColor: "var(--line)" }} data-testid="prosumer-client-identity">
+      <div className="grid gap-3 lg:grid-cols-2" data-testid="prosumer-client-and-site-grid">
+      <div className="mx-4 mt-4 rounded-xl border p-3 sm:mx-5 lg:mx-0" style={{ borderColor: "var(--line)" }} data-testid="prosumer-client-identity">
         <h4 className="mb-3 text-sm font-semibold">Client și date de identitate</h4>
         <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg p-1" style={{ background: "var(--panel)" }} role="group" aria-label="Tip beneficiar">
           {[['Persoană fizică', 'Persoană fizică'], ['Persoană juridică', 'Persoană juridică']].map(([value, label]) => <button key={value} type="button" className="rounded-md px-3 py-2 text-sm font-semibold" aria-pressed={String(form.kind || selectedClient?.kind || "Persoană fizică").toLowerCase().includes(value === "Persoană juridică" ? "jurid" : "fiz")}
@@ -594,7 +595,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
         </>}
         </div>
       </div>
-      <div className="mx-4 mt-3 rounded-xl border p-3 sm:mx-5" style={{ borderColor: "var(--line)" }} data-testid="prosumer-consumption-location">
+      <div className="mx-4 mt-3 rounded-xl border p-3 sm:mx-5 lg:mx-0 lg:mt-4" style={{ borderColor: "var(--line)" }} data-testid="prosumer-consumption-location">
         <h4 className="mb-3 text-sm font-semibold">Loc de consum</h4>
         <div className="grid grid-cols-2 gap-3 pb-3">
           {input("address", "Adresă loc de consum")}
@@ -609,6 +610,7 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
           {input("operator", "Operator de distribuție", "text", field(cfg, "operator")?.options)}
           {input("power", "Putere solicitată (kW)", "number")}
         </div>
+      </div>
       </div>
       <div className="mt-3 rounded-xl border p-3" style={{ borderColor: "var(--line)" }}>
         <h4 className="mb-3 text-sm font-semibold">Date administrative și branșament</h4>
@@ -688,6 +690,5 @@ export function ProsumatorQuickForm({ cfg, form, setVal, refOptions, onImportsBu
     </div>
   </div>;
 }
-
 
 

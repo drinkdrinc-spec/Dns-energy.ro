@@ -61,4 +61,3 @@ export function Totals({ res, inverters = [], sharedBatteries = [] }) {
     </div>
   );
 }
-

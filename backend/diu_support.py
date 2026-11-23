@@ -66,4 +66,3 @@ def collect_signed_sources(keys, signed, titles, get_object, max_total, used=0, 
         except Exception:
             issues.append(f"Document semnat — {label} nu a putut fi citit din arhivă.")
     return {"files": files, "issues": issues, "used": used}
-

@@ -905,4 +905,3 @@ def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int =
     return o.getvalue()
 
 
-

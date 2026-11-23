@@ -31,4 +31,3 @@ export function installationIsConfigured(value) {
   return inverters.length > 0 && inverters.every((inverter) =>
     inverter && typeof inverter === "object" && inverterInstallationIsConfigured(inverter, cef));
 }
-

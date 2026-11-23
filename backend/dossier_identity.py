@@ -11,4 +11,3 @@ def identity_codes_conflict(document_code, client_code):
     document = normalize_identity_code(document_code)
     client = normalize_identity_code(client_code)
     return bool(document and client and document != client)
-

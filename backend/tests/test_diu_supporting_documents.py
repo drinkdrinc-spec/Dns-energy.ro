@@ -75,4 +75,3 @@ def test_signed_source_read_failure_and_size_limit_are_reported():
     assert len(result["issues"]) == 2
     assert any("nu a putut fi citit" in item for item in result["issues"])
     assert any("limita de 2 bytes" in item for item in result["issues"])
-

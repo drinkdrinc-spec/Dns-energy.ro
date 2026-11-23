@@ -617,4 +617,3 @@ def from_legacy(rec: dict) -> dict:
     return {**rec, "cef": cef}
 
 
-

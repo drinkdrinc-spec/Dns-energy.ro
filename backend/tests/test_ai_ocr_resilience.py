@@ -128,4 +128,3 @@ def test_timed_out_ocr_keeps_slot_until_background_thread_finishes(monkeypatch):
 
     asyncio.run(scenario())
     assert processed == [b"first", b"second"]
-

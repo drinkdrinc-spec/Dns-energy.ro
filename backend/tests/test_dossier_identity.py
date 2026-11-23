@@ -10,4 +10,3 @@ def test_identity_conflict_requires_two_present_and_different_codes():
     assert identity_codes_conflict("1720811051105", "1720811051106")
     assert not identity_codes_conflict("", "1720811051105")
     assert not identity_codes_conflict("1720811051105", "")
-

@@ -566,4 +566,3 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
     fields["summary"] = "Date extrase local prin OCR din textul vizibil. Verifică valorile înainte de folosire; câmpurile neidentificate nu au fost deduse."
     return fields
 
-
