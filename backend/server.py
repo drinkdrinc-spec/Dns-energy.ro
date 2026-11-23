@@ -1014,6 +1014,7 @@ async def update_dossier_workflow_status(module: str, item_id: str, request: Req
     rec = await check_access(user, module, item_id)
     body = await request.json()
     status = str(body.get("status") or "").strip()
+    reset_response_followup = module == "prosumator" and body.get("reset_response_followup") is True
     if module == "operator_messages":
         allowed_statuses = {"Nou", "În lucru", "Răspuns transmis", "Rezolvat"}
         if status not in allowed_statuses:
@@ -1025,20 +1026,28 @@ async def update_dossier_workflow_status(module: str, item_id: str, request: Req
             raise HTTPException(status_code=400, detail="Stadiul trebuie să conțină între 1 și 80 de caractere.")
         previous = str(rec.get("workflow_status") or rec.get("status") or rec.get("operator_stage") or "În lucru").strip()
         status_field = "workflow_status"
-    if status == previous:
+    if status == previous and not reset_response_followup:
         return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": rec.get("updated_at"), "history_entry": None}
     updated_at = datetime.now(timezone.utc).isoformat()
     history_entry = {"from": previous, "to": status, "at": updated_at, "by": user.get("email") or user.get("id")}
+    update_set = {status_field: status, "updated_at": updated_at, "updated_by": user.get("email")}
+    if reset_response_followup:
+        # A 30-day internal follow-up reminder, not a representation of a
+        # statutory response deadline.
+        from datetime import timedelta
+        update_set["submitted_at"] = updated_at
+        update_set["response_followup_at"] = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        history_entry["event"] = "Depunere înregistrată; reper intern de urmărire la 30 de zile"
     result = await db[module].update_one(
         {**scope_q(user, module), "id": item_id},
-        {"$set": {status_field: status, "updated_at": updated_at, "updated_by": user.get("email")},
+        {"$set": update_set,
          "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""},
          "$push": {"workflow_history": {"$each": [history_entry], "$slice": -500}}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     await audit(user, "actualizare stadiu flux", module, item_id, [status_field])
-    return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at, "history_entry": history_entry}
+    return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at, "submitted_at": update_set.get("submitted_at", rec.get("submitted_at")), "response_followup_at": update_set.get("response_followup_at", rec.get("response_followup_at")), "history_entry": history_entry}
 
 
 

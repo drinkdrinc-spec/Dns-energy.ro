@@ -243,6 +243,10 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     res_sld = SZ.compute(rec, client)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
+        # AFM declaration belongs in the generated bundle only when the
+        # installer explicitly selected AFM financing for this dossier.
+        if key == "afm" and str(ctx.raw("afm") or rec.get("afm") or "").strip().casefold() not in {"da", "yes", "true", "1"}:
+            continue
         if key == "imputernicire":
             pos.append({"key": key, "title": "Împuternicire / mandat", "source": "client",
                         "slots": ["imputernicire"], "files": cdocs.get("imputernicire") or [], "missing": []})
