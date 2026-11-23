@@ -74,6 +74,19 @@ const services = [
   },
 ];
 
+const equipmentCategories = [
+  { id: "inverters", label: "Invertoare", brands: "DEYE · SOLIS · HUAWEI · SIGENERGY · FRONIUS", text: "Soluții monofazate și trifazate, hibride sau on-grid, alese în funcție de puterea instalației și de modul de utilizare." },
+  { id: "batteries", label: "Baterii", brands: "DYNESS · DEYE · UHOME · JA SOLAR", text: "Sisteme de stocare pentru autoconsum, backup și integrare cu invertoare compatibile." },
+  { id: "chargers", label: "Stații de încărcare", brands: "CASNICE · COMERCIALE · INDUSTRIALE", text: "Stații de încărcare dimensionate pentru locuințe, parcări, sedii și obiective industriale." },
+  { id: "panels", label: "Panouri fotovoltaice", brands: "JINKO · AIKO · TRINA · CANADIAN SOLAR", text: "Module fotovoltaice selectate după suprafață, orientare, puterea urmărită și compatibilitatea cu invertorul." },
+  { id: "boards", label: "Tablouri electrice", brands: "TABLOURI ELECTRICE · ANTIINSULARIZARE", text: "Tablouri și protecții configurate pentru instalații fotovoltaice și electrice, conform proiectului și echipamentelor instalate." },
+  { id: "roof", label: "Sisteme de prindere acoperiș", brands: "ȚIGLĂ · TABLĂ · TERASĂ", text: "Sisteme de montaj configurate în funcție de tipul acoperișului, structură și amplasarea panourilor." },
+  { id: "ground", label: "Structuri la sol", brands: "STRUCTURI FIXE · PROIECTE REZIDENȚIALE ȘI INDUSTRIALE", text: "Structuri de montaj la sol adaptate terenului și configurației sistemului fotovoltaic." },
+  { id: "heat-pumps", label: "Pompe de căldură", brands: "SOLUȚII PENTRU LOCUINȚE ȘI SPAȚII COMERCIALE", text: "Soluții de încălzire și preparare a apei calde, evaluate în raport cu clădirea și instalația existentă." },
+  { id: "air-conditioning", label: "Aer condiționat", brands: "SISTEME PENTRU LOCUINȚE ȘI SPAȚII DE LUCRU", text: "Echipamente și soluții de climatizare alese în funcție de spațiu, utilizare și cerințele proiectului." },
+  { id: "cables", label: "Cabluri fotovoltaice", brands: "CABLURI SOLARE ȘI ACCESORII DE CONEXIUNE", text: "Cabluri și componente de conexiune selectate pentru traseu, condițiile de montaj și parametrii instalației." },
+];
+
 function Brand({ light = false }) {
   return <span className={`dns-brand${light ? " dns-brand-light" : ""}`}><span className="dns-brand-mark"><img src="/dns-energy-official.png" alt="" /></span><span>DNS <b>ENERGY</b></span></span>;
 }
@@ -89,7 +102,9 @@ function EquipmentPreview() {
 
 export default function PublicHome() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeEquipment, setActiveEquipment] = useState(equipmentCategories[0].id);
   const closeMenu = () => setMenuOpen(false);
+  const selectedEquipment = equipmentCategories.find((item) => item.id === activeEquipment) ?? equipmentCategories[0];
 
   return (
     <main className="dns-public">
@@ -132,12 +147,20 @@ export default function PublicHome() {
 
       <section className="dns-equipment" id="echipamente">
         <div className="dns-equipment-inner"><div className="dns-section-label">ECHIPAMENTE ȘI FURNIZARE</div><div className="dns-equipment-heading"><h2>Tot sistemul,<br /><em>configurat pentru proiect.</em></h2><p>Furnizăm echipamente și structuri de montaj pentru sisteme fotovoltaice. Selectăm variantele în funcție de configurație, amplasament și compatibilitatea componentelor.</p></div>
-          <div className="dns-equipment-grid">
-            <article className="dns-equipment-card"><span>INVERTOARE</span><p>DEYE · SOLIS · HUAWEI · SIGENERGY · FRONIUS</p><small>și alte modele compatibile</small></article>
-            <article className="dns-equipment-card"><span>BATERII</span><p>DYNESS · DEYE · UHOME · JA SOLAR</p><small>și alte soluții de stocare</small></article>
-            <article className="dns-equipment-card"><span>PANOURI FOTOVOLTAICE</span><p>JINKO · AIKO · TRINA · CANADIAN SOLAR</p><small>și alte mărci disponibile</small></article>
-            <article className="dns-equipment-card"><span>STRUCTURI DE MONTAJ</span><p>ACOPERIȘ · SOL</p><small>configurate după amplasament și tipul proiectului</small></article>
-            <article className="dns-equipment-card"><span>STAȚII DE ÎNCĂRCARE</span><p>CASNICE · INDUSTRIALE</p><small>integrate cu instalația electrică și fotovoltaică</small></article>
+          <div className="dns-equipment-browser">
+            <nav className="dns-equipment-sidebar" aria-label="Categorii de echipamente">
+              <span className="dns-equipment-sidebar-title">CATEGORII</span>
+              {equipmentCategories.map((item) => <button key={item.id} type="button" className={`dns-equipment-category${activeEquipment === item.id ? " is-active" : ""}`} onClick={() => setActiveEquipment(item.id)} aria-current={activeEquipment === item.id ? "true" : undefined}><span>{item.label}</span><ChevronRight size={16} /></button>)}
+            </nav>
+            <article className="dns-equipment-detail" aria-live="polite">
+              <div className="dns-equipment-detail-icon"><Zap size={22} /></div>
+              <span className="dns-equipment-detail-kicker">ECHIPAMENTE DNS ENERGY</span>
+              <h3>{selectedEquipment.label}</h3>
+              <p>{selectedEquipment.text}</p>
+              <strong>{selectedEquipment.brands}</strong>
+              <small>Disponibilitatea, configurația și oferta se confirmă în funcție de proiect.</small>
+              <a href="#contact" className="dns-equipment-quote">Solicitați detalii și ofertă <ArrowRight size={16} /></a>
+            </article>
           </div>
           <div className="dns-equipment-partner"><p>Prețurile și catalogul extins sunt disponibile doar instalatorilor și partenerilor autorizați.</p><Link to="/app/catalog-echipamente" className="dns-equipment-partner-link">Acces instalatori și parteneri <ArrowUpRight size={15} /></Link></div>
           <figure className="dns-equipment-gallery"><img src="/dns-equipment-showcase.jpg" alt="Exemple ilustrative de invertor solar, baterii, panouri fotovoltaice, stații de încărcare și tablou electric" loading="lazy" /><figcaption>Imagini ilustrative. Mărcile și configurația echipamentelor se stabilesc în funcție de proiect.</figcaption></figure>
@@ -177,5 +200,6 @@ export default function PublicHome() {
     </main>
   );
 }
+
 
 
