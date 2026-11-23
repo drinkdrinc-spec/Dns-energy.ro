@@ -133,7 +133,13 @@ export default function PublicHome() {
       <div className={`dns-services-scrim${servicesMenuOpen ? " is-open" : ""}`} onClick={closeServicesMenu} aria-hidden="true" />
       <aside className={`dns-services-drawer${servicesMenuOpen ? " is-open" : ""}`} id="dns-services-drawer" aria-label="Meniu Ce facem" aria-hidden={!servicesMenuOpen}>
         <div className="dns-services-drawer-head"><div><span>DNS ENERGY</span><strong>Ce facem</strong></div><button type="button" onClick={closeServicesMenu} aria-label="Închide meniul"><X size={19} /></button></div>
-        <nav aria-label="Serviciile DNS Energy">{services.map((item, index) => <button key={item.title} type="button" className={`dns-services-category${activeService === index ? " is-active" : ""}`} onClick={() => { setActiveService(index); closeServicesMenu(); document.getElementById("servicii")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><span>{item.menuTitle}</span><ChevronRight size={16} /></button>)}</nav>
+        <nav aria-label="Serviciile DNS Energy">{services.map((item, index) => <button key={item.title} type="button" className={`dns-services-category${activeService === index ? " is-active" : ""}`} onClick={() => setActiveService(index)} aria-current={activeService === index ? "true" : undefined}><span>{item.menuTitle}</span><ChevronRight size={16} /></button>)}</nav>
+        <article className="dns-services-drawer-detail" aria-live="polite">
+          <span className="dns-service-icon"><selectedService.icon size={19} /></span>
+          <span className="dns-service-detail-kicker">SERVICII DNS ENERGY</span>
+          <h3>{selectedService.title}</h3>
+          <p>{selectedService.text}</p>
+        </article>
         <a href="#contact" onClick={closeServicesMenu}>Solicitați o ofertă <ArrowRight size={15} /></a>
       </aside>
       <header className="dns-site-header">
@@ -163,21 +169,6 @@ export default function PublicHome() {
           <EquipmentPreview />
         </div>
         <div className="dns-hero-bottom"><span>PLANIFICĂ</span><i /><span>DOCUMENTEAZĂ</span><i /><span>FINALIZEAZĂ</span></div>
-      </section>
-
-      <section className="dns-services" id="servicii">
-        <div className="dns-section-label">CE FACEM</div>
-        <div className="dns-services-heading"><h2>Servicii pentru proiecte<br /><em>energetice și electrice.</em></h2><p>Suntem o firmă atestată ANRE. De la proiectare și documentație până la execuție, abordăm fiecare lucrare cu atenție la cerințele tehnice și la specificul obiectivului.</p></div>
-        <div className="dns-services-browser">
-          <article className="dns-service-detail" aria-live="polite">
-            <span className="dns-service-icon"><selectedService.icon size={22} /></span>
-            <span className="dns-service-detail-kicker">SERVICII DNS ENERGY</span>
-            <h3>{selectedService.title}</h3>
-            <p>{selectedService.text}</p>
-            <a href="#contact" className="dns-service-detail-link">Solicitați detalii <ArrowRight size={16} /></a>
-          </article>
-        </div>
-        <a href="#contact" className="dns-services-link">Solicitați o discuție despre proiectul dumneavoastră <ArrowRight size={16} /></a>
       </section>
 
       <section className="dns-equipment" id="echipamente">
