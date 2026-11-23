@@ -471,7 +471,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         </section>}
         {notes.altele?.length > 0 && <div className="rounded-lg bg-slate-50 p-3 text-xs"><b>Documente suplimentare:</b><ul className="list-disc pl-5">{notes.altele.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
         <div className="flex justify-between gap-2 pt-2"><div>{step > 0 && <Btn type="button" variant="secondary" onClick={() => setStep((current) => current - 1)} disabled={!!busy}>Înapoi</Btn>}</div><div className="flex gap-2"><Btn type="button" variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
-          {step < 2 ? <Btn type="button" onClick={() => setStep((current) => current + 1)} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn type="button" onClick={create} disabled={!!busy} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…” : "Creează dosarul"}</Btn>}</div></div>
+          {step < 2 ? <Btn type="button" onClick={() => setStep((current) => current + 1)} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn type="button" onClick={create} disabled={!!busy} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…" : "Creează dosarul"}</Btn>}</div></div>
       </DialogContent>
     </Dialog>
   </>;

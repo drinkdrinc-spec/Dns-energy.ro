@@ -1765,9 +1765,8 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
             fields = await extract_pdf(data, ct, doc_type, use_ai=use_gpt)
     except Exception as e:
         logger.warning("Document extraction incomplete; preserving uploaded file (type=%s, mime=%s): %s", doc_type, ct, e)
-        # A failed or slow extraction must not make a phone upload disappear.
-        # Keep the original in the dossier's files list so the installer can
-        # continue, review it, and fill any fields the reader could not find.
+        # Keep the original file attached so phone uploads are not lost when
+        # automatic reading times out or cannot identify the document.
         fields = {}
         extraction_error = str(e) if isinstance(e, ValueError) else "Citirea automată nu s-a încheiat. Fișierul a fost atașat; verifică-l și completează datele manual."
     expected = {
