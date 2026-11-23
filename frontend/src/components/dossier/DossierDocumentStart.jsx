@@ -267,7 +267,10 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     })));
     const workflowBlockers = requiredDataMissing.map((field) => `Lipsește ${field}`);
     const payload = { ...values, doc_date: values.doc_date || new Date().toISOString().slice(0, 10), client_name: values.client_name.trim(), files: filesForDossier,
-      workflow_status: requiredDataMissing.length ? "Date de completat" : "Dosar în pregătire",
+      // Follow the Reenergy flow: create the dossier first, then complete its
+      // technical sections. Missing values stay visible as blockers without
+      // labeling the entire dossier a draft.
+      workflow_status: "Dosar în pregătire",
       workflow_blockers: workflowBlockers,
       notes: [...Object.values(notes).flat(), values.notes].filter(Boolean).join("\n") };
     // Reuse the idempotency key only when retrying the exact same intake.
@@ -292,7 +295,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         `Dosar nou creat. Există deja dosarul ${data.related_dossier.number || ""} pentru acest POD; am păstrat ambele cereri.`
       );
       else toast.success(requiredDataMissing.length
-        ? `Ciornă creată. Completează: ${requiredDataMissing.join(", ")}.`
+        ? `Dosarul a fost creat. Completează în dosar: ${requiredDataMissing.join(", ")}.`
         : "Clientul și dosarul au fost create cu documentele în opis.");
       setOpen(false); setStep(0);
       createRequest.current = { id: "", fingerprint: "" };
