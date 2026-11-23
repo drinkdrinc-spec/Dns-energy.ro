@@ -138,6 +138,13 @@ async def diu_package(item_id: str, authorization: str = Header(None), auth: str
     used = 0
     max_total = 100 * 1024 * 1024
     out = io.BytesIO()
+    signed_sources = DIU_SUPPORT.collect_signed_sources(
+        keys, signed, DD.TITLES, S.get_object, max_total
+    )
+    used = signed_sources["used"]
+    client_issues.extend(signed_sources["issues"])
+    if signed_sources["issues"]:
+        draft = True
 
     def append_evidence(data: bytes, content_type: str, label: str):
         nonlocal draft
@@ -156,6 +163,11 @@ async def diu_package(item_id: str, authorization: str = Header(None), auth: str
 
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
         manifest = ["Pachet DI-U — formularele generate sunt urmate de documentele clientului, executantului și echipamentelor."]
+        # The combined PDF is a newly assembled reading copy. Preserve each
+        # signed source PDF byte-for-byte so its signature can be verified.
+        for item in signed_sources["files"]:
+            bundle.writestr(item["filename"], item["data"])
+            manifest.append(f"Original semnat: {item['filename']} — verificați semnătura în acest fișier; PDF-ul complet este o copie compilată.")
         if draft:
             manifest.append("ATENȚIE: dosarul PDF este ciornă; lipsesc date reale necesare completării/verificării.")
         for item in client_docs:
@@ -218,7 +230,7 @@ async def diu_package(item_id: str, authorization: str = Header(None), auth: str
             if report:
                 for page in PdfReader(io.BytesIO(report)).pages:
                     writer.add_page(page)
-            manifest.insert(1, "PDF-ul include o listă de verificare finală; documentele semnate au fost păstrate nemodificate.")
+            manifest.insert(1, "PDF-ul include o listă de verificare finală. Originalele semnate sunt incluse separat în Documente semnate; verificați semnătura în original, nu în PDF-ul compilat.")
         pdf_out = io.BytesIO()
         writer.write(pdf_out)
         bundle.writestr("DI-U/00_Dosar_DI-U.pdf" if not draft else "DI-U/00_Dosar_DI-U_CIORNA.pdf", pdf_out.getvalue())

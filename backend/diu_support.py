@@ -46,3 +46,24 @@ def supporting_status(record: dict, settings: dict, instrument: dict | None = No
                 available.append(f"{label} — {instrument.get('maker_model') or instrument.get('name') or 'aparat'}")
     return {"available": available, "missing": missing}
 
+
+def collect_signed_sources(keys, signed, titles, get_object, max_total, used=0, limit_label="100 MB"):
+    """Read exact signed source PDFs so they can accompany a compiled copy."""
+    files, issues = [], []
+    for key in keys:
+        source = signed.get(key) or {}
+        path = source.get("storage_path")
+        if not path:
+            continue
+        label = titles.get(key, key)
+        try:
+            data, _content_type = get_object(path)
+            if used + len(data) > max_total:
+                issues.append(f"Document semnat — {label} a fost omis, limita de {limit_label} a pachetului a fost atinsă.")
+                continue
+            used += len(data)
+            files.append({"key": key, "title": label, "filename": f"Documente semnate/{key}.pdf", "data": data})
+        except Exception:
+            issues.append(f"Document semnat — {label} nu a putut fi citit din arhivă.")
+    return {"files": files, "issues": issues, "used": used}
+
