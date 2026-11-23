@@ -261,11 +261,6 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       setStep(0);
       return toast.error("Numele clientului este necesar pentru creare. Completează-l sau încarcă CI-ul.");
     }
-    if (requiredDataMissing.length) {
-      const missingClientIdentity = requiredDataMissing.some((item) => item === "CNP / CUI");
-      setStep(missingClientIdentity ? 0 : 1);
-      return toast.error(`Completează datele obligatorii înainte de creare: ${requiredDataMissing.join(", ")}.`);
-    }
     const filesForDossier = Object.entries(files).flatMap(([kind, list]) => list.map((f) => ({
       ...f, kind,
       doc_type: ({ ci: "Carte de identitate", factura: "Factură energie", cf: "Carte funciară", altele: "Document suplimentar" })[kind],
@@ -468,6 +463,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     </Dialog>
   </>;
 }
+
 
 
 
