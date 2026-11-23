@@ -982,10 +982,22 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
         except Exception as e:
             logger.error(f"auto approval request: {e}")
     doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
+    post_save_warnings = []
     if module == "prosumator":
-        await sync_catalog_files_to_documents(user, doc)
+        try:
+            await sync_catalog_files_to_documents(user, doc)
+        except Exception as e:
+            # Saving the dossier is the primary operation. A temporary supplier PDF
+            # outage must not turn a successful save into a client-visible failure.
+            logger.exception("Catalog document sync failed after prosumer dossier update %s: %s", item_id, e)
+            post_save_warnings.append(
+                "Dosarul a fost salvat. Unele fișe tehnice nu s-au putut atașa acum; reîncearcă sincronizarea din cardul documentelor."
+            )
         doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
-    return clean(doc)
+    response = clean(doc)
+    if post_save_warnings:
+        response["intake_warnings"] = post_save_warnings
+    return response
 
 @api_router.patch("/data/{module}/{item_id}/status")
 async def update_dossier_workflow_status(module: str, item_id: str, request: Request, user: dict = Depends(get_current_user)):
