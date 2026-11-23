@@ -249,8 +249,14 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   };
 
   const create = async () => {
-    if (clientIdentityMismatch) return toast.error("CNP/CUI din acte diferă de clientul selectat. Alege «Creează client separat» sau verifică actele înainte de salvare.");
-    if (!values.client_name.trim()) return toast.error("Completează sau corectează numele clientului din CI.");
+    if (clientIdentityMismatch) {
+      setStep(0); setClientDetailsOpen(true);
+      return toast.error("CNP/CUI diferă de clientul selectat. Verifică actele sau alege «Creează client separat».");
+    }
+    if (!values.client_name.trim()) {
+      setStep(0); setClientDetailsOpen(true);
+      return toast.error("Numele clientului este necesar pentru creare. Completează-l sau încarcă CI-ul.");
+    }
     const filesForDossier = Object.entries(files).flatMap(([kind, list]) => list.map((f) => ({
       ...f, kind,
       doc_type: ({ ci: "Carte de identitate", factura: "Factură energie", cf: "Carte funciară", altele: "Document suplimentar" })[kind],
@@ -452,7 +458,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           </label>)}
           {requiredDataMissing.length > 0 ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900" role="status" data-testid="intake-missing-data">
             <b>Ciornă — date de completat</b>
-            <p className="mt-1">Dosarul poate fi salvat acum și completat ulterior. Pentru pregătirea depunerii lipsesc: {requiredDataMissing.join(", ")}.</p>
+            <p className="mt-1">{!values.client_name.trim() ? "Completează numele clientului pentru a crea dosarul. " : "Dosarul poate fi salvat acum și completat ulterior. "}Pentru pregătirea depunerii lipsesc: {requiredDataMissing.filter((field) => field !== "numele clientului").join(", ") || (values.client_name.trim() ? "nimic din datele de bază" : "datele de identificare ale clientului")}.</p>
           </div> : <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900" role="status" data-testid="intake-data-ready">
             <b>Datele de bază sunt prezente.</b>
             <p className="mt-1">Verifică valorile extrase și documentele înainte de pregătirea pentru depunere.</p>
@@ -461,7 +467,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         </section>}
         {notes.altele?.length > 0 && <div className="rounded-lg bg-slate-50 p-3 text-xs"><b>Documente suplimentare:</b><ul className="list-disc pl-5">{notes.altele.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
         <div className="flex justify-between gap-2 pt-2"><div>{step > 0 && <Btn variant="secondary" onClick={() => setStep((current) => current - 1)} disabled={!!busy}>Înapoi</Btn>}</div><div className="flex gap-2"><Btn variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
-          {step < 2 ? <Btn onClick={() => { if (step === 0 && !values.client_name.trim()) return toast.error("Încarcă CI-ul sau completează numele clientului pentru a continua."); setStep((current) => current + 1); }} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn onClick={create} disabled={!!busy || !values.client_name.trim() || clientIdentityMismatch} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…" : "Creează dosarul"}</Btn>}</div></div>
+          {step < 2 ? <Btn onClick={() => setStep((current) => current + 1)} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn onClick={create} disabled={!!busy} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…" : "Creează dosarul"}</Btn>}</div></div>
       </DialogContent>
     </Dialog>
   </>;
