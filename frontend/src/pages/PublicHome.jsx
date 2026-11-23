@@ -23,56 +23,67 @@ const features = [
 
 const services = [
   {
+    menuTitle: "Atestare ANRE",
     icon: ShieldCheck,
     title: "Firmă atestată ANRE",
     text: "DNS HOSTESS este atestată ANRE pentru activitățile din domeniul său de autorizare. Abordăm fiecare lucrare în limitele atestatului și ale cerințelor tehnice aplicabile.",
   },
   {
+    menuTitle: "Fotovoltaice",
     icon: Sun,
     title: "Instalații fotovoltaice",
     text: "Proiectăm și realizăm sisteme on-grid, hibride și off-grid pentru locuințe, spații comerciale și obiective industriale, cu sau fără baterii și soluții de backup.",
   },
   {
+    menuTitle: "Instalații electrice",
     icon: Cable,
     title: "Instalații electrice și industriale",
     text: "Executăm instalații electrice pentru clădiri noi și existente, hale și spații de producție, inclusiv tablouri, circuite, protecții și modernizări.",
   },
   {
+    menuTitle: "Tablouri antiinsularizare",
     icon: ShieldCheck,
     title: "Tablouri de antiinsularizare",
     text: "Configurăm și realizăm tablouri de antiinsularizare pentru instalații fotovoltaice de toate capacitățile, dimensionate la proiect și echipamente.",
   },
   {
+    menuTitle: "Stații de încărcare",
     icon: PlugZap,
     title: "Stații de încărcare",
     text: "Proiectăm și instalăm stații de încărcare casnice și industriale, potrivite infrastructurii electrice și modului de utilizare.",
   },
   {
+    menuTitle: "Echipamente",
     icon: Sun,
     title: "Echipamente fotovoltaice",
     text: "Furnizăm panouri, invertoare, baterii și componente pentru sisteme rezidențiale și industriale, în funcție de proiect.",
   },
   {
+    menuTitle: "Structuri de montaj",
     icon: Cable,
     title: "Structuri de montaj",
     text: "Configurăm structuri pentru montajul panourilor pe acoperiș sau la sol, adaptate amplasamentului și tipului de învelitoare.",
   },
   {
+    menuTitle: "Proiectare branșamente",
     icon: DraftingCompass,
     title: "Proiectare branșamente și rețele electrice",
     text: "Proiectăm branșamente, linii electrice și instalații pentru obiective rezidențiale, comerciale și industriale, în funcție de cerințele proiectului.",
   },
   {
+    menuTitle: "Lucrări electrice",
     icon: Zap,
     title: "Lucrări și soluții electrice",
     text: "Realizăm extinderi, modificări și integrarea echipamentelor, urmărind o soluție coerentă și potrivită cerințelor proiectului.",
   },
   {
+    menuTitle: "Dosare prosumator / ANRE",
     icon: FolderKanban,
     title: "Dosare de prosumator și documentație ANRE",
     text: "Prin aplicația DNS Energy, instalatorii pregătesc dosare de prosumator și dosare pentru atestarea operatorilor economici, cu datele firmei și documentele organizate într-un singur loc.",
   },
   {
+    menuTitle: "Programe și achiziții",
     icon: FileCheck2,
     title: "Proiecte cu finanțare și achiziții publice",
     text: "Lucrăm la proiecte fotovoltaice și electrice derulate prin programe precum PNRR, AFIR și AFM, precum și la achiziții prin SEAP/SICAP. Oferim sprijin tehnic de la definirea soluției și documentația lucrării până la execuție și punere în funcțiune, în funcție de cerințele fiecărui apel sau proceduri.",
@@ -108,8 +119,10 @@ function EquipmentPreview() {
 export default function PublicHome() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeEquipment, setActiveEquipment] = useState(equipmentCategories[0].id);
+  const [activeService, setActiveService] = useState(0);
   const closeMenu = () => setMenuOpen(false);
   const selectedEquipment = equipmentCategories.find((item) => item.id === activeEquipment) ?? equipmentCategories[0];
+  const selectedService = services[activeService] ?? services[0];
 
   return (
     <main className="dns-public">
@@ -119,7 +132,7 @@ export default function PublicHome() {
           <Link to="/" className="dns-brand-link" aria-label="DNS Energy, pagina principală"><Brand /></Link>
           <button className="dns-mobile-menu" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Închide meniul" : "Deschide meniul"} aria-expanded={menuOpen}>{menuOpen ? <X size={21} /> : <Menu size={21} />}</button>
           <nav className={`dns-site-nav${menuOpen ? " is-open" : ""}`} aria-label="Navigare principală">
-            <a href="#servicii" onClick={closeMenu}>Instalații</a>
+            <a href="#servicii" onClick={closeMenu}>Ce facem</a>
             <a href="#echipamente" onClick={closeMenu}>Echipamente</a>
             <a href="#despre-noi" onClick={closeMenu}>Despre noi</a>
             <a href="#contact" onClick={closeMenu}>Contact</a>
@@ -147,7 +160,19 @@ export default function PublicHome() {
       <section className="dns-services" id="servicii">
         <div className="dns-section-label">CE FACEM</div>
         <div className="dns-services-heading"><h2>Servicii pentru proiecte<br /><em>energetice și electrice.</em></h2><p>Suntem o firmă atestată ANRE. De la proiectare și documentație până la execuție, abordăm fiecare lucrare cu atenție la cerințele tehnice și la specificul obiectivului.</p></div>
-        <div className="dns-services-grid">{services.map(({ icon: Icon, title, text }, index) => <article className="dns-service-card" key={title}><span className="dns-service-icon"><Icon size={22} /></span><span className="dns-service-number">0{index + 1}</span><h3>{title}</h3><p>{text}</p></article>)}</div>
+        <div className="dns-services-browser">
+          <nav className="dns-services-sidebar" aria-label="Servicii DNS Energy">
+            <span className="dns-services-sidebar-title">SERVICII</span>
+            {services.map((item, index) => <button key={item.title} type="button" className={`dns-services-category${activeService === index ? " is-active" : ""}`} onClick={() => setActiveService(index)} aria-current={activeService === index ? "true" : undefined}><span>{item.menuTitle}</span><ChevronRight size={16} /></button>)}
+          </nav>
+          <article className="dns-service-detail" aria-live="polite">
+            <span className="dns-service-icon"><selectedService.icon size={22} /></span>
+            <span className="dns-service-detail-kicker">SERVICII DNS ENERGY</span>
+            <h3>{selectedService.title}</h3>
+            <p>{selectedService.text}</p>
+            <a href="#contact" className="dns-service-detail-link">Solicitați detalii <ArrowRight size={16} /></a>
+          </article>
+        </div>
         <a href="#contact" className="dns-services-link">Solicitați o discuție despre proiectul dumneavoastră <ArrowRight size={16} /></a>
       </section>
 
