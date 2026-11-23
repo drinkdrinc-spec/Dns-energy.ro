@@ -1752,6 +1752,7 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
     if doc_type not in {"auto", "ci", "factura", "cf", "other"}:
         raise HTTPException(status_code=400, detail="Tip de document invalid")
     use_gpt = bool((os.environ.get("OPENAI_API_KEY") or "").strip()) and has_feature(user, "ai_gpt") and "ai_gpt" not in user["plan"].get("disabled", [])
+    extraction_error = None
     try:
         if ct in office_types:
             if use_gpt:
@@ -1763,9 +1764,12 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
         else:
             fields = await extract_pdf(data, ct, doc_type, use_ai=use_gpt)
     except Exception as e:
-        logger.error(f"AI extract failed: {e}")
-        status = 422 if isinstance(e, ValueError) else 502
-        raise HTTPException(status_code=status, detail=str(e) if isinstance(e, ValueError) else "Nu am putut citi documentul. Încearcă din nou.")
+        logger.warning("Document extraction incomplete; preserving uploaded file (type=%s, mime=%s): %s", doc_type, ct, e)
+        # A failed or slow extraction must not make a phone upload disappear.
+        # Keep the original in the dossier's files list so the installer can
+        # continue, review it, and fill any fields the reader could not find.
+        fields = {}
+        extraction_error = str(e) if isinstance(e, ValueError) else "Citirea automată nu s-a încheiat. Fișierul a fost atașat; verifică-l și completează datele manual."
     expected = {
         "ci": [
             (("client_name",), "numele titularului"),
@@ -1793,8 +1797,10 @@ async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"),
     warning = None
     if missing_fields:
         warning = "Lipsesc date care trebuie verificate sau completate: " + ", ".join(missing_fields) + "."
+    if extraction_error:
+        warning = f"{extraction_error} {warning or ''}".strip()
     stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
-    engine = fields.pop("_engine", "OpenAI (GPT-4.1 mini)")
+    engine = fields.pop("_engine", "Citire manuală necesară" if extraction_error else "OpenAI (GPT-4.1 mini)")
     return {"data": fields, "engine": engine, "warning": warning, "missing_fields": missing_fields,
             "file": {"storage_path": stored["path"], "original_filename": file.filename,
                      "content_type": ct, "size": len(data)}}
