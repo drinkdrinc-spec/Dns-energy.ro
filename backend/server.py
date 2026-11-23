@@ -3487,7 +3487,7 @@ async def dossier_item(item_id: str, key: str, request: Request, user: dict = De
 @api_router.get("/dossier/{item_id}/file/{key}")
 async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int = 0, download: int = 0, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
-    rec, client, settings, info = await dossier_ctx(user, item_id)
+    rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
     p = next((x for x in info["positions"] if x["key"] == key), None)
     if key == "opis":
         if not info.get("complete"):
@@ -3495,6 +3495,11 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         p = {"source": "generat", "docs": ["declaratie_autenticitate"], "key": "opis"}
     if not p:
         raise HTTPException(status_code=404, detail="Poziție inexistentă")
+    if p.get("source") == "generat" and p.get("missing"):
+        missing = ", ".join(p.get("missing") or [])
+        raise HTTPException(status_code=409, detail=f"Completează {missing} înainte de generarea documentului {p.get('title') or key}.")
+    if p.get("_official_form_unavailable"):
+        raise HTTPException(status_code=409, detail=f"Formularul oficial pentru {p.get('title') or key} nu este disponibil. Atașează formularul curent al operatorului.")
     name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
     if fmt == "docx":
         if p.get("official_operator_form"):
