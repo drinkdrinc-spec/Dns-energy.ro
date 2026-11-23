@@ -138,6 +138,11 @@ export function DossierExtras({ form, setVal, compact = false, part = "all", onS
         </div>
         <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Verdictul și observațiile se completează numai după comunicarea operatorului; nu sunt completate automat.</p>
       </div>}
+      {!compact && part === "commissioning" && onSave && <div className="lg:col-span-2 flex justify-end">
+        <button type="button" className="rounded-lg px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60" style={{ background: "var(--green)" }} onClick={onSave} disabled={saving} data-testid="save-commissioning-card">
+          {saving ? "Se salvează…" : "Salvează"}
+        </button>
+      </div>}
     </div>
   );
 }

@@ -1086,7 +1086,7 @@ export default function ModulePage({ moduleKey }) {
             <details id="dossier-section-commissioning" className="scroll-mt-24 rounded-2xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-commissioning-card">
               <summary className="flex cursor-pointer list-none items-center gap-2 border-b px-4 py-3 sm:px-5" style={{ borderColor: "var(--line)" }}><span className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--green)" }} /><div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--green)" }}>6. Punere în funcțiune</p><h3 className="text-sm font-bold">Serii echipamente și PV teste / PIF</h3></div><ProsumerStepStatus complete={prosumerProgress?.completed[5]} testId="guided-step-status-6" /></summary>
               {editId && <div className="mt-4 border-b pb-4" style={{ borderColor: "var(--line)" }}><PifPanel id={editId} /></div>}
-              <DossierExtras form={form} setVal={setVal} part="commissioning" />
+              <DossierExtras form={form} setVal={setVal} part="commissioning" onSave={editId ? () => saveSection("Probe și PIF") : undefined} saving={sectionSaving} />
             </details>
           </div>}
           {key === "power" && <PowerDossier id={editId} form={form} setVal={setVal} />}
