@@ -1034,6 +1034,7 @@ async def update_dossier_workflow_status(module: str, item_id: str, request: Req
     if reset_response_followup:
         update_set["submitted_at"] = updated_at
         update_set["response_followup_at"] = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        update_set["operator_stage"] = status
         history_entry["event"] = "Depunere înregistrată; reper intern de urmărire la 30 de zile"
     result = await db[module].update_one(
         {**scope_q(user, module), "id": item_id},
@@ -1044,7 +1045,7 @@ async def update_dossier_workflow_status(module: str, item_id: str, request: Req
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     await audit(user, "actualizare stadiu flux", module, item_id, [status_field])
-    return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at, "submitted_at": update_set.get("submitted_at", rec.get("submitted_at")), "response_followup_at": update_set.get("response_followup_at", rec.get("response_followup_at")), "history_entry": history_entry}
+    return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at, "submitted_at": update_set.get("submitted_at", rec.get("submitted_at")), "response_followup_at": update_set.get("response_followup_at", rec.get("response_followup_at")), "operator_stage": update_set.get("operator_stage", rec.get("operator_stage")), "history_entry": history_entry}
 
 
 
