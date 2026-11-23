@@ -393,11 +393,22 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.val(cx + 10, detail_y, "I max ", bt.get("i_max"), battery_unit, size=4.4, w=27)
         if (inv.get("backup") or {}).get("enabled"):
             b = inv["backup"]
+            grid = ((rec.get("cef") or {}).get("grid") or {})
+            backup_circuits = backup_teg_circuits(grid)
+            mode = str(grid.get("backup_mode") or "").casefold()
+            if "total" in mode:
+                eps_target = "LOAD/EPS → tot TEG"
+            elif "parțial" in mode or "partial" in mode:
+                selected_ids = {id(c) for c in backup_circuits}
+                eps_names = [str(c.get("name") or f"C{j + 1}") for j, c in enumerate((grid.get("circuits") or [])) if isinstance(c, dict) and id(c) in selected_ids]
+                eps_target = "LOAD/EPS → " + (", ".join(eps_names) if eps_names else "TEG: neselectat")
+            else:
+                eps_target = str(b.get("circuits") or "circuite EPS — de configurat")
             S.wire(cx + hh, cy - 10, 152, cy - 10, "backup"); S.wire(152, cy - 10, 152, cy - 16, "backup"); S.wire(152, cy - 16, 182, cy - 16, "backup")
             S.switch(187, cy - 16, "Q"); S.wire(192, cy - 16, 200, cy - 16, "backup")
             S.enclosure(176, cy - 24, 228, cy - 9, "-BMP LOAD", "protecție backup / EPS", color=RED)
             S.val(202, cy - 16.8, "", b.get("breaker"), size=4.6, w=25)
-            S.text(178, cy - 22.6, str(b.get("circuits") or "circuite EPS"), 4.2, color=GREY, w=48)
+            S.text(178, cy - 22.6, eps_target, 4.2, color=GREY, w=48)
         # AC side
         ina = n(ac.get("breaker_a"))
         if ina:
@@ -649,11 +660,26 @@ def protection_settings_table(S, x, y, w, h, rec):
         S.text(x + w - 16, yy, sec if sec not in (None, "") else "—", 3.75, color=INK, w=14)
 
 
+def backup_teg_circuits(grid):
+    """Return the circuit rows explicitly supplied from LOAD/EPS by the saved TEG mode."""
+    circuits = [c for c in (grid.get("circuits") or []) if isinstance(c, dict)]
+    mode = str(grid.get("backup_mode") or "").casefold()
+    if "total" in mode:
+        return circuits
+    if "parțial" in mode or "partial" in mode:
+        return [c for c in circuits if bool(c.get("backup"))]
+    return []
+
+
 def teg_schedule(S, area, rec):
     """Compact TEG circuit schedule placed on the same drawing sheet as the SLD."""
     x1, y1, x2, y2 = area
     grid = (rec.get("cef") or {}).get("grid") or {}
     circuits = [c for c in (grid.get("circuits") or []) if isinstance(c, dict)]
+    backup_mode = str(grid.get("backup_mode") or "").casefold()
+    backup_configured = "total" in backup_mode or "parțial" in backup_mode or "partial" in backup_mode
+    backup_circuits = backup_teg_circuits(grid)
+    backup_ids = {id(c) for c in backup_circuits}
     if not circuits:
         return
     # Match the reference drawing: show the TEG board, RCD and each breaker as
@@ -678,8 +704,13 @@ def teg_schedule(S, area, rec):
         S.wire(x + 37, cy, x + 43, cy)
         name = circuit.get("name") or f"Circuit {i + 1}"
         rating = " · ".join(str(v) for v in (circuit.get("breaker"), circuit.get("poles"), circuit.get("rcd")) if v)
-        label = f"C{i + 1}  {name}" + (f"  ·  {rating}" if rating else "")
+        source = (" · LOAD/EPS" if id(circuit) in backup_ids else " · rețea") if backup_configured else ""
+        label = f"C{i + 1}  {name}" + (f"  ·  {rating}" if rating else "") + source
         S.text(x + 45, cy - 1.2, label, 4.15, w=w - 48)
+    if backup_circuits:
+        names = [str(c.get("name") or f"C{i + 1}") for i, c in enumerate(circuits) if id(c) in backup_ids]
+        source_label = "LOAD/EPS → TEG: " + (", ".join(names) if len(names) <= 4 else f"{len(names)} circuite selectate")
+        S.text(x + 2, y + 5.4, source_label, 3.7, True, color=RED, w=w - 4)
     S.text(x + 2, y + 1.4, "Valorile necompletate nu sunt presupuse.", 3.7, color=GREY, w=w - 4)
 
 
