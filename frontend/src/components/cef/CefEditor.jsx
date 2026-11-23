@@ -89,6 +89,7 @@ export function CefEditor({ value, onChange, onSave, saving = false }) {
   const [supplierQuery, setSupplierQuery] = useState("");
   const [supplierResults, setSupplierResults] = useState([]);
   const [supplierMessage, setSupplierMessage] = useState("");
+  const [supplierMarkup, setSupplierMarkup] = useSupplierMarkup();
   const [supplierBusy, setSupplierBusy] = useState(false);
   const set = (patch) => onChange({ ...cef, ...patch });
   const invs = cef.inverters || [];
