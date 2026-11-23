@@ -507,6 +507,21 @@ export default function ModulePage({ moduleKey }) {
       setStatusSavingId("");
     }
   };
+  const markProsumerSubmitted = async () => {
+    if (!editId || statusSavingId) return;
+    const status = "Depus la operatorul de distribuție";
+    setStatusSavingId(editId);
+    try {
+      const { data } = await api.patch("/data/prosumator/" + encodeURIComponent(editId) + "/status", { status, reset_response_followup: true });
+      setForm((current) => ({ ...current, workflow_status: data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at, workflow_history: [...(current.workflow_history || []), data.history_entry].filter(Boolean) }));
+      setItems((current) => current.map((row) => row.id === editId ? { ...row, workflow_status: data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at } : row));
+      toast.success("Depunerea a fost înregistrată. Am setat reperul intern de urmărire la 30 de zile.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Depunerea nu a putut fi înregistrată.");
+    } finally {
+      setStatusSavingId("");
+    }
+  };
   const setVal = (name, value) => {
     if (key === "pram" && name === "client_name") {
       const client = (refOptions.clients || []).find((item) => item.label === value);
@@ -1052,7 +1067,13 @@ export default function ModulePage({ moduleKey }) {
                 <div><h3 className="text-sm font-bold">5. Depunere și distribuitor</h3><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Urmărește etapa curentă și ce mai trebuie pregătit pentru operator.</p></div>
                 <div className="flex flex-wrap items-center gap-2"><span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: form.operator_stage ? "#eaf1ff" : "#f1f5f9", color: form.operator_stage ? "var(--blue)" : "var(--muted)" }} data-testid="prosumer-stage-count">{form.operator_stage ? `Etapa ${currentOdStage + 1} din ${PROSUMER_OD_STAGES.length}` : "Etapă nealeasă"}</span><ProsumerStepStatus complete={prosumerProgress?.completed[4]} testId="guided-step-status-5" /></div>
               </summary>
-              <div className="space-y-4 px-4 py-4 sm:px-5"><ClientConversation dossierId={editId} /><DossierActivity dossierId={editId} workflowHistory={form.workflow_history} /></div>
+              <div className="space-y-4 px-4 py-4 sm:px-5">
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "#fbfcfe" }}>
+                  <button type="button" onClick={markProsumerSubmitted} disabled={Boolean(statusSavingId)} className="min-h-10 rounded-lg px-4 text-sm font-bold text-white disabled:opacity-60" style={{ background: "var(--green)" }} data-testid="prosumer-mark-submitted">{statusSavingId ? "Se salvează…" : "Am depus la distribuitor"}</button>
+                  {form.submitted_at && <p className="text-xs" style={{ color: "var(--muted)" }}>Depus la {new Date(form.submitted_at).toLocaleDateString("ro-RO")} · reper intern de urmărire: {form.response_followup_at ? new Date(form.response_followup_at).toLocaleDateString("ro-RO") : "—"}</p>}
+                </div>
+                <ClientConversation dossierId={editId} /><DossierActivity dossierId={editId} workflowHistory={form.workflow_history} />
+              </div>
               <div className="grid grid-cols-9 gap-1.5" role="group" aria-label="Etapele dosarului la operator">
                 {PROSUMER_OD_STAGES.map((stage, index) => <button key={stage} type="button" title={stage} aria-label={`Etapa ${index + 1}: ${stage}`} aria-pressed={form.operator_stage === stage} onClick={() => setVal("operator_stage", stage)} className="min-h-9 rounded-lg border text-xs font-bold transition" style={{ borderColor: form.operator_stage === stage ? "var(--blue)" : "var(--line)", background: form.operator_stage === stage ? "var(--blue)" : (form.operator_stage && index < currentOdStage ? "#eaf1ff" : "#fff"), color: form.operator_stage === stage ? "#fff" : (form.operator_stage && index < currentOdStage ? "var(--blue)" : "var(--muted)") }} data-testid={`prosumer-stage-${index + 1}`}>{index + 1}</button>)}
               </div>
