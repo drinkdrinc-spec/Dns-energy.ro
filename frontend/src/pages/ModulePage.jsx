@@ -513,8 +513,8 @@ export default function ModulePage({ moduleKey }) {
     setStatusSavingId(editId);
     try {
       const { data } = await api.patch("/data/prosumator/" + encodeURIComponent(editId) + "/status", { status, reset_response_followup: true });
-      setForm((current) => ({ ...current, workflow_status: data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at, workflow_history: [...(current.workflow_history || []), data.history_entry].filter(Boolean) }));
-      setItems((current) => current.map((row) => row.id === editId ? { ...row, workflow_status: data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at } : row));
+      setForm((current) => ({ ...current, workflow_status: data.status, operator_stage: data.operator_stage || data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at, workflow_history: [...(current.workflow_history || []), data.history_entry].filter(Boolean) }));
+      setItems((current) => current.map((row) => row.id === editId ? { ...row, workflow_status: data.status, operator_stage: data.operator_stage || data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at } : row));
       toast.success("Depunerea a fost înregistrată. Am setat reperul intern de urmărire la 30 de zile.");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Depunerea nu a putut fi înregistrată.");
