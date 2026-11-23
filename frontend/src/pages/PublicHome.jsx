@@ -141,7 +141,6 @@ export default function PublicHome() {
           <Link to="/" className="dns-brand-link" aria-label="DNS Energy, pagina principală"><Brand /></Link>
           <button className="dns-mobile-menu" type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Închide meniul" : "Deschide meniul"} aria-expanded={menuOpen}>{menuOpen ? <X size={21} /> : <Menu size={21} />}</button>
           <nav className={`dns-site-nav${menuOpen ? " is-open" : ""}`} aria-label="Navigare principală">
-            <a href="#servicii" onClick={closeMenu}>Ce facem</a>
             <a href="#echipamente" onClick={closeMenu}>Echipamente</a>
             <a href="#despre-noi" onClick={closeMenu}>Despre noi</a>
             <a href="#contact" onClick={closeMenu}>Contact</a>
