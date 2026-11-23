@@ -18,6 +18,7 @@ LOCAL_OCR_QUEUE_TIMEOUT_SECONDS = 5
 OCR_MAX_PAGES = 6
 OCR_DPI = 110
 _LOCAL_OCR_LOCK = asyncio.Lock()
+_LOCAL_RAPIDOCR_ENGINE = None
 
 logger = logging.getLogger("d-energy.ai_extract")
 
@@ -366,6 +367,47 @@ def _fallback_text_fields(text: str, doc_type: str) -> dict:
     return fields
 
 
+def _local_rapidocr_engine():
+    """Lazily load a single compact, Romanian-capable OCR engine."""
+    global _LOCAL_RAPIDOCR_ENGINE
+    if _LOCAL_RAPIDOCR_ENGINE is None:
+        from rapidocr import ModelType, OCRVersion, RapidOCR
+
+        _LOCAL_RAPIDOCR_ENGINE = RapidOCR(params={
+            "Global.use_cls": False,
+            "Det.lang_type": "multi",
+            "Det.model_type": ModelType.TINY,
+            "Det.ocr_version": OCRVersion.PPOCRV6,
+            "Det.limit_side_len": 960,
+            "Rec.lang_type": "ro",
+            "Rec.model_type": ModelType.TINY,
+            "Rec.ocr_version": OCRVersion.PPOCRV6,
+            "EngineConfig.onnxruntime.intra_op_num_threads": 1,
+            "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+        })
+    return _LOCAL_RAPIDOCR_ENGINE
+
+
+def _local_rapidocr_results(image):
+    result = _local_rapidocr_engine()(image)
+    boxes = getattr(result, "boxes", None)
+    texts = getattr(result, "txts", None)
+    scores = getattr(result, "scores", None)
+    if boxes is None or texts is None or scores is None:
+        return []
+    return [(box, text, score) for box, text, score in zip(boxes, texts, scores)]
+
+
+def _exec_local_rapidocr(page, dpi=150, pixmap=None, language=None, keep_ocr_text=False):
+    """Use PyMuPDF4LLM's text-layer adapter with our memory-bounded engine."""
+    from pymupdf4llm.ocr.exec_ocr_interface import exec_ocr_full
+
+    return exec_ocr_full(
+        page, _local_rapidocr_results, dpi=dpi, language=language,
+        keep_ocr_text=keep_ocr_text,
+    )
+
+
 def _ocr_document_text(content: bytes, mime: str) -> str:
     """Read scanned PDFs and photos locally with the Romanian RapidOCR model."""
     # Bound PyMuPDF4LLM intermediate analysis renders as well as later OCR renders.
@@ -373,7 +415,6 @@ def _ocr_document_text(content: bytes, mime: str) -> str:
     os.environ.setdefault("PYMUPDF_MAX_OCRSIZE", "3")
     import pymupdf
     import pymupdf4llm
-    from pymupdf4llm.ocr import rapidocr_api
 
     if mime == "application/pdf":
         doc = pymupdf.open(stream=content, filetype="pdf")
@@ -401,7 +442,7 @@ def _ocr_document_text(content: bytes, mime: str) -> str:
         try:
             text = pymupdf4llm.to_markdown(
                 doc, pages=[page_index], force_ocr=True,
-                ocr_function=rapidocr_api.exec_ocr,
+                ocr_function=_exec_local_rapidocr,
                 ocr_language="ro", ocr_dpi=OCR_DPI, show_progress=False,
             )
         except Exception:
@@ -524,4 +565,5 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
     fields["_engine"] = "OCR local (română)"
     fields["summary"] = "Date extrase local prin OCR din textul vizibil. Verifică valorile înainte de folosire; câmpurile neidentificate nu au fost deduse."
     return fields
+
 
