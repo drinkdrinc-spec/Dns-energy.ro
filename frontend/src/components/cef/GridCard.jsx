@@ -17,6 +17,8 @@ export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
     return `INV ${index + 1}: ${item.tri ? "5" : "3"}×${section} mm²`;
   }).filter(Boolean).join(" · ");
   const circuits = Array.isArray(grid.circuits) ? grid.circuits : DEFAULT_TEG_CIRCUITS;
+  const backupMode = String(grid.backup_mode || "").toLowerCase();
+  const partialBackup = backupMode.includes("parțial") || backupMode.includes("partial");
   const meterSeparate = (grid.smart_meter_mode || (grid.meter_enabled ? "Contor separat" : "Inclus în invertor")) === "Contor separat";
   const setCircuit = (index, patch) => set({ ...grid, circuits: circuits.map((row, i) => i === index ? { ...row, ...patch } : row) });
   return (
@@ -60,14 +62,16 @@ export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
               <button type="button" className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => set({ ...grid, circuits: DEFAULT_TEG_CIRCUITS.map((row) => ({ ...row })) })}><Wand2 size={13} /> Propune circuitele</button></div>
           </div>
           <div className="space-y-2">
-            {circuits.map((circuit, index) => <div key={index} className="grid grid-cols-2 sm:grid-cols-[minmax(72px,1fr)_minmax(62px,.8fr)_minmax(68px,.8fr)_minmax(80px,.9fr)_32px] gap-2 rounded-lg border p-2 items-end" style={{ borderColor: "var(--line)" }} data-testid={`teg-circuit-${index}`}>
+            {circuits.map((circuit, index) => <div key={index} className={`grid grid-cols-2 ${partialBackup ? "sm:grid-cols-[minmax(72px,1fr)_minmax(62px,.8fr)_minmax(68px,.8fr)_minmax(80px,.9fr)_64px_32px]" : "sm:grid-cols-[minmax(72px,1fr)_minmax(62px,.8fr)_minmax(68px,.8fr)_minmax(80px,.9fr)_32px]"} gap-2 rounded-lg border p-2 items-end`} style={{ borderColor: "var(--line)" }} data-testid={`teg-circuit-${index}`}>
               <F label="Circuit" value={circuit.name} onChange={(value) => setCircuit(index, { name: value })} testid={`teg-circuit-${index}-name`} />
               <F label="Siguranță" value={circuit.breaker || "C16"} onChange={(value) => setCircuit(index, { breaker: value })} options={["C6", "C10", "C13", "C16", "C20", "C25", "C32", "C40"]} testid={`teg-circuit-${index}-breaker`} />
               <F label="Poli" value={circuit.poles || "1P+N"} onChange={(value) => setCircuit(index, { poles: value })} options={["1P+N", "3P+N"]} testid={`teg-circuit-${index}-poles`} />
               <F label="Diferențial" value={circuit.rcd || "fără dif."} onChange={(value) => setCircuit(index, { rcd: value })} options={["fără dif.", "30mA", "300mA"]} testid={`teg-circuit-${index}-rcd`} />
+              {partialBackup && <Check label="Backup" value={Boolean(circuit.backup)} onChange={(value) => setCircuit(index, { backup: value })} testid={`teg-circuit-${index}-backup`} />}
               <button type="button" className="mb-1.5 rounded p-1.5" aria-label={`Șterge circuitul ${index + 1}`} onClick={() => set({ ...grid, circuits: circuits.filter((_, i) => i !== index) })} data-testid={`teg-circuit-${index}-remove`}><Trash2 size={15} style={{ color: "#8d8d8d" }} /></button>
             </div>)}
           </div>
+          {partialBackup && <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Bifează circuitele alimentate din ieșirea LOAD/EPS; celelalte rămân alimentate din rețea.</p>}
           <button type="button" className="mt-2 inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => set({ ...grid, circuits: [...circuits, { name: `Circuit ${circuits.length + 1}`, breaker: "C16", poles: "1P+N", rcd: "fără dif." }] })} data-testid="teg-circuit-add"><Plus size={14} /> Adaugă circuit</button>
           <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Valorile propuse trebuie confirmate cu proiectul și fișele echipamentelor.</p>
         </div>
@@ -110,3 +114,4 @@ export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
     </>
   );
 }
+

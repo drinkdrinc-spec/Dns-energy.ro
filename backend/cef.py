@@ -483,6 +483,14 @@ def check(cef: dict) -> dict:
         warnings.append("Racord monofazat cu putere mare — verifică cerințele OD privind dezechilibrul (uzual trifazat peste ~3,7–5 kW).")
     i_br = ((br_kw * 1000 / (math.sqrt(3) * 400 * 0.95)) if tri_grid else (br_kw * 1000 / (230 * 0.95))) if br_kw and supply_known else 0
     backup_enabled = any(bool((inv.get("backup") or {}).get("enabled")) for inv in invs)
+    backup_mode = str(grid.get("backup_mode") or "").casefold()
+    teg_circuits = [c for c in (grid.get("circuits") or []) if isinstance(c, dict)]
+    partial_backup = "parțial" in backup_mode or "partial" in backup_mode
+    total_backup = "total" in backup_mode
+    if (partial_backup or total_backup) and not backup_enabled:
+        warnings.append("A fost selectată alimentarea TEG din backup, dar niciun invertor nu are ieșirea LOAD/EPS activată.")
+    if partial_backup and backup_enabled and not any(bool(c.get("backup")) for c in teg_circuits):
+        errors.append("Backup-ul este parțial, dar nu este bifat niciun circuit TEG pentru alimentare din LOAD/EPS.")
     anti_size_auto = tot_kwp > 27 or tot_kw > 27 or i_br > 63
     anti_auto = anti_size_auto or backup_enabled
     anti = bool(grid.get("anti_required")) or anti_auto
@@ -607,5 +615,6 @@ def from_legacy(rec: dict) -> dict:
             grid[gk] = n(rec[rk], None) if gk != "supply" else rec[rk]
     cef.update({"inverters": invs, "grid": grid, "from_legacy": True})
     return {**rec, "cef": cef}
+
 
 

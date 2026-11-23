@@ -264,6 +264,66 @@ class _TextCapture:
     def text(self, *args, **kwargs):
         self.values.append(str(args[2]))
 
+    def wire(self, *args, **kwargs):
+        pass
+
+    def rcd(self, *args, **kwargs):
+        pass
+
+    def switch(self, *args, **kwargs):
+        pass
+
+    def node(self, *args, **kwargs):
+        pass
+
+
+def test_partial_backup_marks_only_selected_teg_circuits_on_schema():
+    rec = deepcopy(DEMO_REC)
+    grid = rec["cef"]["grid"]
+    grid.update({
+        "backup_mode": "Parțial (doar circuite critice)",
+        "circuits": [
+            {"name": "Iluminat", "breaker": "C10", "backup": True},
+            {"name": "Cuptor", "breaker": "C16", "backup": False},
+        ],
+    })
+    capture = _TextCapture()
+
+    SLD.teg_schedule(capture, (0, 0, 220, 100), rec)
+
+    text = " ".join(capture.values)
+    assert "Iluminat" in text and "LOAD/EPS" in text
+    assert "Cuptor" in text and "rețea" in text
+    assert "LOAD/EPS → TEG: Iluminat" in text
+
+
+def test_total_backup_marks_every_teg_circuit_on_schema():
+    rec = deepcopy(DEMO_REC)
+    grid = rec["cef"]["grid"]
+    grid.update({
+        "backup_mode": "Total (tot TEG-ul pe backup)",
+        "circuits": [{"name": "Iluminat"}, {"name": "Prize"}],
+    })
+    capture = _TextCapture()
+
+    SLD.teg_schedule(capture, (0, 0, 220, 100), rec)
+
+    assert all("LOAD/EPS" in value for value in capture.values if value.startswith("C"))
+    assert "LOAD/EPS → TEG: Iluminat, Prize" in " ".join(capture.values)
+
+
+def test_partial_backup_requires_at_least_one_selected_circuit():
+    cef = _sample_cef()
+    cef["grid"].update({
+        "backup_mode": "Parțial (doar circuite critice)",
+        "circuits": [{"name": "Iluminat", "backup": False}],
+    })
+    cef["inverters"][0]["backup"] = {"enabled": True}
+
+    result = CEF.check(cef)
+
+    assert any("nu este bifat niciun circuit TEG" in error for error in result["errors"])
+
 
 def test_backup_schema_note_states_islanding_separation_and_reconnect_delay():
     rec = deepcopy(DEMO_REC)
@@ -350,3 +410,4 @@ def test_battery_only_hybrid_has_zero_export_and_is_identified_in_sheet():
     assert checked["inverters"][1]["kwp"] == 0
     assert any(row[2] == "Dyness 16.07 kWh" for row in equipment)
     assert any("putere evacuată 0 kW" in value for value in capture.values)
+
