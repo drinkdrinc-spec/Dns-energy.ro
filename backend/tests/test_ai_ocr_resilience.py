@@ -73,6 +73,9 @@ def test_timed_out_ocr_keeps_slot_until_background_thread_finishes(monkeypatch):
             await ai_extract._run_local_ocr(b"second", "application/pdf")
         release.set()
         await asyncio.sleep(0.05)
+        # Once the blocked worker releases the slot, allow normal thread
+        # startup time; the 10 ms timeout above is only for the lock behavior.
+        monkeypatch.setattr(ai_extract, "LOCAL_OCR_TIMEOUT_SECONDS", 1.0)
         assert await ai_extract._run_local_ocr(b"second", "application/pdf") == "second"
 
     asyncio.run(scenario())

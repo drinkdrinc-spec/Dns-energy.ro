@@ -113,7 +113,7 @@ def test_dossier_positions_follow_submission_order():
     ordered = sorted(positions, key=dossier_order)
 
     assert [position["key"] for position in ordered] == [
-        "priza", "notificare", "certificat", "factura", "cf", "date_stocare",
+        "priza", "notificare", "date_stocare", "certificat", "factura", "cf",
         "fotografii_instalatie", "schema", "cat_datasheet_battery", "fotografii_lucrare",
     ]
 
@@ -121,7 +121,7 @@ def test_dossier_positions_follow_submission_order():
 def test_full_packet_order_matches_the_signed_reenergy_reference():
     positions = [{"key": key} for key in (
         "priza", "notificare", "date_stocare", "gdpr", "imputernicire", "afm",
-        "executant", "conformitate", "receptie", "pif", "reglaj",
+        "executant", "conformitate", "receptie", "serii", "pif", "reglaj",
         "declaratie_autenticitate", "schema", "cat_datasheet_inverter", "fotografii_lucrare",
     )]
 
@@ -129,7 +129,7 @@ def test_full_packet_order_matches_the_signed_reenergy_reference():
 
     assert [position["key"] for position in ordered] == [
         "priza", "notificare", "date_stocare", "gdpr", "imputernicire", "afm",
-        "executant", "conformitate", "receptie", "pif", "reglaj",
+        "executant", "conformitate", "receptie", "serii", "pif", "reglaj",
         "declaratie_autenticitate", "schema", "cat_datasheet_inverter", "fotografii_lucrare",
     ]
 
@@ -317,5 +317,71 @@ def test_export_bundle_places_authenticity_before_schema_and_equipment(monkeypat
         next(marker for marker in expected if marker in text)
         for text in page_text
     ]
+    assert actual == expected
+
+
+def test_export_bundle_repeats_pram_after_commissioning_as_in_the_signed_reference(monkeypatch):
+    async def fake_position_pdf(position, *_args, **_kwargs):
+        return [_marker_pdf(position["marker"])]
+
+    monkeypatch.setattr(opis, "position_pdf", fake_position_pdf)
+    monkeypatch.setattr(opis.docgen, "render", lambda *_args, **_kwargs: _marker_pdf("AUTHENTICITY"))
+    monkeypatch.setattr(opis, "_incomplete_report", lambda *_args: None)
+
+    class Logger:
+        def error(self, *_args, **_kwargs):
+            raise AssertionError("Unexpected PDF bundle error")
+
+    info = {
+        "titles": {}, "complete": True,
+        "positions": [
+            {"key": "priza", "source": "generat", "marker": "PRAM"},
+            {"key": "notificare", "source": "manual", "marker": "OFFICIAL FORM"},
+            {"key": "serii", "source": "generat", "marker": "EQUIPMENT SERIES"},
+            {"key": "pif", "source": "generat", "marker": "PIF"},
+            {"key": "reglaj", "source": "generat", "marker": "SETTINGS"},
+            {"key": "schema", "source": "generat", "marker": "SCHEMA"},
+        ],
+    }
+
+    output = asyncio.run(opis.export_bundle(info, {}, {}, {}, None, Logger()))
+    texts = [page.extract_text() or "" for page in PdfReader(io.BytesIO(output)).pages]
+    markers = [next((marker for marker in ("PRAM", "OFFICIAL FORM", "EQUIPMENT SERIES", "PIF", "SETTINGS", "AUTHENTICITY", "SCHEMA") if marker in text), "") for text in texts]
+
+    assert markers == ["PRAM", "OFFICIAL FORM", "EQUIPMENT SERIES", "PIF", "PRAM", "SETTINGS", "AUTHENTICITY", "SCHEMA"]
+
+
+def test_submission_zip_preserves_reference_order_and_repeats_pram_after_pif(monkeypatch):
+    async def fake_position_pdf(position, *_args, **_kwargs):
+        return [_marker_pdf(position["marker"])]
+
+    monkeypatch.setattr(opis, "position_pdf", fake_position_pdf)
+    monkeypatch.setattr(opis.docgen, "render", lambda *_args, **_kwargs: _marker_pdf("AUTHENTICITY"))
+    monkeypatch.setattr(opis, "_incomplete_report", lambda *_args: None)
+
+    class Logger:
+        def error(self, *_args, **_kwargs):
+            raise AssertionError("Unexpected ZIP export error")
+
+    info = {
+        "titles": {}, "complete": True,
+        "positions": [
+            {"key": "priza", "source": "generat", "marker": "PRAM"},
+            {"key": "notificare", "source": "manual", "marker": "OFFICIAL FORM"},
+            {"key": "date_stocare", "source": "generat", "marker": "STORAGE"},
+            {"key": "serii", "source": "generat", "marker": "EQUIPMENT SERIES"},
+            {"key": "pif", "source": "generat", "marker": "PIF"},
+            {"key": "reglaj", "source": "generat", "marker": "SETTINGS"},
+            {"key": "schema", "source": "generat", "marker": "SCHEMA"},
+        ],
+    }
+
+    output = asyncio.run(opis.export_package_zip(info, {}, {}, {}, None, Logger(), 1))
+    with zipfile.ZipFile(io.BytesIO(output)) as archive:
+        pages = PdfReader(io.BytesIO(archive.read("01_Dosar_complet.pdf"))).pages
+    texts = [page.extract_text() or "" for page in pages]
+    expected = ["PRAM", "OFFICIAL FORM", "STORAGE", "EQUIPMENT SERIES", "PIF", "PRAM", "SETTINGS", "AUTHENTICITY", "SCHEMA"]
+    actual = [next(marker for marker in expected if marker in text) for text in texts]
+
     assert actual == expected
 

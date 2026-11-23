@@ -8,7 +8,7 @@ const TYPICAL = { u1: ["1,15 Un", "0,5"], u2: ["0,85 Un", "3,2"], f1: ["52 Hz", 
 const TESTS = [...Array(10).keys()].map((i) => `a${i}`).concat([...Array(4).keys()].map((i) => `f${i}`), [...Array(7).keys()].map((i) => `c${i}`));
 const TLABEL = { a: "Test categoria A", f: "Domeniu de frecvență", c: "Verificare" };
 
-export function DossierExtras({ form, setVal, compact = false, part = "all", onSave, saving = false, dossierId }) {
+export function DossierExtras({ form, setVal, compact = false, part = "all", onSave, saving = false, dossierId, showExecutorSigner = true }) {
   const pramInput = useRef(null);
   const [pramBusy, setPramBusy] = useState(false);
   const [pramNumberBusy, setPramNumberBusy] = useState(false);
@@ -36,7 +36,7 @@ export function DossierExtras({ form, setVal, compact = false, part = "all", onS
   const setT = (k, f, v) => setVal("tests", { ...ts, [k]: { ...(ts[k] || {}), [f]: v } });
   return (
     <div id={compact ? "diu-executant" : undefined} className="mt-6 grid lg:grid-cols-2 gap-4" data-testid="dossier-extras">
-      {part !== "commissioning" && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="dossier-executant-signer">
+      {showExecutorSigner && part !== "commissioning" && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="dossier-executant-signer">
         <h4 className="font-bold text-sm mb-2">Semnătura și ștampila firmei</h4>
         <label className="den-field block"><span className="text-xs">Reprezentant executant</span>
           <select className="den-input" value={selectedExecutor} onChange={(event) => chooseExecutor(event.target.value)} data-testid="dossier-executant-select">

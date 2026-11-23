@@ -39,7 +39,7 @@ GEN = [("notificare", "Anexa 2 — Notificare (Ord. ANRE 19/2022)", ["notificare
        ("priza", "Buletin de verificare și măsurare priză de pământ", ["buletin_priza"],
         ["bulletin_no", "measure_date", "measure_object", "soil", "soil_psi", "grounding_ohm", "grounding_limit"], ["meter_device", "meter_serial", "meter_valid"]),
        ("pif", "Proces-verbal de punere în funcțiune", ["pv_pif", "pv_teste"], ["pif_date", "pif_decision", "bmp_desc", "anti_relay_present", "reconnect_min", "afm"], ["anre_valid"]),
-       ("receptie", "Proces-verbal de recepție la terminarea lucrărilor", ["pv_receptie", "serii"], ["receptie_date", "receptie_decision", "receptie_findings"], []),
+       ("receptie", "Proces-verbal de recepție la terminarea lucrărilor", ["pv_receptie"], ["receptie_date", "receptie_decision", "receptie_findings"], []),
        ("executant", "Declarația executantului (Ord. ANRE 59/2013)", ["declaratie_executant"], ["doc_no", "doc_date"], []),
        ("conformitate", "Declarație de conformitate (HGR 1022/2002)", ["declaratie_conformitate"], ["doc_date"], ["warranty_months"]),
        ("imputernicire", "Împuternicire", ["imputernicire"], ["county"], [])]
@@ -96,25 +96,26 @@ def dossier_client_snapshot(rec, client):
 
 
 def dossier_order(p):
-    """Order the packet like the supplied signed Reenergy dossier example."""
+    """Order the packet to match the supplied signed Reenergy dossier example."""
     key = p.get("key", "")
     priority = {
-        # Follow the signed example: PRAM, operator filing, and storage first.
+        # Signed reference: PRAM, operator form, storage, privacy notice,
+        # mandate and AFM declaration are the opening submission documents.
         "priza": 5, "metrologie_pram": 7, "notificare": 10,
-        # Client evidence follows the request so none is dropped from the packet.
-        "certificat": 15, "factura": 20, "cf": 25,
-        "date_stocare": 30, "gdpr": 35, "imputernicire": 40,
-        "afm": 45, "executant": 50, "anre_firma": 52, "conformitate": 55,
-        # Reception and commissioning records precede protection settings.
-        "receptie": 60, "pif": 65, "pif_pv": 70, "reglaj": 75,
-        "fotografii_instalatie": 78, "alt_document": 79,
-        # Close the paperwork before the technical appendix.
-        "declaratie_autenticitate": 80, "opis": 81,
-        "schema": 90, "fisa_tehnica": 95,
-        "fotografii_lucrare": 110,
+        "date_stocare": 20, "gdpr": 30, "imputernicire": 40, "afm": 50,
+        # Keep uploaded client evidence in the packet without displacing the
+        # equipment and commissioning documents that follow it in the sample.
+        "certificat": 52, "factura": 53, "cf": 54,
+        "fotografii_instalatie": 55, "alt_document": 56,
+        "executant": 60, "anre_firma": 61, "conformitate": 65,
+        "receptie": 70, "serii": 75, "pif": 80, "pif_pv": 82,
+        # The reference dossier includes its PRAM report again after PIF.
+        "reglaj": 90, "declaratie_autenticitate": 100, "opis": 101,
+        "schema": 110, "fisa_tehnica": 115,
+        "fotografii_lucrare": 130,
     }
     if key.startswith("cat_"):
-        return (96, p.get("title", "").lower())
+        return (116, p.get("title", "").lower())
     return (priority.get(key, 500), p.get("title", "").lower())
 
 
@@ -371,6 +372,11 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     pif_documents_active = bool(workflow_stages & pif_workflow_stages) or PIFDOC.filled(rec)
     if not pif_documents_active:
         pos = [item for item in pos if item.get("key") not in {"pif", "receptie", "pif_pv"}]
+    else:
+        # Match the reference's dedicated equipment-serial annex. Keep it a
+        # separate item so it can be completed at PIF without blocking filing.
+        pos.append({"key": "serii", "title": "Anexă — serii echipamente (PIF)",
+                    "source": "generat", "docs": ["serii"], "missing": [], "files": []})
 
     for key, slots, title in [("factura", ["factura"], "Factură furnizor de energie"),
                               ("certificat", ["certificat", "constatator"] if pj else ["ci"], "Certificat de înregistrare" if pj else "Act de identitate"),
@@ -678,6 +684,15 @@ def _incomplete_report(positions_info, unavailable):
     return buf.getvalue()
 
 
+def _pram_repeat_after(positions):
+    """Return the last commissioning row after which the reference repeats PRAM."""
+    if not any(position.get("key") == "priza" for position in positions):
+        return None
+    commissioning = [position.get("key") for position in positions
+                     if position.get("key") in {"serii", "pif", "pif_pv"}]
+    return commissioning[-1] if commissioning else None
+
+
 async def export_bundle(positions_info, rec, client, settings, get_object, logger):
     titles = positions_info["titles"]
     w = PdfWriter()
@@ -685,6 +700,8 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
                                       draft=not positions_info["complete"])
     main_parts = []
     technical_parts = []
+    pram_parts = None
+    repeat_pram_after = _pram_repeat_after(positions_info.get("positions") or [])
     unavailable = []
     for p in positions_info["positions"]:
         try:
@@ -699,6 +716,10 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
             is_technical_appendix = (p.get("key") in ("schema", "fisa_tehnica", "fotografii_lucrare")
                                      or p.get("source") == "catalog")
             (technical_parts if is_technical_appendix else main_parts).extend(position_parts)
+            if p.get("key") == "priza":
+                pram_parts = list(position_parts)
+            if repeat_pram_after and p.get("key") == repeat_pram_after and pram_parts:
+                main_parts.extend(pram_parts)
         except Exception as e:
             logger.error(f"bundle skip {p['key']}: {e}")
             unavailable.append(p.get("title") or p.get("key") or "Document atașat")
@@ -750,7 +771,7 @@ def _package_group(key, source):
         return 3
     if key in ("priza", "metrologie_pram", "pif", "pif_pv", "receptie", "serii", "reglaj"):
         return 1
-    if key in ("schema", "fisa_tecnica", "date_stocare") or source == "catalog":
+    if key in ("schema", "fisa_tecnica") or source == "catalog":
         return 2
     return 0
 
@@ -761,6 +782,8 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
     titles = positions_info["titles"]
     ordered_parts = []
     unavailable = []
+    pram_parts = None
+    repeat_pram_after = _pram_repeat_after(positions_info.get("positions") or [])
     for position in positions_info["positions"]:
         try:
             parts = await position_pdf(position, rec, client, settings, titles, get_object)
@@ -770,6 +793,10 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
                 parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in parts]
             group = _package_group(position.get("key"), position.get("source"))
             ordered_parts.extend((group, part) for part in parts)
+            if position.get("key") == "priza":
+                pram_parts = list(parts)
+            if repeat_pram_after and position.get("key") == repeat_pram_after and pram_parts:
+                ordered_parts.extend((1, part) for part in pram_parts)
         except Exception as exc:
             logger.error(f"package skip {position.get('key')}: {exc}")
             unavailable.append(position.get("title") or position.get("key") or "Document atașat")

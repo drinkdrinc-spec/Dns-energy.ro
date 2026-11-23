@@ -12,11 +12,12 @@ const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare an
 
 export function SldPanel({ id, form, setVal }) {
   const [d, setD] = useState(null);
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState(false);
   const ref = useRef();
   const persist = () => api.put(`/data/prosumator/${id}`, form);
-  const load = () => api.get(`/sld/${id}`).then((r) => setD(r.data)).catch(() => {});
+  const load = () => api.get(`/sld/${id}`).then((r) => { setD(r.data); setLoadError(false); }).catch(() => { setLoadError(true); });
   useEffect(() => { load(); }, [id]); // eslint-disable-line
   const run = async (fn) => { setBusy(true); try { await fn(); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } setBusy(false); };
   const refresh = () => run(async () => { await persist(); await load(); toast.success("Date salvate și verificate"); });
@@ -31,13 +32,7 @@ export function SldPanel({ id, form, setVal }) {
   const requestApproval = () => run(async () => { await persist(); const r = await api.post(`/sld/${id}/request-approval`, { origin: window.location.origin }); await load(); toast.success(r.data.recipients.some((x) => x.sent) ? "Cerere de aprobare trimisă" : "Cerere înregistrată — e-mail netrimis (dosar TEST fără e-mail de test)"); });
   const sendSign = (role) => run(async () => { const r = await api.post(`/sld/${id}/send-sign`, { role, origin: window.location.origin, pos_keys: ["schema"] }); toast.success(r.data.every((x) => x.email_sent) ? "Link de semnare trimis pe e-mail" : "Cerere creată — e-mail netrimis (dosar TEST fără e-mail de test)"); });
   const source = (body) => run(async () => { await api.put(`/sld/${id}/source`, body); await load(); });
-  const saveSigner = (role, staffId) => run(async () => {
-    await api.put(`/sld/${id}/signers`, { signers: { [role]: staffId } });
-    await load();
-    toast.success("Semnatarul dosarului a fost salvat");
-  });
-
-  if (!d) return null;
+  if (!d) return <div className="mt-6 rounded-xl border bg-white p-4 text-sm" style={{ borderColor: "var(--line)" }} data-testid="sld-panel-loading">{loadError ? <>Nu s-au putut încărca datele schemei. <button className="font-semibold underline" onClick={load}>Reîncearcă</button></> : "Se încarcă schema monofilară…"}</div>;
   const st = ST[d.approval.status];
   return (
     <div className="mt-6 rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="sld-panel">
@@ -52,22 +47,6 @@ export function SldPanel({ id, form, setVal }) {
         <span className="flex-1 min-w-[240px]">Schema este desenată din datele fișei (invertor, panouri, baterie). Stringurile/MPPT nu sunt definite — preluați datele în Configuratorul CEF și completați stringurile pentru o schemă completă.</span>
         <Btn variant="secondary" onClick={() => run(async () => { await api.post(`/sld/${id}/import-legacy`); toast.success("Date preluate în configurator — reîncărcați dosarul pentru a edita stringurile"); await load(); })} disabled={busy} data-testid="sld-import-legacy">Preia în configuratorul CEF</Btn>
       </div>}
-      <div className="mt-3 rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="dossier-signers">
-        <b className="text-xs">Personal și semnatari pentru documente</b>
-        <p className="mt-1 mb-3 text-[11px]" style={{ color: "var(--muted)" }}>Alege persoanele o singură dată pe dosar. Numele, autorizațiile și semnăturile autorizate se preiau din Setări de bază → Personal.</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {[["designer", "Proiectant schemă"], ["verifier", "Verificator schemă"], ["executant", "Semnatar executant"], ["resp_tehnic", "Responsabil tehnic cu execuția"], ["electrician", "Electrician autorizat"], ["measurer", "Verificator măsurători PRAM"]].map(([role, label]) => (
-            <label className="den-field" key={role}>
-              <span>{label}</span>
-              <select className="den-input" value={d.selected_signers?.[role] || ""} disabled={busy} onChange={(e) => saveSigner(role, e.target.value)} data-testid={`dossier-signer-${role}`}>
-                <option value="">Neselectat</option>
-                {(d.staff_options || []).map((person) => <option key={person.id} value={person.id}>{person.name}{person.eligible ? " · autorizație verificată" : " · verifică autorizația în Personal"}</option>)}
-              </select>
-            </label>
-          ))}
-        </div>
-        {!d.staff_options?.length && <p className="mt-2 text-xs" style={{ color: "#8a5a00" }}>Adaugă personalul și documentele de autorizare în Setări de bază → Personal.</p>}
-      </div>
       <button type="button" className="mt-3 text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => setEdit(!edit)} data-testid="sld-edit-toggle">{edit ? "Închide editarea manuală" : "Editare manuală a schemei (tabel + previzualizare)"}</button>
       {edit && <SldEditor id={id} onSaved={(cef) => { if (cef) setVal?.("cef", cef); load(); }} />}
       <div className="flex flex-wrap gap-2 mt-4">

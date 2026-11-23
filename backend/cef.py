@@ -360,6 +360,10 @@ def check(cef: dict) -> dict:
         p_in = up(BREAKERS, ib) if ib else None
         p_s = None
         ac_choices = INVERTER_AC_SECTIONS_3PH if tri else INVERTER_AC_SECTIONS_1PH
+        if cur_s and phase_known and cur_s not in ac_choices:
+            minimum, maximum = ac_choices[0], ac_choices[-1]
+            cores = "5" if tri else "3"
+            e.append(f"{tag}: secțiunea cablului AC ({cur_s:g} mm²) este în afara domeniului DNS pentru invertorul {'trifazat' if tri else 'monofazat'} ({cores}×{minimum:g}–{cores}×{maximum:g} mm²); corectează secțiunea sau proiectează o soluție dedicată.")
         for sct in ac_choices:
             if p_in and iz(sct, mat, inst, loaded, k) >= p_in and (not L or vdrop_ac(ib, L, sct, mat, tri) <= 3):
                 p_s = sct; break
@@ -506,6 +510,8 @@ def check(cef: dict) -> dict:
             warnings.append("Coloana BMP–TG depășește domeniul automat 4×16–3×240+120 mm² pentru pozarea selectată; este necesar proiect dedicat și verificarea conductorului N/PE. Capacitatea de curent folosește tabele IEC 60364-5-52 de referință și trebuie corectată pentru cablu, temperatură și grupare.")
     selected_section = n(grid.get("column_section"))
     selected_breaker = n(grid.get("bmp_a")) or main_proposal or 0
+    if selected_section and selected_section not in FEEDER_SECTIONS:
+        errors.append(f"Coloana BMP–TG ({selected_section:g} mm²) este în afara domeniului DNS pentru această plecare (secțiuni standard de la 16 la 240 mm²); alege secțiunea și numărul de conductoare potrivite fazelor.")
     if selected_section and supply_known:
         selected_iz = iz(selected_section, column_material, column_install, 3 if tri_grid else 2, n(grid.get("column_k_correction"), 1))
         if selected_breaker > selected_iz:

@@ -62,43 +62,55 @@ function Row({ p, id, statuses, reload }) {
 
 export function DossierOpis({ id, mode = "all", onChecklist }) {
   const [d, setD] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showReport, setShowReport] = useState(false);
   const [pre, setPre] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [packageExporting, setPackageExporting] = useState(false);
   const exportLock = useRef(false);
   const { user } = useAuth();
-  const load = () => api.get(`/dossier/${id}`).then(async (r) => {
-    const data = r.data;
-    setD(data);
-    if (onChecklist && Array.isArray(data.positions)) {
-      const byKey = new Map(data.positions.map((position) => [position.key, position]));
-      const ready = (key) => {
-        const position = byKey.get(key);
-        return Boolean(position) && !(position.missing || []).length;
-      };
-      // A generated schema with filled fields is still not complete until its
-      // technical review has been approved. Uploaded specialist drawings are
-      // complete once the actual PDF is attached.
-      let schemaReady = false;
-      try {
-        const sld = (await api.get(`/sld/${id}`)).data;
-        schemaReady = sld.source === "uploaded"
-          ? Boolean(sld.upload?.storage_path)
-          : sld.approval?.status === "approved";
-      } catch { /* Keep the step open when the review status cannot be loaded. */ }
-      const requiredActKeys = ["factura", "certificat", "anre_firma", "metrologie_pram", "priza"];
-      const commissioning = data.positions.filter((position) => ["pif", "pif_pv"].includes(position.key));
-      onChecklist({
-        installation: ready("schema") && schemaReady,
-        acts: requiredActKeys.every((key) => !byKey.has(key) || ready(key)),
-        documents: data.complete === true,
-        commissioning: commissioning.some((position) => position.key === "pif") && commissioning.every((position) => !(position.missing || []).length),
-      });
+  const load = async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const { data } = await api.get(`/dossier/${id}`);
+      setD(data);
+      if (onChecklist && Array.isArray(data.positions)) {
+        const byKey = new Map(data.positions.map((position) => [position.key, position]));
+        const ready = (key) => {
+          const position = byKey.get(key);
+          return Boolean(position) && !(position.missing || []).length;
+        };
+        // A generated schema with filled fields is still not complete until its
+        // technical review has been approved. Uploaded specialist drawings are
+        // complete once the actual PDF is attached.
+        let schemaReady = false;
+        try {
+          const sld = (await api.get(`/sld/${id}`)).data;
+          schemaReady = sld.source === "uploaded"
+            ? Boolean(sld.upload?.storage_path)
+            : sld.approval?.status === "approved";
+        } catch { /* Keep the step open when the review status cannot be loaded. */ }
+        const requiredActKeys = ["factura", "certificat", "anre_firma", "metrologie_pram", "priza"];
+        const commissioning = data.positions.filter((position) => ["pif", "pif_pv"].includes(position.key));
+        onChecklist({
+          installation: ready("schema") && schemaReady,
+          acts: requiredActKeys.every((key) => !byKey.has(key) || ready(key)),
+          documents: data.complete === true,
+          commissioning: commissioning.some((position) => position.key === "pif") && commissioning.every((position) => !(position.missing || []).length),
+        });
+      }
+    } catch (error) {
+      setLoadError(error.response?.data?.detail || "Dosarul nu s-a putut încărca. Verifică conexiunea și încearcă din nou.");
+    } finally {
+      setLoading(false);
     }
-  }).catch(() => {});
-  useEffect(() => { load(); }, [id]); // eslint-disable-line
-  if (!d) return null;
+  };
+  useEffect(() => { setD(null); load(); }, [id]); // eslint-disable-line
+  if (!d) return <div className="mt-6 rounded-xl border bg-white p-4 text-sm" style={{ borderColor: "var(--line)" }} aria-live="polite" data-testid="dossier-opis-loading">
+    {loadError ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 text-red-700" data-testid="dossier-opis-error"><span>{loadError}</span><button type="button" className="rounded-lg border px-3 py-2 font-semibold" style={{ borderColor: "var(--line)" }} onClick={load} data-testid="dossier-opis-retry">Reîncearcă</button></div> : <span>{loading ? "Se încarcă documentele dosarului…" : "Documentele dosarului nu sunt disponibile momentan."}</span>}
+  </div>;
   const positions = mode === "attachments" ? d.positions.filter((p) => p.source !== "generat")
     : mode === "generated" ? d.positions.filter((p) => p.source === "generat") : d.positions;
   const fileCount = positions.reduce((count, p) => count + (p.upload ? 1 : 0) + (p.uploads || []).length + (p.files || []).length, 0);
@@ -136,6 +148,7 @@ export function DossierOpis({ id, mode = "all", onChecklist }) {
         </div>}
       </div>
       {mode !== "attachments" && d.finalized && <p className="text-xs mb-2" style={{ color: "#166534" }} data-testid="opis-finalized">Finalizat la {new Date(d.finalized).toLocaleString("ro-RO")} — modificările din setări nu mai afectează acest dosar.</p>}
+      {loadError && <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800" data-testid="dossier-opis-refresh-error"><span>{loadError}</span><button type="button" className="rounded-lg border border-red-300 px-3 py-1.5 font-semibold" onClick={load} data-testid="dossier-opis-refresh-retry">Reîncarcă</button></div>}
       {mode !== "attachments" && d.signer_warnings?.map((w) => <p key={w} className="text-xs mb-1" style={{ color: "#9b2c2c" }} data-testid="signer-warning">⚠ {w}</p>)}
       {mode !== "attachments" && <p className="text-[11px] mb-2" style={{ color: "var(--muted)" }}>Modificările din formular (semnatari, teste, reglaje, date) se reflectă în opis și documente după „Salvează”.</p>}
       {mode !== "attachments" && showReport && (

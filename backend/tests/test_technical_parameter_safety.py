@@ -76,6 +76,29 @@ def test_parallel_strings_keep_fuse_rating_block_when_protection_is_required():
     assert any("siguranța gPV de 15 A nu se încadrează" in error for error in checked["errors"])
 
 
+def test_inverter_ac_cable_rejects_sections_outside_requested_phase_ranges():
+    for supply, section, expected in [
+        ("Monofazat", 4, "3×6–3×16 mm²"),
+        ("Monofazat", 25, "3×6–3×16 mm²"),
+        ("Trifazat", 4, "5×6–5×50 mm²"),
+        ("Trifazat", 70, "5×6–5×50 mm²"),
+    ]:
+        inverter = sample_inverter()
+        inverter["phases"] = supply
+        inverter["ac"] = {"section": section, "breaker_a": 16}
+        checked = cef.check({"grid": {"supply": supply}, "inverters": [inverter]})
+
+        assert any(expected in error for error in checked["errors"])
+
+
+def test_bmp_to_board_feeder_rejects_section_below_requested_minimum():
+    checked = cef.check({"grid": {
+        "supply": "Monofazat", "bransament_kw": 5, "bmp_a": 32, "column_section": 10,
+    }})
+
+    assert any("Coloana BMP–TG (10 mm²) este în afara domeniului DNS" in error for error in checked["errors"])
+
+
 def test_battery_cable_proposal_uses_conservative_standard_table():
     result = cef.battery_cable_proposal({"i_max": 40, "voltage": 51.2})
     assert result["section"] == 10
