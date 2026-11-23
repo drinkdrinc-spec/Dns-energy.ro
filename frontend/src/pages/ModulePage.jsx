@@ -932,7 +932,7 @@ export default function ModulePage({ moduleKey }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-bold" style={{ borderColor: "#198754", color: "#198754" }} onClick={() => openProsumerStep(nextProsumerStep?.[0] || PROSUMER_GUIDED_STEPS[0][0])} data-testid="guided-next-step-action">Completează</button>
-                  <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "#198754" }} onClick={() => openAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`)} data-testid="guided-generate-dossier">Regenerează dosarul</button>
+                  <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "#198754" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="guided-generate-dossier">Regenerează dosarul</button>
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} onClick={() => {
                     const actions = document.querySelector('[data-testid="prosumer-quick-actions"]');
                     if (actions) { actions.open = true; actions.scrollIntoView({ behavior: "smooth", block: "center" }); }
@@ -961,7 +961,7 @@ export default function ModulePage({ moduleKey }) {
             </summary>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => setProsPre(true)} data-testid="quick-prosumer-ai-precheck">Verifică dosarul cu AI</button>
-              <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "var(--blue)" }} onClick={() => openAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`)} data-testid="quick-prosumer-pdf">Dosar complet PDF</button>
+              <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "var(--blue)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="quick-prosumer-pdf">Dosar complet PDF</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf?download=1`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema">Schema monofilară</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${encodeURIComponent(editId)}`, `buletin_pram_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-pram">Buletin PRAM</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/pv_teste/${encodeURIComponent(editId)}`, `pv_teste_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-tests">PV teste</button>
@@ -1288,7 +1288,7 @@ export default function ModulePage({ moduleKey }) {
                   <summary className="cursor-pointer text-xs font-semibold" style={{ color: "var(--blue)" }}>Descarcă documentele disponibile</summary>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {pros && <>
-                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => openAuthenticatedFile("/dossier/" + pros.id + "/export")}>Dosar prosumator</button>
+                      <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/dossier/" + pros.id + "/export", "Dosar_prosumator.pdf")}>Dosar prosumator</button>
                       <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/sld/" + pros.id + "/pdf?download=1", "schema_monofilara_" + pros.id.slice(0, 8) + ".pdf")}>Schema monofilara</button>
                       <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile("/docs/buletin_priza/" + pros.id, "pram_priza_" + pros.id.slice(0, 8) + ".pdf")}>Buletin PRAM</button>
                     </>}
@@ -1324,7 +1324,7 @@ export default function ModulePage({ moduleKey }) {
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => openEdit(it)}>Deschide</button>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/export`)}>Dosar PDF</button>
+                  <button type="button" className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(it.id)}/export`, "Dosar_prosumator.pdf")}>Dosar PDF</button>
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${it.id}/pdf?download=1`, `schema_monofilara_${it.id.slice(0, 8)}.pdf`)}>Schema</button>
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${it.id}`, `pram_priza_${it.id.slice(0, 8)}.pdf`)}>PRAM priză</button>
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/pv_pif/${it.id}`, `pif_${it.id.slice(0, 8)}.pdf`)}>Proces verbal PIF</button>
@@ -1484,7 +1484,7 @@ export default function ModulePage({ moduleKey }) {
                           {clientProsumerDossiers.length > 1 && <span className="basis-full text-[10px] text-amber-800">Mai multe dosare PV: selectează-l pe cel corect în ATR / DI-U.</span>}
                           {clientDiuDossiers.length > 1 && <span className="basis-full text-[10px] text-amber-800">Mai multe dosare DI-U: deschide dosarul dorit pentru documente și PRAM.</span>}
                           {dossier && <>
-                            <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${dossier.id}/export`)}>Dosar PDF</button>
+                            <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(dossier.id)}/export`, "Dosar_prosumator.pdf")}>Dosar PDF</button>
                             <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/sld/${dossier.id}/pdf?download=1`, `schema_monofilara_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă schemă</button>
                             <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/docs/pv_pif/${dossier.id}`, `pif_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
                             <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${dossier.id}`, `pram_priza_${dossier.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
@@ -1513,7 +1513,7 @@ export default function ModulePage({ moduleKey }) {
                           {diuUrl && <a className={linkClass} href={diuUrl}>Creează DI-U</a>}
                           {it.client_id && <a className={linkClass} href={atrUrl}>Cerere ATR</a>}
                           {it.client_id && <a className={linkClass} href={atrUrl + "&case=" + encodeURIComponent("power-increase")}>Spor de putere</a>}
-                          <button type="button" className={linkClass} onClick={() => openAuthenticatedFile(`/dossier/${it.id}/export`)}>Dosar PDF</button>
+                          <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(it.id)}/export`, "Dosar_prosumator.pdf")}>Dosar PDF</button>
                           <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/sld/${it.id}/pdf?download=1`, `schema_monofilara_${it.id.slice(0, 8)}.pdf`)}>Descarcă schemă</button>
                           <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/docs/pv_pif/${it.id}`, `pif_${it.id.slice(0, 8)}.pdf`)}>Descarcă PIF</button>
                           <button type="button" className={linkClass} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${it.id}`, `pram_priza_${it.id.slice(0, 8)}.pdf`)}>Descarcă PRAM</button>
