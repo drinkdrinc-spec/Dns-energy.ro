@@ -776,6 +776,44 @@ def _package_group(key, source):
     return 0
 
 
+def _source_file_entries(positions, get_object, max_total=100 * 1024 * 1024):
+    """Collect exact uploaded originals separately from the compiled PDFs."""
+    files, unavailable, seen = [], [], set()
+    used = 0
+    for position in positions:
+        key = str(position.get("key") or "document")
+        title = str(position.get("title") or key)
+        candidates = [*(position.get("files") or []), *(position.get("uploads") or [])]
+        if position.get("upload"):
+            candidates.append(position["upload"])
+        safe_key = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in key)[:100] or "document"
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("storage_path")
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            filename = str(item.get("original_filename") or "document").replace("\\", "/").split("/")[-1]
+            filename = "".join(ch for ch in filename if ch.isalnum() or ch in " ._-()")[:180].strip(" .") or "document"
+            try:
+                data, content_type = get_object(path)
+                if used + len(data) > max_total:
+                    unavailable.append(f"{title} — originalul {filename} a fost omis, limita de 100 MB a anexelor originale a fost atinsă.")
+                    continue
+                used += len(data)
+                files.append({
+                    "archive_name": f"Documente originale/{safe_key}_{len(files) + 1:03d}_{filename}",
+                    "title": title,
+                    "original_filename": filename,
+                    "data": data,
+                    "content_type": item.get("content_type") or content_type,
+                })
+            except Exception:
+                unavailable.append(f"{title} — originalul {filename} nu a putut fi citit din arhivă.")
+    return {"files": files, "unavailable": unavailable}
+
+
 async def export_package_zip(positions_info, rec, client, settings, get_object, logger, file_count=4):
     """Build the selected, ordered submission package without duplicating evidence."""
     count = max(1, min(4, int(file_count or 4)))
@@ -800,6 +838,9 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
         except Exception as exc:
             logger.error(f"package skip {position.get('key')}: {exc}")
             unavailable.append(position.get("title") or position.get("key") or "Document atașat")
+
+    original_sources = _source_file_entries(positions_info["positions"], get_object)
+    unavailable.extend(original_sources["unavailable"])
 
     if unavailable and positions_info.get("complete"):
         positions_info["complete"] = False
@@ -826,8 +867,12 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
     }
     archive = io.BytesIO()
     manifest = ["Pachet DNS Energy — documentele rămân în ordinea de depunere.",
-                "Documentele marcate CIORNĂ au date sau fișiere de verificat; nu sunt prezentate ca documente finale."]
+                "Documentele marcate CIORNĂ au date sau fișiere de verificat; nu sunt prezentate ca documente finale.",
+                "PDF-urile numerotate sunt copii compilate pentru depunere; fișierele originale încărcate sunt păstrate separat pentru verificarea semnăturilor."]
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        for item in original_sources["files"]:
+            bundle.writestr(item["archive_name"], item["data"])
+            manifest.append(f"Original păstrat: {item['archive_name']} — {item['title']}")
         file_index = 0
         for title, group_indices in layouts[count]:
             included_groups = set(group_indices)
@@ -858,5 +903,6 @@ def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int =
     watermark(w, text, size)
     o = io.BytesIO(); w.write(o)
     return o.getvalue()
+
 
 
