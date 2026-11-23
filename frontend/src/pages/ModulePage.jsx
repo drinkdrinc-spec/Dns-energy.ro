@@ -843,14 +843,43 @@ export default function ModulePage({ moduleKey }) {
     if (section) section.open = true;
     anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  const handleProsumerIntakeCreated = async (created) => {
+    // The intake endpoint returns a compact creation response. Load the saved
+    // dossier before rendering the detailed editor, including empty nested data.
+    const { data } = await api.get(`/data/prosumator/${encodeURIComponent(created.id)}`);
+    const cef = data?.cef && typeof data.cef === "object" ? data.cef : {};
+    const dossier = {
+      ...data,
+      cef: {
+        ...cef,
+        grid: cef.grid && typeof cef.grid === "object" ? cef.grid : {},
+        inverters: Array.isArray(cef.inverters) ? cef.inverters.map((inverter) => ({
+          ...inverter,
+          strings: Array.isArray(inverter?.strings) ? inverter.strings : [],
+        })) : [],
+        shared_batteries: Array.isArray(cef.shared_batteries) ? cef.shared_batteries : [],
+      },
+      files: Array.isArray(data?.files) ? data.files : [],
+      checklist: data?.checklist && typeof data.checklist === "object" ? data.checklist : {},
+      signers: data?.signers && typeof data.signers === "object" ? data.signers : {},
+      workflow_history: Array.isArray(data?.workflow_history) ? data.workflow_history : [],
+      workflow_blockers: Array.isArray(data?.workflow_blockers) ? data.workflow_blockers : [],
+      operator_stage_documents: data?.operator_stage_documents && typeof data.operator_stage_documents === "object" ? data.operator_stage_documents : {},
+    };
+    setForm(dossier);
+    setEditId(dossier.id);
+    setChecks(dossier.checklist);
+    await load();
+  };
 
   return (
     <div>
-      <PageHeader eyebrow={cfg.eyebrow} title={key === "prosumator" ? (editId ? `Dosar #${form?.number || String(editId).slice(0, 6)} · ${form?.client_name || "Prosumator"}` : form ? "Dosar nou" : cfg.title) : cfg.title}
-        sub={key === "prosumator" && editId ? [form?.request_type, form?.pod, form?.operator].filter(Boolean).join(" · ") : cfg.sub}
+      <PageHeader eyebrow={cfg.eyebrow} title={key === "prosumator" ? (editId ? `Dosar #${form?.number || String(editId).slice(0, 6)} · ${form?.client_name || "Prosumator"}` : form ? "Dosar nou" : "Dosare") : cfg.title}
+        sub={key === "prosumator" ? (editId ? [form?.request_type, form?.pod, form?.operator].filter(Boolean).join(" · ") : undefined) : cfg.sub}
         action={<div className="flex gap-2 flex-wrap">
           {form ? <Btn data-testid="add-btn" onClick={() => setForm(null)}><X size={15} /> Închide</Btn> : key === "atr"
             ? <a data-testid="add-btn" href="/cerere-atr?new=atr" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> {cfg.addLabel}</a>
+            : key === "prosumator" ? <DossierDocumentStart autoOpen={startDocuments} onCreated={handleProsumerIntakeCreated} />
             : <Btn data-testid="add-btn" onClick={openNew}><Plus size={15} /> {cfg.addLabel}</Btn>}
         </div>} />
 
@@ -881,85 +910,6 @@ export default function ModulePage({ moduleKey }) {
             </ol>
             <a href="/formulare-oficiale" className="mt-4 inline-flex text-xs font-semibold" style={{ color: "var(--blue)" }}>Deschide formularele oficiale →</a>
           </div>
-        </div>
-      </section>}
-
-      {key === "prosumator" && !form && <section className="mb-6 overflow-hidden rounded-2xl border shadow-sm" aria-label="Flux dosar prosumator" data-testid="prosumer-workflow" style={{ borderColor: "var(--line)", background: "#fff" }}>
-        <div className="grid lg:grid-cols-[1.35fr_1fr]">
-          <div className="p-5 sm:p-7 lg:p-8" style={{ background: "linear-gradient(135deg, #f2f8f2 0%, #ffffff 72%)" }}>
-            <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--green)" }}>Dosar nou · prosumator</div>
-            <h2 className="mt-2 max-w-2xl text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: "#13243d" }}>Pornește din actele clientului</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6" style={{ color: "var(--muted)" }}>Încarcă CI, factura și cartea funciară. Aplicația extrage datele disponibile, le salvează la client și deschide dosarul pentru verificare.</p>
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              <DossierDocumentStart autoOpen={startDocuments} onCreated={async (created) => {
-                // The intake endpoint returns a compact creation response. Load
-                // the persisted record before mounting the full dossier editor.
-                // Some optional nested fields are absent on a brand-new dossier.
-                const { data } = await api.get(`/data/prosumator/${encodeURIComponent(created.id)}`);
-                const cef = data?.cef && typeof data.cef === "object" ? data.cef : {};
-                const dossier = {
-                  ...data,
-                  cef: {
-                    ...cef,
-                    grid: cef.grid && typeof cef.grid === "object" ? cef.grid : {},
-                    inverters: Array.isArray(cef.inverters) ? cef.inverters.map((inverter) => ({
-                      ...inverter,
-                      strings: Array.isArray(inverter?.strings) ? inverter.strings : [],
-                    })) : [],
-                    shared_batteries: Array.isArray(cef.shared_batteries) ? cef.shared_batteries : [],
-                  },
-                  files: Array.isArray(data?.files) ? data.files : [],
-                  checklist: data?.checklist && typeof data.checklist === "object" ? data.checklist : {},
-                  signers: data?.signers && typeof data.signers === "object" ? data.signers : {},
-                  workflow_history: Array.isArray(data?.workflow_history) ? data.workflow_history : [],
-                  workflow_blockers: Array.isArray(data?.workflow_blockers) ? data.workflow_blockers : [],
-                  operator_stage_documents: data?.operator_stage_documents && typeof data.operator_stage_documents === "object" ? data.operator_stage_documents : {},
-                };
-                setForm(dossier);
-                setEditId(dossier.id);
-                setChecks(dossier.checklist);
-                await load();
-              }} />
-              <Btn variant="secondary" onClick={openNew} data-testid="prosumer-manual-start"><Plus size={15} /> Introducere manuală</Btn>
-            </div>
-            <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Datele extrase rămân de verificat. Sistemul nu completează măsurători reale în locul instalatorului.</p>
-            {key === "prosumator" && hiddenTestCount > 0 && <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-dashed p-3" style={{ borderColor: "var(--line)", background: "#fff" }}>
-              <Btn variant="secondary" onClick={showTestDossiers} data-testid="show-test-dossiers">Deschide dosarele demonstrative ({hiddenTestCount})</Btn>
-              <span className="text-xs leading-5" style={{ color: "var(--muted)" }}>Înregistrări sintetice TEST, marcate separat; le poți folosi pentru a vedea dosarul, schema și documentele generate.</span>
-            </div>}
-            {role === "admin" && hiddenTestCount === 0 && <div className="mt-4 rounded-xl border border-dashed p-3" style={{ borderColor: "var(--line)", background: "#fff" }}>
-              <div className="flex flex-wrap items-center gap-3">
-                <Btn variant="secondary" onClick={createTestDossier} disabled={creatingTestDossier} data-testid="create-test-dossier">
-                  {creatingTestDossier ? "Se pregătește dosarul..." : "Creează dosar demonstrativ TEST"}
-                </Btn>
-                <span className="text-xs leading-5" style={{ color: "var(--muted)" }}>Date sintetice marcate TEST, doar pentru verificarea fluxului. Nu sunt acte sau măsurători reale și nu se depun.</span>
-              </div>
-            </div>}
-          </div>
-          <div className="border-t p-5 sm:p-7 lg:border-l lg:border-t-0" style={{ borderColor: "var(--line)", background: "#fbfcfe" }}>
-            <div className="text-[11px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--muted)" }}>Continuă un dosar</div>
-            <h3 className="mt-2 text-lg font-bold" style={{ color: "#13243d" }}>Acces direct la următorul pas</h3>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {[["/cerere-atr", "Cerere ATR"], ["/spor-putere", "Spor de putere"], ["/diu", "Dosar DI-U"], ["/catalog-echipamente", "Catalog echipamente"]].map(([href, label]) =>
-                <a key={href} href={href} className="flex min-h-11 items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-bold hover:border-blue-400" style={{ borderColor: "var(--line)", color: "#31425c" }}>
-                  {label}<span aria-hidden="true" style={{ color: "var(--blue)" }}>›</span>
-                </a>)}
-            </div>
-            <p className="mt-4 text-xs leading-5" style={{ color: "var(--muted)" }}>Alege clientul din formular pentru preluarea automată a datelor cunoscute în ATR, spor sau DI-U.</p>
-          </div>
-        </div>
-        <div className="border-t px-5 py-4 sm:px-7" style={{ borderColor: "var(--line)" }}>
-          <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["01", "Documente client", "CI → factură → carte funciară. Verifică datele citite."],
-              ["02", "Instalație", "Selectează echipamentele și confirmă datele locului de consum."],
-              ["03", "Control tehnic", "Verifică dimensionarea, protecțiile, cablurile și schema."],
-              ["04", "Depunere", "Descarcă separat dosarul, schema, PRAM și documentele PIF."],
-            ].map(([n, title, body]) => <li key={n} className="flex gap-3 rounded-xl px-3 py-3" style={{ background: "#f8fafd" }}>
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: "#edf7ef", color: "var(--green)" }}>{n}</span>
-              <span><b className="block text-sm">{title}</b><span className="mt-1 block text-xs leading-5" style={{ color: "var(--muted)" }}>{body}</span></span>
-            </li>)}
-          </ol>
         </div>
       </section>}
 

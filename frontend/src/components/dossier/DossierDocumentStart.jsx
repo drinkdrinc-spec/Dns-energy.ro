@@ -322,11 +322,17 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   };
 
   const field = (key, label, className = "") => <label className={`den-field ${className}`.trim()} key={key}><span>{label}</span>
-    <input className="den-input" value={values[key] || ""} onChange={(e) => {
+    <input className="den-input" value={values[key] || ((key === "last_name" || key === "first_name") ? (key === "last_name" ? String(values.client_name || "").trim().split(/\s+/)[0] : String(values.client_name || "").trim().split(/\s+/).slice(1).join(" ")) : "")} onChange={(e) => {
       const value = e.target.value;
       if (key === "operator") setOperatorManuallySet(Boolean(value.trim()));
       setValues((prev) => {
       const next = { ...prev, [key]: value };
+      if (key === "last_name" || key === "first_name") {
+        const parts = String(prev.client_name || "").trim().split(/\s+/).filter(Boolean);
+        const lastName = key === "last_name" ? value.trim() : (parts[0] || "");
+        const firstName = key === "first_name" ? value.trim() : parts.slice(1).join(" ");
+        next.client_name = [lastName, firstName].filter(Boolean).join(" ");
+      }
       if (key === "hq_address" && prev.address_same_as_ci) next.address = value;
       if ((key === "pod" || key === "county") && !operatorManuallySet) {
         next.operator = distributorSuggestion(next.pod, next.county);
@@ -346,7 +352,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
 
   return <>
-    <Btn type="button" variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Dosar nou</Btn>
+    <Btn type="button" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Dosar nou</Btn>
     <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setStep(0); }}>
       <DialogContent ref={stepScrollRef} className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dossier-document-start-dialog">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles size={18} style={{ color: "var(--blue)" }} /> Dosar nou</DialogTitle></DialogHeader>
@@ -385,12 +391,18 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           </div>
         </div>}
         {isNewClient && <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
-          <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Datele clientului</div>
+          <div className="mb-3 grid grid-cols-2 rounded-lg bg-slate-50 p-1" role="group" aria-label="Tip client">
+            {["Persoană fizică", "Persoană juridică"].map((kind) => <button key={kind} type="button" className="min-h-10 rounded-md px-3 text-sm font-semibold" aria-pressed={values.kind === kind} onClick={() => setValues((prev) => ({ ...prev, kind }))} style={{ color: values.kind === kind ? "var(--green)" : "var(--muted)", background: values.kind === kind ? "#fff" : "transparent", boxShadow: values.kind === kind ? "0 1px 3px #14213d20" : "none" }}>{kind}</button>)}
+          </div>
           <button type="button" className="mb-3 text-xs font-semibold" style={{ color: "var(--blue)" }} onClick={() => inputs.current.ci?.click()} disabled={!!busy} data-testid="intake-scan-ci"><Upload size={13} className="mr-1 inline" />Scanează CI (poză sau PDF) — completează nume și CNP</button>
           <div className="grid grid-cols-2 gap-3">
-            <label className="den-field"><span>Tip client</span><select className="den-input" value={values.kind || ""} onChange={(e) => setValues((prev) => ({ ...prev, kind: e.target.value }))} data-testid="intake-client-kind"><option value="">Alege...</option><option value="Persoană fizică">Persoană fizică</option><option value="Persoană juridică">Persoană juridică</option></select></label>
-            {field("client_name", "Nume și prenume *")}{field("cnp", "CNP / CUI")}{field("phone", "Telefon")}
-            {field("hq_address", "Domiciliu (din CI)", "col-span-2")}
+            {values.kind === "Persoană juridică" ? <>
+              {field("client_name", "Denumire firmă *", "col-span-2")}{field("cnp", "CUI")}{field("phone", "Telefon")}
+              {field("hq_address", "Sediu social", "col-span-2")}{field("email", "E-mail", "col-span-2")}
+            </> : <>
+              {field("last_name", "Nume *")}{field("first_name", "Prenume *")}{field("cnp", "CNP")}{field("phone", "Telefon")}
+              {field("hq_address", "Domiciliu (din CI)", "col-span-2")}{field("email", "E-mail", "col-span-2")}
+            </>}
           </div>
         </section>}
         <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
