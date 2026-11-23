@@ -25,7 +25,7 @@ export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
     <>
     <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="cef-grid-card">
       <h4 className="font-bold text-sm mb-3">Branșament & măsură</h4>
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <F label="Branșament" value={grid.supply} onChange={s("supply")} options={["Trifazat", "Monofazat"]} testid="grid-supply" />
         <F label="Putere aprobată / cerută (kW)" type="number" value={grid.bransament_kw} onChange={s("bransament_kw")} testid="grid-bransament" />
         <F label={`Protecție BMP existentă (A)${gr?.main_proposal ? ` · tipic ${gr.main_proposal} A` : ""}`} type="number" value={grid.bmp_a} onChange={s("bmp_a")} testid="grid-bmp" />
@@ -34,7 +34,7 @@ export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
         <F label="Smart meter" value={grid.smart_meter_mode || (grid.meter_enabled ? "Contor separat" : "Inclus în invertor")} onChange={(value) => set({ ...grid, smart_meter_mode: value, meter_enabled: value === "Contor separat" })} options={["Contor separat", "Inclus în invertor"]} testid="grid-smart-meter-mode" />
       </div>
       {meterSeparate && <div className="mt-4 rounded-lg border p-3" style={{ borderColor: "var(--line)" }}>
-        <div className="grid sm:grid-cols-2 gap-3 mt-3">
+        <div className="grid grid-cols-2 gap-3 mt-3">
           <CatalogPick items={catalog} category="Smart meter" label="Alege modelul din catalog" onPick={(it) => set({ ...grid, meter_enabled: true, meter: it.brand_model, meter_catalog_id: it.id })} testid="grid-meter-pick" />
           <F label="Model smart meter" value={grid.meter} onChange={(value) => set({ ...grid, meter_enabled: true, meter: value })} testid="grid-meter" />
           <F label="Serie contor" value={grid.meter_serial} onChange={(value) => set({ ...grid, meter_enabled: true, meter_serial: value })} testid="grid-meter-serial" />
@@ -45,7 +45,7 @@ export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
       </div>
       <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }} data-testid="cef-topology-card">
         <h4 className="font-bold text-sm mb-3">Topologie, protecții & TEG</h4>
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <F label="Alimentare TEG" value={grid.teg_supply || "Auto (derivat)"} onChange={s("teg_supply")} options={["Auto (derivat)", "Rețea (fără back-up)", "Load (2× BMP)", "Huawei Back-up Box"]} testid="grid-teg-supply" />
           <F label="Backup" value={grid.backup_mode || "—"} onChange={s("backup_mode")} options={["—", "Total (tot TEG-ul pe backup)", "Parțial (doar circuite critice)"]} testid="grid-backup-mode" />
           <F label="SPD DC" value={grid.spd_dc || "SPD 2P · 600 V"} onChange={s("spd_dc")} options={["SPD 2P · 600 V", "SPD 2P · 1000 V", "SPD 2P · 1500 V", "SPD integrat în invertor"]} testid="grid-spd-dc" />
@@ -62,7 +62,7 @@ export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
               <button type="button" className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => set({ ...grid, circuits: DEFAULT_TEG_CIRCUITS.map((row) => ({ ...row })) })}><Wand2 size={13} /> Propune circuitele</button></div>
           </div>
           <div className="space-y-2">
-            {circuits.map((circuit, index) => <div key={index} className={`grid grid-cols-2 ${partialBackup ? "sm:grid-cols-[minmax(72px,1fr)_minmax(62px,.8fr)_minmax(68px,.8fr)_minmax(80px,.9fr)_64px_32px]" : "sm:grid-cols-[minmax(72px,1fr)_minmax(62px,.8fr)_minmax(68px,.8fr)_minmax(80px,.9fr)_32px]"} gap-2 rounded-lg border p-2 items-end`} style={{ borderColor: "var(--line)" }} data-testid={`teg-circuit-${index}`}>
+            {circuits.map((circuit, index) => <div key={index} className={`teg-circuit-row grid grid-cols-2 ${partialBackup ? "sm:grid-cols-[minmax(72px,1fr)_minmax(62px,.8fr)_minmax(68px,.8fr)_minmax(80px,.9fr)_64px_32px]" : "sm:grid-cols-[minmax(72px,1fr)_minmax(62px,.8fr)_minmax(68px,.8fr)_minmax(80px,.9fr)_32px]"} gap-2 rounded-lg border p-2 items-end`} style={{ borderColor: "var(--line)" }} data-partial-backup={partialBackup ? "true" : "false"} data-testid={`teg-circuit-${index}`}>
               <F label="Circuit" value={circuit.name} onChange={(value) => setCircuit(index, { name: value })} testid={`teg-circuit-${index}-name`} />
               <F label="Siguranță" value={circuit.breaker || "C16"} onChange={(value) => setCircuit(index, { breaker: value })} options={["C6", "C10", "C13", "C16", "C20", "C25", "C32", "C40"]} testid={`teg-circuit-${index}-breaker`} />
               <F label="Poli" value={circuit.poles || "1P+N"} onChange={(value) => setCircuit(index, { poles: value })} options={["1P+N", "3P+N"]} testid={`teg-circuit-${index}-poles`} />
@@ -77,7 +77,7 @@ export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
         </div>
       <details className="mt-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
         <summary className="cursor-pointer text-xs font-semibold">Detalii tehnice · cabluri, protecții și măsurători</summary>
-        <div className="grid sm:grid-cols-3 gap-3 mt-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
           <F label="Cablu coloană BMP → TG" value={grid.column_cable || gr?.main_column_cable_proposal} onChange={s("column_cable")} testid="grid-column" />
           <F label="Raport TC (dacă măsură prin TC)" value={grid.ct_ratio} onChange={s("ct_ratio")} testid="grid-ct" />
           <F label="Întreruptor general TG" value={grid.tg_breaker} onChange={s("tg_breaker")} testid="grid-tg" />
@@ -104,7 +104,7 @@ export function GridCard({ grid, set, catalog, res, onSave, saving = false }) {
           : gr?.anti_auto && <span className="text-xs font-bold" style={{ color: "#b03a2e" }}>Peste 27 kW sau curent calculat peste 63 A — propunere automată</span>}
       </div>
       {(grid.anti_required || gr?.anti) && (
-        <div className="grid sm:grid-cols-2 gap-3 mt-3">
+        <div className="grid grid-cols-2 gap-3 mt-3">
           <F label="Releu protecție interfață" value={grid.anti_relay} onChange={s("anti_relay")} testid="grid-anti-relay" />
           <F label="Element de decuplare" value={grid.anti_breaker} onChange={s("anti_breaker")} testid="grid-anti-breaker" />
         </div>

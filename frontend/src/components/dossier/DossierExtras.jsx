@@ -55,7 +55,7 @@ export function DossierExtras({ form, setVal, compact = false, part = "all", onS
         </div>
         {(!form.pram_source || form.pram_source === "internal") && <>
           <div className="mt-3 rounded-lg px-3 py-2 text-xs font-semibold" style={{ background: "#edf7f0", color: "#287347" }}>Buletin nr. {form.bulletin_no || "—"} · numerotare din seria firmei</div>
-          <div className="mt-3 grid sm:grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-2 gap-3">
             <label className="den-field"><span>Nr. buletin</span><div className="flex gap-2"><input className="den-input min-w-0" value={form.bulletin_no || ""} onChange={(e) => setVal("bulletin_no", e.target.value)} placeholder="Număr din registrul firmei" data-testid="pram-number" />{dossierId && !form.bulletin_no && <button type="button" className="shrink-0 rounded-lg border px-3 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--green)" }} onClick={allocatePramNumber} disabled={pramNumberBusy} data-testid="pram-number-next">{pramNumberBusy ? "…" : "Următorul nr."}</button>}</div></label>
             <label className="den-field"><span>Data măsurătorii</span><input className="den-input" type="date" value={form.measure_date || ""} onChange={(e) => setVal("measure_date", e.target.value)} data-testid="pram-date" /></label>
             <label className="den-field"><span>Starea solului</span><select className="den-input" value={form.soil || ""} onChange={(e) => { const psi = { "sol uscat": "1.5", "umiditate medie": "1.3", "sol umed": "1.1" }[e.target.value]; setVal("soil", e.target.value); if (psi) setVal("soil_psi", psi); }} data-testid="pram-soil"><option value="">Alege…</option><option>sol uscat</option><option>umiditate medie</option><option>sol umed</option></select></label>
@@ -146,4 +146,5 @@ export function DossierExtras({ form, setVal, compact = false, part = "all", onS
     </div>
   );
 }
+
 
