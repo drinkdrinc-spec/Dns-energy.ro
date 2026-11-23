@@ -12,7 +12,8 @@ const TYPES = [
   ["altele", "4. Alte documente", "PDF, imagini, DOCX și XLSX pot fi citite și rezumate; DOC/XLS și alte formate se atașează pentru verificare manuală."],
 ];
 
-const EMPTY = { client_name: "", kind: "", bank: "", iban: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", postal_code: "", pod: "", nlc: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", request_type: "Racordare prosumator — fără spor de putere" };
+const EMPTY = { client_name: "", kind: "", bank: "", iban: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", postal_code: "", pod: "", nlc: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", existing_supply: "", supply: "Trifazat", unconnected_property: false, afm: "Nu", request_type: "Racordare prosumator — fără spor de putere" };
+const emptyValues = () => ({ ...EMPTY, doc_date: new Date().toISOString().slice(0, 10) });
 const COUNTY_OPERATOR = {
   bihor: "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
   "bistrita nasaud": "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
@@ -57,6 +58,8 @@ const COUNTY_OPERATOR = {
   ilfov: "Rețele Electrice Muntenia S.A.",
   bucuresti: "Rețele Electrice Muntenia S.A.",
 };
+const COUNTY_OPTIONS = ["Alba", "Arad", "Argeș", "Bacău", "Bihor", "Bistrița-Năsăud", "Botoșani", "Brăila", "Brașov", "București", "Buzău", "Călărași", "Caraș-Severin", "Cluj", "Constanța", "Covasna", "Dâmbovița", "Dolj", "Galați", "Giurgiu", "Gorj", "Harghita", "Hunedoara", "Ialomița", "Iași", "Ilfov", "Maramureș", "Mehedinți", "Mureș", "Neamț", "Olt", "Prahova", "Sălaj", "Satu Mare", "Sibiu", "Suceava", "Teleorman", "Timiș", "Tulcea", "Vâlcea", "Vaslui", "Vrancea"];
+const DISTRIBUTOR_OPTIONS = [...new Set([...Object.values(COUNTY_OPERATOR), "Alt operator"])];
 
 const LOCATION_FIELDS = ["address", "county", "locality", "postal_code", "pod", "nlc", "operator", "supplier", "cf_nr", "cadastral_nr"];
 function clientConsumptionSites(client) {
@@ -95,7 +98,7 @@ function putNonempty(base, next) {
 
 export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   const [open, setOpen] = useState(Boolean(autoOpen));
-  const [values, setValues] = useState(EMPTY);
+  const [values, setValues] = useState(emptyValues);
   const [files, setFiles] = useState({ ci: [], factura: [], cf: [], altele: [] });
   const [notes, setNotes] = useState({});
   const [busy, setBusy] = useState("");
@@ -272,7 +275,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
       doc_type: ({ ci: "Carte de identitate", factura: "Factură energie", cf: "Carte funciară", altele: "Document suplimentar" })[kind],
     })));
     const workflowBlockers = requiredDataMissing.map((field) => `Lipsește ${field}`);
-    const payload = { ...values, client_name: values.client_name.trim(), files: filesForDossier,
+    const payload = { ...values, doc_date: values.doc_date || new Date().toISOString().slice(0, 10), client_name: values.client_name.trim(), files: filesForDossier,
       workflow_status: requiredDataMissing.length ? "Date de completat" : "Dosar în pregătire",
       workflow_blockers: workflowBlockers,
       notes: [...Object.values(notes).flat(), values.notes].filter(Boolean).join("\n") };
@@ -308,7 +311,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
         console.error("Dosarul a fost creat, dar pagina lui nu s-a putut deschide:", openError);
         toast.warning("Dosarul a fost creat și îl găsești în lista Dosare; pagina nu s-a deschis automat.");
       }
-      setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
+      setValues(emptyValues()); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
       setSelectedClient(null); setIsNewClient(false); setSelectedSiteId("new"); setClientSearch(""); setOperatorManuallySet(false);
     } catch (e) {
       toast.error(e.response?.data?.detail || (e.request
@@ -356,7 +359,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Client existent</div>
           {selectedClient ? <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: "#f2f7ff" }}>
             <span><b>{selectedClient.title}</b><span className="ml-2 text-xs" style={{ color: "var(--muted)" }}>{selectedClient.detail}</span></span>
-            <button type="button" className="text-xs font-semibold underline" onClick={() => { setSelectedClient(null); setIsNewClient(false); setSelectedSiteId("new"); setClientSearch(""); setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({}); }}>Schimbă clientul</button>
+            <button type="button" className="text-xs font-semibold underline" onClick={() => { setSelectedClient(null); setIsNewClient(false); setSelectedSiteId("new"); setClientSearch(""); setValues(emptyValues()); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({}); }}>Schimbă clientul</button>
           </div> : <>
             {!isNewClient && <><input className="den-input" value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Caută după nume, CNP/CUI sau telefon" aria-label="Caută un client existent" data-testid="intake-client-search" />
             {clientMatches.length > 0 && <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border" style={{ borderColor: "var(--line)" }} role="listbox" aria-label="Clienți găsiți">
@@ -366,7 +369,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             <label className="mt-3 inline-flex items-center gap-2 text-sm font-medium" data-testid="intake-new-client-toggle"><input type="checkbox" checked={isNewClient} onChange={(event) => {
               const checked = event.target.checked;
               setIsNewClient(checked); setSelectedClient(null); setSelectedSiteId("new"); setClientSearch(""); setClientMatches([]);
-              setValues(EMPTY); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
+              setValues(emptyValues()); setFiles({ ci: [], factura: [], cf: [], altele: [] }); setNotes({});
             }} /> Client nou (nu există în listă)</label>
           </>}
         </section>
@@ -443,8 +446,15 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           <section className="rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }}>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Loc de consum din factură</div>
             <div className="grid grid-cols-2 gap-3">
-              {field("address", "Adresa locului de consum", "col-span-2")}{field("pod", "POD")}
-              {field("operator", "Operator de distribuție")}{field("county", "Județ")}{field("locality", "Localitate")}
+              {field("address", "Adresa locului de consum", "col-span-2")}
+              <label className="den-field"><span>Județ *</span><select className="den-input" value={values.county || ""} onChange={(event) => {
+                const county = event.target.value;
+                const suggested = distributorSuggestion(values.pod, county);
+                setValues((prev) => ({ ...prev, county, ...(!operatorManuallySet && suggested ? { operator: suggested } : {}) }));
+              }} data-testid="intake-county"><option value="">Alege județul</option>{COUNTY_OPTIONS.map((county) => <option key={county}>{county}</option>)}</select></label>
+              {field("locality", "Localitate")}{field("postal_code", "Cod poștal")}{field("pod", "POD")}
+              <label className="den-field"><span>Distribuitor</span><select className="den-input" value={values.operator || ""} onChange={(event) => { setOperatorManuallySet(true); setValues((prev) => ({ ...prev, operator: event.target.value })); }} data-testid="intake-distributor"><option value="">Alege distribuitorul</option>{DISTRIBUTOR_OPTIONS.map((operator) => <option key={operator} value={operator}>{operator}</option>}</select><small>{values.operator ? "Propus din POD / județ; îl poți modifica." : "Se propune din POD sau județ."}</small></label>
+              <label className="den-field"><span>Racord existent</span><select className="den-input" value={values.existing_supply || ""} disabled={values.unconnected_property} onChange={(event) => setValues((prev) => ({ ...prev, existing_supply: event.target.value }))} data-testid="intake-existing-supply"><option value="">—</option><option>Monofazat</option><option>Trifazat</option></select></label>
             </div>
             <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Operatorul se propune după prefixul POD-ului sau județul din factură. Verifică propunerea; pentru rețele locale sau industriale selectează operatorul indicat în actele locului de consum.</p>
             <label className="mt-3 inline-flex items-center gap-2 text-xs font-medium" data-testid="intake-address-same-as-ci">
@@ -455,29 +465,32 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
               Adresa locului de consum este aceeași cu adresa din CI
             </label>
           </section>
+          <label className="mt-3 flex items-start gap-2 text-xs font-medium" data-testid="intake-unconnected-property"><input type="checkbox" checked={Boolean(values.unconnected_property)} onChange={(event) => setValues((prev) => ({ ...prev, unconnected_property: event.target.checked, ...(event.target.checked ? { existing_supply: "" } : {}) }))} /> Imobil încă neracordat la rețea (fără racord existent)</label>
           <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-            <summary className="cursor-pointer text-xs font-semibold">Furnizor (dacă apare pe factură)</summary>
+            <summary className="cursor-pointer text-xs font-semibold">Date suplimentare: cod loc, furnizor, putere aprobată, CF, cadastral — opțional acum</summary>
             <div className="grid grid-cols-2 gap-3 mt-3">
-              {field("supplier", "Furnizor energie")}
-            </div>
-          </details>
-          <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
-            <summary className="cursor-pointer text-xs font-semibold">Coduri suplimentare din factură (opțional)</summary>
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              {field("nlc", "Cod loc de consum / NLC")}{field("postal_code", "Cod poștal")}
+              {field("nlc", "Cod loc de consum / NLC")}{field("supplier", "Furnizor energie")}{field("p_abs_kw", "Putere aprobată (kW)")}{field("cf_nr", "Carte funciară")}{field("cadastral_nr", "Număr cadastral")}
             </div>
             <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>AI le completează numai dacă sunt vizibile în documentele încărcate; verifică valorile înainte de folosire.</p>
           </details>
         </div>}
         {step === 2 && <section className="rounded-lg border bg-white p-4" style={{ borderColor: "var(--line)" }}>
-          <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Tipul dosarului de prosumator</div>
-          {[
-            ["Racordare prosumator — fără spor de putere", "Fără spor de putere", "Se pregătește notificarea aplicabilă operatorului (de regulă Anexa 2)."],
-            ["Spor de putere + prosumator", "Cu spor de putere", "Se pregătește cererea de racordare aplicabilă operatorului (de regulă Anexa 1)."],
-          ].map(([value, title, description]) => <label key={value} className="mb-2 flex items-start gap-3 rounded-lg border p-3 last:mb-0" style={{ borderColor: values.request_type === value ? "var(--blue)" : "var(--line)", background: values.request_type === value ? "#f7faff" : "#fff" }}>
-            <input type="radio" name="dossier-kind" value={value} checked={values.request_type === value} onChange={() => setValues((prev) => ({ ...prev, request_type: value }))} className="mt-1" data-testid={value.includes("spor") ? "intake-request-type-increase" : "intake-request-type-standard"} />
-            <span><b className="block text-sm">{title}</b><span className="text-xs" style={{ color: "var(--muted)" }}>{description}</span></span>
-          </label>)}
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>Tip dosar</div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              ["Racordare prosumator — fără spor de putere", "Fără spor"],
+              ["Spor de putere + prosumator", "Cu spor de putere"],
+            ].map(([value, title]) => <label key={value} className="flex min-h-12 cursor-pointer items-center justify-center rounded-lg border p-2 text-center text-xs font-semibold" style={{ borderColor: values.request_type === value ? "var(--blue)" : "var(--line)", background: values.request_type === value ? "#f7faff" : "#fff", color: values.request_type === value ? "var(--blue)" : "var(--ink)" }}>
+              <input type="radio" name="dossier-kind" value={value} checked={values.request_type === value} onChange={() => setValues((prev) => ({ ...prev, request_type: value }))} className="sr-only" data-testid={value.includes("spor") ? "intake-request-type-increase" : "intake-request-type-standard"} />{title}
+            </label>)}
+            <div className="flex min-h-12 items-center justify-center rounded-lg border p-2 text-center text-xs text-slate-400" aria-disabled="true">Retrofit<br />în curând</div>
+          </div>
+          <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>{values.request_type === "Spor de putere + prosumator" ? "Se pregătește cererea aplicabilă operatorului (de regulă Anexa 1)." : "Fără spor: notificare pentru puterea aprobată existentă (de regulă Anexa 2)."}</p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <label className="den-field"><span>Racord solicitat</span><select className="den-input" value={values.supply || ""} onChange={(event) => setValues((prev) => ({ ...prev, supply: event.target.value }))} data-testid="intake-requested-supply"><option>Monofazat</option><option>Trifazat</option></select></label>
+            <label className="den-field"><span>Data cererii</span><input className="den-input" type="date" value={values.doc_date || ""} onChange={(event) => setValues((prev) => ({ ...prev, doc_date: event.target.value }))} data-testid="intake-request-date" /></label>
+          </div>
+          <label className="mt-3 inline-flex items-center gap-2 text-xs font-medium" data-testid="intake-afm"><input type="checkbox" checked={values.afm === "Da"} onChange={(event) => setValues((prev) => ({ ...prev, afm: event.target.checked ? "Da" : "Nu" }))} /> Finanțare AFM (Casa Verde)</label>
           {requiredDataMissing.length > 0 ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900" role="status" data-testid="intake-missing-data">
             <b>Ciornă — date de completat</b>
             <p className="mt-1">{!values.client_name.trim() ? "Completează numele clientului pentru a crea dosarul. " : "Dosarul poate fi salvat acum și completat ulterior. "}Pentru pregătirea depunerii lipsesc: {requiredDataMissing.filter((field) => field !== "numele clientului").join(", ") || (values.client_name.trim() ? "nimic din datele de bază" : "datele de identificare ale clientului")}.</p>
