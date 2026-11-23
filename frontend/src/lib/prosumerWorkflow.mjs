@@ -1,10 +1,13 @@
 const text = (value) => String(value ?? "").trim();
-const number = (value) => Number(String(value ?? "").replace(",", ".")) || 0;
+const number = (value) => {
+  const parsed = Number(String(value ?? "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 function batteryIsSelected(inverter, cef) {
   if (inverter.battery_mode === "own") return Boolean(text(inverter.battery?.model));
   if (inverter.battery_mode === "shared") {
-    return (cef.shared_batteries || []).some((battery) =>
+    return (Array.isArray(cef.shared_batteries) ? cef.shared_batteries : []).some((battery) =>
       battery?.id === inverter.shared_battery_id && text(battery.model));
   }
   return false;
@@ -18,7 +21,7 @@ function inverterInstallationIsConfigured(inverter, cef) {
   if (batteryOnly || acBatteryInverter) return batteryIsSelected(inverter, cef);
 
   const hasPanelModel = Boolean(text(inverter.panel_model || inverter.panel));
-  const hasPopulatedString = (inverter.strings || []).some((row) => number(row?.panels) > 0);
+  const hasPopulatedString = (Array.isArray(inverter.strings) ? inverter.strings : []).some((row) => number(row?.panels) > 0);
   return hasPanelModel && hasPopulatedString;
 }
 
