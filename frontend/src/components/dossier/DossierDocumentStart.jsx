@@ -317,6 +317,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
     }} data-testid={`intake-${key}`} /></label>;
 
   const requiredDataMissing = [
+    ["numele clientului", values.client_name],
     ["CNP / CUI", values.cnp],
     ["adresa locului de consum", values.address],
     ["POD", values.pod],
