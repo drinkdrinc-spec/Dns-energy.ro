@@ -1,4995 +1,839 @@
-import asyncio
-import base64
-from dotenv import load_dotenv
-from pathlib import Path
-import os
-
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
-
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadFile, File, Form, Response, Header, Query
-from fastapi.responses import JSONResponse
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, EmailStr
-from typing import Optional
-import logging
-import uuid
-import re
-import bcrypt
-import jwt
-import requests
-from client_search import build_client_search_queries, NUMERIC_CLIENT_SEARCH_FIELDS
-from client_portal import is_client_upload_path, public_client_messages
-from password_reset import admin_reset_nonce_hash, reset_lookup_hash, reset_rate_key, reset_token_hash, trusted_reset_origin
-from auth_policy import private_mode_account_allowed
-import io
-import zipfile
-from datetime import datetime, timezone, timedelta
-from zoneinfo import ZoneInfo
-
-# ---------------- DB ----------------
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
-
-PRIVATE_MODE = os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
-app = FastAPI(
-    docs_url=None if PRIVATE_MODE else "/docs",
-    redoc_url=None if PRIVATE_MODE else "/redoc",
-    openapi_url=None if PRIVATE_MODE else "/openapi.json",
-)
-api_router = APIRouter(prefix="/api")
-
-@app.get("/healthz", include_in_schema=False)
-async def healthz():
-    return {"status": "ok"}
-
-
-@app.get("/readyz", include_in_schema=False)
-async def readyz():
-    try:
-        await asyncio.wait_for(client.admin.command("ping"), timeout=5.0)
-    except Exception:
-        raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": {"mongodb": "unavailable"}})
-    return {"status": "ready", "checks": {"mongodb": "ok"}}
-
-
-# Render's current API service still probes /docs. In private mode keep this
-# compatibility URL as a liveness check only; MongoDB readiness stays on /readyz.
-if PRIVATE_MODE:
-    app.add_api_route("/docs", healthz, methods=["GET"], include_in_schema=False, name="render_health_compat")
-
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("d-energy")
-
-# ---------------- Auth helpers ----------------
-JWT_ALGORITHM = "HS256"
-
-def get_jwt_secret() -> str:
-    return os.environ["JWT_SECRET"]
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-
-def create_access_token(user_id: str, email: str, token_version: int = 0) -> str:
-    payload = {"sub": user_id, "email": email,
-               "ver": token_version, "exp": datetime.now(timezone.utc) + timedelta(days=7), "type": "access"}
-    return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
-
-async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
-    if not token:
-        raise HTTPException(status_code=401, detail="Neautentificat")
-    try:
-        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
-        user = await db.users.find_one({"id": payload["sub"]})
-        if not user:
-            raise HTTPException(status_code=401, detail="Utilizator inexistent")
-        if int(payload.get("ver", 0)) != int(user.get("token_version", 0)):
-            raise HTTPException(status_code=401, detail="Sesiunea a fost revocatÄƒ. AutentificÄƒ-te din nou.")
-        if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
-            admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-            if not private_mode_account_allowed(user, admin_email):
-                raise HTTPException(status_code=403, detail="Acces permis administratorului È™i partenerilor aprobaÈ›i DNS Energy")
-        user.pop("password_hash", None)
-        user.pop("_id", None)
-        if user.get("status", "active") != "active":
-            raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
-        return await finish_user(user)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Sesiune expiratÄƒ")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Token invalid")
-
-PLATFORM = {"id": None}
-ALL_FEATURES = {"prosumator": "Dosare de prosumator", "diu": "Dosar instalaÈ›ie de utilizare (DI-U)", "mono": "Scheme monofilare (modul)",
-                "panels": "Tablouri electrice", "anti": "Antiinsularizare", "pram": "Buletine PRAM", "equipment": "Echipamente",
-                "power": "Spor de putere / BMP", "atr": "Cerere ATR (aviz tehnic de racordare)", "works": "Gestionarea lucrÄƒrilor", "projects": "Simulare proiect", "sign_remote": "Semnare la distanÈ›Äƒ",
-                "ai_extract": "Import automat din documente (AI)", "ai_gpt": "Asistent AI ChatGPT (chat, verificare dosar, redactare, import)", "oferte": "Oferte de preÈ› È™i contracte"}
-MODULE_FEATURE = {"clients": "prosumator", "prosumator": "prosumator", "documents": "prosumator", "archived_dossiers": "prosumator", "catalog": "prosumator", "operator_messages": "prosumator", "staff": "prosumator",
-                  "instruments": "prosumator", "diu": "diu", "mono": "mono", "panels": "panels", "anti": "anti", "pram": "pram",
-                  "equipment": "equipment", "power": "power", "atr": "atr", "works": "works", "projects": "projects"}
-DEFAULT_PLANS = [
-    {"code": "start", "name": "START", "price": 250.0, "features": ["prosumator"], "max_inverters": 1, "order": 1,
-     "description": "Dosare de prosumator simple, maximum un invertor per dosar."},
-    {"code": "pro", "name": "PRO", "price": 500.0, "features": ["prosumator", "diu"], "max_inverters": 0, "order": 2,
-     "description": "Toate funcÈ›iile START + dosare de prosumator fÄƒrÄƒ limitÄƒ de invertoare + modulul DI-U."},
-    {"code": "full", "name": "FULL", "price": 1000.0, "features": ["*"], "max_inverters": 0, "order": 3,
-     "description": "Acces complet la toate modulele È™i funcÈ›iile platformei, inclusiv cele adÄƒugate ulterior."}]
-
-async def billing_cfg() -> dict:
-    return await db.billing_config.find_one({"id": "main"}, {"_id": 0}) or {"vat_rate": 21.0, "expired_policy": "read_only"}
-
-async def plan_info(user: dict) -> dict:
-    if user["id"] == PLATFORM["id"]:
-        return {"code": "full", "name": "FULL", "exempt": True, "active": True, "status": "echipa platformei", "features": ["*"], "max_inverters": 0, "policy": "full"}
-    sub = await db.subscriptions.find_one({"tenant": user["id"]}, {"_id": 0}) or {}
-    plan = await db.plans.find_one({"code": sub.get("plan")}, {"_id": 0}) if sub.get("plan") else None
-    today = datetime.now(timezone.utc).date().isoformat()
-    status = sub.get("status") or "fÄƒrÄƒ abonament"
-    if status == "activ" and (sub.get("valid_until") or "") < today:
-        status = "expirat"
-    active = bool(plan) and status == "activ"
-    cfg = await billing_cfg()
-    op = await db.operators.find_one({"tenant": user["id"]}, {"_id": 0, "status": 1, "attest_valid": 1}) or {}
-    ost = op.get("status") or "lipsÄƒ"
-    if ost == "aprobat" and op.get("attest_valid") and op["attest_valid"] < today:
-        ost = "expirat"
-    owner = user if user.get("uid", user["id"]) == user["id"] else (await db.users.find_one({"id": user["id"]}, {"created_at": 1}) or {})
-    legacy = not cfg.get("attest_block_existing") and (owner.get("created_at") or "") < (cfg.get("attest_cutoff") or "") and ost in ("lipsÄƒ", "Ã®n aÈ™teptare")
-    attest_ok = ost == "aprobat" or legacy
-    if active and not attest_ok:
-        active, status = False, f"atestat ANRE {ost if ost != 'lipsÄƒ' else 'netrimis'} â€” acces blocat pÃ¢nÄƒ la aprobare"
-    return {"code": plan["code"] if plan else None, "name": plan["name"] if plan else "FÄƒrÄƒ abonament", "exempt": False, "active": active,
-            "attest": ost, "attest_legacy": legacy,
-            "status": status, "valid_until": sub.get("valid_until"), "features": (plan or {}).get("features", []) if active else [],
-            "max_inverters": int((plan or {}).get("max_inverters") or 0), "policy": cfg.get("expired_policy", "read_only")}
-
-async def finish_user(user: dict) -> dict:
-    user["uid"] = user["id"]
-    user["id"] = user.get("tenant") or user["id"]
-    user.setdefault("role", "admin")
-    user["plan"] = await plan_info(user)
-    pm = await db.platform_modules.find_one({"id": "main"}, {"_id": 0}) or {}
-    user["plan"]["disabled"] = [] if user["uid"] == PLATFORM["id"] else [f for f in pm.get("disabled", []) if f in ALL_FEATURES]
-    return user
-
-def has_feature(user: dict, feat: Optional[str]) -> bool:
-    p = user.get("plan") or {}
-    return p.get("exempt") or not feat or "*" in p.get("features", []) or feat in p.get("features", [])
-
-def need(user: dict, feat: Optional[str], write: bool = False):
-    p = user.get("plan") or {}
-    if feat and feat in p.get("disabled", []):
-        raise HTTPException(status_code=403, detail=f"Modulul â€ž{ALL_FEATURES.get(feat, feat)}â€ este indisponibil momentan (dezactivat de administratorul platformei).")
-    if p.get("exempt"):
-        return
-    if not p.get("active"):
-        if write or p.get("policy") == "blocked":
-            raise HTTPException(status_code=402, detail=f"Abonamentul nu este activ ({p.get('status')}). Datele dvs. sunt pÄƒstrate; " +
-                                ("le puteÈ›i consulta, dar " if p.get("policy") != "blocked" else "") + "pentru a crea sau modifica dosare activaÈ›i un abonament din pagina â€žAbonamentâ€.")
-        return
-    if not has_feature(user, feat):
-        raise HTTPException(status_code=402, detail=f"Modulul â€ž{ALL_FEATURES.get(feat, feat)}â€ nu este inclus Ã®n abonamentul {p.get('name')}. TreceÈ›i la un abonament superior din pagina â€žAbonamentâ€.")
-
-def inv_count(d: dict) -> int:
-    inverters = (d.get("cef") or {}).get("inverters") or []
-    if not inverters:
-        return 1 if d.get("inverter") else 0
-    total = 0
-    for inverter in inverters:
-        raw_count = inverter.get("count", inverter.get("quantity", 1))
-        try:
-            count = float(raw_count or 1)
-        except (TypeError, ValueError):
-            count = 1
-        # Quantities are physical units; round a malformed fractional value up
-        # so it cannot bypass a plan limit.
-        total += max(1, int(count) + (1 if count > int(count) else 0))
-    return total
-
-def check_inverters(user: dict, d: dict):
-    mx = (user.get("plan") or {}).get("max_inverters") or 0
-    if not (user.get("plan") or {}).get("exempt") and mx and inv_count(d) > mx:
-        raise HTTPException(status_code=402, detail=f"Abonamentul {user['plan']['name']} permite maximum {mx} invertor per dosar (dosarul are {inv_count(d)}). "
-                            "Dosarul nu poate fi salvat sau finalizat â€” treceÈ›i la abonamentul PRO sau FULL pentru dosare cu mai multe invertoare.")
-
-# ---------------- Object storage ----------------
-# New files use MongoDB GridFS; legacy files are read-through migrated only when the old source remains accessible.
-from gridfs_storage import init_storage, put_object, get_object, has_gridfs_object, LegacyObjectUnavailable
-from attachment_check import verify_dossier_attachments
-
-@app.exception_handler(LegacyObjectUnavailable)
-async def legacy_file_unavailable(request: Request, exc: LegacyObjectUnavailable):
-    return JSONResponse(status_code=410, content={"detail": str(exc)})
-
-
-# Namespace used for uploaded file keys in MongoDB GridFS.
-APP_NAME = os.environ.get("APP_NAME", "dns-energy").strip("/") or "dns-energy"
-
-MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
-              "webp": "image/webp", "heic": "image/heic", "heif": "image/heif", "pdf": "application/pdf", "doc": "application/msword",
-              "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-              "xls": "application/vnd.ms-excel",
-              "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
-
-
-def validate_upload_payload(filename: str, declared_type: str | None, data: bytes) -> str:
-    """Validate the uploaded bytes against their extension and MIME type before storage or parsing."""
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    expected = MIME_TYPES.get(ext)
-    if not expected:
-        raise HTTPException(status_code=415, detail="Tipul fiÈ™ierului nu este acceptat")
-    declared = str(declared_type or "").split(";", 1)[0].strip().lower()
-    allowed_declared = {expected, "application/octet-stream"}
-    if ext == "heic":
-        allowed_declared.add("image/heic-sequence")
-    if ext == "heif":
-        allowed_declared.add("image/heif-sequence")
-    if declared and declared not in allowed_declared:
-        raise HTTPException(status_code=415, detail="Tipul fiÈ™ierului nu corespunde extensiei")
-    if not data:
-        raise HTTPException(status_code=400, detail="FiÈ™ierul este gol")
-
-    signatures = {
-        "jpg": data.startswith(b"\xff\xd8\xff"),
-        "jpeg": data.startswith(b"\xff\xd8\xff"),
-        "png": data.startswith(b"\x89PNG\r\n\x1a\n"),
-        "gif": data.startswith((b"GIF87a", b"GIF89a")),
-        "webp": len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP",
-        "pdf": data.startswith(b"%PDF-"),
-        "doc": data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
-        "xls": data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
-        "heic": len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in {b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1", b"heics", b"heifs"},
-        "heif": len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in {b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1", b"heics", b"heifs"},
-    }
-    if ext in ("docx", "xlsx"):
-        try:
-            with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                entries = archive.infolist()
-                total_uncompressed = sum(entry.file_size for entry in entries)
-                required_part = "word/document.xml" if ext == "docx" else "xl/workbook.xml"
-                valid = (len(entries) <= 5000 and total_uncompressed <= MAX_UPLOAD_BYTES * 8
-                         and "[Content_Types].xml" in archive.namelist() and required_part in archive.namelist())
-        except (OSError, zipfile.BadZipFile, zipfile.LargeZipFile):
-            valid = False
-        signatures[ext] = valid
-    if not signatures.get(ext, False):
-        raise HTTPException(status_code=415, detail="ConÈ›inutul fiÈ™ierului nu este valid pentru tipul declarat")
-    return expected
-
-
-# ---------------- Models ----------------
-class RegisterReq(BaseModel):
-    email: EmailStr
-    password: str
-    name: Optional[str] = None
-    billing: Optional[dict] = None
-    account_type: Optional[str] = None
-    anre_certificate_number: Optional[str] = None
-    anre_certificate_filename: Optional[str] = None
-    anre_certificate_type: Optional[str] = None
-    anre_certificate_base64: Optional[str] = None
-    gdpr_acknowledged: bool = False
-    gdpr_notice_version: Optional[str] = None
-
-class LoginReq(BaseModel):
-    email: EmailStr
-    password: str
-
-class PasswordChangeReq(BaseModel):
-    current_password: str
-    new_password: str
-
-class ForgotPasswordReq(BaseModel):
-    email: EmailStr
-
-class ResetPasswordReq(BaseModel):
-    token: str
-    new_password: str
-
-
-PASSWORD_RESET_MESSAGE = "DacÄƒ existÄƒ un cont activ pentru aceastÄƒ adresÄƒ, vei primi un e-mail cu paÈ™ii de resetare. VerificÄƒ È™i folderul Spam."
-
-
-@api_router.post("/auth/forgot-password")
-async def forgot_password(body: ForgotPasswordReq, request: Request):
-    """Send a generic, one-time password recovery link without disclosing account existence."""
-    email = str(body.email).strip().lower()
-    now = datetime.now(timezone.utc)
-    bucket = int(now.timestamp() // 3600)
-    expires_at = datetime.fromtimestamp((bucket + 48) * 3600, timezone.utc)
-    ip = request.client.host if request.client else "unknown"
-    rate_keys = (reset_rate_key("email", email), reset_rate_key("ip", ip))
-    limited = False
-    for key in rate_keys:
-        await db.password_reset_limits.update_one(
-            {"key": key, "bucket": bucket},
-            {"$setOnInsert": {"expires_at": expires_at}, "$inc": {"count": 1}},
-            upsert=True,
-        )
-        counter = await db.password_reset_limits.find_one({"key": key, "bucket": bucket}, {"_id": 0, "count": 1})
-        limited = limited or int((counter or {}).get("count", 0)) > 5
-    if limited:
-        return {"ok": True, "message": PASSWORD_RESET_MESSAGE}
-
-    account = await db.users.find_one({"email": email, "$or": [
-        {"status": "active"}, {"status": {"$exists": False}}, {"status": None},
-    ]}, {"_id": 0, "id": 1, "email": 1, "name": 1})
-    if not account:
-        return {"ok": True, "message": PASSWORD_RESET_MESSAGE}
-
-    token = secrets.token_urlsafe(32)
-    reset_expires = now + timedelta(minutes=30)
-    await db.password_resets.delete_many({"user_id": account["id"], "used_at": {"$exists": False}})
-    await db.password_resets.insert_one({
-        "user_id": account["id"], "email": email,
-        "lookup_hash": reset_lookup_hash(token),
-        "token_hash": reset_token_hash(account["id"], token),
-        "created_at": now.isoformat(), "expires_at": reset_expires.isoformat(),
-        "expires_ts": reset_expires,
-    })
-    try:
-        origin = trusted_reset_origin(request.headers.get("origin"), os.environ.get("CORS_ORIGINS", ""), os.environ.get("PUBLIC_APP_URL"))
-        # Keep the bearer token in the URL fragment: browsers do not send it to
-        # the web server in requests, access logs, or referrer headers.
-        link = f"{origin}/reset-password#token={token}"
-        html = (f'<div style="font-family:Arial,sans-serif;color:#0b1f3a">'
-                f'<p>BunÄƒ ziua, {hesc(str(account.get("name") or email))}.</p>'
-                f'<p>Ai solicitat schimbarea parolei contului DNS Energy.</p>'
-                f'<p><a href="{hesc(link)}">ReseteazÄƒ parola Ã®n DNS Energy</a></p>'
-                f'<p>Linkul expirÄƒ Ã®n 30 de minute È™i poate fi folosit o singurÄƒ datÄƒ. DacÄƒ nu ai cerut aceastÄƒ schimbare, ignorÄƒ mesajul.</p>'
-                f'<p style="font-size:12px;color:#888">Trimis de {hesc(EMAIL_FROM_NAME)}. Nu rÄƒspunde cu parola ta la acest e-mail.</p></div>')
-        await send_email(to=email, subject="Resetare parolÄƒ DNS Energy", html=html)
-    except Exception as exc:
-        logger.warning("Password reset email could not be sent: %s", type(exc).__name__)
-    return {"ok": True, "message": PASSWORD_RESET_MESSAGE}
-
-
-@api_router.post("/auth/reset-password")
-async def reset_password(body: ResetPasswordReq):
-    token = str(body.token or "").strip()
-    new_password = body.new_password or ""
-    if len(new_password) < 12:
-        raise HTTPException(status_code=400, detail="Parola nouÄƒ trebuie sÄƒ aibÄƒ cel puÈ›in 12 caractere")
-    if len(new_password.encode("utf-8")) > 72:
-        raise HTTPException(status_code=400, detail="Parola nouÄƒ este prea lungÄƒ; limita este 72 de octeÈ›i")
-    if not token or len(token) > 200:
-        raise HTTPException(status_code=400, detail="Link de resetare invalid sau expirat")
-    now = datetime.now(timezone.utc)
-    candidate = await db.password_resets.find_one({
-        "lookup_hash": reset_lookup_hash(token),
-        "expires_ts": {"$gt": now},
-        "used_at": {"$exists": False},
-    }, {"_id": 0})
-    if not candidate or candidate.get("token_hash") != reset_token_hash(candidate.get("user_id", ""), token):
-        raise HTTPException(status_code=400, detail="Link de resetare invalid sau expirat")
-    consumed = await db.password_resets.update_one(
-        {"user_id": candidate["user_id"], "token_hash": candidate["token_hash"], "expires_ts": {"$gt": now}, "used_at": {"$exists": False}},
-        {"$set": {"used_at": now.isoformat()}},
-    )
-    if consumed.matched_count != 1:
-        raise HTTPException(status_code=400, detail="Link de resetare invalid sau expirat")
-    result = await db.users.update_one(
-        {"id": candidate["user_id"], "email": candidate.get("email"), "$or": [
-            {"status": "active"}, {"status": {"$exists": False}}, {"status": None},
-        ]},
-        {"$set": {"password_hash": hash_password(new_password), "password_changed_at": now.isoformat()}, "$inc": {"token_version": 1}},
-    )
-    if result.matched_count != 1:
-        raise HTTPException(status_code=400, detail="Link de resetare invalid sau expirat")
-    await db.password_resets.delete_many({"user_id": candidate["user_id"], "token_hash": {"$ne": candidate["token_hash"]}})
-    await db.login_attempts.delete_many({"identifier": f"login:{candidate['email']}"})
-    return {"ok": True, "message": "Parola a fost schimbatÄƒ. Te poÈ›i autentifica folosind parola nouÄƒ."}
-
-# ---------------- Auth routes ----------------
-STATUS_MSG = {"pending": "Contul aÈ™teaptÄƒ aprobarea administratorului", "suspended": "Contul este suspendat â€” contactaÈ›i administratorul",
-              "disabled": "Contul este dezactivat"}
-ROLES = {"admin": "Administrator", "inginer": "Inginer / proiectant", "electrician": "Electrician autorizat", "instalator": "Instalator", "limitat": "Acces limitat"}
-EDIT_ROLES = ("admin", "inginer", "electrician", "instalator")
-
-def pub_user(u: dict) -> dict:
-    return {"id": u.get("uid") or u["id"], "email": u["email"], "name": u.get("name"), "role": u.get("role", "admin"), "status": u.get("status", "active"),
-            "phone": u.get("phone"), "function": u.get("function"), "staff_id": u.get("staff_id"), "account_type": u.get("account_type") or ("team" if u.get("tenant") else "owner"),
-            "anre_certificate_number": u.get("anre_certificate_number"),
-            "plan": u.get("plan"), "platform": bool(PLATFORM["id"]) and (u.get("uid") or u["id"]) == PLATFORM["id"]}
-
-@api_router.post("/auth/register")
-async def register(body: RegisterReq, request: Request):
-    email = body.email.lower().strip()
-    configured_admin = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-    existing_admin = await db.users.find_one({"role": "admin", "tenant": {"$in": [None, ""]}})
-
-    # Preserve first-run administrator bootstrap; public registrations never
-    # receive an administrative role after an administrator exists.
-    if not existing_admin and not body.account_type:
-        if not configured_admin or email != configured_admin:
-            raise HTTPException(status_code=403, detail="ÃŽnregistrarea iniÈ›ialÄƒ este permisÄƒ numai administratorului DNS Energy.")
-        if await db.users.find_one({"email": email}):
-            raise HTTPException(status_code=400, detail="Email deja Ã®nregistrat")
-        if len(body.password or "") < 8:
-            raise HTTPException(status_code=400, detail="Parola trebuie sÄƒ aibÄƒ minimum 8 caractere")
-        uid = str(uuid.uuid4())
-        doc = {"id": uid, "email": email, "password_hash": hash_password(body.password), "name": body.name or email.split("@")[0],
-               "role": "admin", "status": "active", "tenant": None, "account_type": "owner",
-               "created_at": datetime.now(timezone.utc).isoformat()}
-        await db.users.insert_one(doc)
-        return {"access_token": create_access_token(uid, email, int(doc.get("token_version", 0))), "user": pub_user(doc)}
-
-    if not existing_admin:
-        raise HTTPException(status_code=503, detail="ÃŽnregistrarea conturilor de partener nu este disponibilÄƒ pÃ¢nÄƒ la configurarea administratorului.")
-    if body.account_type not in ("installer", "partner"):
-        raise HTTPException(status_code=400, detail="AlegeÈ›i tipul de cont: instalator sau partener.")
-    if not body.gdpr_acknowledged or body.gdpr_notice_version != "partner-registration-v1-2026-11":
-        raise HTTPException(status_code=400, detail="CitiÈ›i informarea privind datele personale È™i confirmaÈ›i acordul Ã®nainte de trimitere.")
-    if await db.users.find_one({"email": email}):
-        raise HTTPException(status_code=400, detail="Email deja Ã®nregistrat")
-    password = body.password or ""
-    if len(password) < 12:
-        raise HTTPException(status_code=400, detail="Parola trebuie sÄƒ aibÄƒ minimum 12 caractere")
-    if len(password.encode("utf-8")) > 72:
-        raise HTTPException(status_code=400, detail="Parola este prea lungÄƒ; limita este 72 de octeÈ›i.")
-
-    cert_number = re.sub(r"\s+", " ", str(body.anre_certificate_number or "")).strip()
-    filename = os.path.basename(str(body.anre_certificate_filename or "").replace("\\", "/"))
-    encoded = str(body.anre_certificate_base64 or "").strip()
-    if not cert_number or not filename or not encoded:
-        raise HTTPException(status_code=400, detail="CompletaÈ›i numÄƒrul autorizaÈ›iei ANRE È™i ataÈ™aÈ›i certificatul.")
-    if len(encoded) > 12 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Certificatul depÄƒÈ™eÈ™te limita de 8 MB.")
-    try:
-        cert_data = base64.b64decode(encoded, validate=True)
-    except Exception:
-        raise HTTPException(status_code=400, detail="FiÈ™ierul certificatului nu poate fi citit.")
-    if len(cert_data) > 8 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Certificatul depÄƒÈ™eÈ™te limita de 8 MB.")
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if ext not in ("pdf", "jpg", "jpeg", "png"):
-        raise HTTPException(status_code=415, detail="AtaÈ™aÈ›i certificatul ANRE Ã®n format PDF, JPG sau PNG.")
-    cert_type = validate_upload_payload(filename, body.anre_certificate_type, cert_data)
-
-    uid = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    cert_path = f"{APP_NAME}/partner-applications/{uid}/anre-certificate.{ext}"
-    doc = {"id": uid, "email": email, "password_hash": hash_password(password),
-           "name": str(body.name or "").strip()[:120] or email.split("@")[0],
-           "role": "limitat", "status": "pending", "tenant": existing_admin["id"],
-           "account_type": body.account_type, "anre_certificate_number": cert_number,
-           "anre_certificate_path": cert_path, "anre_certificate_filename": filename,
-           "created_at": now, "gdpr_notice_version": body.gdpr_notice_version,
-           "gdpr_acknowledged_at": now}
-    await db.users.insert_one(doc)
-    try:
-        put_object(cert_path, cert_data, cert_type)
-    except Exception as exc:
-        await db.users.delete_one({"id": uid})
-        logger.error("ANRE certificate storage failed for account request (%s)", type(exc).__name__)
-        raise HTTPException(status_code=503, detail="Nu am putut pÄƒstra certificatul ANRE. ÃŽncercaÈ›i din nou.")
-    try:
-        await db.audit.insert_one({"owner": existing_admin["id"], "user": email,
-            "action": f"cerere cont {body.account_type} â€” verificare certificat ANRE",
-            "module": "users", "item_id": uid, "fields": ["account_type", "anre_certificate_number", "gdpr_notice_version"],
-            "at": now})
-    except Exception as exc:
-        logger.warning("Partner account request audit could not be recorded (%s)", type(exc).__name__)
-    return {"pending": True, "message": "Cererea a fost trimisÄƒ. Contul va fi activat dupÄƒ verificarea certificatului ANRE de cÄƒtre administrator."}
-
-
-@api_router.post("/auth/login")
-async def login(body: LoginReq, request: Request):
-    email = body.email.lower()
-    ident = f"login:{email}"
-    att = await db.login_attempts.find_one({"identifier": ident})
-    if att and att.get("count", 0) >= 5 and att.get("until", "") > datetime.now(timezone.utc).isoformat():
-        raise HTTPException(status_code=429, detail="Prea multe Ã®ncercÄƒri eÈ™uate. ÃŽncercaÈ›i din nou peste 15 minute.")
-    private_mode = os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
-    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-    user = await db.users.find_one({"email": email})
-    if not user or not verify_password(body.password, user["password_hash"]):
-        lock_until = datetime.now(timezone.utc) + timedelta(minutes=15)
-        await db.login_attempts.update_one({"identifier": ident}, {
-            "$inc": {"count": 1}, "$set": {"until": lock_until.isoformat(), "expires_at": lock_until}
-        }, upsert=True)
-        raise HTTPException(status_code=401, detail="Email sau parolÄƒ incorectÄƒ")
-    await db.login_attempts.delete_many({"identifier": ident})
-    if private_mode and not private_mode_account_allowed(user, admin_email):
-        raise HTTPException(status_code=403, detail="Acces permis administratorului È™i partenerilor aprobaÈ›i DNS Energy")
-    if user.get("status", "active") != "active":
-        raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
-    tok = create_access_token(user["id"], email, int(user.get("token_version", 0)))
-    return {"access_token": tok, "user": pub_user(await finish_user(user))}
-
-@api_router.get("/auth/me")
-async def me(user: dict = Depends(get_current_user)):
-    return pub_user(user)
-
-@api_router.post("/auth/change-password")
-async def change_password(body: PasswordChangeReq, user: dict = Depends(get_current_user)):
-    current = body.current_password or ""
-    new = body.new_password or ""
-    if len(new) < 12:
-        raise HTTPException(status_code=400, detail="Parola nouÄƒ trebuie sÄƒ aibÄƒ cel puÈ›in 12 caractere")
-    if len(new.encode("utf-8")) > 72:
-        raise HTTPException(status_code=400, detail="Parola nouÄƒ este prea lungÄƒ; limita este 72 de octeÈ›i")
-    if current == new:
-        raise HTTPException(status_code=400, detail="Alege o parolÄƒ diferitÄƒ de cea actualÄƒ")
-    account = await db.users.find_one({"id": user["uid"]}, {"_id": 0, "password_hash": 1, "email": 1})
-    try:
-        valid = bool(account and verify_password(current, account.get("password_hash") or ""))
-    except (ValueError, TypeError):
-        valid = False
-    if not valid:
-        raise HTTPException(status_code=400, detail="Parola actualÄƒ este incorectÄƒ")
-    await db.users.update_one({"id": user["uid"]}, {"$set": {
-        "password_hash": hash_password(new), "password_changed_at": datetime.now(timezone.utc).isoformat()
-    }, "$inc": {"token_version": 1}})
-    await db.login_attempts.delete_many({"identifier": f"login:{account['email'].lower()}"})
-    await audit(user, "schimbare parolÄƒ", "auth", user["uid"], [])
-    return {"ok": True}
-
-def require(user: dict, *roles):
-    if user.get("role", "admin") not in roles:
-        raise HTTPException(status_code=403, detail="Nu aveÈ›i dreptul pentru aceastÄƒ acÈ›iune")
-
-def is_admin(user: dict) -> bool:
-    return user.get("role", "admin") == "admin"
-
-SCOPED = ("clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents", "operator_messages")
-
-def scope_q(user: dict, module: str) -> dict:
-    q = {"owner": user["id"]}
-    if not is_admin(user) and module in SCOPED:
-        q["$or"] = [{"created_by": {"$in": [user["uid"], user.get("email")]}}, {"assigned_to": user["uid"]}]
-    return q
-
-async def check_access(user: dict, module: str, item_id: str) -> dict:
-    need(user, MODULE_FEATURE.get(module))
-    rec = await db[module].find_one({**scope_q(user, module), "id": item_id}, {"_id": 0})
-    if not rec:
-        raise HTTPException(status_code=404, detail="ÃŽnregistrare inexistentÄƒ sau fÄƒrÄƒ drept de acces")
-    return rec
-
-@api_router.get("/admin/users")
-async def admin_users(user: dict = Depends(get_current_user)):
-    require(user, "admin")
-    us = await db.users.find({"$or": [{"tenant": user["id"]}, {"id": user["id"]}]}, {"_id": 0, "password_hash": 0}).sort("created_at", 1).to_list(500)
-    return {"users": [pub_user(u) | {"created_at": u.get("created_at"),
-            "anre_certificate_path": u.get("anre_certificate_path"),
-            "anre_certificate_filename": u.get("anre_certificate_filename")} for u in us], "roles": ROLES}
-
-@api_router.get("/admin/users/{uid}/anre-certificate")
-async def admin_user_anre_certificate(uid: str, user: dict = Depends(get_current_user)):
-    require(user, "admin")
-    account = await db.users.find_one({"id": uid, "tenant": user["id"]}, {"_id": 0, "anre_certificate_path": 1, "anre_certificate_filename": 1})
-    if not account or not account.get("anre_certificate_path"):
-        raise HTTPException(status_code=404, detail="Certificatul ANRE nu este disponibil.")
-    try:
-        data, content_type = await asyncio.to_thread(get_object, account["anre_certificate_path"])
-    except Exception:
-        raise HTTPException(status_code=404, detail="FiÈ™ierul certificatului nu a fost gÄƒsit.")
-    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", account.get("anre_certificate_filename") or "certificat-anre.pdf")
-    return Response(content=data, media_type=content_type,
-                    headers={"Content-Disposition": f'attachment; filename="{safe_name}"', "Cache-Control": "no-store"})
-
-
-@api_router.put("/admin/users/{uid}")
-async def admin_user_update(uid: str, request: Request, user: dict = Depends(get_current_user)):
-    require(user, "admin")
-    b = await request.json()
-    u = await db.users.find_one({"id": uid, "tenant": user["id"]})
-    if not u:
-        raise HTTPException(status_code=404, detail="Utilizator inexistent (administratorul principal nu poate fi modificat aici)")
-    upd = {k: b[k] for k in ("name", "phone", "function", "staff_id") if k in b}
-    if "role" in b:
-        if b["role"] not in ROLES:
-            raise HTTPException(status_code=400, detail="Rol invalid")
-        upd["role"] = b["role"]
-    if "status" in b:
-        if b["status"] not in ("pending", "active", "suspended", "disabled"):
-            raise HTTPException(status_code=400, detail="Stare invalidÄƒ")
-        upd["status"] = b["status"]
-        if b["status"] == "active" and u.get("account_type") in ("installer", "partner") and "role" not in b:
-            upd["role"] = "instalator"
-    await db.users.update_one({"id": uid}, {"$set": upd})
-    await audit(user, "cont utilizator", "users", uid, list(upd.keys()) + [str(upd.get("status") or ""), str(upd.get("role") or "")])
-    return {"ok": True}
-
-@api_router.put("/auth/profile")
-async def my_profile(request: Request, user: dict = Depends(get_current_user)):
-    b = await request.json()
-    upd = {k: b[k] for k in ("name", "phone", "function") if k in b}
-    await db.users.update_one({"id": user["uid"]}, {"$set": upd})
-    return {"ok": True}
-
-@api_router.post("/auth/logout")
-async def logout(user: dict = Depends(get_current_user)):
-    return {"ok": True}
-
-# ---------------- Generic module CRUD ----------------
-MODULES = ["clients", "prosumator", "diu", "mono", "panels", "anti", "pram", "equipment", "power", "atr", "works", "projects", "documents", "archived_dossiers", "catalog", "operator_messages", "staff", "instruments"]
-
-def clean(doc: dict) -> dict:
-    doc.pop("_id", None)
-    if isinstance(doc.get("atr_track"), dict):
-        doc["atr_track"] = {k: v for k, v in doc["atr_track"].items() if k != "token"}
-    return doc
-
-
-QUICK_SEARCH_MODULES = [
-    ("clients", "Client", "client_name", ["name", "phone", "email", "cnp", "idcode", "cui", "regcom", "id_series", "id_number", "pod", "address", "locality", "county"], "/clienti"),
-    ("prosumator", "Dosar prosumator", "client_name", ["client_name", "number", "pod", "address", "locality", "county", "operator"], "/prosumator"),
-    ("atr", "Cerere ATR", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/cerere-atr"),
-    ("power", "Spor de putere", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/spor-putere"),
-    ("diu", "Dosar DIU", "client_name", ["client_name", "number", "pod", "address", "status", "operator"], "/diu"),
-    ("documents", "Document", "client_name", ["client_name", "title", "name", "filename", "original_filename", "doc_type", "kind", "type", "pod"], "/documente"),
-    ("catalog", "Echipament catalog", "brand_model", ["brand_model", "category", "supplier"], "/catalog-echipamente"),
-]
-
-
-@api_router.get("/quick-search")
-async def quick_search(q: str = Query(..., min_length=2, max_length=80), user: dict = Depends(get_current_user)):
-    """Search the signed-in tenant's client and dossier records without loading whole collections."""
-    term = q.strip()
-    if len(term) < 2:
-        return {"results": []}
-    pattern = re.compile(re.escape(term), re.IGNORECASE)
-
-    async def search_module(spec):
-        module, label, name_key, fields, route = spec
-        try:
-            guard(module, user)
-        except HTTPException:
-            return []
-        field_query = {"$or": [{field: pattern} for field in fields]}
-        query = {"$and": [scope_q(user, module), field_query]}
-        rows = await db[module].find(query, {"_id": 0, "id": 1, "name": 1, "client_name": 1, "client_id": 1,
-                                             "number": 1, "original_filename": 1, "doc_type": 1, "kind": 1,
-                                             "brand_model": 1, "category": 1, "supplier": 1,
-                                             "pod": 1, "address": 1, "locality": 1, "county": 1, "phone": 1, "email": 1, "cui": 1, "regcom": 1,
-                                             "operator": 1, "title": 1, "filename": 1, "type": 1,
-                                             "is_test": 1}).sort("updated_at", -1).limit(5).to_list(5)
-        matches = []
-        for row in rows:
-            if row.get("is_test") or re.search(r"\bTEST\b", " ".join(str(row.get(k) or "") for k in ("name", "client_name", "number")), re.I):
-                continue
-            item_id = str(row.get("id") or "")
-            if not item_id:
-                continue
-            client_name = row.get(name_key) or row.get("name") or "ÃŽnregistrare fÄƒrÄƒ nume"
-            detail = " Â· ".join(str(row.get(k)) for k in ("number", "pod", "phone", "email", "cui", "regcom", "locality", "county", "operator") if row.get(k))
-            title = client_name
-            href = f"{route}?edit={item_id}"
-            if module == "catalog":
-                title = row.get("brand_model") or client_name
-                detail = " Â· ".join(str(value) for value in (row.get("category"), row.get("supplier")) if value)
-                href = f"/catalog-echipamente?q={_q(str(row.get('brand_model') or ''))}&category={_q(str(row.get('category') or 'Invertor'))}"
-            if module == "documents":
-                title = row.get("original_filename") or row.get("title") or row.get("filename") or row.get("doc_type") or row.get("kind") or client_name
-                detail = " Â· ".join(str(value) for value in (client_name, row.get("doc_type") or row.get("kind"), detail) if value)
-                href = f"{route}?docId={item_id}"
-            matches.append({"id": item_id, "module": module, "label": label, "title": title,
-                            "detail": detail, "href": href})
-        return matches
-
-    module_matches = await asyncio.gather(*(search_module(spec) for spec in QUICK_SEARCH_MODULES), return_exceptions=True)
-    collections = []
-    unavailable = []
-    for spec, matches in zip(QUICK_SEARCH_MODULES, module_matches):
-        if isinstance(matches, Exception):
-            logger.warning("Quick search collection failed: %s", type(matches).__name__)
-            collections.append([])
-            unavailable.append(spec[1])
-            continue
-        collections.append(matches)
-
-    # Interleave collections so a busy client/dossier module cannot hide every
-    # equipment or document result behind the global 24-result cap.
-    results = []
-    depth = max((len(items) for items in collections), default=0)
-    for index in range(depth):
-        for items in collections:
-            if index < len(items):
-                results.append(items[index])
-                if len(results) >= 24:
-                    return {"results": results, "unavailable": unavailable}
-    return {"results": results, "unavailable": unavailable}
-
-@api_router.get("/clients/search")
-async def quick_client_search(q: str = Query(..., min_length=2, max_length=80), user: dict = Depends(get_current_user)):
-    """Search only the signed-in tenant's clients for the dashboard typeahead."""
-    term = q.strip()
-    if len(term) < 2:
-        return {"results": [], "unavailable": []}
-    guard("clients", user)
-    queries = build_client_search_queries(scope_q(user, "clients"), term)
-    projection = {"_id": 0, "id": 1, "name": 1, "pod": 1, "phone": 1, "email": 1,
-                  "address": 1, "locality": 1, "county": 1, "cui": 1, "regcom": 1, "is_test": 1, "updated_at": 1}
-
-    async def fetch_matches(query: dict, indexed_field: str | None = None):
-        cursor = db.clients.find(query, projection)
-        if indexed_field:
-            # Keep prefix searches on owner+field indexes. Without the hint,
-            # the planner may choose owner+updated_at and scan every client
-            # belonging to this tenant before applying the identifier filter.
-            cursor = cursor.hint(f"owner_{indexed_field}")
-        return await cursor.sort("updated_at", -1).limit(8).to_list(8)
-
-    if term.isdigit():
-        query_rows = await asyncio.gather(*(
-            fetch_matches(query, field)
-            for query, field in zip(queries, NUMERIC_CLIENT_SEARCH_FIELDS)
-        ))
-    else:
-        query_rows = await asyncio.gather(*(fetch_matches(query) for query in queries))
-    by_id = {}
-    for rows in query_rows:
-        for row in rows:
-            item_id = str(row.get("id") or "")
-            if not item_id:
-                continue
-            previous = by_id.get(item_id)
-            if previous is None or str(row.get("updated_at") or "") > str(previous.get("updated_at") or ""):
-                by_id[item_id] = row
-
-    results = []
-    for row in sorted(by_id.values(), key=lambda item: str(item.get("updated_at") or ""), reverse=True)[:8]:
-        name = str(row.get("name") or "")
-        if row.get("is_test") or re.search(r"\bTEST\b", name, re.I):
-            continue
-        item_id = str(row.get("id") or "")
-        detail = " Â· ".join(str(row.get(k)) for k in ("pod", "phone", "email", "cui", "regcom", "address", "locality", "county") if row.get(k))
-        results.append({"id": item_id, "module": "clients", "label": "Client",
-                        "title": name or "Client fÄƒrÄƒ nume", "detail": detail,
-                        "href": f"/clienti?edit={item_id}"})
-    return {"results": results, "unavailable": []}
-
-
-AUTO_ARCHIVE_MODULES = ("prosumator", "atr", "power", "diu", "mono", "anre_dossiers")
-_archive_sweep_at = {}
-_ARCHIVE_SWEEP_INTERVAL = timedelta(hours=1)
-_ARCHIVE_INACTIVE_AFTER = timedelta(days=183)
-
-
-def dossier_archive_filter(include_archived: bool = False) -> dict:
-    """Treat any newer saved activity as an automatic return to the active workflow."""
-    changed_after_archive = {"$expr": {"$gt": ["$updated_at", "$archived_at"]}}
-    if include_archived:
-        return {"$and": [
-            {"archived_at": {"$exists": True, "$nin": [None, ""]}},
-            {"$nor": [changed_after_archive]},
-        ]}
-    return {"$or": [
-        {"archived_at": {"$exists": False}},
-        {"archived_at": None},
-        {"archived_at": ""},
-        changed_after_archive,
-    ]}
-
-
-async def archive_inactive_dossiers(user: dict):
-    """Soft-archive dossier workflows with no saved activity for about six months."""
-    user_id = str(user.get("id") or "")
-    if not user_id:
-        return
-    current = datetime.now(timezone.utc)
-    previous = _archive_sweep_at.get(user_id)
-    if previous and current - previous < _ARCHIVE_SWEEP_INTERVAL:
-        return
-    cutoff = (current - _ARCHIVE_INACTIVE_AFTER).isoformat()
-    archived_at = current.isoformat()
-    for collection in AUTO_ARCHIVE_MODULES:
-        base_scope = scope_q(user, collection)
-        stale = {"$and": [
-            base_scope,
-            {"$or": [
-                {"archived_at": {"$exists": False}},
-                {"$expr": {"$gt": ["$updated_at", "$archived_at"]}},
-            ]},
-            {"$or": [
-                {"updated_at": {"$lt": cutoff}},
-                {"updated_at": {"$exists": False}, "created_at": {"$lt": cutoff}},
-            ]},
-        ]}
-        await db[collection].update_many(stale, {"$set": {
-            "archived_at": archived_at,
-            "archive_reason": "inactivitate_6_luni",
-            "archived_by": "system",
-        }})
-    _archive_sweep_at[user_id] = current
-
-
-@api_router.get("/data/{module}")
-async def list_items(module: str, q: Optional[str] = None, include_archived: bool = False,
-                     user: dict = Depends(get_current_user)):
-    if module not in MODULES:
-        raise HTTPException(status_code=404, detail="Modul inexistent")
-    guard(module, user)
-    query = scope_q(user, module)
-    if module == "catalog":
-        # Keep test/demo rows intact in storage, but never show them in the
-        # working equipment catalog or its dossier selectors.
-        query = {"$and": [query, {"is_test": {"$ne": True}}]}
-    if module in AUTO_ARCHIVE_MODULES:
-        await archive_inactive_dossiers(user)
-        query = {"$and": [query, dossier_archive_filter(include_archived)]}
-    if module == "catalog":
-        await seed_catalog(user["id"])
-    search_fields = {
-        "clients": ("name", "phone", "email", "cnp", "idcode", "id_number", "pod", "address", "locality", "county", "cui", "regcom"),
-        "prosumator": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
-        "diu": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "pros_id"),
-        "atr": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
-        "power": ("client_name", "number", "pod", "address", "locality", "county", "operator", "status", "request_type"),
-        "documents": ("client_name", "dossier_id", "title", "name", "filename", "original_filename", "doc_type", "kind", "type", "pod"),
-        "operator_messages": ("client_name", "operator", "subject", "reference", "message_type", "status", "next_action"),
-        "catalog": ("brand_model", "category", "supplier", "manufacturer", "model"),
-        "projects": ("name", "number", "client_name", "address", "locality", "county", "status"),
-        "works": ("name", "number", "client_name", "address", "locality", "county", "status"),
-        "mono": ("client_name", "number", "title", "address", "pod", "status"),
-        "panels": ("client_name", "number", "title", "address", "pod", "status"),
-        "anti": ("client_name", "number", "title", "address", "pod", "status"),
-        "pram": ("client_name", "number", "title", "pod", "instrument", "status"),
-        "equipment": ("name", "brand_model", "category", "serial", "manufacturer"),
-        "archived_dossiers": ("client_name", "number", "title", "address", "pod", "operator"),
-        "staff": ("name", "email", "phone", "function", "staff_id"),
-        "instruments": ("name", "model", "serial", "type", "manufacturer"),
-    }
-    term = str(q or "").strip()
-    if term and module in search_fields:
-        # Apply the filter in MongoDB. Avoid transferring large dossier rows and
-        # embedded file metadata to the browser just to search their JSON text.
-        pattern = re.compile(re.escape(term), re.IGNORECASE)
-        query = {"$and": [query, {"$or": [{field: pattern} for field in search_fields[module]]}]}
-        return [clean(i) for i in await db[module].find(query).sort("created_at", -1).limit(2000).to_list(2000)]
-    items = await db[module].find(query).sort("created_at", -1).limit(2000).to_list(2000)
-    items = [clean(i) for i in items]
-    if term:
-        ql = term.lower()
-        items = [i for i in items if ql in str(i).lower()]
-    return items
-
-
-@api_router.get("/work-map")
-async def list_work_map(include_archived: bool = False, user: dict = Depends(get_current_user)):
-    """Return only the fields needed for the work map; never expose dossier contents there."""
-    modules = [
-        ("prosumator", "Dosar prosumator"),
-        ("atr", "Cerere ATR"),
-        ("power", "Spor de putere"),
-        ("diu", "Dosar DI-U"),
-    ]
-    await archive_inactive_dossiers(user)
-    result = []
-    projection = {
-        "id": 1, "number": 1, "locality": 1, "county": 1, "operator": 1,
-        "workflow_status": 1, "status": 1, "operator_stage": 1, "archived_at": 1,
-    }
-    for module, label in modules:
-        try:
-            guard(module, user)
-        except HTTPException as exc:
-            if exc.status_code in (402, 403, 404):
-                continue
-            raise
-        query = {"$and": [scope_q(user, module), dossier_archive_filter(include_archived)]}
-        records = await db[module].find(query, projection).sort("updated_at", -1).limit(2000).to_list(2000)
-        for record in records:
-            result.append({
-                "id": str(record.get("id") or ""),
-                "module": module,
-                "module_label": label,
-                "number": str(record.get("number") or ""),
-                "locality": str(record.get("locality") or ""),
-                "county": str(record.get("county") or ""),
-                "operator": str(record.get("operator") or ""),
-                "stage": str(record.get("workflow_status") or record.get("status") or record.get("operator_stage") or "ÃŽn lucru"),
-                "archived": bool(record.get("archived_at")),
-            })
-    return result
-
-@api_router.post("/data/{module}")
-async def create_item(module: str, request: Request, user: dict = Depends(get_current_user)):
-    if module not in MODULES:
-        raise HTTPException(status_code=404, detail="Modul inexistent")
-    data = await request.json()
-    data = await apply_selected_client_defaults(user["id"], module, data)
-    if module == "prosumator":
-        data.setdefault("doc_date", datetime.now(ZoneInfo("Europe/Bucharest")).date().isoformat())
-    data.pop("_id", None)
-    data.pop("atr_track", None)
-    data["id"] = str(uuid.uuid4())
-    data["owner"] = user["id"]
-    data["created_at"] = datetime.now(timezone.utc).isoformat()
-    data["updated_at"] = data["created_at"]
-    guard(module, user, write=True)
-    if module == "prosumator":
-        check_inverters(user, data)
-    data["created_by"] = user["uid"]
-    data["created_by_email"] = user.get("email")
-    if not is_admin(user):
-        data.pop("assigned_to", None)
-    await db[module].insert_one(dict(data))
-    await audit(user, "creare", module, data["id"], list(data.keys()))
-    post_save_warnings = []
-    if module == "prosumator":
-        try:
-            await sync_catalog_files_to_documents(user, data)
-            post_save_warnings.extend(data.get("_catalog_sync_warnings") or [])
-            data = await db[module].find_one({"id": data["id"], "owner": user["id"]}) or data
-        except Exception as e:
-            # The dossier is already saved; optional catalog documents must not turn
-            # a successful create into a client-visible failure.
-            logger.exception("Catalog document sync failed after prosumer dossier create: %s", e)
-    response = clean(data)
-    if post_save_warnings:
-        response["intake_warnings"] = post_save_warnings
-    return response
-
-@api_router.get("/data/{module}/{item_id}")
-async def get_item(module: str, item_id: str, user: dict = Depends(get_current_user)):
-    if module not in MODULES:
-        raise HTTPException(status_code=404, detail="Modul inexistent")
-    guard(module, user)
-    doc = await db[module].find_one({**scope_q(user, module), "id": item_id})
-    if not doc:
-        raise HTTPException(status_code=404, detail="ÃŽnregistrare inexistentÄƒ")
-    return clean(doc)
-
-@api_router.put("/data/{module}/{item_id}")
-async def update_item(module: str, item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    if module not in MODULES:
-        raise HTTPException(status_code=404, detail="Modul inexistent")
-    guard(module, user, write=True)
-    cur = await check_access(user, module, item_id)
-    data = await request.json()
-    data.pop("_id", None); data.pop("id", None)
-    data.pop("atr_track", None); data.pop("owner", None); data.pop("created_at", None); data.pop("created_by", None); data.pop("created_by_email", None)
-    if module == "prosumator":
-        data.pop("pif", None)
-    if module in ("prosumator", "diu"):
-        data.pop("ai_precheck", None); data.pop("signed", None)
-    if module == "clients" and isinstance(data.get("docs"), dict):
-        data["docs"]["semnate"] = (cur.get("docs") or {}).get("semnate") or []
-    data["updated_by"] = user.get("email")
-    if not is_admin(user):
-        data.pop("assigned_to", None)
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    if module == "prosumator":
-        data = derive_cef(data)
-        data.pop("opis", None); data.pop("snapshot", None); data.pop("snapshot_history", None); data.pop("sld", None)
-        check_inverters(user, {**cur, **data})
-        if data.get("client_name"):
-            c = await db.clients.find_one({**scope_q(user, "clients"), "name": data["client_name"]}, {"id": 1})
-            if c:
-                data["client_id"] = c["id"]
-    res = await db[module].update_one(
-        {"id": item_id, "owner": user["id"]},
-        {"$set": data, "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""}},
-    )
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="ÃŽnregistrare inexistentÄƒ")
-    await audit(user, "modificare", module, item_id, list(data.keys()))
-    if module == "prosumator":
-        try:
-            await request_approval(user, item_id, request.headers.get("origin") or "", True)
-        except HTTPException:
-            pass
-        except Exception as e:
-            logger.error(f"auto approval request: {e}")
-    doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
-    post_save_warnings = []
-    if module == "prosumator":
-        try:
-            await sync_catalog_files_to_documents(user, doc)
-            post_save_warnings.extend(doc.get("_catalog_sync_warnings") or [])
-        except Exception as e:
-            # Saving the dossier is the primary operation. A temporary supplier PDF
-            # outage must not turn a successful save into a client-visible failure.
-            logger.exception("Catalog document sync failed after prosumer dossier update %s: %s", item_id, e)
-            post_save_warnings.append(
-                "Dosarul a fost salvat. Unele fiÈ™e tehnice nu s-au putut ataÈ™a acum; reÃ®ncearcÄƒ sincronizarea din cardul documentelor."
-            )
-        doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
-    response = clean(doc)
-    if post_save_warnings:
-        response["intake_warnings"] = post_save_warnings
-    return response
-
-@api_router.patch("/data/{module}/{item_id}/status")
-async def update_dossier_workflow_status(module: str, item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Update a dashboard workflow label without overwriting the dossier's technical/operator status."""
-    if module not in ("prosumator", "atr", "power", "diu", "mono", "operator_messages"):
-        raise HTTPException(status_code=404, detail="Modulul nu acceptÄƒ stadii de lucru rapide")
-    guard(module, user, write=True)
-    rec = await check_access(user, module, item_id)
-    body = await request.json()
-    status = str(body.get("status") or "").strip()
-    if module == "operator_messages":
-        allowed_statuses = {"Nou", "ÃŽn lucru", "RÄƒspuns transmis", "Rezolvat"}
-        if status not in allowed_statuses:
-            raise HTTPException(status_code=400, detail="Statusul mesajului OD nu este valid.")
-        previous = str(rec.get("status") or "Nou").strip()
-        status_field = "status"
-    else:
-        if not status or len(status) > 80:
-            raise HTTPException(status_code=400, detail="Stadiul trebuie sÄƒ conÈ›inÄƒ Ã®ntre 1 È™i 80 de caractere.")
-        previous = str(rec.get("workflow_status") or rec.get("status") or rec.get("operator_stage") or "ÃŽn lucru").strip()
-        status_field = "workflow_status"
-    if status == previous:
-        return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": rec.get("updated_at"), "history_entry": None}
-    updated_at = datetime.now(timezone.utc).isoformat()
-    history_entry = {"from": previous, "to": status, "at": updated_at, "by": user.get("email") or user.get("id")}
-    result = await db[module].update_one(
-        {**scope_q(user, module), "id": item_id},
-        {"$set": {status_field: status, "updated_at": updated_at, "updated_by": user.get("email")},
-         "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""},
-         "$push": {"workflow_history": {"$each": [history_entry], "$slice": -500}}},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    await audit(user, "actualizare stadiu flux", module, item_id, [status_field])
-    return {"ok": True, "id": item_id, "module": module, "status": status, "updated_at": updated_at, "history_entry": history_entry}
-
-
-
-@api_router.post("/data/{module}/{item_id}/restore")
-async def restore_archived_dossier(module: str, item_id: str, user: dict = Depends(get_current_user)):
-    if module not in AUTO_ARCHIVE_MODULES:
-        raise HTTPException(status_code=404, detail="Modulul nu foloseÈ™te arhivarea automatÄƒ")
-    guard(module, user, write=True)
-    record = await check_access(user, module, item_id)
-    if not record.get("archived_at"):
-        return {"ok": True, "restored": False, "id": item_id}
-    restored_at = datetime.now(timezone.utc).isoformat()
-    result = await db[module].update_one(
-        {**scope_q(user, module), "id": item_id, "archived_at": {"$exists": True}},
-        {"$set": {"updated_at": restored_at, "updated_by": user.get("email")},
-         "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""},
-         "$push": {"workflow_history": {"$each": [{
-             "event": "Dosar readus din arhivÄƒ",
-             "at": restored_at,
-             "by": user.get("email") or user.get("id"),
-         }], "$slice": -500}}},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Dosarul arhivat nu mai existÄƒ")
-    await audit(user, "restaurare din arhivÄƒ automatÄƒ", module, item_id, ["archived_at"])
-    return {"ok": True, "restored": True, "id": item_id, "updated_at": restored_at}
-
-
-@api_router.delete("/data/{module}/{item_id}")
-async def delete_item(module: str, item_id: str, user: dict = Depends(get_current_user)):
-    if module not in MODULES:
-        raise HTTPException(status_code=404, detail="Modul inexistent")
-    guard(module, user, write=True)
-    if not is_admin(user) and module in ("prosumator", "clients"):
-        raise HTTPException(status_code=403, detail="Doar administratorul poate È™terge dosare È™i clienÈ›i")
-    record = await check_access(user, module, item_id)
-    if module == "catalog" and record:
-        key = _catalog_seed_key(record.get("category"), record.get("brand_model"))
-        if key in {_catalog_seed_key(item.get("category"), item.get("brand_model")) for item in CATALOG_SEED}:
-            await db.settings.update_one(
-                {"owner": user["id"]},
-                {"$addToSet": {"catalog_deleted_seed_keys": key}},
-                upsert=True,
-            )
-    await db[module].delete_one({"id": item_id, "owner": user["id"]})
-    await audit(user, "È™tergere", module, item_id, [])
-    if module == "prosumator":
-        for m in ("works", "mono", "equipment"):
-            await db[m].delete_many({"owner": user["id"], "pros_ref": item_id})
-    return {"ok": True}
-
-# ---------------- Dashboard ----------------
-@api_router.get("/stats/dashboard")
-async def dashboard_stats(user: dict = Depends(get_current_user)):
-    await archive_inactive_dossiers(user)
-    owner = scope_q(user, "diu")
-    test_dossier_filter = {"$and": [
-        dossier_archive_filter(False),
-        {"is_test": {"$ne": True}},
-        {"$nor": [
-            {"client_name": {"$regex": r"^TEST", "$options": "i"}},
-            {"number": {"$regex": r"^TEST[-_]", "$options": "i"}},
-            {"company.name": {"$regex": r"^TEST", "$options": "i"}},
-        ]},
-    ]}
-    client_test_filter = {"$and": [
-        {"is_test": {"$ne": True}},
-        {"$nor": [
-            {"name": {"$regex": r"^TEST", "$options": "i"}},
-            {"client_name": {"$regex": r"^TEST", "$options": "i"}},
-            {"company_name": {"$regex": r"^TEST", "$options": "i"}},
-        ]},
-    ]}
-    clients = await db.clients.count_documents({**scope_q(user, "clients"), **client_test_filter})
-    diu = await db.diu.count_documents({**owner, **test_dossier_filter})
-    mono = await db.mono.count_documents({**scope_q(user, "mono"), **test_dossier_filter})
-    recent = await db.diu.find({**owner, **test_dossier_filter}).sort("created_at", -1).to_list(5)
-
-    # A compact, actionable work inbox inspired by the reference app's dossier list.
-    # Every query stays inside the signed-in user's existing module scope.
-    inbox_modules = [
-        ("prosumator", "Dosar prosumator"),
-        ("atr", "Cerere ATR"),
-        ("power", "Spor de putere"),
-        ("diu", "Dosar DI-U"),
-        ("mono", "SchemÄƒ monofilarÄƒ"),
-        ("anre_dossiers", "Dosar ANRE"),
-    ]
-    inbox = []
-    projection = {"_id": 0, "id": 1, "client_name": 1, "number": 1,
-                  "pod": 1, "operator": 1, "operator_name": 1, "distributor": 1,
-                  "locality": 1, "county": 1,
-                  "company.name": 1,
-                  "kwp": 1, "inverter_kw": 1, "status": 1, "workflow_status": 1, "operator_stage": 1,
-                  "workflow_blockers": 1,
-                  "next_action": 1, "next_action_due": 1,
-                  "updated_at": 1, "created_at": 1}
-    for module, label in inbox_modules:
-        module_scope = {**scope_q(user, module), **test_dossier_filter}
-        recent_rows = await db[module].find(module_scope, projection).sort("updated_at", -1).limit(5).to_list(5)
-        scheduled_rows = await db[module].find(
-            {**module_scope, "next_action": {"$exists": True, "$nin": [None, ""]}}, projection
-        ).sort("next_action_due", 1).limit(5).to_list(5)
-        rows = list({row.get("id"): row for row in [*recent_rows, *scheduled_rows] if row.get("id")}.values())
-        for row in rows:
-            inbox.append({
-                "id": row.get("id"),
-                "module": module,
-                "label": label,
-                "client_name": row.get("client_name") or (row.get("company") or {}).get("name") or "",
-                "number": row.get("number") or "",
-                "pod": row.get("pod") or row.get("pod_number") or "",
-                "operator": row.get("operator") or row.get("operator_name") or row.get("distributor") or "",
-                # The dashboard map shortcut uses municipality/county only;
-                # never send the customer's street address or POD to Maps.
-                "locality": row.get("locality") or "",
-                "county": row.get("county") or "",
-                "kwp": row.get("kwp") or row.get("panel_kwp") or "",
-                "inverter_kw": row.get("inverter_kw") or row.get("power_kw") or "",
-                "status": row.get("workflow_status") or row.get("status") or row.get("operator_stage") or "ÃŽn lucru",
-                "workflow_blockers": [str(value).strip() for value in row.get("workflow_blockers", [])
-                                      if str(value or "").strip()] if isinstance(row.get("workflow_blockers"), list) else [],
-                "next_action": row.get("next_action") or "",
-                "next_action_due": row.get("next_action_due") or "",
-                "updated_at": row.get("updated_at") or row.get("created_at") or "",
-            })
-    # Surface OD correspondence in the same operational inbox, while keeping it
-    # separate from dossier stage/operator aggregate counts below.
-    message_scope = {**scope_q(user, "operator_messages"), **test_dossier_filter}
-    message_projection = {"_id": 0, "id": 1, "client_name": 1, "operator": 1,
-                          "subject": 1, "reference": 1, "received_at": 1, "status": 1,
-                          "next_action": 1, "next_action_due": 1, "updated_at": 1, "created_at": 1}
-    recent_messages = await db.operator_messages.find(message_scope, message_projection).sort("received_at", -1).limit(5).to_list(5)
-    scheduled_messages = await db.operator_messages.find(
-        {**message_scope, "next_action": {"$exists": True, "$nin": [None, ""]}}, message_projection
-    ).sort("next_action_due", 1).limit(5).to_list(5)
-    messages = list({row.get("id"): row for row in [*recent_messages, *scheduled_messages] if row.get("id")}.values())
-    for row in messages:
-        inbox.append({
-            "id": row.get("id"),
-            "module": "operator_messages",
-            "label": "CorespondenÈ›Äƒ OD",
-            "client_name": row.get("client_name") or row.get("subject") or "",
-            "number": row.get("reference") or "",
-            "pod": "",
-            "operator": row.get("operator") or "",
-            "locality": "",
-            "county": "",
-            "status": row.get("status") or "Nou",
-            "workflow_blockers": [],
-            "next_action": row.get("next_action") or "",
-            "next_action_due": row.get("next_action_due") or "",
-            "updated_at": row.get("updated_at") or row.get("received_at") or row.get("created_at") or "",
-        })
-
-    # Prioritize scheduled work. The user enters both action and due date; we do not infer either.
-    inbox.sort(key=lambda item: (
-        not bool(item.get("next_action")),
-        str(item.get("next_action_due") or "9999-12-31"),
-        str(item.get("updated_at") or ""),
-    ))
-
-    # Full workload summaries for the dashboard; unlike the inbox, these are
-    # aggregate counts over every non-test record in the user's own scope.
-    stage_counts = {}
-    operator_counts = {}
-    local_now = datetime.now(ZoneInfo("Europe/Bucharest"))
-    month_local_start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    if local_now.month == 12:
-        next_month_local_start = local_now.replace(year=local_now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-    else:
-        next_month_local_start = local_now.replace(month=local_now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
-    month_start = month_local_start.astimezone(timezone.utc).isoformat()
-    month_end = next_month_local_start.astimezone(timezone.utc).isoformat()
-    submitted_stages = [
-        "Depus", "DepusÄƒ", "Depus la operator", "Depus la operatorul de distribuÈ›ie",
-    ]
-    activated_stages = ["Prosumator activ"]
-    submitted_this_month = 0
-    activated_this_month = 0
-    stage_expr = {"$let": {"vars": {"value": {"$ifNull": ["$workflow_status", {"$ifNull": ["$status", "$operator_stage"]}]}},
-                           "in": {"$cond": [{"$or": [{"$eq": ["$$value", None]}, {"$eq": ["$$value", ""]}]}, "ÃŽn lucru", "$$value"]}}}
-    operator_expr = {"$let": {"vars": {"value": {"$ifNull": ["$operator", {"$ifNull": ["$operator_name", "$distributor"]}]}},
-                              "in": {"$cond": [{"$or": [{"$eq": ["$$value", None]}, {"$eq": ["$$value", ""]}]}, "Operator necompletat", "$$value"]}}}
-    for module, _label in inbox_modules:
-        match = {**scope_q(user, module), **test_dossier_filter}
-        # Count unique dossiers with an explicitly saved transition in this month.
-        submitted_this_month += await db[module].count_documents({
-            **match,
-            "workflow_history": {"$elemMatch": {
-                "to": {"$in": submitted_stages},
-                "at": {"$gte": month_start, "$lt": month_end},
-            }},
-        })
-        activated_this_month += await db[module].count_documents({
-            **match,
-            "workflow_history": {"$elemMatch": {
-                "to": {"$in": activated_stages},
-                "at": {"$gte": month_start, "$lt": month_end},
-            }},
-        })
-        for row in await db[module].aggregate([
-            {"$match": match},
-            {"$project": {"group": stage_expr}},
-            {"$group": {"_id": "$group", "count": {"$sum": 1}}},
-        ]).to_list(length=None):
-            stage = str(row.get("_id") or "ÃŽn lucru")
-            stage_counts[stage] = stage_counts.get(stage, 0) + int(row.get("count") or 0)
-        if module == "anre_dossiers":
-            continue
-        for row in await db[module].aggregate([
-            {"$match": match},
-            {"$project": {"group": operator_expr}},
-            {"$group": {"_id": "$group", "count": {"$sum": 1}}},
-        ]).to_list(length=None):
-            operator = str(row.get("_id") or "Operator necompletat")
-            operator_counts[operator] = operator_counts.get(operator, 0) + int(row.get("count") or 0)
-
-    # Count work that still needs attention across every dossier module shown
-    # in the inbox, not just DI-U. A separate workflow_status takes precedence
-    # over the technical or operator status stored in `status`.
-    attention_stages = {
-        "ÃŽn lucru", "Documente de completat", "ÃŽn verificare", "Documente lipsÄƒ",
-        "ÃŽn completare", "CiornÄƒ", "AÈ™teaptÄƒ depunere", "PregÄƒtit pentru depunere",
-        "PregÄƒtit pentru semnare", "FacturÄƒ ATR", "AÈ™teaptÄƒ instalare", "Instalat", "PV Teste / PIF",
-    }
-    pending = sum(count for stage, count in stage_counts.items() if stage in attention_stages)
-
-    # Surface explicitly recorded blockers on every active dossier, not only the
-    # small recent-work sample used by the dashboard inbox.
-    blocker_dossiers = 0
-    blocker_count = 0
-    for module, _label in inbox_modules:
-        match = {**scope_q(user, module), **test_dossier_filter,
-                 "$or": [
-                     {"workflow_blockers": {"$type": "array", "$ne": []}},
-                     {"workflow_blockers": {"$type": "string", "$nin": [None, ""]}},
-                 ]}
-        for row in await db[module].find(match, {"_id": 0, "workflow_blockers": 1}).to_list(length=None):
-            values = row.get("workflow_blockers")
-            if isinstance(values, list):
-                active = [str(value).strip() for value in values if str(value or "").strip()]
-            elif isinstance(values, str) and values.strip():
-                active = [line.strip() for line in values.splitlines() if line.strip()]
-            else:
-                active = []
-            if active:
-                blocker_dossiers += 1
-                blocker_count += len(active)
-
-    return {"clients": clients, "diu": diu, "mono": mono, "pending": pending,
-            "recent": [clean(r) for r in recent], "inbox": inbox[:24],
-            "blocker_dossiers": blocker_dossiers, "blocker_count": blocker_count,
-            "submitted_this_month": submitted_this_month, "activated_this_month": activated_this_month,
-            "total_dossiers": sum(stage_counts.values()),
-            "stage_counts": dict(sorted(stage_counts.items(), key=lambda item: (-item[1], item[0]))),
-            "operator_counts": dict(sorted(operator_counts.items(), key=lambda item: (-item[1], item[0])))}
-
-# ---------------- Settings (singleton per owner) ----------------
-PRIVATE = ("staff", "instruments")
-
-def guard(module: str, user: dict, write: bool = False):
-    need(user, MODULE_FEATURE.get(module), write)
-    role = user.get("role", "admin")
-    if module in PRIVATE and write and role != "admin":
-        raise HTTPException(status_code=403, detail="Doar administratorul poate modifica personalul È™i aparatele de mÄƒsurÄƒ")
-    if module in PRIVATE and role not in ("admin", "inginer", "electrician", "instalator"):
-        raise HTTPException(status_code=403, detail="Acces restricÈ›ionat la documentele personalului")
-    if write and role not in EDIT_ROLES:
-        raise HTTPException(status_code=403, detail="Contul are acces limitat (doar consultare)")
-    if write and module == "catalog" and role not in ("admin", "inginer"):
-        raise HTTPException(status_code=403, detail="Doar administratorul / inginerul modificÄƒ catalogul")
-
-async def audit(user: dict, action: str, module: str, item_id: str, fields: list):
-    await db.audit.insert_one({"owner": user["id"], "user": user.get("email"), "action": action, "module": module, "item_id": item_id,
-                               "fields": [f for f in fields if f not in ("updated_at", "owner", "id", "created_at")][:40],
-                               "at": datetime.now(timezone.utc).isoformat()})
-
-@api_router.get("/audit")
-async def audit_log(module: Optional[str] = None, item_id: Optional[str] = None, user: dict = Depends(get_current_user)):
-    q = {"owner": user["id"]}
-    if not is_admin(user):
-        if not item_id:
-            raise HTTPException(status_code=403, detail="Jurnalul complet este disponibil doar administratorului")
-        await check_access(user, module or "prosumator", item_id)
-    if module:
-        q["module"] = module
-    if item_id:
-        q["item_id"] = item_id
-    return await db.audit.find(q, {"_id": 0}).sort("at", -1).to_list(300)
-
-@api_router.get("/settings")
-async def get_settings(user: dict = Depends(get_current_user)):
-    doc = await db.settings.find_one({"owner": user["id"]})
-    if not doc:
-        return {"company": "DNS HOSTESS S.R.L.", "brand": "D-ENERGY", "rep": "", "phone": "", "address": "",
-                "dossier_package_parts": 4, "dossier_package_by_operator": {}}
-    return clean(doc)
-
-@api_router.put("/settings")
-async def save_settings(request: Request, user: dict = Depends(get_current_user)):
-    require(user, "admin")
-    data = await request.json()
-    data.pop("_id", None)
-    data["owner"] = user["id"]
-    await db.settings.update_one({"owner": user["id"]}, {"$set": data}, upsert=True)
-    await audit(user, "modificare", "settings", user["id"], list(data.keys()))
-    doc = await db.settings.find_one({"owner": user["id"]})
-    return clean(doc)
-
-# ---------------- File upload / download ----------------
-@api_router.post("/upload")
-async def upload(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    need(user, None, True)
-    filename = str(file.filename or "document")
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    data = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="FiÈ™ierul depÄƒÈ™eÈ™te limita de 25 MB")
-    expected_type = validate_upload_payload(filename, file.content_type, data)
-    path = f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}"
-    result = put_object(path, data, expected_type)
-    return {"storage_path": result["path"], "original_filename": filename[:255],
-            "content_type": expected_type, "size": result.get("size", len(data))}
-
-@api_router.get("/catalog/supplier-search")
-async def catalog_supplier_search(
-    q: str = Query(""), category: str = Query("Invertor"),
-    offset: int = Query(0, ge=0, le=10000), limit: int = Query(24, ge=1, le=48),
-    user: dict = Depends(get_current_user),
-):
-    """Search public product listings in bounded pages from the configured suppliers."""
-    guard("catalog", user)
-    try:
-        return await SUPPLIER_CATALOG.search_supplier_products(q, category, offset=offset, limit=limit)
-    except Exception as exc:
-        logger.exception("Supplier catalog search failed for category %s: %s", category, exc)
-        return {"products": [], "total": 0, "offset": offset, "limit": limit, "has_more": False,
-                "message": "CÄƒutarea la furnizori este temporar indisponibilÄƒ. Catalogul salvat rÄƒmÃ¢ne disponibil."}
-
-
-@api_router.get("/catalog/document-feedback")
-async def list_catalog_document_feedback(user: dict = Depends(get_current_user)):
-    """List pending technical-document corrections for the signed-in DNS tenant."""
-    guard("catalog", user)
-    rows = await db.catalog_document_feedback.find(
-        {"owner": user["id"], "status": "pending"}, {"_id": 0}
-    ).sort("created_at", -1).limit(100).to_list(100)
-    return rows
-
-
-@api_router.post("/catalog/{item_id}/document-feedback")
-async def create_catalog_document_feedback(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Record a team suggestion for a missing or incorrect equipment document."""
-    from urllib.parse import urlparse
-    guard("catalog", user, write=True)
-    item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
-    if not item:
-        raise HTTPException(status_code=404, detail="Modelul nu existÄƒ Ã®n catalogul acestui cont")
-    body = await request.json()
-    kind = str(body.get("kind") or "").strip()
-    suggested_url = str(body.get("suggested_url") or "").strip()
-    note = str(body.get("note") or "").strip()
-    if kind not in ("datasheet", "conformity"):
-        raise HTTPException(status_code=400, detail="Alege fiÈ™a tehnicÄƒ sau documentul de conformitate")
-    if len(suggested_url) > 2048 or len(note) > 1000:
-        raise HTTPException(status_code=400, detail="Linkul sau observaÈ›ia depÄƒÈ™eÈ™te limita permisÄƒ")
-    if not suggested_url and not note:
-        raise HTTPException(status_code=400, detail="AdaugÄƒ un link oficial sau o observaÈ›ie")
-    if suggested_url:
-        parsed = urlparse(suggested_url)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-            raise HTTPException(status_code=400, detail="Linkul propus trebuie sÄƒ fie HTTPS È™i fÄƒrÄƒ date de autentificare")
-    now = datetime.now(timezone.utc).isoformat()
-    document = item.get(kind)
-    document_url = document.get("source_url") if isinstance(document, dict) else ""
-    record = {
-        "id": str(uuid.uuid4()), "owner": user["id"], "item_id": item_id,
-        "brand_model": str(item.get("brand_model") or "")[:255],
-        "category": str(item.get("category") or "")[:80], "kind": kind,
-        "current_url": str(document_url or item.get(kind + "_url") or item.get(kind + "_source_url") or "")[:2048],
-        "suggested_url": suggested_url, "note": note, "status": "pending",
-        "submitted_by": str(user.get("email") or user.get("name") or "")[:255],
-        "created_at": now, "updated_at": now,
-    }
-    await db.catalog_document_feedback.insert_one(dict(record))
-    await audit(user, "propunere document catalog", "catalog", item_id, [kind, "suggested_url", "note"])
-    return {"ok": True, "id": record["id"], "status": "pending"}
-
-
-@api_router.patch("/catalog/document-feedback/{feedback_id}")
-async def update_catalog_document_feedback(feedback_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Mark a tenant's catalog-document suggestion as accepted, reviewed, or dismissed."""
-    guard("catalog", user, write=True)
-    body = await request.json()
-    status = str(body.get("status") or "").strip()
-    if status not in ("accepted", "reviewed", "dismissed"):
-        raise HTTPException(status_code=400, detail="Starea propunerii nu este validÄƒ")
-    record = await db.catalog_document_feedback.find_one(
-        {"id": feedback_id, "owner": user["id"]}, {"_id": 0}
-    )
-    if not record:
-        raise HTTPException(status_code=404, detail="Propunerea nu existÄƒ Ã®n acest cont")
-    now = datetime.now(timezone.utc).isoformat()
-    await db.catalog_document_feedback.update_one(
-        {"id": feedback_id, "owner": user["id"]},
-        {"$set": {"status": status, "review_note": str(body.get("review_note") or "")[:1000],
-                  "reviewed_by": str(user.get("email") or user.get("name") or "")[:255],
-                  "updated_at": now}}
-    )
-    await audit(user, "revizuire propunere document catalog", "catalog", record["item_id"], [status])
-    return {"ok": True, "id": feedback_id, "status": status}
-
-
-@api_router.post("/catalog/supplier-import")
-async def catalog_supplier_import(request: Request, user: dict = Depends(get_current_user)):
-    """Import verified public product data and linked official PDFs into the owner's catalog."""
-    guard("catalog", user, write=True)
-    body = await request.json()
-    supplier = str(body.get("supplier") or "")
-    category = str(body.get("category") or "")
-    product_url = str(body.get("product_url") or "")
-    product = await SUPPLIER_CATALOG.get_public_product(supplier, category, product_url)
-    if not product:
-        raise HTTPException(status_code=400, detail="Produsul nu mai poate fi verificat la sursa publicÄƒ")
-    existing = await db.catalog.find_one({"owner": user["id"], "category": category, "source_url": product_url}, {"_id": 0})
-
-    allowed = ("p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count", "imax_mppt",
-               "w", "voc", "coef_voc", "coef_vmp", "temp_pmax", "vmp", "isc", "imp", "kwh", "ah", "voltage", "i_max", "p_max_w", "max_devices",
-               "phases", "current_max_a", "voltage_nominal_v", "frequency_hz", "protocol", "interfaces", "compatible_inverters",
-               "isc_max_a", "imax_output_a", "vdc_output_max", "model_scope")
-    item = {"category": category, "brand_model": product["brand_model"], "supplier": supplier,
-            "source_url": product_url, "source_price": product.get("price_text", ""),
-            "source_price_tax_note": product.get("price_tax_note", ""),
-            "source_availability": product.get("availability", ""),
-            "notes": "Importat din pagina publicÄƒ a furnizorului. Valorile tehnice sunt completate numai cÃ¢nd sunt publicate explicit È™i neambiguu.",
-            **{key: product[key] for key in allowed if key in product}}
-    now = datetime.now(timezone.utc).isoformat()
-    for kind in ("datasheet", "conformity"):
-        prior_doc = (existing or {}).get(kind)
-        doc_url = ((existing or {}).get(kind + "_url")
-                   or (existing or {}).get(kind + "_source_url")
-                   or (prior_doc.get("source_url") if isinstance(prior_doc, dict) else "")
-                   or product.get(kind + "_url") or "")
-        source_host = SUPPLIER_CATALOG.SOURCES[supplier]["host"]
-        if not doc_url or not SUPPLIER_CATALOG._safe_document(doc_url, source_host):
-            continue
-        item[kind + "_url"] = doc_url
-        item[kind + "_source_url"] = doc_url
-        if isinstance(prior_doc, dict) and prior_doc.get("storage_path"):
-            continue
-        try:
-            fetched = await SUPPLIER_CATALOG.fetch_public_pdf(doc_url, source_host, MAX_UPLOAD_BYTES)
-            if not fetched:
-                continue
-            data, resolved_url = fetched
-            path = f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.pdf"
-            stored = put_object(path, data, "application/pdf")
-            from urllib.parse import urlparse
-            host = (urlparse(resolved_url).hostname or "").lower().rstrip(".")
-            item[kind] = {"storage_path": stored["path"], "original_filename": f"{product['brand_model']} â€” {kind}.pdf",
-                          "content_type": "application/pdf", "size": len(data), "source_url": doc_url,
-                          "source_host": host, "resolved_url": resolved_url, "imported_at": now}
-        except Exception as exc:
-            logger.info("Supplier catalog document unavailable (%s): %s", kind, str(exc)[:160])
-    if existing:
-        updates = SUPPLIER_CATALOG.merge_catalog_enrichment(existing, item)
-        updates["last_source_check_at"] = now
-        await db.catalog.update_one({"id": existing["id"], "owner": user["id"]}, {"$set": updates})
-        refreshed = await db.catalog.find_one({"id": existing["id"], "owner": user["id"]}, {"_id": 0})
-        if updates:
-            await audit(user, "actualizare model catalog furnizor", "catalog", existing["id"], list(updates))
-        return {"ok": True, "existing": True, "item": clean(refreshed or existing)}
-    record = _new(user, item)
-    await db.catalog.insert_one(dict(record))
-    await audit(user, "import produs catalog furnizor", "catalog", record["id"], ["category", "brand_model", "supplier", "source_url", *[k for k in ("datasheet", "conformity") if k in item]])
-    return {"ok": True, "existing": False, "item": clean(record)}
-
-
-class _TrustedCatalogImportRequest:
-    """Internal request adapter for reusing the validated catalog importer."""
-    def __init__(self, payload: dict):
-        self.payload = payload
-
-    async def json(self):
-        return self.payload
-
-
-@api_router.post("/catalog/{item_id}/import-document")
-async def catalog_import_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Import a technical PDF from a manufacturer or approved distributor domain."""
-    if not isinstance(request, _TrustedCatalogImportRequest):
-        guard("catalog", user, write=True)
-    body = await request.json()
-    kind = body.get("kind")
-    url = str(body.get("url") or "").strip()
-    if kind not in ("datasheet", "conformity") or len(url) > 2048:
-        raise HTTPException(status_code=400, detail="Tipul documentului sau linkul nu este valid")
-    from urllib.parse import urlparse
-    import httpx
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").lower().rstrip(".")
-    trusted_document_domains = (
-        "huawei.com", "goodwe.com", "sungrowpower.com", "deyeinverter.com", "deyeess.com", "solis.com", "solisinverters.com", "ginlong.com", "fronius.com", "sma.de",
-        "sma-solar.com", "fox-ess.com", "aikosolar.com", "jinkosolar.com", "longi.com", "trinasolar.com", "ja-solar.com", "canadiansolar.com", "qcells.com", "victronenergy.com", "eastrongroup.com",
-        "risenenergy.com", "bydbatterybox.com", "dyness.com", "dyness.de", "pylontech.com.cn", "pylontech.us", "solarshop.baywa-re.lv", "baywa-re.de", "solaxpower.com", "jinkosolar.eu",
-        "distributie-energie.ro", "delgaz-grid.ro", "delgaz.ro", "reteleelectrice.ro", "distributieoltenia.ro", "depozitsolar.ro", "solarhev.ro", "solartech.ro", "hqsmartcloud.com", "sigenergy.com", "solsol.eu",
-    )
-    if parsed.scheme != "https" or not host or parsed.username or parsed.password or not any(host == d or host.endswith("." + d) for d in trusted_document_domains):
-        raise HTTPException(status_code=400, detail="FoloseÈ™te un link HTTPS de la producÄƒtor sau distribuitorul autorizat.")
-    item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
-    if not item:
-        raise HTTPException(status_code=404, detail="Modelul nu existÄƒ Ã®n catalog")
-    def allowed_official_url(candidate: str) -> tuple[str, object]:
-        parsed_candidate = urlparse(candidate)
-        candidate_host = (parsed_candidate.hostname or "").lower().rstrip(".")
-        try:
-            candidate_port = parsed_candidate.port
-        except ValueError:
-            candidate_port = -1
-        if (parsed_candidate.scheme != "https" or parsed_candidate.username or parsed_candidate.password
-                or candidate_port not in (None, 443)
-                or not any(candidate_host == domain or candidate_host.endswith("." + domain) for domain in trusted_document_domains)):
-            raise HTTPException(status_code=400, detail="RedirecÈ›ionarea a pÄƒrÄƒsit domeniul oficial permis.")
-        return candidate_host, parsed_candidate
-
-    try:
-        from urllib.parse import urljoin
-        chunks, total = [], 0
-        current_url = url
-        async with httpx.AsyncClient(timeout=25, follow_redirects=False) as client:
-            for hop in range(6):
-                async with client.stream("GET", current_url, headers={"User-Agent": "DNS-Energy-Document-Importer/1.0", "Accept": "application/pdf"}) as response:
-                    if response.status_code in (301, 302, 303, 307, 308):
-                        location = response.headers.get("location")
-                        if not location:
-                            raise HTTPException(status_code=400, detail="Sursa a trimis o redirecÈ›ionare fÄƒrÄƒ destinaÈ›ie.")
-                        next_url = urljoin(current_url, location)
-                        allowed_official_url(next_url)
-                        current_url = next_url
-                        continue
-                    if response.status_code != 200:
-                        raise HTTPException(status_code=400, detail=f"Sursa a rÄƒspuns cu HTTP {response.status_code}; verificÄƒ linkul PDF.")
-                    final_host, _ = allowed_official_url(str(response.url))
-                    length = response.headers.get("content-length")
-                    if length and length.isdigit() and int(length) > 25 * 1024 * 1024:
-                        raise HTTPException(status_code=413, detail="Documentul depÄƒÈ™eÈ™te limita de 25 MB")
-                    async for chunk in response.aiter_bytes(64 * 1024):
-                        total += len(chunk)
-                        if total > 25 * 1024 * 1024:
-                            raise HTTPException(status_code=413, detail="Documentul depÄƒÈ™eÈ™te limita de 25 MB")
-                        chunks.append(chunk)
-                    break
-            else:
-                raise HTTPException(status_code=400, detail="Sursa a depÄƒÈ™it limita de 5 redirecÈ›ionÄƒri.")
-        data = b"".join(chunks)
-    except httpx.HTTPError:
-        raise HTTPException(status_code=400, detail="Documentul nu a putut fi preluat de la sursa oficialÄƒ.")
-    if not data.startswith(b"%PDF-"):
-        raise HTTPException(status_code=415, detail="Linkul nu a returnat un PDF valid")
-    stored = put_object(f"{APP_NAME}/catalog/{user['id']}/{item_id}/{kind}_{uuid.uuid4().hex}.pdf", data, "application/pdf")
-    doc = {"storage_path": stored["path"], "original_filename": f"{item.get('brand_model', 'model')} â€” {kind}.pdf",
-           "content_type": "application/pdf", "size": len(data), "source_url": url, "source_host": final_host,
-           "resolved_url": current_url, "imported_at": datetime.now(timezone.utc).isoformat()}
-    await db.catalog.update_one({"id": item_id, "owner": user["id"]}, {"$set": {kind: doc, f"{kind}_source_url": url}})
-    await audit(user, "import document catalog", "catalog", item_id, [kind, "source_url"])
-    return {"ok": True, "kind": kind, "source_url": url, "size": len(data)}
-
-
-@api_router.post("/catalog/{item_id}/recover-document")
-async def catalog_recover_document(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Restore a missing technical PDF from its saved direct URL or public product page."""
-    guard("catalog", user, write=True)
-    body = await request.json()
-    kind = str(body.get("kind") or "").strip()
-    if kind not in ("datasheet", "conformity"):
-        raise HTTPException(status_code=400, detail="Alege fiÈ™a tehnicÄƒ sau declaraÈ›ia de conformitate")
-    item = await db.catalog.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0})
-    if not item:
-        raise HTTPException(status_code=404, detail="Modelul nu existÄƒ Ã®n catalog")
-
-    document = item.get(kind)
-    direct_urls = list(dict.fromkeys(
-        str(value).strip()
-        for value in (
-            item.get(kind + "_source_url"),
-            document.get("source_url") if isinstance(document, dict) else "",
-            document.get("url") if isinstance(document, dict) else "",
-            item.get(kind + "_url"),
-        )
-        if str(value or "").strip()
-    ))
-    direct_error = ""
-    for direct_url in direct_urls:
-        try:
-            return await catalog_import_document(
-                item_id, _TrustedCatalogImportRequest({"kind": kind, "url": direct_url}), user
-            )
-        except HTTPException as exc:
-            direct_error = direct_error or str(exc.detail or "")
-
-    supplier, product_url = catalog_product_source(item)
-    if supplier and product_url and item.get("category") in SUPPLIER_CATALOG.CATEGORIES:
-        try:
-            document_url = await SUPPLIER_CATALOG.get_public_product_document(
-                supplier, item["category"], product_url, kind
-            )
-            if document_url and document_url not in direct_urls:
-                return await catalog_import_document(
-                    item_id, _TrustedCatalogImportRequest({"kind": kind, "url": document_url}), user
-                )
-        except HTTPException as exc:
-            direct_error = direct_error or str(exc.detail or "")
-
-    if direct_error:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Nu am putut prelua PDF-ul salvat È™i nu s-a gÄƒsit o alternativÄƒ pe pagina produsului. {direct_error}",
-        )
-    if not supplier or not product_url or item.get("category") not in SUPPLIER_CATALOG.CATEGORIES:
-        raise HTTPException(status_code=422, detail="Modelul nu are un link PDF sau o paginÄƒ verificabilÄƒ la un furnizor cunoscut")
-    raise HTTPException(status_code=404, detail="Nu am gÄƒsit un PDF pentru acest tip Ã®n pagina publicÄƒ a modelului")
-
-
-@api_router.get("/files/{path:path}")
-async def download(path: str, authorization: str = Header(None), auth: str = Query(None),
-                   module: str = Query("documents")):
-    token = None
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization[7:]
-    elif auth:
-        token = auth
-    if not token:
-        raise HTTPException(status_code=401, detail="Neautentificat")
-    user = await user_from_token(None, token)
-    if f"/{user['id']}/" not in path:
-        raise HTTPException(status_code=404, detail="FiÈ™ier inexistent")
-    if not is_admin(user):
-        import json as _j
-        ok = False
-        for m in ("prosumator", "clients", "documents", "diu", "atr", "power", "mono", "panels", "anti", "pram", "equipment", "works", "projects", "catalog"):
-            async for d in db[m].find(scope_q(user, m), {"_id": 0}):
-                if path in _j.dumps(d, default=str):
-                    ok = True; break
-            if ok:
-                break
-        # A team member may read their own stored qualification/signature files,
-        # but having a staff profile must not grant access to every tenant file.
-        if not ok and user.get("staff_id"):
-            person = await db.staff.find_one({"owner": user["id"], "id": user["staff_id"]}, {"_id": 0})
-            ok = bool(person and path in _j.dumps(person, default=str))
-        if not ok:
-            raise HTTPException(status_code=404, detail="FiÈ™ier inexistent sau fÄƒrÄƒ drept de acces")
-    try:
-        data, content_type = get_object(path)
-    except LegacyObjectUnavailable as exc:
-        raise HTTPException(status_code=410, detail=str(exc)) from exc
-    return Response(content=data, media_type=content_type)
-
-# ---------------- AI extraction & document generation ----------------
-import docgen
-import power_docx as POWERDOCX
-from ai_extract import extract_pdf, extract_gpt, extract_office_text, extract_gpt_text, extract_office_local, canonical_document_type
-from dossier_identity import identity_codes_conflict
-
-async def user_from_token(authorization: Optional[str], auth: Optional[str]) -> dict:
-    token = authorization[7:] if authorization and authorization.startswith("Bearer ") else auth
-    if not token:
-        raise HTTPException(status_code=401, detail="Neautentificat")
-    try:
-        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Token invalid")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
-    if not user:
-        raise HTTPException(status_code=401, detail="Utilizator inexistent")
-    if os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on"):
-        admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-        if not private_mode_account_allowed(user, admin_email):
-            raise HTTPException(status_code=403, detail="Acces permis administratorului È™i partenerilor aprobaÈ›i DNS Energy")
-    if user.get("status", "active") != "active":
-        raise HTTPException(status_code=403, detail=STATUS_MSG.get(user.get("status"), "Cont inactiv"))
-    return await finish_user(user)
-
-@api_router.post("/ai/extract")
-async def ai_extract(file: UploadFile = File(...), doc_type: str = Form("auto"), user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    # Document intake is part of the prosumer workflow. The route already checks the
-    # prosumer module entitlement above; do not require a second AI-only feature for
-    # selectable-text PDFs and local Office extraction. GPT/OCR remains feature-gated below.
-    data = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="FiÈ™ierul depÄƒÈ™eÈ™te limita de 25 MB")
-    if not data:
-        raise HTTPException(status_code=400, detail="FiÈ™ierul este gol")
-    filename = str(file.filename or "document.pdf")
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
-    ct = str(file.content_type or "").split(";", 1)[0].strip().lower()
-    # Mobile pickers sometimes send application/octet-stream (or no MIME type).
-    # Infer the supported type from the extension in those cases.
-    if not ct or ct == "application/octet-stream":
-        ct = MIME_TYPES.get(ext, "application/octet-stream")
-    ct = validate_upload_payload(filename, ct, data)
-    office_types = {
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }
-    image_types = ("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence")
-    if ct != "application/pdf" and ct not in image_types and ct not in office_types:
-        raise HTTPException(status_code=400, detail="Citire automatÄƒ pentru PDF, imagini, DOCX È™i XLSX. Alte formate pot fi ataÈ™ate È™i verificate manual.")
-    if doc_type not in {"auto", "ci", "factura", "cf", "other"}:
-        raise HTTPException(status_code=400, detail="Tip de document invalid")
-    use_gpt = bool((os.environ.get("OPENAI_API_KEY") or "").strip()) and has_feature(user, "ai_gpt") and "ai_gpt" not in user["plan"].get("disabled", [])
-    extraction_error = None
-    try:
-        if ct in office_types:
-            if use_gpt:
-                fields = await asyncio.wait_for(
-                    extract_gpt_text(extract_office_text(data, ct), doc_type), timeout=22
-                )
-            else:
-                fields = extract_office_local(data, ct, doc_type)
-        else:
-            fields = await extract_pdf(data, ct, doc_type, use_ai=use_gpt)
-    except Exception as e:
-        logger.warning("Document extraction incomplete; preserving uploaded file (type=%s, mime=%s): %s", doc_type, ct, e)
-        # Keep the original file attached so phone uploads are not lost when
-        # automatic reading times out or cannot identify the document.
-        fields = {}
-        extraction_error = str(e) if isinstance(e, ValueError) else "Citirea automatÄƒ nu s-a Ã®ncheiat. FiÈ™ierul a fost ataÈ™at; verificÄƒ-l È™i completeazÄƒ datele manual."
-    expected = {
-        "ci": [
-            (("client_name",), "numele titularului"),
-            (("cnp",), "CNP/CUI"),
-            (("hq_address", "address"), "domiciliul"),
-            (("id_series",), "seria CI"),
-            (("id_number",), "numÄƒrul CI"),
-        ],
-        "factura": [
-            (("pod",), "codul POD"),
-            (("consumption_address", "address"), "adresa locului de consum"),
-            (("operator",), "operatorul de distribuÈ›ie"),
-        ],
-        "cf": [
-            (("owner_name", "client_name"), "proprietarul"),
-            (("cf_nr",), "numÄƒrul cÄƒrÈ›ii funciare"),
-        ],
-    }
-    selected_type = canonical_document_type(doc_type) or canonical_document_type(fields.get("doc_type"))
-    missing_fields = []
-    if selected_type in expected:
-        for aliases, label in expected[selected_type]:
-            if not any(fields.get(key) not in (None, "", "null") for key in aliases):
-                missing_fields.append(label)
-    warning = None
-    if missing_fields:
-        warning = "Lipsesc date care trebuie verificate sau completate: " + ", ".join(missing_fields) + "."
-    if extraction_error:
-        warning = f"{extraction_error} {warning or ''}".strip()
-    stored = put_object(f"{APP_NAME}/uploads/{user['id']}/{uuid.uuid4()}.{ext}", data, ct)
-    engine = fields.pop("_engine", "Citire manualÄƒ necesarÄƒ" if extraction_error else "OpenAI (GPT-4.1 mini)")
-    return {"data": fields, "engine": engine, "warning": warning, "missing_fields": missing_fields,
-            "file": {"storage_path": stored["path"], "original_filename": file.filename,
-                     "content_type": ct, "size": len(data)}}
-
-def _new(user, extra):
-    now = datetime.now(timezone.utc).isoformat()
-    return {"id": str(uuid.uuid4()), "owner": user["id"], "created_at": now, "updated_at": now,
-            **({"created_by": user["uid"], "created_by_email": user.get("email")} if user.get("uid") else {}), **extra}
-
-@api_router.post("/import/prosumator")
-async def import_prosumator(request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    d = await request.json()
-    intake_request_id = str(d.pop("intake_request_id", "") or "").strip()
-    if intake_request_id:
-        existing = await db.prosumator.find_one(
-            {"owner": user["id"], "intake_request_id": intake_request_id}, {"_id": 0}
-        )
-        if existing:
-            return clean(existing)
-    now = datetime.now(timezone.utc).isoformat()
-    for k in ("_id", "id", "owner", "created_at", "updated_at"):
-        d.pop(k, None)
-    d.setdefault("doc_date", datetime.now(ZoneInfo("Europe/Bucharest")).date().isoformat())
-    name = (d.get("client_name") or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="LipseÈ™te numele beneficiarului")
-    check_inverters(user, d)
-    files = d.get("files") or []
-    if not isinstance(files, list):
-        raise HTTPException(status_code=400, detail="Lista de documente este invalidÄƒ")
-    for f in files:
-        if not isinstance(f, dict) or not str(f.get("storage_path") or "").startswith(APP_NAME + "/uploads/" + str(user["id"]) + "/"):
-            raise HTTPException(status_code=400, detail="Document invalid sau neÃ®ncÄƒrcat Ã®n contul curent")
-    identity_code = str(d.get("cnp") or "").strip()
-    selected_client_id = str(d.pop("client_id", "") or "").strip()
-    client = None
-    if selected_client_id:
-        client = await db.clients.find_one({**scope_q(user, "clients"), "id": selected_client_id}, {"_id": 0})
-        if not client:
-            raise HTTPException(status_code=404, detail="Clientul selectat nu existÄƒ Ã®n contul curent")
-        stored_identity = str(client.get("idcode") or client.get("cui") or "").strip()
-        if identity_codes_conflict(identity_code, stored_identity):
-            raise HTTPException(status_code=409, detail="CNP/CUI din documente nu corespunde clientului selectat")
-    if not client and identity_code:
-        client = await db.clients.find_one({**scope_q(user, "clients"),
-            "$or": [{"idcode": identity_code}, {"cui": identity_code}]}, {"_id": 0})
-    if not client and not selected_client_id:
-        client = await db.clients.find_one({**scope_q(user, "clients"), "name": name}, {"_id": 0})
-    stored_identity = str((client or {}).get("idcode") or (client or {}).get("cui") or "").strip()
-    # A same-name client with a different CNP/CUI is a separate person/company.
-    if client and identity_codes_conflict(identity_code, stored_identity):
-        client = None
-
-    related_dossier = None
-    if d.get("pod"):
-        duplicate_match = []
-        if client:
-            duplicate_match.append({"client_id": client["id"]})
-        if identity_code:
-            duplicate_match.extend([{"cnp": identity_code}, {"idcode": identity_code}])
-        else:
-            duplicate_match.append({"client_name": name})
-        # A POD can have multiple valid applications over time. The intake request ID
-        # above prevents duplicate retries; show older dossiers as context only.
-        related_dossier = await db.prosumator.find_one(
-            {**scope_q(user, "prosumator"), "pod": d["pod"], "$or": duplicate_match},
-            {"_id": 0, "id": 1, "number": 1, "status": 1, "request_type": 1},
-        )
-    if not client:
-        client = _new(user, {"name": name, "idcode": d.get("cnp", ""), "phone": d.get("phone", ""), "email": d.get("email", ""),
-                             "address": d.get("address", ""), "hq_address": d.get("hq_address", ""), "county": d.get("county", ""),
-                             "locality": d.get("locality", ""), "pod": d.get("pod", ""), "operator": d.get("operator", ""), "cadastral_nr": d.get("cadastral_nr", ""),
-                             "cf_nr": d.get("cf_nr", ""), "supplier": d.get("supplier", ""), "bank": d.get("bank", ""), "iban": d.get("iban", ""), "rep_name": d.get("rep_name", ""),
-                             "regcom": d.get("regcom", ""), "kind": d.get("kind", "")})
-        client["docs"] = client.get("docs") or {}
-        await db.clients.insert_one(dict(client))
-    client.setdefault("docs", {})
-    client_values = {"name": name, "idcode": d.get("cnp"), "id_series": d.get("id_series"), "id_number": d.get("id_number"),
-                     "phone": d.get("phone"), "email": d.get("email"),
-                     "address": d.get("address"), "hq_address": d.get("hq_address"), "county": d.get("county"),
-                     "locality": d.get("locality"), "pod": d.get("pod"), "operator": d.get("operator"), "cadastral_nr": d.get("cadastral_nr"),
-                     "cf_nr": d.get("cf_nr"), "supplier": d.get("supplier"), "bank": d.get("bank"), "iban": d.get("iban"), "rep_name": d.get("rep_name"),
-                     "regcom": d.get("regcom"), "kind": d.get("kind")}
-    client_updates = {}
-    for key, value in client_values.items():
-        if value not in (None, "") and client.get(key) in (None, ""):
-            client[key] = value
-            client_updates[key] = value
-
-    # Keep consumption locations reusable on the client. A distinct POD is a
-    # distinct service point even when the street address is shared.
-    site_fields = ("address", "county", "locality", "postal_code", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc")
-    site_values = {key: str(d.get(key) or "").strip() for key in site_fields}
-    if any(site_values.values()):
-        sites = client.get("consumption_sites")
-        if not isinstance(sites, list):
-            sites = []
-        clean_location_key = lambda value: re.sub(r"\s+", " ", str(value or "").strip().casefold())
-        pod_key = clean_location_key(site_values["pod"])
-        address_key = clean_location_key(site_values["address"])
-        match_index = None
-        for index, saved_site in enumerate(sites):
-            if not isinstance(saved_site, dict):
-                continue
-            saved_pod = clean_location_key(saved_site.get("pod"))
-            same_pod = bool(pod_key and saved_pod == pod_key)
-            same_unmetered_address = (
-                not pod_key and not saved_pod and address_key
-                and clean_location_key(saved_site.get("address")) == address_key
-                and clean_location_key(saved_site.get("locality")) == clean_location_key(site_values["locality"])
-                and clean_location_key(saved_site.get("county")) == clean_location_key(site_values["county"])
-            )
-            if same_pod or same_unmetered_address:
-                match_index = index
-                break
-        if match_index is None:
-            sites.append({"id": str(uuid.uuid4()), **{key: value for key, value in site_values.items() if value},
-                          "created_at": now, "updated_at": now})
-        else:
-            merged_site = dict(sites[match_index])
-            merged_site.update({key: value for key, value in site_values.items() if value})
-            merged_site["updated_at"] = now
-            sites[match_index] = merged_site
-        client["consumption_sites"] = sites[-100:]
-        client_updates["consumption_sites"] = client["consumption_sites"]
-
-    d["client_id"] = client["id"]
-    if intake_request_id:
-        d["intake_request_id"] = intake_request_id
-    if not d.get("number"):
-        year = datetime.now().year
-        nums = [int(x["number"].split("-")[-1]) for x in await db.prosumator.find(
-            {"owner": user["id"], "number": {"$regex": f"^PROS-{year}-\\d+$"}}, {"number": 1}).to_list(5000)]
-        d["number"] = f"PROS-{year}-{(max(nums) if nums else 0) + 1:03d}"
-    if not d.get("status"):
-        d["status"] = "ÃŽn pregÄƒtire"
-    files = d.get("files") or []
-    d = derive_cef(d)
-    pros = _new(user, d)
-    await db.prosumator.insert_one(dict(pros))
-    post_save_warnings = []
-    try:
-        await sync_catalog_files_to_documents(user, pros)
-        post_save_warnings.extend(pros.get("_catalog_sync_warnings") or [])
-    except Exception as exc:
-        logger.exception("Catalog document sync failed after dossier create %s: %s", pros.get("id"), exc)
-        post_save_warnings.append("Dosarul a fost salvat; ataÈ™area automatÄƒ a documentelor din catalog va fi reluatÄƒ la generarea PDF-ului.")
-    try:
-        sz = docgen.sizing(d)
-        await db.works.insert_one(_new(user, {"title": f"Sistem fotovoltaic {docgen.fmt(sz['kwp'] or docgen.num(d.get('power')))} kWp â€” {name}",
-            "client_name": name, "type": "Sistem fotovoltaic", "status": "Finalizat" if d.get("status") == "Prosumator activ" else "ÃŽn execuÈ›ie",
-            "start_date": d.get("date", ""), "responsible": d.get("executant_rep", ""), "notes": f"Generat din dosar {pros['number']}", "pros_ref": pros["id"]}))
-    except Exception as exc:
-        logger.exception("Work item creation failed after dossier create %s: %s", pros.get("id"), exc)
-        post_save_warnings.append("Dosarul a fost salvat; Ã®nregistrarea lucrÄƒrii asociate nu a putut fi creatÄƒ automat.")
-    changed_slots = False
-    for f in files:
-        kind = f.get("kind")
-        slot = {"ci": "ci", "factura": "factura", "cf": "cf"}.get(kind)
-        clean_file = {k: f.get(k) for k in ("storage_path", "original_filename", "content_type", "size")}
-        if slot:
-            existing = client["docs"].setdefault(slot, [])
-            if not any(x.get("storage_path") == clean_file["storage_path"] for x in existing if isinstance(x, dict)):
-                existing.append(clean_file)
-                changed_slots = True
-        try:
-            await db.documents.update_one(
-                {"owner": user["id"], "pros_ref": pros["id"], "storage_path": clean_file["storage_path"]},
-                {"$setOnInsert": _new(user, {"client_id": client["id"], "client_name": name,
-                    "kind": "Dosar prosumator", "doc_type": f.get("doc_type") or "Document importat",
-                    **clean_file, "pros_ref": pros["id"]})}, upsert=True
-            )
-        except Exception as exc:
-            logger.exception("Imported file registration failed after dossier create %s: %s", pros.get("id"), exc)
-            post_save_warnings.append("Dosarul a fost salvat; unele fiÈ™iere nu au putut fi indexate automat Ã®n acte.")
-    try:
-        await db.clients.update_one({"id": client["id"], "owner": user["id"]}, {"$set": {
-            **client_updates,
-            "docs": client["docs"], "updated_at": datetime.now(timezone.utc).isoformat()}})
-    except Exception as exc:
-        logger.exception("Client update failed after dossier create %s: %s", pros.get("id"), exc)
-        post_save_warnings.append("Dosarul a fost salvat; actualizarea actelor clientului se va reface la urmÄƒtoarea salvare.")
-    response = clean(pros)
-    if post_save_warnings:
-        response["intake_warnings"] = list(dict.fromkeys(post_save_warnings))
-    if related_dossier:
-        response["related_dossier"] = related_dossier
-    return response
-
-@api_router.get("/docs/types")
-async def doc_types(user: dict = Depends(get_current_user)):
-    return [{"key": k, "label": v[0]} for k, v in docgen.DOCS.items()]
-
-@api_router.get("/docs/anexa1/{item_id}")
-async def generate_deer_annex1(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    client = await get_client(user["id"], rec)
-    operator = str(rec.get("operator") or client.get("operator") or "").casefold()
-    if "deer" not in operator and "distributie energie electrica" not in operator and "distribuÈ›ie energie electricÄƒ" not in operator:
-        raise HTTPException(status_code=422, detail="Precompletarea Word este disponibilÄƒ pentru formularul oficial DEER. Pentru alt operator foloseÈ™te formularul oficial din Registrul de formulare.")
-    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    settings, _ = await effective_settings(user["id"], rec, base)
-    try:
-        content = await POWERDOCX.render_deer_annex1(rec, client, settings)
-    except Exception as exc:
-        logger.exception("Nu s-a putut precompleta Anexa 1 DEER")
-        raise HTTPException(status_code=502, detail="Formularul oficial DEER nu a putut fi preluat È™i precompletat. ÃŽncearcÄƒ din nou.") from exc
-    filename = f"Anexa_1_DEER_{(rec.get('client_name') or 'prosumator').replace(' ', '_')}.docx"
-    return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    headers={"Content-Disposition": disp("attachment", filename)})
-
-
-@api_router.get("/docs/anexa2/{item_id}")
-async def generate_deer_annex2(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    """Download DEER's official existing-consumption prosumer notice, prefilled from the dossier."""
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    rec = CEF.from_legacy(rec)
-    await auto_fill_cef_from_catalog(user["id"], rec)
-    client = await get_client(user["id"], rec)
-    operator = str(rec.get("operator") or client.get("operator") or "").casefold()
-    if "deer" not in operator and "distributie energie electrica" not in operator and "distribuÈ›ie energie electricÄƒ" not in operator:
-        raise HTTPException(status_code=422, detail="Formularul oficial Anexa 2 este disponibil pentru dosarele DEER.")
-    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    settings, _ = await effective_settings(user["id"], rec, base)
-    official_rec = {**rec, "deer_case": "Anexa 2"}
-    try:
-        content = ATR.render_deer_official_docx(official_rec, client, settings, rec)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception as exc:
-        logger.exception("Nu s-a putut precompleta Anexa 2 DEER")
-        raise HTTPException(status_code=502, detail="Formularul oficial DEER Anexa 2 nu a putut fi generat. ÃŽncearcÄƒ din nou.") from exc
-    safe_name = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in str(client.get("name") or "prosumator")).strip().replace(" ", "_")
-    filename = f"DEER_Anexa2_{safe_name or 'prosumator'}.docx"
-    return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    headers={"Content-Disposition": disp("attachment", filename)})
-
-
-@api_router.get("/docs/sizing/{item_id}")
-async def doc_sizing(item_id: str, user: dict = Depends(get_current_user)):
-    rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    rec = CEF.from_legacy(rec)
-    await auto_fill_cef_from_catalog(user["id"], rec)
-    return docgen.sizing(rec)
-
-@api_router.get("/docs/{doc_type}/{item_id}")
-async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(None), auth: str = Query(None),
-                       attach: int = Query(0)):
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    rec = CEF.from_legacy(rec)
-    await auto_fill_cef_from_catalog(user["id"], rec)
-
-    is_power_increase = str(rec.get("request_type") or "").strip() == "Spor de putere + prosumator"
-    client = await get_client(user["id"], rec)
-    annex1 = None
-    annex1_worksheet = None
-    if is_power_increase:
-        # Use the actual Annex 1 PDF registered for the client's distribution operator.
-        operator = str(rec.get("operator") or client.get("operator") or "").lower()
-        if "delgaz" in operator:
-            operator_key = "delgaz"
-            op_names = ["delgaz grid", "delgaz"]
-        elif "reÈ›ele electrice" in operator or "retele electrice" in operator or "e-distribu" in operator:
-            operator_key = "rer"
-            op_names = ["reÈ›ele electrice romÃ¢nia", "reÈ›ele electrice"]
-        elif "oltenia" in operator:
-            operator_key = "oltenia"
-            op_names = ["distribuÈ›ie energie oltenia", "distributie energie oltenia"]
-        elif "deer" in operator or "distribuÈ›ie energie electricÄƒ" in operator or "distributie energie electrica" in operator:
-            operator_key = "deer"
-            op_names = ["deer", "distribuÈ›ie energie electricÄƒ romania", "distributie energie electrica romania"]
-        else:
-            operator_key = ""
-            op_names = []
-        if op_names:
-            rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
-            candidates = [f for f in rows
-                if not f.get("deprecated") and str(f.get("status") or "").casefold() != "formular retras"
-                and any(n in str(f.get("operator") or "").lower() for n in op_names)
-                and "prosumator" in str(f.get("kind") or "").lower()
-                and ("spor" in str(f.get("kind") or "").lower() or "anexa 1" in str(f.get("title") or "").lower())
-                and "anexa 1" in str(f.get("title") or "").lower()
-                and str(f.get("url") or "").lower().split("?")[0].endswith(".pdf")]
-            for item in candidates:
-                try:
-                    resp = requests.get(item["url"], timeout=20, headers={"User-Agent": "DNS-Energy/1.0"})
-                    if resp.status_code == 200 and resp.content.startswith(b"%PDF"):
-                        annex1 = {"bytes": resp.content, "title": item.get("title") or "Anexa 1 oficialÄƒ"}
-                        break
-                except Exception as exc:
-                    logger.warning("Nu s-a putut descÄƒrca Anexa 1 oficialÄƒ: %s", exc)
-        if annex1:
-            try:
-                import atr_routes as ATR_ROUTES
-                annex1["bytes"], annex1["prefilled_fields"] = ATR_ROUTES._prefill_official_pdf(
-                    annex1["bytes"], rec, client, rec
-                )
-                if operator_key:
-                    annex1_worksheet = ATR.render_operator_annex_prep(
-                        rec, client, rec, operator_key, 1, annex1.get("title") or "Anexa 1 oficialÄƒ"
-                    )
-            except Exception:
-                logger.exception("Nu s-a putut pregÄƒti fiÈ™a de completare pentru Anexa 1")
-        if doc_type == "notificare":
-            if not annex1:
-                raise HTTPException(status_code=404, detail="Nu existÄƒ un PDF Anexa 1 disponibil Ã®n Registrul formularelor pentru distribuitorul selectat. VerificaÈ›i/Ã®nregistraÈ›i formularul oficial; Anexa 2 nu va fi folositÄƒ la spor de putere.")
-            if annex1_worksheet:
-                writer = PdfWriter()
-                for page in PdfReader(io.BytesIO(annex1_worksheet)).pages:
-                    writer.add_page(page)
-                for page in PdfReader(io.BytesIO(annex1["bytes"])).pages:
-                    writer.add_page(page)
-                out = io.BytesIO()
-                writer.write(out)
-                annex_content = out.getvalue()
-            else:
-                annex_content = annex1["bytes"]
-            return Response(content=annex_content, media_type="application/pdf",
-                            headers={"Content-Disposition": disp("attachment", f"Anexa_1_spor_putere_{(rec.get('client_name') or 'prosumator').replace(' ', '_')}_COMPLETARE.pdf")})
-
-    if doc_type == "all":
-        # Dosarul complet include schema CEF o singurÄƒ datÄƒ.
-        keys = [k for k in docgen.DOCS if k != "schema"]
-        if rec.get("pram_source") == "none":
-            keys = [k for k in keys if k != "buletin_priza"]
-        if is_power_increase:
-            keys = [k for k in keys if k != "notificare"]
-    else:
-        keys = [doc_type]
-    if any(k not in docgen.DOCS for k in keys):
-        raise HTTPException(status_code=404, detail="Tip document inexistent")
-    if doc_type == "buletin_priza" and rec.get("pram_source") == "none":
-        raise HTTPException(status_code=422, detail="Dosarul este setat Â«FÄƒrÄƒ PRAMÂ»; buletinul nu se genereazÄƒ.")
-
-    third_party_pram = None
-    if rec.get("pram_source") == "third_party" and doc_type in ("buletin_priza", "all"):
-        uploaded = rec.get("pram_file") or {}
-        storage_path = str(uploaded.get("storage_path") or "")
-        if not storage_path or f"/{user['id']}/" not in storage_path:
-            raise HTTPException(status_code=422, detail="ÃŽncarcÄƒ buletinul PRAM PDF al firmei terÈ›e Ã®nainte de generare.")
-        try:
-            pram_bytes, pram_type = get_object(storage_path)
-        except Exception as exc:
-            logger.warning("Nu s-a putut citi buletinul PRAM Ã®ncÄƒrcat: %s", exc)
-            raise HTTPException(status_code=404, detail="FiÈ™ierul PRAM Ã®ncÄƒrcat nu mai este disponibil. ÃŽncarcÄƒ-l din nou.") from exc
-        if pram_type != "application/pdf" or not pram_bytes.startswith(b"%PDF-"):
-            raise HTTPException(status_code=415, detail="FiÈ™ierul PRAM trebuie sÄƒ fie un PDF valid.")
-        third_party_pram = pram_bytes
-
-    if doc_type == "buletin_priza" and third_party_pram:
-        filename = str((rec.get("pram_file") or {}).get("original_filename") or "buletin_pram_terta.pdf")
-        return Response(content=third_party_pram, media_type="application/pdf",
-                        headers={"Content-Disposition": disp("inline", filename)})
-    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    settings, _ = await effective_settings(user["id"], rec, base)
-    if doc_type == "all" and third_party_pram:
-        writer = PdfWriter()
-        for key in keys:
-            part = third_party_pram if key == "buletin_priza" else docgen.render([key], rec, settings, client)
-            for page in PdfReader(io.BytesIO(part)).pages:
-                writer.add_page(page)
-        combined = io.BytesIO()
-        writer.write(combined)
-        pdf = combined.getvalue()
-    else:
-        pdf = docgen.render(keys, rec, settings, client)
-
-    if doc_type == "all" and is_power_increase and annex1:
-        try:
-            # FiÈ™a de precompletare precedÄƒ formularul oficial; Anexa 2 nu se foloseÈ™te pentru spor.
-            writer = PdfWriter()
-            if annex1_worksheet:
-                for page in PdfReader(io.BytesIO(annex1_worksheet)).pages:
-                    writer.add_page(page)
-            for page in PdfReader(io.BytesIO(annex1["bytes"])).pages:
-                writer.add_page(page)
-            for page in PdfReader(io.BytesIO(pdf)).pages:
-                writer.add_page(page)
-            merged = io.BytesIO()
-            writer.write(merged)
-            pdf = merged.getvalue()
-        except Exception as exc:
-            logger.warning("Nu s-a putut ataÈ™a Anexa 1 oficialÄƒ: %s", exc)
-
-    # Attach catalog technical sheets and declarations.
-    if attach or doc_type == "all":
-        await auto_import_selected_catalog_documents(user, rec)
-        pdf = merge_pdfs(pdf, await catalog_files(user["id"], rec))
-    if doc_type == "all":
-        evidence = await OPIS.authorization_files(db, user["id"], rec, settings)
-        pdf = merge_pdfs(pdf, evidence)
-    fname = f"{doc_type}_{(rec.get('client_name') or 'dosar').replace(' ', '_')}.pdf"
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{fname}")})
-
-
-@api_router.get("/pram/{item_id}/pdf")
-async def pram_record_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    """Generate a standalone PRAM work sheet from a PRAM registry entry.
-
-    Missing field measurements remain blank; this endpoint never fabricates test results.
-    """
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "pram", item_id)
-    client = {}
-    client_id = str(rec.get("client_id") or "")
-    if client_id:
-        client = await db.clients.find_one({**scope_q(user, "clients"), "id": client_id}, {"_id": 0}) or {}
-    elif rec.get("client_name"):
-        client = await db.clients.find_one({"$and": [scope_q(user, "clients"), {"$or": [
-            {"name": rec.get("client_name")}, {"label": rec.get("client_name")}
-        ]}]}, {"_id": 0}) or {}
-    # Map the registry's human-facing fields to the existing PRAM document generator.
-    source = {
-        **rec,
-        "name": client.get("name") or rec.get("client_name"),
-        "address": rec.get("address") or client.get("address"),
-        "bulletin_no": rec.get("number"),
-        "measure_date": rec.get("date"),
-        "measure_object": rec.get("measure_object") or "InstalaÈ›ie de legare la pÄƒmÃ¢nt",
-        "grounding_ohm": rec.get("resistance_ohm"),
-        "grounding_limit": rec.get("grounding_limit"),
-        "soil_psi": rec.get("soil_psi"),
-        "soil": rec.get("soil"),
-    }
-    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    # If the inputs needed for a measured result are absent, docgen labels the PDF as
-    # an unfinished work sheet and leaves the verdict unset.
-    pdf = docgen.render(["buletin_priza"], source, settings, client)
-    filename = f"buletin_pram_{str(rec.get('number') or item_id[:8]).replace(' ', '_')}.pdf"
-    return Response(content=pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": disp("attachment", filename)})
-
-# ---------------- CEF checks & catalog ----------------
-import cef as CEF
-import supplier_catalog as SUPPLIER_CATALOG
-from catalog_seed import SEED as CATALOG_SEED, NOTE as CATALOG_NOTE, missing_seed_values as missing_catalog_seed_values
-from pypdf import PdfReader, PdfWriter
-import io
-
-def _catalog_seed_key(category: str | None, brand_model: str | None) -> str:
-    normalized_model = " ".join(str(brand_model or "").split()).casefold()
-    return f"{str(category or '').strip().casefold()}|{normalized_model}"
-
-
-async def seed_catalog(owner: str):
-    # Seed idempotent: adds newly curated models and backfills existing rows.
-    await db.settings.update_one({"owner": owner}, {"$setOnInsert": {"owner": owner}}, upsert=True)
-    settings = await db.settings.find_one({"owner": owner}, {"_id": 0, "catalog_deleted_seed_keys": 1}) or {}
-    deleted_seed_keys = set(settings.get("catalog_deleted_seed_keys") or [])
-    await db.settings.update_one({"owner": owner}, {"$set": {"catalog_seeded": True}})
-    seed_projection = {key: 1 for item in CATALOG_SEED for key in item}
-    seed_projection.update({"id": 1, "category": 1, "brand_model": 1, "conformity": 1, "datasheet": 1, "_id": 0})
-    existing = await db.catalog.find({"owner": owner}, seed_projection).to_list(10000)
-    by_key = {(x.get("category"), (x.get("brand_model") or "").strip().casefold()): x for x in existing}
-    missing = []
-    for item in CATALOG_SEED:
-        key = (item.get("category"), (item.get("brand_model") or "").strip().casefold())
-        row = by_key.get(key)
-        if row:
-            # Backfill manufacturer source links without overwriting a link the user already set.
-            source_updates = {f"{kind}_url": item[f"{kind}_url"] for kind in ("datasheet", "conformity")
-                              if item.get(f"{kind}_url") and not row.get(f"{kind}_url") and not row.get(f"{kind}_source_url")}
-            # Replace this known-wrong Jinko certificate link with the manufacturer's current certificate for the exact 54HL4M-BDV dual-glass family.
-            if (item.get("brand_model") == "JINKO SOLAR JKM510N-54HL4M-BDV"
-                    and row.get("conformity_url") == "https://solar-distribution.baywa-re.de/out/media/10-Tiger_Neo_48HL4M-DB_IEC61215IEC61730-Dual-Glass_2025-03-17_Rev-11.pdf"):
-                source_updates["conformity_url"] = item["conformity_url"]
-            jinko_model = item.get("brand_model") == "JINKO SOLAR JKM510N-54HL4M-BDV"
-            wrong_jinko_url = "https://solar-distribution.baywa-re.de/out/media/10-Tiger_Neo_48HL4M-DB_IEC61215IEC61730-Dual-Glass_2025-03-17_Rev-11.pdf"
-            current_conformity = row.get("conformity") if isinstance(row.get("conformity"), dict) else {}
-            stale_jinko_conformity = jinko_model and (
-                row.get("conformity_url") == wrong_jinko_url
-                or current_conformity.get("source_url") == wrong_jinko_url
-            )
-            stale_jinko_document = jinko_model and (
-                not current_conformity
-                or current_conformity.get("source_url") == wrong_jinko_url
-            )
-            verified_updates = missing_catalog_seed_values(row, item)
-            if source_updates or verified_updates:
-                updates = {**source_updates, **verified_updates}
-                await db.catalog.update_one({"id": row["id"], "owner": owner}, {"$set": updates})
-                row.update(updates)
-            if stale_jinko_document:
-                try:
-                    await catalog_import_document(
-                        row["id"],
-                        _TrustedCatalogImportRequest({
-                            "kind": "conformity",
-                            "url": item["conformity_url"],
-                        }),
-                        {"id": owner},
-                    )
-                except Exception as exc:
-                    logger.warning("Could not refresh the Jinko 54HL4M-BDV certificate from its official source: %s", exc)
-            deye_model = item.get("brand_model") == "Deye SUN-8K-SG05LP1-EU-AM2-P"
-            old_deye_datasheet_url = "https://www.deyeinverter.com/deyeinverter/2024/09/27/datasheet_sun-3.6-8k-sg05lp1-eu-am2-p_240927_en.pdf"
-            current_deye_datasheet_url = str(row.get("datasheet_url") or row.get("datasheet_source_url") or "").strip()
-            deye_datasheet = row.get("datasheet") if isinstance(row.get("datasheet"), dict) else {}
-            seed_managed_deye_url = deye_model and current_deye_datasheet_url in ("", old_deye_datasheet_url, item.get("datasheet_url"))
-            if deye_model and current_deye_datasheet_url in ("", old_deye_datasheet_url):
-                source_updates["datasheet_url"] = item["datasheet_url"]
-                # Persist the seed-managed Deye correction. This code runs after
-                # the general backfill write above, so without this update an old
-                # URL remained visible in the equipment card indefinitely.
-                await db.catalog.update_one(
-                    {"id": row["id"], "owner": owner, "datasheet_url": row.get("datasheet_url")},
-                    {"$set": {"datasheet_url": item["datasheet_url"]}},
-                )
-                row["datasheet_url"] = item["datasheet_url"]
-            if seed_managed_deye_url and (not deye_datasheet.get("storage_path") or deye_datasheet.get("source_url") == old_deye_datasheet_url):
-                try:
-                    await catalog_import_document(
-                        row["id"],
-                        _TrustedCatalogImportRequest({
-                            "kind": "datasheet",
-                            "url": item["datasheet_url"],
-                        }),
-                        {"id": owner},
-                    )
-                except Exception as exc:
-                    logger.warning("Could not refresh the Deye SUN-8K-SG05 datasheet from its official source: %s", exc)
-            aiko_model = item.get("brand_model") == "AIKO-A500-MAH60Mb"
-            aiko_conformity = row.get("conformity") if isinstance(row.get("conformity"), dict) else {}
-            aiko_conformity_url = str(row.get("conformity_url") or row.get("conformity_source_url") or "").strip()
-            seed_managed_aiko_conformity = aiko_model and aiko_conformity_url in ("", item.get("conformity_url"))
-            if (seed_managed_aiko_conformity and not aiko_conformity.get("storage_path")
-                    and aiko_conformity.get("source_url") in (None, "", item.get("conformity_url"))):
-                try:
-                    await catalog_import_document(
-                        row["id"],
-                        _TrustedCatalogImportRequest({
-                            "kind": "conformity",
-                            "url": item["conformity_url"],
-                        }),
-                        {"id": owner},
-                    )
-                except Exception as exc:
-                    logger.warning("Could not import the AIKO-A500-MAH60Mb family CE declaration hosted by Solsol: %s", exc)
-            continue
-        if _catalog_seed_key(item.get("category"), item.get("brand_model")) in deleted_seed_keys:
-            continue
-        created = _new({"id": owner}, {**item, "notes": item.get("notes") or CATALOG_NOTE})
-        missing.append(created)
-        by_key[key] = created
-    if missing:
-        await db.catalog.insert_many(missing)
-
-def derive_cef(d: dict) -> dict:
-    if (d.get("cef") or {}).get("inverters"):
-        f = CEF.flatten({k: v for k, v in d.items() if k != "power"})
-        for k in ("power", "inverter", "inverter_kw", "panel_count", "panels"):
-            if not d.get(k):
-                d[k] = f.get(k)
-    return d
-
-@api_router.post("/cef/check")
-async def cef_check(request: Request, user: dict = Depends(get_current_user)):
-    return CEF.check(await request.json())
-
-# ---------------- SchemÄƒ monofilarÄƒ (generator nou) ----------------
-import sizing as SZ
-import sld as SLD
-from sld_demo import DEMO_REC, DEMO_CLIENT
-
-SLD_ROLES = {"designer": "Proiectant schemÄƒ", "verifier": "Verificator schemÄƒ"}
-DOSSIER_SIGN_ROLES = {**SLD_ROLES, "executant": "Semnatar executant", "resp_tehnic": "Responsabil tehnic cu execuÈ›ia",
-                      "electrician": "Electrician autorizat", "measurer": "Verificator mÄƒsurÄƒtori PRAM"}
-
-from urllib.parse import quote as _q
-import unicodedata as _ud
-
-def disp(kind: str, name: str) -> str:
-    a = _ud.normalize("NFKD", name).encode("ascii", "ignore").decode().replace('"', "") or "document"
-    return f"{kind}; filename=\"{a}\"; filename*=UTF-8''{_q(name)}"
-
-def pdf_resp(data: bytes, name: str):
-    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
-
-async def sld_ctx(owner, item_id: str):
-    if isinstance(owner, dict):
-        await check_access(owner, "prosumator", item_id); owner = owner["id"]
-    rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    rec = CEF.from_legacy(rec)
-    await auto_fill_cef_from_catalog(owner, rec)
-    client = await get_client(owner, rec)
-    base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
-    s, warns = await effective_settings(owner, rec, base)
-    if (rec.get("cef") or {}).get("from_legacy"):
-        warns = list(warns) + ["Schema foloseÈ™te datele din fiÈ™a dosarului (invertor, panouri, baterie). Repartizarea pe stringuri/MPPT nu este definitÄƒ â€” "
-                               "configuraÈ›i stringurile Ã®n Configuratorul CEF pentru o schemÄƒ completÄƒ."]
-    res = SZ.compute(rec, client)
-    state = SZ.state(rec, client, s)
-    return rec, client, s, res, state, warns
-
-
-async def auto_fill_cef_from_catalog(owner: str, rec: dict) -> list[str]:
-    """Hydrate exact catalog values and safe calculations whenever a dossier is opened or exported."""
-    await seed_catalog(owner)
-    cef = rec.get("cef") or {}
-    cef, catalog_fields = await hydrate_cef_catalog_values(owner, cef, rec)
-    cef, calculated_fields = SZ.apply(cef)
-    filled = sorted(set(catalog_fields + calculated_fields))
-    if filled:
-        rec["cef"] = cef
-        await db.prosumator.update_one({"id": rec.get("id"), "owner": owner}, {"$set": {"cef": cef}})
-    return filled
-
-@api_router.get("/sld/demo/pdf")
-async def sld_demo(authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("A3")):
-    user = await user_from_token(authorization, auth)
-    s = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    res = SZ.compute(DEMO_REC, DEMO_CLIENT)
-    return pdf_resp(SLD.render(DEMO_REC, DEMO_CLIENT, s, res, {"status": "draft"}, fmt, demo=True), "schema_monofilara_DEMO.pdf")
-
-@api_router.post("/prosumator/{item_id}/pram-number")
-async def allocate_prosumer_pram_number(item_id: str, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    rec = await check_access(user, "prosumator", item_id)
-    if rec.get("pram_source") in ("none", "third_party"):
-        raise HTTPException(status_code=422, detail="NumÄƒrul firmei se alocÄƒ doar pentru un buletin PRAM Ã®ntocmit intern.")
-    existing = str(rec.get("bulletin_no") or "").strip()
-    if existing:
-        return {"ok": True, "number": existing, "existing": True}
-
-    def numeric_tail(value):
-        match = re.search(r"(\d+)(?!.*\d)", str(value or ""))
-        return int(match.group(1)) if match else 0
-
-    prior = await db.prosumator.find({"owner": user["id"]}, {"_id": 0, "bulletin_no": 1}).to_list(10000)
-    prior += await db.pram.find({"owner": user["id"]}, {"_id": 0, "number": 1, "bulletin_no": 1}).to_list(10000)
-    floor = max((numeric_tail(row.get("bulletin_no") or row.get("number")) for row in prior), default=0)
-    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0, "pram_next_number": 1}) or {}
-    try:
-        configured_next = max(1, int(settings.get("pram_next_number") or 1))
-    except (TypeError, ValueError):
-        configured_next = 1
-    floor = max(floor, configured_next - 1)
-    counter_id = f"pram:{user['id']}"
-    await db.counters.update_one({"id": counter_id}, {"$max": {"next": floor}}, upsert=True)
-    counter = await db.counters.find_one_and_update({"id": counter_id}, {"$inc": {"next": 1}}, upsert=True, return_document=True)
-    allocated = str(counter["next"])
-    result = await db.prosumator.update_one(
-        {"id": item_id, "owner": user["id"], "$or": [{"bulletin_no": {"$exists": False}}, {"bulletin_no": None}, {"bulletin_no": ""}]},
-        {"$set": {"bulletin_no": allocated, "updated_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    if not result.modified_count:
-        current = await db.prosumator.find_one({"id": item_id, "owner": user["id"]}, {"_id": 0, "bulletin_no": 1})
-        allocated = str((current or {}).get("bulletin_no") or allocated)
-    else:
-        await audit(user, "alocare numÄƒr buletin PRAM", "prosumator", item_id, ["bulletin_no"])
-        await db.settings.update_one({"owner": user["id"]}, {"$set": {"pram_next_number": int(allocated) + 1}}, upsert=True)
-    return {"ok": True, "number": allocated, "existing": False}
-
-@api_router.get("/sld/{item_id}")
-async def sld_status(item_id: str, user: dict = Depends(get_current_user)):
-    rec, client, s, res, state, warns = await sld_ctx(user, item_id)
-    sld = rec.get("sld") or {}
-    signers = rec.get("signers") or {}
-    people = {}
-    for role in DOSSIER_SIGN_ROLES:
-        sid = signers.get(role)
-        p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
-        people[role] = {"name": p.get("name"), "eligible": staff_eligible(p), "email": p.get("email")} if p else None
-    staff_rows = await db.staff.find({"owner": user["id"]}, {"_id": 0, "id": 1, "name": 1, "email": 1, "auths": 1}).limit(300).to_list(300)
-    staff_options = [{"id": row.get("id"), "name": row.get("name") or "", "email": row.get("email") or "",
-                      "eligible": staff_eligible(row)} for row in staff_rows if row.get("id")]
-    return {"items": res["items"], "missing": res["missing"], "unconfirmed": res.get("unconfirmed", []), "errors": res["errors"], "warnings": res["warnings"], "cables": res["cables"],
-            "ready": res["ready"], "format": res["format"], "totals": res["base"]["totals"], "approval": state, "settings_warnings": warns,
-            "source": sld.get("source") or "generated", "upload": sld.get("upload"), "revision": sld.get("revision") or 0,
-            "auto_filled": (rec.get("cef") or {}).get("auto_filled") or [], "people": people,
-            "selected_signers": {role: signers.get(role) or "" for role in DOSSIER_SIGN_ROLES}, "staff_options": staff_options,
-            "history": [{k: v for k, v in h.items() if k not in ("hash", "values")} | {"current": h.get("hash") == state["fingerprint"], "index": i, "has_values": bool(h.get("values"))}
-                        for i, h in reversed(list(enumerate(sld.get("history") or [])))],
-            "approval_requests": (sld.get("approval_requests") or [])[-5:], "is_test": bool(rec.get("is_test")),
-            "from_legacy": bool((rec.get("cef") or {}).get("from_legacy"))}
-
-@api_router.put("/sld/{item_id}/signers")
-async def sld_signers_save(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    rec = await check_access(user, "prosumator", item_id)
-    body = await request.json()
-    values = body.get("signers") or {}
-    if not isinstance(values, dict):
-        raise HTTPException(status_code=400, detail="Lista semnatarilor este invalidÄƒ")
-    signers = dict(rec.get("signers") or {})
-    changed = []
-    for role, staff_id in values.items():
-        if role not in DOSSIER_SIGN_ROLES:
-            raise HTTPException(status_code=400, detail="Rol de semnatar invalid")
-        staff_id = str(staff_id or "").strip()
-        if staff_id:
-            person = await db.staff.find_one({"owner": user["id"], "id": staff_id}, {"id": 1})
-            if not person:
-                raise HTTPException(status_code=404, detail="Persoana selectatÄƒ nu existÄƒ Ã®n Personal")
-            signers[role] = staff_id
-        else:
-            signers.pop(role, None)
-        changed.append(role)
-    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {"signers": signers, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    await audit(user, "semnatari dosar actualizaÈ›i", "prosumator", item_id, changed)
-    return {"ok": True, "selected_signers": {role: signers.get(role) or "" for role in DOSSIER_SIGN_ROLES}}
-
-@api_router.post("/sld/{item_id}/import-legacy")
-async def sld_import_legacy(item_id: str, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    rec = await check_access(user, "prosumator", item_id)
-    new = CEF.from_legacy(rec)
-    if not (new.get("cef") or {}).get("from_legacy"):
-        raise HTTPException(status_code=400, detail="Dosarul are deja o configuraÈ›ie CEF sau nu are date de invertor/panouri")
-    cef = {k: v for k, v in new["cef"].items() if k != "from_legacy"}
-    await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef}})
-    await audit(user, "update", "prosumator", item_id, ["cef (preluat din fiÈ™a dosarului pentru schema monofilarÄƒ)"])
-    return {"ok": True}
-
-@api_router.get("/sld/{item_id}/pdf")
-async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Query(None), fmt: str = Query("auto"), download: int = Query(0)):
-    user = await user_from_token(authorization, auth)
-    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
-    # Include only the real company stamp and authorized project designer
-    # signature, and only on the currently approved configuration.
-    if state.get("status") == "approved":
-        stamp_path = s.get("_stamp_path")
-        if stamp_path:
-            try:
-                s["_stamp_bytes"], _ = get_object(stamp_path)
-            except Exception:
-                s["_stamp_bytes"] = None
-        selected = rec.get("signers") or {}
-        designer_id, verifier_id = selected.get("designer"), selected.get("verifier")
-        designer = await db.staff.find_one({"owner": user["id"], "id": designer_id}, {"_id": 0}) if designer_id else None
-        verifier = await db.staff.find_one({"owner": user["id"], "id": verifier_id}, {"_id": 0}) if verifier_id else None
-        if designer and staff_eligible(designer):
-            s["designer_name"] = designer.get("name") or ""
-        if verifier and staff_eligible(verifier):
-            s["verifier"] = verifier.get("name") or ""
-        if designer and staff_eligible(designer) and designer.get("signature_authorized") and (designer.get("signature") or {}).get("storage_path"):
-            try:
-                signature, _ = get_object(designer["signature"]["storage_path"])
-                s["_sld_signature_bytes"] = {"designer": signature}
-            except Exception:
-                s["_sld_signature_bytes"] = {}
-    name = f"schema_monofilara_{rec.get('number') or item_id}.pdf"
-    return Response(content=SLD.render(rec, client, s, res, state, fmt), media_type="application/pdf",
-                    headers={"Content-Disposition": disp("attachment" if download else "inline", name)})
-
-@api_router.get("/sld/{item_id}/report")
-async def sld_report(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
-    return pdf_resp(SLD.report(rec, client, s, res, state), f"raport_calcul_{rec.get('number') or item_id}.pdf")
-
-@api_router.post("/sld/{item_id}/apply")
-async def sld_apply(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    body = await request.json() if (await request.body()) else {}
-    cef = body.get("cef") or rec.get("cef") or {}
-    # Older dossiers may contain model names in the legacy fields (or a CEF
-    # row without catalog IDs). Resolve an exact, unique catalog match here so
-    # the technical sheet can hydrate missing manufacturer values before the
-    # sizing proposals are calculated. Never overwrite values entered by an
-    # engineer, and never guess ambiguous catalog matches.
-    cef, catalog_filled = await hydrate_cef_catalog_values(user["id"], cef, rec)
-    cef, calculated_filled = SZ.apply(cef)
-    filled = catalog_filled + calculated_filled
-    await db.prosumator.update_one({"id": item_id}, {"$set": {"cef": cef}})
-    await audit(user, "dimensionare automatÄƒ", "prosumator", item_id, filled)
-    return {"filled": filled, "cef": cef}
-
-
-async def hydrate_cef_catalog_values(owner: str, cef: dict, rec: dict | None = None) -> tuple[dict, list[str]]:
-    """Fill blank CEF equipment data from an exact, unique owner catalog entry."""
-    import json
-
-    cef = json.loads(json.dumps(cef or {}))
-    rec = rec or {}
-    filled: list[str] = []
-
-    async def catalog_item(category: str, catalog_id: str | None, model: str | None):
-        if catalog_id:
-            item = await db.catalog.find_one(
-                {"owner": owner, "id": str(catalog_id), "category": category}, {"_id": 0}
-            )
-            if item:
-                return item
-        target = " ".join(str(model or "").split()).casefold()
-        if not target:
-            return None
-        matches = await db.catalog.find(
-            {"owner": owner, "category": category}, {"_id": 0}
-        ).limit(2000).to_list(2000)
-        exact = [item for item in matches if " ".join(str(item.get("brand_model") or "").split()).casefold() == target]
-        return exact[0] if len(exact) == 1 else None
-
-    def merge(target: dict, values: dict, prefix: str):
-        for key, value in values.items():
-            if value is None or value == "":
-                continue
-            current = target.get(key)
-            blank = current is None or current == "" or (isinstance(current, (int, float)) and current == 0 and isinstance(value, (int, float)) and value > 0)
-            if blank:
-                target[key] = value
-                filled.append(f"{prefix}.{key}")
-
-    def panel_values(item: dict) -> dict:
-        return {"panel_catalog_id": item.get("id"), "panel_model": item.get("brand_model"), "panel_w": item.get("w"),
-                "panel_voc": item.get("voc"), "panel_vmp": item.get("vmp"), "panel_isc": item.get("isc"),
-                "panel_imp": item.get("imp"), "panel_coef_voc": item.get("coef_voc"), "panel_coef_vmp": item.get("coef_vmp")}
-
-    def battery_values(item: dict, phases: str | None) -> dict:
-        three_phase = "tri" in str(phases or "").casefold()
-        voltage = item.get("voltage_3ph") if three_phase else item.get("voltage_1ph") if phases else item.get("voltage")
-        voltage = voltage if voltage is not None else item.get("voltage")
-        breaker_current = item.get("breaker_a") if item.get("breaker_a") is not None else item.get("dc_switch_current_a")
-        breaker_voltage = item.get("breaker_voltage_dc") if item.get("breaker_voltage_dc") is not None else item.get("dc_switch_voltage_v")
-        return {"catalog_id": item.get("id"), "model": item.get("brand_model"), "kwh": item.get("kwh"), "ah": item.get("ah"),
-                "voltage": voltage, "voltage_1ph": item.get("voltage_1ph"), "voltage_3ph": item.get("voltage_3ph"),
-                "i_max": item.get("i_max"), "i_max_source_url": item.get("i_max_source_url"), "max_fuse_a": item.get("max_fuse_a"),
-                "coupling": item.get("coupling"), "breaker_a": breaker_current, "breaker_voltage_dc": breaker_voltage,
-                "breaker_integrated": item.get("breaker_integrated"), "breaker_poles": item.get("breaker_poles"),
-                "breaker_icu_ka": item.get("breaker_icu_ka"), "dc_switch_voltage_v": breaker_voltage,
-                "dc_switch_current_a": breaker_current, "breaker_source_url": item.get("breaker_source_url"),
-                "datasheet_url": item.get("datasheet_url"), "conformity_url": item.get("conformity_url")}
-
-    legacy = CEF.from_legacy(rec) if rec else {}
-    legacy_invs = ((legacy.get("cef") or {}).get("inverters") or []) if legacy else []
-    invs = cef.setdefault("inverters", [])
-    if not invs and legacy_invs:
-        # A legacy form can reach this endpoint before the browser has saved
-        # its converted CEF. Reuse the saved equipment/string configuration.
-        cef = {**legacy["cef"], **cef, "inverters": legacy_invs}
-        if not cef.get("grid"):
-            cef["grid"] = (legacy.get("cef") or {}).get("grid") or {}
-        invs = cef["inverters"]
-    for index, inv in enumerate(invs):
-        legacy_inv = legacy_invs[index] if index < len(legacy_invs) else {}
-        if not inv.get("brand_model") and legacy_inv.get("brand_model"):
-            inv["brand_model"] = legacy_inv["brand_model"]
-        item = await catalog_item("Invertor", inv.get("catalog_id"), inv.get("brand_model"))
-        if item:
-            if inv.get("catalog_id") != item.get("id"):
-                inv["catalog_id"] = item.get("id")
-                filled.append(f"cef.inverters.{index}.catalog_id")
-            merge(inv, {"catalog_id": item.get("id"), "brand_model": item.get("brand_model"), "type": item.get("type"),
-                        "phases": item.get("phases"), "p_nom_kw": item.get("p_nom_kw"), "p_max_kw": item.get("p_max_kw"),
-                        "vdc_max": item.get("vdc_max"), "mppt_min": item.get("mppt_min"), "mppt_max": item.get("mppt_max"),
-                        "mppt_count": item.get("mppt_count"), "imax_mppt": item.get("imax_mppt"), "isc_max_mppt": item.get("isc_max_mppt"),
-                        "bat_i_max": item.get("bat_i_max"), "bat_v_min": item.get("bat_v_min"), "bat_v_max": item.get("bat_v_max"),
-                        "rcd_type": item.get("rcd_type"), "rcd_ma": item.get("rcd_ma")},
-                  f"cef.inverters.{index}")
-        panel = await catalog_item("Panou", inv.get("panel_catalog_id"), inv.get("panel_model") or legacy_inv.get("panel_model"))
-        if panel:
-            if inv.get("panel_catalog_id") != panel.get("id"):
-                inv["panel_catalog_id"] = panel.get("id")
-                filled.append(f"cef.inverters.{index}.panel_catalog_id")
-            merge(inv, panel_values(panel), f"cef.inverters.{index}")
-        rsd = inv.get("rsd") or {}
-        if rsd.get("enabled"):
-            rsd_item = await catalog_item("RSD", rsd.get("catalog_id"), rsd.get("brand_model"))
-            if rsd_item:
-                if rsd.get("catalog_id") != rsd_item.get("id"):
-                    rsd["catalog_id"] = rsd_item.get("id")
-                    filled.append(f"cef.inverters.{index}.rsd.catalog_id")
-                merge(rsd, {"brand_model": rsd_item.get("brand_model"), "string_count": rsd_item.get("string_count"),
-                            "poles": rsd_item.get("poles"), "voltage_min_v": rsd_item.get("voltage_min_v"),
-                            "voltage_max_v": rsd_item.get("voltage_max_v"), "current_300v_a": rsd_item.get("current_300v_a"),
-                            "current_600v_a": rsd_item.get("current_600v_a"), "current_800v_a": rsd_item.get("current_800v_a"),
-                            "current_1000v_a": rsd_item.get("current_1000v_a"), "current_1200v_a": rsd_item.get("current_1200v_a"),
-                            "current_1500v_a": rsd_item.get("current_1500v_a")}, f"cef.inverters.{index}.rsd")
-        legacy_strings = legacy_inv.get("strings") or []
-        for string_index, string in enumerate(inv.get("strings") or []):
-            legacy_string = legacy_strings[string_index] if string_index < len(legacy_strings) else {}
-            if not string.get("panel_model") and legacy_string.get("panel_model"):
-                string["panel_model"] = legacy_string["panel_model"]
-            string_item = await catalog_item("Panou", string.get("panel_catalog_id"), string.get("panel_model"))
-            if string_item:
-                if string.get("panel_catalog_id") != string_item.get("id"):
-                    string["panel_catalog_id"] = string_item.get("id")
-                    filled.append(f"cef.inverters.{index}.strings.{string_index}.panel_catalog_id")
-                merge(string, panel_values(string_item), f"cef.inverters.{index}.strings.{string_index}")
-        if inv.get("battery_mode") == "own":
-            battery = inv.setdefault("battery", {})
-            legacy_battery = legacy_inv.get("battery") or {}
-            if not battery.get("model") and legacy_battery.get("model"):
-                battery["model"] = legacy_battery["model"]
-            battery_item = await catalog_item("Baterie", battery.get("catalog_id"), battery.get("model"))
-            if battery_item:
-                if battery.get("catalog_id") != battery_item.get("id"):
-                    battery["catalog_id"] = battery_item.get("id")
-                    filled.append(f"cef.inverters.{index}.battery.catalog_id")
-                merge(battery, battery_values(battery_item, inv.get("phases")), f"cef.inverters.{index}.battery")
-    for index, battery in enumerate(cef.get("shared_batteries") or []):
-        item = await catalog_item("Baterie", battery.get("catalog_id"), battery.get("model"))
-        if item:
-            if battery.get("catalog_id") != item.get("id"):
-                battery["catalog_id"] = item.get("id")
-                filled.append(f"cef.shared_batteries.{index}.catalog_id")
-            merge(battery, battery_values(item, None), f"cef.shared_batteries.{index}")
-    grid = cef.get("grid") or {}
-    if grid.get("meter"):
-        meter = await catalog_item("Smart meter", grid.get("meter_catalog_id"), grid.get("meter"))
-        if meter and not grid.get("meter_catalog_id"):
-            grid["meter_catalog_id"] = meter.get("id")
-            filled.append("cef.grid.meter_catalog_id")
-        cef["grid"] = grid
-    cef["auto_filled"] = sorted(set((cef.get("auto_filled") or []) + filled))
-    return cef, filled
-
-@api_router.put("/sld/{item_id}/source")
-async def sld_source(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    body = await request.json()
-    rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    sld = rec.get("sld") or {}
-    if body.get("source") in ("generated", "uploaded"):
-        sld["source"] = body["source"]
-    if body.get("upload"):
-        sld["upload"] = body["upload"]
-    if body.get("clear_upload"):
-        sld.pop("upload", None)
-        if sld.get("source") == "uploaded":
-            sld["source"] = "generated"
-    if sld.get("source") == "uploaded" and not sld.get("upload"):
-        raise HTTPException(status_code=400, detail="ÃŽncÄƒrcaÈ›i Ã®ntÃ¢i schema realizatÄƒ de specialist.")
-    await db.prosumator.update_one({"id": item_id}, {"$set": {"sld": sld}})
-    await audit(user, "schemÄƒ â€” sursÄƒ", "prosumator", item_id, [sld.get("source") or "generated"])
-    return sld
-
-@api_router.post("/sld/{item_id}/approve")
-async def sld_approve(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    require(user, "admin", "inginer")
-    need(user, "prosumator", True)
-    role = (await request.json()).get("role")
-    if role not in SLD_ROLES:
-        raise HTTPException(status_code=400, detail="Rol invalid")
-    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
-    sld = rec.get("sld") or {}
-    src = sld.get("source") or "generated"
-    if src == "generated" and not res["ready"]:
-        raise HTTPException(status_code=400, detail=f"Schema nu poate fi aprobatÄƒ: {len(res['missing'])} date lipsÄƒ, {len(res.get('unconfirmed', []))} valori de confirmat, {len(res['errors'])} erori.")
-    if src == "uploaded" and not sld.get("upload"):
-        raise HTTPException(status_code=400, detail="Nu existÄƒ schemÄƒ Ã®ncÄƒrcatÄƒ.")
-    sid = (rec.get("signers") or {}).get(role)
-    p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
-    if not p:
-        raise HTTPException(status_code=400, detail=f"SelectaÈ›i {SLD_ROLES[role].lower()} Ã®n secÈ›iunea Semnatari a dosarului (din SetÄƒri de bazÄƒ â†’ Personal).")
-    if not staff_eligible(p):
-        raise HTTPException(status_code=400, detail=f"{p.get('name')} nu are o autorizaÈ›ie valabilÄƒ È™i verificatÄƒ Ã®n SetÄƒri de bazÄƒ.")
-    auth_doc = next((a for a in p.get("auths") or [] if a.get("verified")), {})
-    rev = (sld.get("revision") or 0) + (1 if state["status"] == "stale" else 0)
-    aps = {r: a for r, a in (sld.get("approvals") or {}).items() if state["status"] != "stale" and r != role}
-    sld.update({"revision": rev, "approval": {"role": role, "role_label": SLD_ROLES[role], "staff_id": sid, "name": p.get("name"),
-                                             "auth": f"{auth_doc.get('type', '')} nr. {auth_doc.get('number', '')}".strip(), "source": src,
-                                             "at": datetime.now(timezone.utc).isoformat(), "by": user.get("email")}})
-    rec["sld"] = sld
-    sld["approval"]["hash"] = SZ.fingerprint(rec, client)
-    aps[role] = sld["approval"]
-    sld["approvals"] = aps
-    await db.prosumator.update_one({"id": item_id}, {"$set": {"sld": sld}})
-    rec2, client2, s2, res2, st2, _ = await sld_ctx(user, item_id)
-    if src == "uploaded":
-        f = sld["upload"]
-    else:
-        pdf = SLD.render(rec2, client2, s2, res2, st2)
-        stored = put_object(f"{APP_NAME}/sld/{user['id']}/{item_id}/rev{rev}_{uuid.uuid4().hex[:8]}.pdf", pdf, "application/pdf")
-        f = {"storage_path": stored["path"], "original_filename": f"schema_rev{rev}.pdf", "content_type": "application/pdf", "size": len(pdf)}
-    entry = {"revision": rev, "at": sld["approval"]["at"], "role": role, "role_label": SLD_ROLES[role], "name": p.get("name"),
-             "auth": sld["approval"]["auth"], "hash": sld["approval"]["hash"], "source": src, "file": f, "by": user.get("email"),
-             "values": SLD.snapshot(rec2, res2)}
-    await db.prosumator.update_one({"id": item_id}, {"$push": {"sld.history": entry}})
-    await audit(user, "schemÄƒ aprobatÄƒ", "prosumator", item_id, [role, p.get("name")])
-    return sld["approval"]
-
-async def deliver(owner: str, is_test: bool, to: str, subject: str, html: str) -> str:
-    """Returns the address actually used, or '' when not sent (test dossier without test e-mail)."""
-    if is_test:
-        st = await db.settings.find_one({"owner": owner}, {"_id": 0, "test_email": 1}) or {}
-        to = (st.get("test_email") or "").strip()
-        if "@" not in to:
-            return ""
-        subject = "[TEST] " + subject
-        html = '<p style="color:#b03a2e;font-family:Arial"><b>DOSAR DE TEST â€” date fictive. Nu este un document sau o semnÄƒturÄƒ oficialÄƒ.</b></p>' + html
-    await send_email(to=to, subject=subject, html=html)
-    return to
-
-@api_router.get("/sld/{item_id}/compare")
-async def sld_compare(item_id: str, a: int, b: int, user: dict = Depends(get_current_user)):
-    rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    h = (rec.get("sld") or {}).get("history") or []
-    if not (0 <= a < len(h) and 0 <= b < len(h)):
-        raise HTTPException(status_code=404, detail="Revizie inexistentÄƒ")
-    va, vb = h[a].get("values"), h[b].get("values")
-    if not va or not vb:
-        raise HTTPException(status_code=400, detail="Una dintre versiuni a fost aprobatÄƒ Ã®nainte de salvarea valorilor pentru comparare")
-    rows = [{"key": k, "a": va.get(k, "â€”"), "b": vb.get(k, "â€”"), "changed": va.get(k) != vb.get(k)} for k in dict.fromkeys(list(va) + list(vb))]
-    meta = lambda x: {k: x.get(k) for k in ("revision", "at", "name", "role_label", "source")}
-    return {"a": meta(h[a]), "b": meta(h[b]), "rows": rows, "changed": sum(r["changed"] for r in rows)}
-
-async def request_approval(user: dict, item_id: str, origin: str, auto: bool):
-    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
-    sld = rec.get("sld") or {}
-    if state["status"] == "approved":
-        raise HTTPException(status_code=400, detail="Schema este deja aprobatÄƒ pentru configuraÈ›ia actualÄƒ")
-    if (sld.get("source") or "generated") == "generated" and not res["ready"]:
-        raise HTTPException(status_code=400, detail=f"Datele nu sunt complete: {len(res['missing'])} lipsÄƒ, {len(res.get('unconfirmed', []))} de confirmat, {len(res['errors'])} erori")
-    if auto and sld.get("approval_request_hash") == state["fingerprint"]:
-        return None
-    if not origin.startswith("https://"):
-        raise HTTPException(status_code=400, detail="Adresa aplicaÈ›iei (origin) lipseÈ™te â€” deschideÈ›i cererea din aplicaÈ›ie")
-    sent = []
-    for role, label in SLD_ROLES.items():
-        sid = (rec.get("signers") or {}).get(role)
-        p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
-        if not p or "@" not in (p.get("email") or ""):
-            continue
-        link = f"{origin.rstrip('/')}/prosumator"
-        html = (f'<div style="font-family:Arial,sans-serif;color:#0b1f3a"><p>BunÄƒ ziua, {hesc(p["name"])},</p>'
-                f'<p>Schema monofilarÄƒ È™i dimensionarea tehnicÄƒ pentru <b>{hesc(str(client.get("name") or rec.get("client_name") or ""))}</b> '
-                f'(dosar {hesc(str(rec.get("number") or ""))}) sunt complete È™i aÈ™teaptÄƒ verificarea dvs. ca {hesc(label.lower())}.</p>'
-                f'<p><a href="{hesc(link)}">Deschide aplicaÈ›ia D-ENERGY</a> â†’ Dosar de prosumator â†’ secÈ›iunea â€žSchemÄƒ monofilarÄƒâ€.</p></div>')
-        to = await deliver(user["id"], bool(rec.get("is_test")), p["email"], f"Cerere de aprobare schemÄƒ â€” {rec.get('number') or ''}", html)
-        sent.append({"role": role, "name": p["name"], "to": to, "sent": bool(to)})
-    entry = {"at": datetime.now(timezone.utc).isoformat(), "auto": auto, "recipients": sent, "by": user.get("email")}
-    await db.prosumator.update_one({"id": item_id}, {"$set": {"sld.approval_request_hash": state["fingerprint"]}, "$push": {"sld.approval_requests": entry}})
-    await audit(user, "cerere aprobare schemÄƒ", "prosumator", item_id, [x["name"] for x in sent])
-    return entry
-
-@api_router.post("/sld/{item_id}/request-approval")
-async def sld_request_approval(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    b = await request.json() if (await request.body()) else {}
-    entry = await request_approval(user, item_id, b.get("origin") or request.headers.get("origin") or "", False)
-    if not entry["recipients"]:
-        raise HTTPException(status_code=400, detail="Nu existÄƒ proiectant/verificator selectat cu e-mail completat")
-    return entry
-
-@api_router.post("/sld/{item_id}/send-sign")
-async def sld_send_sign(item_id: str, request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True); need(user, "sign_remote", True)
-    b = await request.json()
-    role = b.get("role")
-    if role not in SLD_ROLES:
-        raise HTTPException(status_code=400, detail="Rol invalid")
-    rec, client, s, res, state, _ = await sld_ctx(user, item_id)
-    if state["status"] != "approved":
-        raise HTTPException(status_code=400, detail="Schema trebuie aprobatÄƒ Ã®nainte de semnare")
-    sid = (rec.get("signers") or {}).get(role)
-    p = await db.staff.find_one({"owner": user["id"], "id": sid}, {"_id": 0}) if sid else None
-    if not p or not staff_eligible(p):
-        raise HTTPException(status_code=400, detail=f"{SLD_ROLES[role]}: persoanÄƒ neselectatÄƒ sau fÄƒrÄƒ autorizaÈ›ie valabilÄƒ È™i verificatÄƒ")
-    if "@" not in (p.get("email") or ""):
-        raise HTTPException(status_code=400, detail=f"CompletaÈ›i e-mailul pentru {p.get('name')} Ã®n SetÄƒri de bazÄƒ â†’ Personal")
-    keys = [k for k in (b.get("pos_keys") or ["schema"]) if k in ("schema", "fisa_tehnica")] or ["schema"]
-    reqs = await create_sign_requests(user, item_id, keys, [{"name": p["name"], "email": p["email"], "phone": p.get("phone") or "", "role": SLD_ROLES[role]}], parse_days(b.get("expires_days")))
-    origin = (b.get("origin") or "").rstrip("/")
-    for r in reqs:
-        link = f"{origin}/semneaza/{r['token']}"
-        html = (f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0b1f3a">'
-                f'<p>BunÄƒ ziua, {hesc(p["name"])},</p><p>VÄƒ rugÄƒm sÄƒ verificaÈ›i È™i sÄƒ semnaÈ›i documentul <b>{hesc(r["doc_title"])}</b> '
-                f'pentru beneficiarul {hesc(str(r.get("client_name") or ""))}, Ã®n calitate de {hesc(SLD_ROLES[role].lower())}.</p>'
-                f'<p><a href="{hesc(link)}" style="background:#2878f0;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Deschide documentul</a></p>'
-                f'<p>La semnare veÈ›i primi un cod unic pe aceastÄƒ adresÄƒ de e-mail. Linkul este personal È™i expirÄƒ la {r["expires_at"][:10]}.</p></td></tr></table>')
-        to = await deliver(user["id"], bool(rec.get("is_test")), p["email"], f"Semnare {r['doc_title'][:60]}", html)
-        if to:
-            await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Link trimis"}, "$push": {"history": hist("Link trimis", None, f"e-mail automat cÄƒtre {mask(to)}; de {user.get('email')}")}})
-        else:
-            await db.sign_requests.update_one({"id": r["id"]}, {"$push": {"history": hist("E-mail netrimis", None, "dosar de TEST fÄƒrÄƒ e-mail de test configurat Ã®n SetÄƒri de bazÄƒ")}})
-        r["email_sent"] = bool(to)
-    await audit(user, "schemÄƒ trimisÄƒ la semnare", "prosumator", item_id, [role, p.get("name")])
-    return [{**{k: v for k, v in r.items()}, "status": "Link trimis" if r.get("email_sent") else "De trimis"} for r in reqs]
-
-@api_router.post("/sld/{item_id}/unapprove")
-async def sld_unapprove(item_id: str, user: dict = Depends(get_current_user)):
-    require(user, "admin", "inginer")
-    need(user, "prosumator", True)
-    await check_access(user, "prosumator", item_id)
-    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"sld.approval": "", "sld.approvals": ""}})
-    await audit(user, "schemÄƒ â€” aprobare retrasÄƒ", "prosumator", item_id, [])
-    return {"ok": True}
-
-
-def catalog_ids(rec: dict) -> list:
-    c = rec.get("cef") or {}
-    ids = []
-    for i in c.get("inverters") or []:
-        ids += [i.get("catalog_id"), i.get("panel_catalog_id"), (i.get("battery") or {}).get("catalog_id")]
-        rsd = i.get("rsd") or {}
-        if rsd.get("enabled"):
-            ids.append(rsd.get("catalog_id"))
-    ids += [b.get("catalog_id") for b in c.get("shared_batteries") or []]
-    g = c.get("grid") or {}
-    ids.append(g.get("meter_catalog_id"))
-    return list(dict.fromkeys(x for x in ids if x))
-
-
-def catalog_product_source(item: dict) -> tuple[str, str]:
-    """Return a configured supplier and its validated product-page URL, if available."""
-    product_url = str(item.get("source_url") or "").strip()
-    supplier = str(item.get("supplier") or "")
-    if supplier not in SUPPLIER_CATALOG.SOURCES and product_url:
-        from urllib.parse import urlparse
-        product_host = (urlparse(product_url).hostname or "").lower().removeprefix("www.")
-        supplier = next((name for name, source in SUPPLIER_CATALOG.SOURCES.items()
-                         if product_host == source["host"]), "")
-    return (supplier, product_url) if supplier else ("", "")
-
-
-async def catalog_files(owner: str, rec: dict) -> list:
-    out = []
-    for cid in catalog_ids(rec):
-        it = await db.catalog.find_one({"owner": owner, "id": cid}, {"_id": 0})
-        if not it:
-            continue
-        for k, label in (("datasheet", "FiÈ™Äƒ tehnicÄƒ"), ("conformity", "DeclaraÈ›ie de conformitate")):
-            f = it.get(k)
-            if f and f.get("storage_path"):
-                # Old records can still point at the retired object store. Read-through
-                # migrates accessible files to GridFS; unavailable files must not count
-                # as evidence that the dossier contains the required equipment document.
-                try:
-                    if not has_gridfs_object(f["storage_path"]):
-                        get_object(f["storage_path"])
-                except LegacyObjectUnavailable as exc:
-                    # Persist the unavailable state so a legacy pointer is not counted
-                    # as evidence that the technical document is available.
-                    try:
-                        await db.catalog.update_one(
-                            {"owner": owner, "id": cid},
-                            {"$set": {
-                                f"{k}.available": False,
-                                f"{k}.availability_note": "legacy_storage_unavailable",
-                            }},
-                        )
-                    except Exception:
-                        logger.exception("Could not mark unavailable catalog document %s (%s)", cid, k)
-                    logger.warning("Catalog document unavailable for %s (%s): %s", cid, k, exc)
-                    continue
-                except Exception as exc:
-                    logger.warning("Could not verify catalog document %s (%s): %s", cid, k, exc)
-                    continue
-                try:
-                    await db.catalog.update_one(
-                        {"owner": owner, "id": cid},
-                        {"$set": {f"{k}.available": True},
-                         "$unset": {f"{k}.availability_note": ""}},
-                    )
-                except Exception:
-                    logger.exception("Could not mark catalog document available %s (%s)", cid, k)
-                out.append({"catalog_id": cid, "model": it.get("brand_model"), "kind": label, **f})
-    return out
-
-_catalog_document_import_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
-
-async def auto_import_selected_catalog_documents(user: dict, rec: dict) -> list[dict]:
-    """Fetch missing official PDFs for selected equipment and return files that remain unavailable."""
-    owner = user["id"]
-    candidates = []
-    for catalog_id in catalog_ids(rec):
-        item = await db.catalog.find_one({"owner": owner, "id": catalog_id}, {"_id": 0})
-        if not item:
-            continue
-        for kind in ("datasheet", "conformity"):
-            existing = item.get(kind)
-            if (isinstance(existing, dict) and existing.get("storage_path")
-                    and has_gridfs_object(existing["storage_path"])):
-                continue
-            direct_url = (item.get(f"{kind}_source_url") or item.get(f"{kind}_url")
-                          or (existing.get("source_url") if isinstance(existing, dict) else ""))
-            supplier, product_url = catalog_product_source(item)
-            candidates.append((catalog_id, kind, str(direct_url or ""), supplier,
-                               str(item.get("category") or ""), product_url,
-                               str(item.get("brand_model") or "model necunoscut")))
-
-    semaphore = asyncio.Semaphore(3)
-
-    async def import_one(catalog_id: str, kind: str, direct_url: str, supplier: str,
-                         category: str, product_url: str, model: str) -> dict | None:
-        async with semaphore:
-            lock_key = (owner, catalog_id, kind)
-            lock = _catalog_document_import_locks.setdefault(lock_key, asyncio.Lock())
-            async with lock:
-                # The dossier page requests the attachment list and generated
-                # document list separately. Recheck under a per-model lock so
-                # concurrent requests share one download instead of storing
-                # duplicate PDFs and slowing the mobile page.
-                current = await db.catalog.find_one(
-                    {"owner": owner, "id": catalog_id}, {"_id": 0}
-                )
-                current_doc = (current or {}).get(kind)
-                if (isinstance(current_doc, dict) and current_doc.get("storage_path")
-                        and has_gridfs_object(current_doc["storage_path"])):
-                    return None
-                attempted = set()
-                if direct_url:
-                    attempted.add(direct_url)
-                    try:
-                        await catalog_import_document(catalog_id, _TrustedCatalogImportRequest({"kind": kind, "url": direct_url}), user)
-                        return None
-                    except Exception as exc:
-                        reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
-                        logger.info("Catalog PDF auto-import direct link failed for %s (%s): %s", catalog_id, kind, reason)
-                if supplier and category and product_url:
-                    try:
-                        recovered_url = await SUPPLIER_CATALOG.get_public_product_document(
-                            supplier, category, product_url, kind
-                        )
-                        if recovered_url and recovered_url not in attempted:
-                            await catalog_import_document(
-                                catalog_id,
-                                _TrustedCatalogImportRequest({"kind": kind, "url": recovered_url}),
-                                user,
-                            )
-                            return None
-                    except Exception as exc:
-                        reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
-                        logger.info("Catalog PDF recovery from product page skipped for %s (%s): %s", catalog_id, kind, reason)
-                logger.warning("Catalog PDF could not be recovered for %s (%s)", catalog_id, kind)
-                return {"model": model, "kind": kind}
-
-    if candidates:
-        results = await asyncio.gather(*(import_one(*candidate) for candidate in candidates))
-        return [result for result in results if result]
-    return []
-
-
-async def sync_catalog_files_to_documents(user: dict, rec: dict) -> int:
-    """Attach selected equipment datasheets and conformity declarations to the client dossier."""
-    missing = await auto_import_selected_catalog_documents(user, rec)
-    labels = {"datasheet": "fiÈ™a tehnicÄƒ", "conformity": "declaraÈ›ia de conformitate"}
-    rec["_catalog_sync_warnings"] = [
-        f"{item['model']} â€” {labels.get(item['kind'], 'documentul tehnic')} nu a putut fi preluat; verificÄƒ linkul Ã®n Catalog echipamente È™i reÃ®ncearcÄƒ."
-        for item in missing
-    ]
-    owner = user["id"]
-    client_name = rec.get("client_name", "")
-    client = await db.clients.find_one(
-        {**scope_q(user, "clients"), "name": client_name}, {"_id": 0, "id": 1}
-    ) or {}
-    added = 0
-    for f in await catalog_files(owner, rec):
-        exists = await db.documents.find_one({
-            "owner": owner,
-            "storage_path": f["storage_path"],
-            "client_name": client_name,
-        }, {"_id": 1})
-        if exists:
-            continue
-        await db.documents.insert_one(_new(user, {
-            "client_id": client.get("id", ""),
-            "client_name": client_name,
-            "kind": "Catalog",
-            "doc_type": f"{f['kind']} â€” {f['model']}",
-            "storage_path": f["storage_path"],
-            "original_filename": f.get("original_filename"),
-            "content_type": f.get("content_type"),
-            "size": f.get("size"),
-            "pros_ref": rec.get("id"),
-        }))
-        added += 1
-    return added
-
-@api_router.get("/prosumator/{item_id}/catalog-files")
-async def pros_catalog_files(item_id: str, user: dict = Depends(get_current_user)):
-    rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    return await catalog_files(user["id"], rec)
-
-@api_router.post("/prosumator/{item_id}/attach-catalog")
-async def attach_catalog(item_id: str, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    rec = await check_access(user, "prosumator", item_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    added = await sync_catalog_files_to_documents(user, rec)
-    return {"added": added, "warnings": rec.get("_catalog_sync_warnings") or []}
-
-def merge_pdfs(base: bytes, extra: list) -> bytes:
-    w = PdfWriter()
-    for p in PdfReader(io.BytesIO(base)).pages:
-        w.add_page(p)
-    for f in extra:
-        if "pdf" not in (f.get("content_type") or "") and not str(f.get("storage_path")).endswith(".pdf"):
-            continue
-        try:
-            data, _ = get_object(f["storage_path"])
-            for p in PdfReader(io.BytesIO(data)).pages:
-                w.add_page(p)
-        except Exception as e:
-            logger.error(f"merge skip {f.get('storage_path')}: {e}")
-    out = io.BytesIO()
-    w.write(out)
-    return out.getvalue()
-
-# ---------------- Dossier opis (model PUBLISERV) ----------------
-import opis as OPIS
-
-async def apply_selected_client_defaults(owner: str, module: str, data: dict) -> dict:
-    """Copy verified client master data into a new dossier without replacing explicit entries."""
-    if module not in ("prosumator", "atr", "power", "diu") or not data.get("client_id"):
-        return data
-    client = await db.clients.find_one({"owner": owner, "id": str(data["client_id"])}, {"_id": 0})
-    if not client:
-        raise HTTPException(status_code=400, detail="Clientul selectat nu existÄƒ Ã®n agenda contului. ReÃ®ncarcÄƒ lista È™i selecteazÄƒ un client salvat.")
-    def pick(*keys):
-        return next((client.get(key) for key in keys if client.get(key) not in (None, "")), None)
-    kind = str(pick("kind", "type") or "").strip().casefold()
-    is_company = "jurid" in kind or kind in ("pj", "company", "firmÄƒ", "firma")
-    applicant_type = "PersoanÄƒ juridicÄƒ" if is_company else "PersoanÄƒ fizicÄƒ" if ("fiz" in kind or "pf" == kind or "person" in kind) else None
-    identifier = pick("idcode")
-    defaults = {
-        "client_name": pick("name", "full_name"),
-        "client_kind": applicant_type or pick("kind", "type"),
-        "applicant_type": applicant_type,
-        "cnp": pick("cnp") or (identifier if not is_company else None),
-        "cui": pick("cui") or (identifier if is_company else None),
-        "id_series": pick("id_series", "ci_series", "series"),
-        "id_number": pick("id_number", "id_no"),
-        "phone": pick("phone", "telephone"),
-        "email": pick("email"),
-        "county": pick("county"),
-        "locality": pick("locality"),
-        "operator": pick("operator"),
-        "pod": pick("pod"),
-        "cf_nr": pick("cf_nr", "land_registry_number"),
-        "cadastral_nr": pick("cadastral_nr", "cadastral_number"),
-        "supply": pick("supply", "connection_type"),
-        "client_address": pick("hq_address", "address"),
-        "consumption_address": pick("consumption_address", "pod_address", "address"),
-    }
-    if client.get("same_address_as_client") or client.get("same_address"):
-        defaults["address"] = pick("consumption_address", "pod_address", "address")
-    else:
-        defaults["address"] = pick("consumption_address", "pod_address")
-    for key, value in defaults.items():
-        if value not in (None, "") and data.get(key) in (None, ""):
-            data[key] = value
-    return data
-
-async def get_client(owner: str, rec: dict) -> dict:
-    c = None
-    if rec.get("client_id"):
-        c = await db.clients.find_one({"owner": owner, "id": rec["client_id"]}, {"_id": 0})
-    if not c and not rec.get("client_id") and rec.get("client_name"):
-        c = await db.clients.find_one({"owner": owner, "name": rec["client_name"]}, {"_id": 0})
-    return OPIS.dossier_client_snapshot(rec, c or {})
-
-def _normalize_atr_match(value: str) -> str:
-    import unicodedata
-    text = unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode("ascii").casefold()
-    return "".join(char for char in text if char.isalnum())
-
-
-async def resolve_atr_prosumer(user: dict, rec: dict, client: dict | None = None) -> dict | None:
-    """Resolve a linked prosumer dossier only when the client and consumption point are unambiguous."""
-    rec, client = rec or {}, client or {}
-    query = scope_q(user, "prosumator")
-    expected_client_id = str(rec.get("client_id") or client.get("id") or "")
-    expected_name = _normalize_atr_match(rec.get("client_name") or client.get("name"))
-    selected_id = str(rec.get("pros_id") or "")
-    if selected_id:
-        selected = await db.prosumator.find_one({**query, "id": selected_id}, {"_id": 0})
-        if selected:
-            selected_client_id = str(selected.get("client_id") or "")
-            selected_name = _normalize_atr_match(selected.get("client_name"))
-            same_client = (selected_client_id == expected_client_id) if expected_client_id and selected_client_id else bool(expected_name and selected_name == expected_name)
-            if same_client:
-                return selected
-
-    # Resolve modern records using indexed client_id lookups. Legacy dossiers
-    # without client_id are fetched with a narrow projection, so their large CEF
-    # payloads do not have to be loaded just to match a name/POD.
-    projection = {"_id": 0, "id": 1, "client_id": 1, "client_name": 1, "pod": 1, "address": 1}
-    candidate_rows = []
-    if expected_client_id:
-        candidate_rows = await db.prosumator.find(
-            {**query, "client_id": expected_client_id}, projection
-        ).sort("updated_at", -1).limit(500).to_list(500)
-        legacy_filter = {
-            **query,
-            "$or": [
-                {"client_id": {"$exists": False}},
-                {"client_id": None},
-                {"client_id": ""},
-            ],
-        }
-        legacy_rows = await db.prosumator.find(legacy_filter, projection).sort("updated_at", -1).limit(500).to_list(500)
-        candidate_rows.extend(
-            item for item in legacy_rows
-            if expected_name and _normalize_atr_match(item.get("client_name")) == expected_name
-        )
-        candidates = [
-            item for item in candidate_rows
-            if (
-                str(item.get("client_id") or "") == expected_client_id
-                or (not item.get("client_id") and expected_name
-                    and _normalize_atr_match(item.get("client_name")) == expected_name)
-            )
-        ]
-    elif expected_name:
-        candidate_rows = await db.prosumator.find(query, projection).sort("updated_at", -1).limit(500).to_list(500)
-        candidates = [
-            item for item in candidate_rows
-            if _normalize_atr_match(item.get("client_name")) == expected_name
-        ]
-    else:
-        return None
-
-    pod = _normalize_atr_match(rec.get("pod") or client.get("pod"))
-    address = _normalize_atr_match(rec.get("address") or client.get("consumption_address"))
-    if pod:
-        candidates = [item for item in candidates if _normalize_atr_match(item.get("pod")) == pod]
-    elif address:
-        candidates = [item for item in candidates if _normalize_atr_match(item.get("address")) == address]
-    if len(candidates) != 1 or not candidates[0].get("id"):
-        return None
-    return await db.prosumator.find_one(
-        {**query, "id": str(candidates[0]["id"])}, {"_id": 0}
-    )
-
-
-async def deer_gdpr_notice_file():
-    """Cache and include the current public DEER privacy notice from DEER's own domain."""
-    import httpx
-    from urllib.parse import urlparse
-
-    source_url = "https://www.distributie-energie.ro/wp-content/uploads/2026/04/Informare-generala-site-v-feb-2026.pdf"
-    cache_key = "deer-gdpr-privacy-notice"
-    cached = await db.official_public_documents.find_one({"key": cache_key}, {"_id": 0})
-    now = datetime.now(timezone.utc)
-    cache_time = None
-    try:
-        cache_time = datetime.fromisoformat(str((cached or {}).get("fetched_at") or "").replace("Z", "+00:00"))
-    except ValueError:
-        pass
-    cached_file = (cached or {}).get("file") or {}
-    if cached_file.get("storage_path") and cache_time and now - cache_time < timedelta(days=30):
-        return cached_file
-
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0), follow_redirects=True, max_redirects=4) as client_http:
-            response = await client_http.get(source_url)
-            response.raise_for_status()
-            final_host = (urlparse(str(response.url)).hostname or "").lower().rstrip(".")
-            data = response.content
-            if final_host not in ("www.distributie-energie.ro", "distributie-energie.ro") or not data.startswith(b"%PDF-") or len(data) > 12 * 1024 * 1024:
-                raise ValueError("RÄƒspunsul nu este un PDF valid de pe domeniul DEER.")
-        stored = put_object(f"{APP_NAME}/official-documents/{uuid.uuid4()}.pdf", data, "application/pdf")
-        file_record = {
-            "storage_path": stored["path"],
-            "original_filename": "Nota DEER â€” informare generala site feb 2026.pdf",
-            "content_type": "application/pdf",
-            "size": len(data),
-            "source_url": source_url,
-            "source_host": final_host,
-            "imported_at": now.isoformat(),
-        }
-        await db.official_public_documents.update_one(
-            {"key": cache_key},
-            {"$set": {"key": cache_key, "file": file_record, "source_url": source_url, "fetched_at": now.isoformat()}},
-            upsert=True,
-        )
-        return file_record
-    except Exception as exc:
-        logger.warning("Nu s-a putut prelua nota oficialÄƒ DEER din sursa publicÄƒ: %s", str(exc)[:180])
-        return cached_file if cached_file.get("storage_path") else None
-
-
-async def dossier_ctx(owner, item_id: str, verify_files: bool = False):
-    if isinstance(owner, dict):
-        await check_access(owner, "prosumator", item_id); owner = owner["id"]
-    rec = await db.prosumator.find_one({"id": item_id, "owner": owner}, {"_id": 0})
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    rec = CEF.from_legacy(rec)
-    await auto_fill_cef_from_catalog(owner, rec)
-    # Import the exact selected models' official datasheets and declarations
-    # before building the dossier checklist. Otherwise the card reports these
-    # documents as missing even when the catalog already has trusted source URLs.
-    await auto_import_selected_catalog_documents({"id": owner}, rec)
-    client = await get_client(owner, rec)
-    base = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
-    settings, warns = await effective_settings(owner, rec, base)
-    public_documents = {}
-    client_kind = str(client.get("kind") or "").strip().casefold()
-    is_company_client = "jurid" in client_kind or client_kind in ("pj", "company", "firmÄƒ", "firma")
-    operator_name = str(rec.get("operator") or client.get("operator") or "").casefold()
-    is_deer = any(token in operator_name for token in (
-        "deer", "distributie energie electrica romania", "distribuÈ›ie energie electricÄƒ romÃ¢nia"
-    ))
-    if is_deer and not is_company_client:
-        notice_file = await deer_gdpr_notice_file()
-        if notice_file:
-            public_documents["deer_gdpr_notice"] = notice_file
-    info = await OPIS.build_positions(db, owner, rec, client, settings, public_documents)
-    if verify_files:
-        info = verify_dossier_attachments(info, get_object, LegacyObjectUnavailable)
-    info["signer_warnings"] = warns
-    info["finalized"] = rec.get("snapshot", {}).get("at") if rec.get("snapshot") else None
-    return rec, client, settings, info
-
-def doc_status(expires: str, has_file: bool) -> str:
-    if not has_file:
-        return "lipsÄƒ"
-    if not expires:
-        return "valabil"
-    today = datetime.now(timezone.utc).date().isoformat()
-    soon = (datetime.now(timezone.utc).date() + timedelta(days=30)).isoformat()
-    return "expirat" if expires < today else ("aproape de expirare" if expires <= soon else "valabil")
-
-def staff_eligible(p: dict) -> bool:
-    return any(doc_status(a.get("expires", ""), bool(a.get("file"))) in ("valabil", "aproape de expirare") and a.get("verified")
-               for a in p.get("auths") or [])
-
-SIGN_ROLES = {"executant": "Reprezentant executant", "resp_tehnic": "Responsabil tehnic cu execuÈ›ia", "electrician": "Electrician autorizat / inginer",
-              "verifier": "Verificator schemÄƒ", "measurer": "Verificator mÄƒsurÄƒtori (buletin prizÄƒ)", "designer": "Proiectant schemÄƒ"}
-
-async def effective_settings(owner: str, rec: dict, base: dict):
-    snapshot = rec.get("snapshot")
-    s = {**base, **(snapshot.get("settings") or {})} if snapshot else dict(base)
-    warns = []
-    sg = (snapshot.get("signers") if snapshot else None) or rec.get("signers") or {}
-    if snapshot:
-        # Re-check signature authorization at render time; a frozen dossier must not
-        # keep using a signature after its owner withdraws permission.
-        s.pop("_sigs", None)
-    for role, label in SIGN_ROLES.items():
-        sid = sg.get(role)
-        if not sid:
-            continue
-        p = await db.staff.find_one({"owner": owner, "id": sid}, {"_id": 0})
-        if not p:
-            warns.append(f"{label}: persoana selectatÄƒ nu mai existÄƒ."); continue
-        if not staff_eligible(p):
-            warns.append(f"{label}: {p.get('name')} nu are o autorizaÈ›ie valabilÄƒ È™i verificatÄƒ â€” nu este completat Ã®n documente.")
-            if not snapshot:
-                s[{"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]] = ""
-            continue
-        key = {"executant": "rep", "verifier": "verifier", "measurer": "measurer", "designer": "designer_name", "resp_tehnic": "resp_tehnic", "electrician": "electrician"}[role]
-        if not snapshot:
-            s[key] = p.get("name")
-        signature_name = (s.get(key) if snapshot else p.get("name")) or p.get("name")
-        if (p.get("signature") or {}).get("storage_path") and p.get("signature_authorized"):
-            s.setdefault("_sigs", {})[signature_name] = p["signature"]["storage_path"]
-        elif role == "executant":
-            warns.append(f"{label}: semnÄƒtura graficÄƒ a lui {p.get('name')} lipseÈ™te sau nu este autorizatÄƒ â€” documentele rÄƒmÃ¢n cu spaÈ›iu pentru semnÄƒturÄƒ olografÄƒ.")
-        auth = next((a for a in p.get("auths") or [] if a.get("verified") and doc_status(a.get("expires", ""), bool(a.get("file"))) != "expirat"), {})
-        s[key + "_auth"] = f"{auth.get('type', '')} nr. {auth.get('number', '')}".strip()
-    if not sg.get("executant"):
-        warns.append("Nu este selectat reprezentantul executantului â€” alege persoana Ã®n dosar pentru a folosi semnÄƒtura autorizatÄƒ.")
-    iid = rec.get("instrument_id")
-    if iid:
-        i = await db.instruments.find_one({"owner": owner, "id": iid}, {"_id": 0})
-        st = doc_status((i or {}).get("expires", ""), bool((i or {}).get("file")))
-        if not i or st in ("expirat", "lipsÄƒ"):
-            warns.append("Aparat de mÄƒsurÄƒ: certificat " + ("expirat" if st == "expirat" else "lipsÄƒ") + " â€” datele aparatului nu sunt completate.")
-            s["meter_device"] = s["meter_serial"] = s["meter_valid"] = ""
-        else:
-            s["meter_device"], s["meter_serial"], s["meter_valid"] = i.get("maker_model"), i.get("serial"), i.get("expires")
-    if base.get("anre_valid") and doc_status(base["anre_valid"], True) == "expirat":
-        warns.append("Atestatul ANRE al firmei este expirat.")
-    stamp = base.get("stamp") or {}
-    if stamp.get("storage_path") and (stamp.get("content_type") or "").startswith("image/"):
-        s["_stamp_path"] = stamp["storage_path"]
-    elif not s.get("_stamp_path"):
-        warns.append("È˜tampila firmei nu este Ã®ncÄƒrcatÄƒ Ã®n SetÄƒri de bazÄƒ â†’ FirmÄƒ.")
-    return s, warns
-
-@api_router.post("/dossier/{item_id}/finalize")
-async def dossier_finalize(item_id: str, user: dict = Depends(get_current_user)):
-    require(user, "admin", "inginer", "electrician")
-    need(user, "prosumator", True)
-    rec = await check_access(user, "prosumator", item_id)
-    check_inverters(user, rec)
-    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    s, _ = await effective_settings(user["id"], {**rec, "snapshot": None}, base)
-    if SZ.state(rec, await get_client(user["id"], rec), s)["status"] != "approved":
-        raise HTTPException(status_code=400, detail="Dosarul nu poate fi finalizat: schema monofilarÄƒ nu este verificatÄƒ È™i aprobatÄƒ de proiectant / verificator. Exportul rÄƒmÃ¢ne disponibil ca CIORNÄ‚.")
-    snap = {"settings": {k: v for k, v in s.items() if k not in ("owner", "_id")}, "signers": rec.get("signers") or {},
-            "at": datetime.now(timezone.utc).isoformat(), "by": user.get("email")}
-    await db.prosumator.update_one({"id": item_id}, {"$set": {"snapshot": snap}, "$push": {"snapshot_history": snap}})
-    await audit(user, "finalizare", "prosumator", item_id, ["snapshot"])
-    return {"ok": True, "at": snap["at"]}
-
-@api_router.post("/dossier/{item_id}/reopen")
-async def dossier_reopen(item_id: str, user: dict = Depends(get_current_user)):
-    require(user, "admin", "inginer", "electrician")
-    need(user, "prosumator", True)
-    await check_access(user, "prosumator", item_id)
-    res = await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$unset": {"snapshot": ""}})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    await audit(user, "redeschidere", "prosumator", item_id, ["snapshot"])
-    return {"ok": True}
-
-@api_router.get("/dossier/{item_id}")
-async def dossier_info(item_id: str, user: dict = Depends(get_current_user)):
-    rec, client, _, info = await dossier_ctx(user, item_id, verify_files=True)
-    return {**info, "client_id": client.get("id"), "client_kind": client.get("kind"), "statuses": OPIS.STATUSES,
-            "client": {"name": client.get("name") or rec.get("client_name") or "", "email": client.get("email") or "", "phone": client.get("phone") or ""}}
-
-@api_router.put("/dossier/{item_id}/item/{key}")
-async def dossier_item(item_id: str, key: str, request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    body = await request.json()
-    rec = await check_access(user, "prosumator", item_id)
-    if rec is None:
-        raise HTTPException(status_code=404, detail="Dosar inexistent")
-    _, _, _, info = await dossier_ctx(user, item_id)
-    if key not in {p["key"] for p in info["positions"]}:
-        raise HTTPException(status_code=404, detail="PoziÈ›ie inexistentÄƒ Ã®n opis")
-    cur = (rec.get("opis") or {}).get(key) or {}
-    if "status" in body:
-        if body["status"] and body["status"] not in OPIS.STATUSES:
-            raise HTTPException(status_code=400, detail="Stadiu invalid")
-        cur["status"] = body["status"] or None
-    if body.get("upload"):
-        cur["upload"] = body["upload"]
-    if body.get("clear_upload"):
-        cur.pop("upload", None)
-    multi_file_keys = {"fotografii_instalatie", "fotografii_lucrare", "alt_document"}
-    if "add_uploads" in body:
-        if key not in multi_file_keys or not isinstance(body["add_uploads"], list) or len(body["add_uploads"]) > 20:
-            raise HTTPException(status_code=400, detail="Lista de fiÈ™iere nu este validÄƒ pentru aceastÄƒ poziÈ›ie")
-        additions = [item for item in body["add_uploads"] if isinstance(item, dict) and item.get("storage_path")]
-        if len(additions) != len(body["add_uploads"]):
-            raise HTTPException(status_code=400, detail="Unul dintre fiÈ™iere nu este valid")
-        current_uploads = cur.get("uploads") or []
-        if len(current_uploads) + len(additions) > 50:
-            raise HTTPException(status_code=413, detail="PoÈ›i ataÈ™a cel mult 50 de fiÈ™iere la aceastÄƒ categorie")
-        cur["uploads"] = current_uploads + additions
-    if "remove_upload_index" in body:
-        if key not in multi_file_keys or not isinstance(body["remove_upload_index"], int):
-            raise HTTPException(status_code=400, detail="FiÈ™ierul selectat nu poate fi eliminat")
-        uploads = cur.get("uploads") or []
-        index = body["remove_upload_index"]
-        if index < 0 or index >= len(uploads):
-            raise HTTPException(status_code=404, detail="FiÈ™ierul nu mai este ataÈ™at")
-        uploads.pop(index)
-        cur["uploads"] = uploads
-    await db.prosumator.update_one({"id": item_id, "owner": user["id"]}, {"$set": {f"opis.{key}": cur, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    await audit(user, "opis", "prosumator", item_id, [key] + list(body.keys()))
-    return {"ok": True}
-
-@api_router.get("/dossier/{item_id}/file/{key}")
-async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int = 0, download: int = 0, authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    rec, client, settings, info = await dossier_ctx(user, item_id)
-    p = next((x for x in info["positions"] if x["key"] == key), None)
-    if key == "opis":
-        p = {"source": "generat", "docs": ["declaratie_autenticitate"], "key": "opis"}
-    if not p:
-        raise HTTPException(status_code=404, detail="PoziÈ›ie inexistentÄƒ")
-    name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
-    if fmt == "docx":
-        if p.get("official_operator_form"):
-            raise HTTPException(status_code=400, detail="Formularul oficial al operatorului se descarcÄƒ Ã®n PDF, Ã®n formatul publicat de distribuitor.")
-        if key == "fisa_tehnica":
-            docx = SLD.tech_sheet_docx(rec, client, settings, SZ.compute(rec, client), SZ.state(rec, client, settings))
-            return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            headers={"Content-Disposition": disp('attachment', f"{name}.docx")})
-        if key == "schema":
-            raise HTTPException(status_code=400, detail="Schema monofilarÄƒ se exportÄƒ doar Ã®n PDF (vectorial)")
-        if p["source"] != "generat":
-            raise HTTPException(status_code=400, detail="Export Word doar pentru documentele generate")
-        docx = docgen.render_docx(p["docs"], rec, settings, client, info["titles"])
-        return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        headers={"Content-Disposition": disp('attachment', f"{name}.docx")})
-    parts = await OPIS.position_pdf(p, rec, client, settings, info["titles"], get_object, force_generated=bool(generated))
-    if not parts:
-        raise HTTPException(status_code=404, detail="Documentul nu este Ã®ncÄƒ Ã®ncÄƒrcat")
-    pdf = parts[0] if len(parts) == 1 else merge_pdfs(parts[0], [])
-    if len(parts) > 1:
-        w = PdfWriter()
-        for b in parts:
-            for pg in PdfReader(io.BytesIO(b)).pages:
-                w.add_page(pg)
-        o = io.BytesIO(); w.write(o); pdf = o.getvalue()
-    if rec.get("is_test") and key != "schema":
-        pdf = OPIS.mark_test(pdf)
-    elif p.get("source") == "generat" and p.get("missing"):
-        pdf = OPIS.mark_test(pdf, "CIORNÄ‚ â€” DATE / MÄ‚SURÄ‚TORI DE COMPLETAT", 28)
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('attachment' if download else 'inline', f"{name}.pdf")})
-
-@api_router.get("/dossier/{item_id}/export")
-async def dossier_export(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
-    pdf = await OPIS.export_bundle(info, rec, client, settings, get_object, logger)
-    name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
-
-SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "pif_pv", "schema", "fisa_tehnica")
-
-@api_router.get("/dossier/{item_id}/package.zip")
-async def dossier_package(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
-    operator_key = ATR.op_key(rec.get("operator"), client.get("operator"))
-    overrides = settings.get("dossier_package_by_operator") or {}
-    selected_parts = overrides.get(operator_key) if operator_key else None
-    try:
-        file_count = max(1, min(4, int(selected_parts or settings.get("dossier_package_parts", 4))))
-    except (TypeError, ValueError):
-        file_count = 4
-    package = await OPIS.export_package_zip(info, rec, client, settings, get_object, logger, file_count)
-    label = (client.get("name") or rec.get("client_name") or "prosumator").replace(" ", "_")
-    suffix = "_CIORNA" if not info.get("complete") or info.get("export_has_unavailable_items") else ""
-    return Response(content=package, media_type="application/zip",
-                    headers={"Content-Disposition": disp('attachment', f"DOSAR_{label}{suffix}.zip")})
-
-@api_router.get("/dossier/{item_id}/simple")
-async def dossier_simple(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
-    pos = [p for p in info["positions"] if p["key"] in SIMPLE_KEYS or p.get("source") == "catalog"]
-    sub = {**info, "positions": pos, "titles": [p["title"] for p in pos],
-           "complete": not any(p.get("missing") for p in pos) and not any(p.get("status") == "de completat" for p in pos)}
-    pdf = await OPIS.export_bundle(sub, rec, client, settings, get_object, logger)
-    name = f"DOSAR_PROSUMATOR_SIMPLU_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not sub['complete'] else ''}.pdf"
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
-
-import power_doc as PWR
-import atr_doc as ATR
-
-
-def guard_power_prosumer_scope(rec: dict, pros: dict):
-    installed_kwp = ATR.installed_pv_kwp_for_record(rec or {}, pros or {})
-    if installed_kwp is not None and installed_kwp > 400:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Puterea instalatÄƒ este {installed_kwp:g} kWp, peste limita de 400 kW a procedurii de racordare pentru prosumatori. "
-                "Nu genera Anexa 1 de spor pentru acest caz. CreeazÄƒ cererea ATR generalÄƒ conform Regulamentului ANRE nr. 59/2013; "
-                "pentru DEER, selecteazÄƒ procedura dedicatÄƒ instalaÈ›iilor >400 kW."
-            ),
-        )
-
-
-@api_router.get("/atr/{item_id}/official-docx")
-async def atr_official_docx(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "atr", item_id)
-    client = await get_client(user["id"], rec)
-    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    pros = None
-    if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
-        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
-        client = {**(pclient or {}), **(client or {})}
-    try:
-        payload = ATR.render_deer_official_docx(rec, client or {}, settings, pros or {})
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception:
-        logger.exception("DEER official DOCX generation failed")
-        raise HTTPException(status_code=500, detail="Nu am putut genera formularul DEER. VerificaÈ›i dacÄƒ È™ablonul oficial este disponibil.")
-    safe_name = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in str((client or {}).get("name") or "client")).strip().replace(" ", "_")
-    filename = f"DEER_{str(rec.get('deer_case') or 'cerere').replace(' ', '_')}_{safe_name}.docx"
-    return Response(content=payload, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    headers={"Content-Disposition": disp("attachment", filename)})
-
-@api_router.get("/atr/{item_id}/pdf")
-async def atr_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "atr", item_id)
-    pdf, name = await atr_pack(user, rec, full)
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
-
-def expected_catalog_document_keys(pros: dict) -> set:
-    """Return per-model datasheet and conformity keys required by the selected equipment."""
-    cef = (pros or {}).get("cef") or {}
-    expected = set()
-
-    def add(label: str, model, catalog_id):
-        name = str(model or "").strip()
-        # OPIS only creates catalog positions for equipment with an identified model.
-        if not name:
-            return
-        suffix = catalog_id or name
-        for kind in ("datasheet", "conformity"):
-            expected.add(f"cat_{kind}_{label}_{suffix}")
-
-    for inv in cef.get("inverters") or []:
-        add("invertor", inv.get("brand_model"), inv.get("catalog_id"))
-        add("panou", inv.get("panel_model"), inv.get("panel_catalog_id"))
-        rsd = inv.get("rsd") or {}
-        if rsd.get("enabled"):
-            add("RSD", rsd.get("brand_model"), rsd.get("catalog_id"))
-        if inv.get("battery_mode") == "own":
-            battery = inv.get("battery") or {}
-            add("baterie", battery.get("model"), battery.get("catalog_id"))
-    for battery in cef.get("shared_batteries") or []:
-        add("baterie", battery.get("model"), battery.get("catalog_id"))
-    grid = cef.get("grid") or {}
-    add("smart_meter", grid.get("meter"), grid.get("meter_catalog_id"))
-    return expected
-
-
-def catalog_documents_complete(pros: dict, positions: list) -> bool:
-    expected = expected_catalog_document_keys(pros)
-    available = {p.get("key") for p in positions or [] if p.get("source") == "catalog" and p.get("files")}
-    return bool(expected) and expected.issubset(available)
-
-
-ATR_CLIENT_DOC_SLOTS = (
-    ("ci", "Act de identitate"),
-    ("cf", "Extras de carte funciarÄƒ"),
-    ("factura", "FacturÄƒ de energie"),
-    ("certificat", "Certificat de Ã®nregistrare"),
-    ("constatator", "Certificat constatator ONRC"),
-    ("semnate", "Documente semnate"),
-)
-ATR_CLIENT_DOC_MAX_FILE = 25 * 1024 * 1024
-ATR_CLIENT_DOC_MAX_TOTAL = 100 * 1024 * 1024
-
-
-def atr_client_documents(user: dict, client: dict):
-    """Return only the selected client's uploaded documents stored in this user's namespace."""
-    docs = (client or {}).get("docs") or {}
-    owner_prefix = f"{APP_NAME}/uploads/{user['id']}/"
-    result, issues, total = [], [], 0
-    for slot, label in ATR_CLIENT_DOC_SLOTS:
-        entries = docs.get(slot) or []
-        if not isinstance(entries, list):
-            continue
-        for item in entries:
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("original_filename") or f"{slot}.pdf")
-            path = str(item.get("storage_path") or "")
-            if not path.startswith(owner_prefix):
-                issues.append(f"{label} â€” fiÈ™ierul nu aparÈ›ine spaÈ›iului de stocare al contului.")
-                continue
-            try:
-                data, content_type = get_object(path)
-                size = len(data)
-                if size > ATR_CLIENT_DOC_MAX_FILE or total + size > ATR_CLIENT_DOC_MAX_TOTAL:
-                    issues.append(f"{label} â€” {name} nu a fost inclus (limita pachetului de documente client a fost depÄƒÈ™itÄƒ).")
-                    continue
-                total += size
-                result.append({"slot": slot, "label": label, "name": name, "data": data,
-                               "content_type": content_type or item.get("content_type") or "application/octet-stream"})
-            except Exception as exc:
-                logger.warning("ATR client document could not be read (%s): %s", path, exc)
-                issues.append(f"{label} â€” {name} nu a putut fi citit din stocare.")
-    return result, issues
-
-
-def atr_site_plan_background(owner: str, rec: dict):
-    return ATR.load_site_plan_background(owner, rec, get_object)
-
-
-async def atr_pack(user: dict, rec: dict, full: int):
-    client = await get_client(user["id"], rec)
-    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    pros, info = None, None
-    linked_pros = await resolve_atr_prosumer(user, rec, client)
-    if linked_pros:
-        pros, pclient, base, info = await dossier_ctx(user, linked_pros["id"])
-        client = {**(pclient or {}), **(client or {})}
-        rec = {**rec, "pros_id": linked_pros["id"]}
-        # A linked prosumer dossier is authoritative evidence that this ATR covers production.
-        if "producere" not in str(rec.get("kind") or "").casefold():
-            rec["kind"] = "loc de consum È™i de producere"
-    else:
-        from atr_equipment import from_request
-        pros = from_request(rec) or None
-    atr_catalog_files = []
-    direct_catalog_complete = False
-    if pros:
-        from atr_equipment import catalog_documents_complete as atr_catalog_documents_complete
-        await auto_import_selected_catalog_documents(user, pros)
-        atr_catalog_files = await catalog_files(user["id"], pros)
-        if info is None:
-            direct_catalog_complete = atr_catalog_documents_complete(pros.get("cef"), atr_catalog_files)
-        else:
-            # Catalog recovery can replace a stale legacy file. Rebuild the opis
-            # only after that recovery so ATR uses the current file references.
-            pros_id = linked_pros["id"]
-            pros, pclient, base, info = await dossier_ctx(user, pros_id)
-            client = {**(pclient or {}), **(client or {})}
-    att = rec.get("attachments") or {}
-    client_documents, client_document_issues = atr_client_documents(user, client)
-    auto = {}
-    if info and ATR.is_prod(rec):
-        bykey = {p["key"]: p for p in info["positions"]}
-        auto = {"schema": [bykey.get("schema")], "fise": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
-    attached = {k for k, v in att.items() if v}
-    # Client documents uploaded once in the client profile are valid supporting
-    # evidence for matching ATR checklist positions; do not infer unrelated items.
-    for document in client_documents:
-        if document["slot"] == "ci":
-            attached.add("id")
-        elif document["slot"] == "cf":
-            attached.add("cf")
-        elif document["slot"] == "constatator":
-            attached.add("constatator")
-    # A linked generated item is not proof of a ready document. Count schema only
-    # when the source opis says it is generated/attached; catalog evidence must
-    # exist for every selected model before it satisfies the required "fise" slot.
-    schema_position = (auto.get("schema") or [None])[0]
-    if schema_position and schema_position.get("auto_status") in ("generat", "ataÈ™at"):
-        attached.add("schema")
-    linked_catalog_complete = bool(info and auto.get("fise") and catalog_documents_complete(pros or {}, (info or {}).get("positions", [])))
-    catalog_complete = linked_catalog_complete if info else direct_catalog_complete
-    if pros and ATR.is_prod(rec) and catalog_complete:
-        attached.add("fise")
-    if pros and ATR.is_prod(rec) and "fise" in ATR.required(rec) and not catalog_complete:
-        attached.discard("fise")
-    parts = [ATR.render_atr(rec, client, base, pros or {}, attached)]
-    if full:
-        site_plan_pdf = ATR.render_atr_site_plan(rec, client, atr_site_plan_background(user["id"], rec))
-        if site_plan_pdf:
-            parts.append(site_plan_pdf)
-    annex_registry_issue = ""
-    if full:
-        operator_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
-        if operator_key == "deer":
-            annex_pdf = ATR.render_deer_annex(rec, client, base, pros or {}, attached)
-            if annex_pdf:
-                parts.append(annex_pdf)
-        elif operator_key:
-            # Use the same annex selector as the ZIP package, and include a validated
-            # official PDF copy when the registry has one. DOC/DOCX originals remain
-            # in the ZIP; the main PDF stays explicit about that limitation.
-            from atr_routes import _registry_forms_for_request, _fetch_registry_annex, _prefill_official_pdf
-            annex_no, forms = await _registry_forms_for_request(operator_key, rec, pros or {})
-            if annex_no:
-                annex_pdf = ATR.render_operator_annex_prep(
-                    rec, client, pros or {}, operator_key, annex_no,
-                    forms[0].get("title", "") if forms else "")
-                parts.append(annex_pdf)
-                if not forms:
-                    annex_registry_issue = f"Nu existÄƒ Ã®n registrul aplicaÈ›iei un formular oficial verificat pentru Anexa {annex_no} a operatorului selectat; fiÈ™a de precompletare nu Ã®nlocuieÈ™te formularul oficial."
-                else:
-                    try:
-                        official_data, official_name = await _fetch_registry_annex(forms[0], operator_key)
-                        if official_name.lower().endswith(".pdf"):
-                            completed_data, filled_fields = _prefill_official_pdf(
-                                official_data, rec, client, pros or {})
-                            parts.append(completed_data if filled_fields else official_data)
-                            if not filled_fields:
-                                annex_registry_issue = (
-                                    f"Formularul oficial PDF pentru Anexa {annex_no} nu are cÃ¢mpuri text compatibile "
-                                    "pentru precompletare. PDF-ul include formularul original È™i fiÈ™a DNS de precompletare; "
-                                    "completaÈ›i È™i verificaÈ›i formularul oficial Ã®nainte de depunere."
-                                )
-                        else:
-                            annex_registry_issue = f"Formularul oficial pentru Anexa {annex_no} este disponibil ca {official_name}; originalul se gÄƒseÈ™te Ã®n pachetul ZIP, nu Ã®n PDF-ul combinat."
-                    except Exception as exc:
-                        logger.warning("ATR official annex PDF include failed: %s", exc)
-                        annex_registry_issue = f"Formularul oficial pentru Anexa {annex_no} nu a putut fi descÄƒrcat la generare; verificaÈ›i pachetul ZIP È™i registrul formularelor."
-            else:
-                annex_registry_issue = "Tipul cererii nu are o mapare de anexÄƒ verificatÄƒ pentru operatorul selectat."
-        else:
-            annex_registry_issue = "Operatorul de distribuÈ›ie nu este selectat; anexa oficialÄƒ aplicabilÄƒ nu poate fi stabilitÄƒ."
-    unavailable = list(client_document_issues)
-    if full:
-        for k, title, _ in ATR.DOCS:
-            for f in att.get(k) or []:
-                try:
-                    data, ct = get_object(f["storage_path"])
-                    parts.append(OPIS.file_pdf(data, ct))
-                except Exception as e:
-                    logger.error(f"atr attach {k}: {e}")
-                    unavailable.append(f"{title} â€” {f.get('original_filename') or 'fiÈ™ier ataÈ™at'}")
-            # Catalog sheets are model-linked evidence and must be included even when
-            # the user also attached a manual file under the same checklist item.
-            if not att.get(k) or k == "fise":
-                for p in auto.get(k) or []:
-                    try:
-                        if p:
-                            parts += await OPIS.position_pdf(p, pros, client, base, info["titles"], get_object)
-                    except Exception as e:
-                        logger.error(f"atr auto {k}: {e}")
-                        unavailable.append(p.get("title") or title)
-        for document in client_documents:
-            try:
-                parts.append(OPIS.file_pdf(document["data"], document["content_type"]))
-            except Exception as exc:
-                logger.warning("ATR client document could not be merged (%s): %s", document["name"], exc)
-                unavailable.append(f"{document['label']} â€” {document['name']}")
-        for document in atr_catalog_files:
-            try:
-                data, content_type = get_object(document["storage_path"])
-                parts.append(OPIS.file_pdf(data, content_type or document.get("content_type") or "application/pdf"))
-            except Exception as exc:
-                logger.warning("ATR catalog document could not be merged (%s): %s", document.get("catalog_id"), exc)
-                unavailable.append(f"{document.get('kind') or 'Document catalog'} â€” {document.get('model') or 'echipament'}")
-    miss = [k for k in ATR.required(rec) if k not in attached]
-    request_type_missing = not ATR.rtype(rec)
-    doc_titles = {k: title for k, title, _ in ATR.DOCS}
-    missing_titles = [f"Document obligatoriu lipsÄƒ: {doc_titles.get(k, k)}" for k in miss]
-    if request_type_missing:
-        missing_titles.insert(0, "Tipul solicitÄƒrii ATR nu este selectat sau nu este recunoscut")
-    annex_issues = ATR.deer_annex_issues(rec, pros or {})
-    missing_titles.extend(annex_issues)
-    if annex_registry_issue:
-        missing_titles.append(annex_registry_issue)
-    report = OPIS._incomplete_report({"positions": [], "common_missing": missing_titles}, unavailable)
-    if full and report:
-        parts.append(report)
-    w = PdfWriter()
-    for b in parts:
-        try:
-            for pg in PdfReader(io.BytesIO(b)).pages:
-                w.add_page(pg)
-        except Exception as e:
-            logger.error(f"atr merge: {e}")
-    o = io.BytesIO(); w.write(o)
-    incomplete = bool(miss or unavailable or request_type_missing or annex_issues or annex_registry_issue)
-    name = f"{'DOSAR_ATR' if full else 'CERERE_ATR'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and incomplete else ''}.pdf"
-    return o.getvalue(), name
-
-@api_router.get("/power/{item_id}/official-docx")
-async def power_official_docx(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    """Generate the official DEER Annex 1 DOCX for a power-increase request."""
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "power", item_id)
-    client = await get_client(user["id"], rec)
-    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    pros = {}
-    if rec.get("pros_id") and await db.prosumator.find_one(
-        {**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}
-    ):
-        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
-        client = {**(pclient or {}), **(client or {})}
-    else:
-        from atr_equipment import from_request
-        pros = from_request(rec, field="power_cef")
-
-    guard_power_prosumer_scope(rec, pros)
-    operator = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
-    if operator != "deer":
-        raise HTTPException(status_code=422, detail="Formularul DOCX completabil este disponibil pentru DEER. Pentru alÈ›i operatori, folosiÈ›i formularele oficiale din registrul OD.")
-    client_kind = str(client.get("kind") or rec.get("applicant_type") or "").strip().casefold()
-    applicant_type = rec.get("applicant_type")
-    if not applicant_type:
-        if "jurid" in client_kind or client_kind in ("pj", "company", "firmÄƒ", "firma"):
-            applicant_type = "PersoanÄƒ juridicÄƒ"
-        elif "fizic" in client_kind or client_kind in ("pf", "individual"):
-            applicant_type = "PersoanÄƒ fizicÄƒ"
-        else:
-            raise HTTPException(status_code=422, detail="SelectaÈ›i tipul clientului (persoanÄƒ fizicÄƒ sau juridicÄƒ) Ã®n fiÈ™a clientului Ã®nainte de generarea formularului oficial.")
-
-    case = "loc nou" if rec.get("request_kind") == "nou" else "spor de putere"
-    official_rec = {
-        **rec,
-        "operator": rec.get("operator") or pros.get("operator") or client.get("operator") or "DEER",
-        "deer_case": case,
-        "request_type": "nou" if rec.get("request_kind") == "nou" else "spor",
-        "applicant_type": applicant_type,
-    }
-    if rec.get("requested_kva") not in (None, "") and official_rec.get("p_abs_kva") in (None, ""):
-        official_rec["p_abs_kva"] = rec["requested_kva"]
-    try:
-        payload = ATR.render_deer_official_docx(official_rec, client or {}, settings, pros or {})
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception:
-        logger.exception("DEER power-increase official DOCX generation failed")
-        raise HTTPException(status_code=500, detail="Nu am putut genera formularul DEER. VerificaÈ›i dacÄƒ È™ablonul oficial este disponibil.")
-    safe_name = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in str((client or {}).get("name") or "client")).strip().replace(" ", "_")
-    case_name = "loc_nou" if rec.get("request_kind") == "nou" else "spor_putere"
-    filename = f"DEER_Anexa1_{case_name}_{safe_name}.docx"
-    return Response(content=payload, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    headers={"Content-Disposition": disp("attachment", filename)})
-
-
-@api_router.get("/power/{item_id}/official-annex")
-async def power_official_annex(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    """Download the selected operator's official Annex 1, prefilled only where safe."""
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "power", item_id)
-    client = await get_client(user["id"], rec)
-    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    pros = {}
-    if rec.get("pros_id") and await db.prosumator.find_one(
-        {**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}
-    ):
-        pros, pclient, settings, _ = await dossier_ctx(user, rec["pros_id"])
-        client = {**(pclient or {}), **(client or {})}
-    else:
-        from atr_equipment import from_request
-        pros = from_request(rec, field="power_cef")
-
-    guard_power_prosumer_scope(rec, pros)
-    operator_key = ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator"))
-    if not operator_key:
-        raise HTTPException(status_code=422, detail="SelectaÈ›i operatorul de distribuÈ›ie Ã®n dosar.")
-    is_new = rec.get("request_kind") == "nou"
-    case = "loc nou" if is_new else "spor de putere"
-    annex_rec = {
-        **rec,
-        "operator": rec.get("operator") or pros.get("operator") or client.get("operator"),
-        "request_type": "nou" if is_new else "spor",
-        "deer_case": case,
-        "kind": rec.get("kind") or "loc de consum È™i de producere",
-    }
-    if rec.get("requested_kva") not in (None, "") and annex_rec.get("p_abs_kva") in (None, ""):
-        annex_rec["p_abs_kva"] = rec["requested_kva"]
-
-    if operator_key == "deer":
-        client_kind = str(client.get("kind") or rec.get("applicant_type") or "").strip().casefold()
-        applicant_type = rec.get("applicant_type")
-        if not applicant_type:
-            if "jurid" in client_kind or client_kind in ("pj", "company", "firmÄƒ", "firma"):
-                applicant_type = "PersoanÄƒ juridicÄƒ"
-            elif "fizic" in client_kind or client_kind in ("pf", "individual"):
-                applicant_type = "PersoanÄƒ fizicÄƒ"
-            else:
-                raise HTTPException(status_code=422, detail="SelectaÈ›i tipul clientului Ã®n fiÈ™a clientului Ã®nainte de generarea anexei oficiale.")
-        annex_rec["applicant_type"] = applicant_type
-        try:
-            payload = ATR.render_deer_official_docx(annex_rec, client or {}, settings, pros or {})
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-        except Exception:
-            logger.exception("DEER power official annex generation failed")
-            raise HTTPException(status_code=500, detail="Nu am putut genera formularul oficial DEER.")
-        safe_name = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in str((client or {}).get("name") or "client")).strip().replace(" ", "_")
-        filename = f"DEER_Anexa1_{'loc_nou' if is_new else 'spor_putere'}_{safe_name}.docx"
-        return Response(content=payload, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        headers={"Content-Disposition": disp("attachment", filename)})
-
-    from atr_routes import _registry_forms_for_request, _fetch_registry_annex, _prefill_official_pdf
-    annex_no, forms = await _registry_forms_for_request(operator_key, annex_rec, pros or {})
-    if not annex_no or not forms:
-        raise HTTPException(status_code=404, detail="Nu existÄƒ un formular oficial verificat pentru tipul cererii È™i operatorul selectat. VerificaÈ›i Registrul formularelor oficiale.")
-    try:
-        payload, filename = await _fetch_registry_annex(forms[0], operator_key)
-    except Exception as exc:
-        logger.warning("Official power annex fetch failed (%s): %s", operator_key, exc)
-        raise HTTPException(status_code=502, detail="Formularul oficial al operatorului nu este disponibil momentan. VerificaÈ›i Registrul formularelor oficiale.")
-    if filename.lower().endswith(".pdf"):
-        payload, _filled_fields = _prefill_official_pdf(payload, annex_rec, client or {}, pros or {})
-        media_type = "application/pdf"
-    elif filename.lower().endswith(".docx"):
-        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    else:
-        raise HTTPException(status_code=502, detail="Formatul formularului oficial nu este acceptat.")
-    return Response(content=payload, media_type=media_type,
-                    headers={"Content-Disposition": disp("attachment", filename)})
-
-
-@api_router.get("/power/{item_id}/pdf")
-async def power_pdf(item_id: str, full: int = 0, authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "power", item_id)
-    client = await get_client(user["id"], rec)
-    base = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
-    pros, auto, info = None, {}, None
-    if rec.get("pros_id") and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": rec["pros_id"]}, {"id": 1}):
-        pros, pclient, ps, info = await dossier_ctx(user, rec["pros_id"])
-        client = client or pclient
-        base = ps
-        bykey = {p["key"]: p for p in info["positions"]}
-        auto = {"h": [bykey.get("receptie")], "i": [bykey.get("priza")], "k": [bykey.get("schema")],
-                "j": [p for p in info["positions"] if p.get("source") == "catalog" and p.get("files")]}
-    else:
-        from atr_equipment import from_request
-        pros = from_request(rec, field="power_cef") or None
-    guard_power_prosumer_scope(rec, pros or {})
-    power_catalog_files = []
-    direct_catalog_complete = False
-    if pros:
-        from atr_equipment import catalog_documents_complete as direct_catalog_documents_complete
-        await auto_import_selected_catalog_documents(user, pros)
-        power_catalog_files = await catalog_files(user["id"], pros)
-        if info is None:
-            direct_catalog_complete = direct_catalog_documents_complete(pros.get("cef"), power_catalog_files)
-        else:
-            pros, pclient, base, info = await dossier_ctx(user, rec["pros_id"])
-            client = client or pclient
-    att = rec.get("attachments") or {}
-    attached = {k for k, v in att.items() if v}
-    if pros and info is None:
-        if direct_catalog_complete:
-            attached.add("j")
-        else:
-            attached.discard("j")
-    # Only mark auto-linked source documents present after the prosumer opis has
-    # cleared their missing-data and approval checks. Draft PDFs may still be
-    # included in the full bundle, but they cannot make Anexa 1 appear complete.
-    source_positions = {
-        "h": (auto.get("h") or [None])[0],
-        "i": (auto.get("i") or [None])[0],
-        "k": (auto.get("k") or [None])[0],
-    }
-    for key, position in source_positions.items():
-        if position and position.get("auto_status") in ("generat", "ataÈ™at"):
-            attached.add(key)
-    if pros and info is not None and not rec.get("is_test") and catalog_documents_complete(pros, info.get("positions", [])):
-        attached.add("j")
-    parts = [PWR.render_anexa1(rec, client, base, pros or {}, attached, ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")))]
-    unavailable = []
-    annex_registry_issue = ""
-    if pros and info is not None and not rec.get("is_test"):
-        # Use the same per-model catalog evidence as the prosumer and ATR dossiers;
-        # a datasheet for one model cannot satisfy another model's requirement.
-        if not catalog_documents_complete(pros, info.get("positions", [])):
-            attached.discard("j")
-            parts[0] = PWR.render_anexa1(rec, client, base, pros, attached,
-                ATR.op_key(rec.get("operator"), pros.get("operator"), client.get("operator")))
-    if full:
-        operator_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
-        is_new = rec.get("request_kind") == "nou"
-        annex_rec = {
-            **rec,
-            "operator": rec.get("operator") or (pros or {}).get("operator") or client.get("operator"),
-            "request_type": "nou" if is_new else "spor",
-            "deer_case": "loc nou" if is_new else "spor de putere",
-            "kind": rec.get("kind") or "loc de consum È™i de producere",
-        }
-        if rec.get("requested_kva") not in (None, "") and annex_rec.get("p_abs_kva") in (None, ""):
-            annex_rec["p_abs_kva"] = rec["requested_kva"]
-        if operator_key:
-            if operator_key == "deer":
-                annex_title = "Anexa 1 oficialÄƒ DEER (DOCX â€” descÄƒrcare separatÄƒ)"
-                annex_registry_issue = "Formularul oficial DEER este DOCX È™i se descarcÄƒ separat din butonul Â«Anexa 1 oficialÄƒ DEERÂ»; PDF-ul dosarului conÈ›ine fiÈ™a de precompletare, nu formularul operatorului."
-                annex_no, forms = 1, [{"title": annex_title}]
-            else:
-                from atr_routes import _registry_forms_for_request, _fetch_registry_annex, _prefill_official_pdf
-                annex_no, forms = await _registry_forms_for_request(operator_key, annex_rec, pros or {})
-                annex_title = (forms[0].get("title") if forms else "")
-            if annex_no:
-                parts.append(ATR.render_operator_annex_prep(
-                    annex_rec, client or {}, pros or {}, operator_key, annex_no, annex_title))
-            if not forms:
-                annex_registry_issue = annex_registry_issue or f"Nu existÄƒ un formular oficial verificat Ã®n registru pentru Anexa {annex_no or 1} a operatorului selectat."
-            elif operator_key != "deer":
-                try:
-                    official_data, official_name = await _fetch_registry_annex(forms[0], operator_key)
-                    if official_name.lower().endswith(".pdf"):
-                        completed_data, filled_fields = _prefill_official_pdf(
-                            official_data, annex_rec, client or {}, pros or {})
-                        parts.append(completed_data if filled_fields else official_data)
-                        if not filled_fields:
-                            annex_registry_issue = "Formularul PDF oficial nu are cÃ¢mpuri text semantice compatibile; originalul È™i fiÈ™a DNS de precompletare sunt incluse, iar formularul trebuie verificat/completat manual."
-                    else:
-                        annex_registry_issue = f"Formularul oficial {official_name} este DOCX È™i se descarcÄƒ separat din butonul Â«Anexa 1 oficialÄƒ ODÂ»; PDF-ul dosarului nu Ã®l poate Ã®ncorpora."
-                except Exception as exc:
-                    logger.warning("Official power annex could not be included: %s", exc)
-                    annex_registry_issue = "Formularul oficial nu a putut fi preluat la generare; descÄƒrcaÈ›i-l separat din Registrul formularelor oficiale."
-        else:
-            annex_registry_issue = "SelectaÈ›i operatorul de distribuÈ›ie pentru a stabili formularul oficial aplicabil."
-        for k, title in PWR.DOCS:
-            for f in att.get(k) or []:
-                try:
-                    data, ct = get_object(f["storage_path"])
-                    parts.append(OPIS.file_pdf(data, ct))
-                except Exception as e:
-                    logger.error(f"power attach {k}: {e}")
-                    unavailable.append(f"{title} â€” {f.get('original_filename') or 'fiÈ™ier ataÈ™at'}")
-            # Include model-linked catalog evidence alongside manual attachments.
-            if not att.get(k) or k == "j":
-                for p in auto.get(k) or []:
-                    try:
-                        if p:
-                            parts += await OPIS.position_pdf(p, pros, client, base, info["titles"], get_object)
-                    except Exception as e:
-                        logger.error(f"power auto {k}: {e}")
-                        unavailable.append(p.get("title") or title)
-        if info is None and power_catalog_files:
-            for catalog_file in power_catalog_files:
-                try:
-                    payload, content_type = get_object(catalog_file["storage_path"])
-                    parts.append(OPIS.file_pdf(payload, content_type))
-                except Exception as exc:
-                    logger.warning("Power direct catalog PDF could not be included: %s", exc)
-                    unavailable.append(catalog_file.get("original_filename") or catalog_file.get("model") or "fiÈ™Äƒ catalog")
-    new_request = rec.get("request_kind") == "nou"
-    juridical = "jurid" in str((client or {}).get("kind") or "").lower()
-    required_keys = {"a"} | ({"b"} if juridical else set()) | ({"c", "d", "e", "f", "g"} if new_request else {"h", "i", "j", "k"})
-    missing_keys = sorted(k for k in required_keys if k not in attached)
-    pwr_titles = dict(PWR.DOCS)
-    missing_titles = [f"Document obligatoriu lipsÄƒ: {pwr_titles.get(k, k)}" for k in missing_keys]
-    if annex_registry_issue:
-        missing_titles.append(annex_registry_issue)
-    report = OPIS._incomplete_report({"positions": [], "common_missing": missing_titles}, unavailable)
-    if full and report:
-        parts.append(report)
-    w = PdfWriter()
-    for b in parts:
-        try:
-            for pg in PdfReader(io.BytesIO(b)).pages:
-                w.add_page(pg)
-        except Exception as e:
-            logger.error(f"power merge: {e}")
-    o = io.BytesIO(); w.write(o)
-    incomplete = bool(missing_keys or unavailable or annex_registry_issue)
-    name = f"{'DOSAR_SPOR_PUTERE' if full else 'ANEXA1_DEER'}_{(client.get('name') or rec.get('client_name') or '').replace(' ', '_')}{'_INCOMPLET' if full and incomplete else ''}.pdf"
-    return Response(content=o.getvalue(), media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
-
-@api_router.get("/power/{item_id}/package.zip")
-async def power_package(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
-    """Create a transfer-ready ZIP with the dossier, OD annex, source files and separate schema/PRAM."""
-    import io
-    import os
-    import re
-    import zipfile
-
-    user = await user_from_token(authorization, auth)
-    rec = await check_access(user, "power", item_id)
-    package = io.BytesIO()
-    notes = [
-        "DNS Energy â€” pachet pentru depunerea cererii de spor / racordare.",
-        "VerificaÈ›i documentele, datele È™i versiunea formularelor Ã®n portalul oficial al operatorului Ã®nainte de depunere.",
-        "Documentele generate sunt marcate ciornÄƒ cÃ¢nd lipsesc date sau aprobarea tehnicÄƒ; pachetul nu atestÄƒ conformitatea legalÄƒ.",
-    ]
-    total_size = 0
-    max_size = 100 * 1024 * 1024
-
-    def add_file(archive, arcname, payload):
-        nonlocal total_size
-        payload = bytes(payload)
-        if len(payload) > max_size or total_size + len(payload) > max_size:
-            notes.append(f"FiÈ™ier omis, limita pachetului de 100 MB a fost depÄƒÈ™itÄƒ: {arcname}")
-            return False
-        safe_parts = [part for part in str(arcname).replace("\\", "/").split("/") if part not in ("", ".", "..")]
-        safe_name = "/".join(safe_parts) or "document"
-        archive.writestr(safe_name, payload)
-        total_size += len(payload)
-        return True
-
-    client = await get_client(user["id"], rec) or {}
-    client_name = str(client.get("name") or rec.get("client_name") or "client")
-    safe_client = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in client_name).strip().replace(" ", "_") or "client"
-    pdf_response = await power_pdf(item_id, full=1, authorization=authorization, auth=auth)
-
-    with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        add_file(archive, f"DOSAR_SPOR_PUTERE_{safe_client}.pdf", pdf_response.body)
-
-        try:
-            official_response = await power_official_annex(item_id, authorization=authorization, auth=auth)
-            disposition = official_response.headers.get("content-disposition", "")
-            match = re.search(r'filename="?([^";]+)"?', disposition, re.I)
-            official_name = os.path.basename(match.group(1)) if match else "Anexa1_oficiala_OD"
-            add_file(archive, f"Anexe oficiale/{official_name}", official_response.body)
-            notes.append(f"Formular oficial inclus: {official_name}. VerificaÈ›i È™i semnaÈ›i varianta cerutÄƒ de operator.")
-        except HTTPException as exc:
-            notes.append(f"Formularul oficial OD nu a putut fi inclus automat (HTTP {exc.status_code}): {exc.detail}")
-
-        from atr_routes import DEER_AUTHENTICITY_URL, DEER_GDPR_URL, DEER_IMPUTERNICIRE_URL, _fetch_registry_annex
-        pros_operator = ""
-        linked_pros = None
-        linked_pros_id = rec.get("pros_id")
-        if linked_pros_id:
-            linked_pros = await db.prosumator.find_one(
-                {**scope_q(user, "prosumator"), "id": linked_pros_id}, {"id": 1, "operator": 1})
-        operator_key = ATR.op_key(rec.get("operator"), (linked_pros or {}).get("operator"), client.get("operator"))
-        if operator_key == "deer":
-            required_official_docs = [
-                ("DeclaraÈ›ie oficialÄƒ DEER de autenticitate a datelor", DEER_AUTHENTICITY_URL),
-                ("NotÄƒ oficialÄƒ DEER de informare GDPR", DEER_GDPR_URL),
-            ]
-            if str(rec.get("submission_mode") or "").strip().casefold() == "prin Ã®mputernicit".casefold():
-                required_official_docs.append(("Model Ã®mputernicire DEER", DEER_IMPUTERNICIRE_URL))
-            for title, source_url in required_official_docs:
-                try:
-                    payload, filename = await _fetch_registry_annex({"title": title, "url": source_url}, "deer")
-                    add_file(archive, f"Anexe oficiale/{filename}", payload)
-                    notes.append(f"Document DEER inclus ca sursÄƒ oficialÄƒ necompletatÄƒ: {filename}. CompletaÈ›i È™i semnaÈ›i unde este cazul.")
-                except Exception as exc:
-                    logger.warning("DEER official document fetch failed (%s): %s", title, exc)
-                    notes.append(f"Document DEER obligatoriu/relevant indisponibil la generarea ZIP: {title}. DescÄƒrcaÈ›i-l de la {source_url}.")
-
-        owner_prefix = f"{APP_NAME}/uploads/{user['id']}/"
-        attachment_count = 0
-        for slot, files in (rec.get("attachments") or {}).items():
-            for entry in files or []:
-                path = str((entry or {}).get("storage_path") or "")
-                original = os.path.basename(str((entry or {}).get("original_filename") or f"{slot}.pdf"))
-                if not path.startswith(owner_prefix):
-                    notes.append(f"FiÈ™ier ataÈ™at ignorat deoarece nu aparÈ›ine spaÈ›iului acestui cont: {original}")
-                    continue
-                try:
-                    payload, _content_type = get_object(path)
-                    if add_file(archive, f"Documente ataÈ™ate/{slot}/{original}", payload):
-                        attachment_count += 1
-                except Exception:
-                    logger.exception("Power package attachment could not be read (%s)", path)
-                    notes.append(f"FiÈ™ier ataÈ™at indisponibil Ã®n stocare: {original}")
-        notes.append(f"FiÈ™iere ataÈ™ate separat incluse: {attachment_count}.")
-
-        pros_id = rec.get("pros_id")
-        if pros_id and await db.prosumator.find_one({**scope_q(user, "prosumator"), "id": pros_id}, {"id": 1}):
-            for key, label, filename in (
-                ("schema", "Schema monofilarÄƒ", f"Schema_monofilarÄƒ_{safe_client}.pdf"),
-                ("priza", "Buletin PRAM / prizÄƒ de pÄƒmÃ¢nt", f"Buletin_PRAM_{safe_client}.pdf"),
-            ):
-                try:
-                    response = await dossier_file(pros_id, key, download=1, authorization=authorization, auth=auth)
-                    add_file(archive, f"Documente separate/{filename}", response.body)
-                    notes.append(f"{label}: inclus separat; verificaÈ›i marcajul ciornÄƒ/aprobat È™i completitudinea Ã®nainte de depunere.")
-                except HTTPException as exc:
-                    notes.append(f"{label}: nu a putut fi generat/ataÈ™at (HTTP {exc.status_code}): {exc.detail}")
-        else:
-            notes.append("Schema È™i PRAM separat nu au putut fi extrase: dosarul de spor nu are un dosar de prosumator asociat.")
-
-        archive.writestr("CITESTE_INAINTE.txt", "\n".join(notes))
-
-    return Response(
-        content=package.getvalue(),
-        media_type="application/zip",
-        headers={"Content-Disposition": disp("attachment", f"Pachet_depunere_spor_{safe_client}.zip")},
-    )
-
-
-# ---------------- Semnare la distanÈ›Äƒ (semnÄƒturÄƒ electronicÄƒ simplÄƒ) ----------------
-import hashlib
-import re
-import secrets
-import base64
-import unicodedata
-from html import escape as hesc
-from mailer import send_email, EMAIL_FROM_NAME
-from reportlab.pdfgen import canvas as rlc
-from reportlab.lib.pagesizes import A4 as RA4
-from reportlab.lib.utils import ImageReader
-
-SIGN_ACTIVE = ("De trimis", "Link trimis", "Deschis")
-sha = lambda b: hashlib.sha256(b).hexdigest()
-now_iso = lambda: datetime.now(timezone.utc).isoformat()
-
-def sign_status(r: dict) -> str:
-    if r["status"] in SIGN_ACTIVE and r.get("expires_at") and r["expires_at"] < now_iso():
-        return "Expirat"
-    return r["status"]
-
-def signed_portal_active(r: dict, now: datetime | None = None) -> bool:
-    """Allow the client portal only after this request was signed, for 180 days."""
-    if r.get("status") != "Semnat" or not r.get("signed_at"):
-        return False
-    try:
-        signed_at = datetime.fromisoformat(str(r["signed_at"]).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return False
-    if signed_at.tzinfo is None:
-        signed_at = signed_at.replace(tzinfo=timezone.utc)
-    now = now or datetime.now(timezone.utc)
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
-    return signed_at <= now <= signed_at + timedelta(days=180)
-
-CLIENT_PORTAL_STAGES = [
-    "Dosar Ã®n pregÄƒtire", "Gata de depunere", "Depus la operatorul de distribuÈ›ie",
-    "Aviz tehnic emis", "Programat pentru montaj", "Montaj efectuat",
-    "Probe È™i punere Ã®n funcÈ›iune", "Prosumator activ",
-]
-
-def client_portal_stage(value: str | None) -> int | None:
-    plain = unicodedata.normalize("NFKD", str(value or "").casefold()).encode("ascii", "ignore").decode("ascii")
-    key = re.sub(r"[^a-z0-9]+", " ", plain).strip()
-    aliases = {
-        "in lucru": 0, "dosar in pregatire": 0, "in pregatire": 0,
-        "date de completat": 0, "documente de completat": 0,
-        "in verificare": 1, "gata de depunere": 1, "pregatit pentru depunere": 1, "dosar generat": 1,
-        "depus": 2, "depusa": 2, "depus la operator": 2, "depus la operatorul de distributie": 2,
-        "in asteptare la operator": 2, "asteapta operator": 2, "completari cerute": 2,
-        "completari solicitate": 2, "dosar depus": 2,
-        "atr emis": 3, "avizat": 3, "aviz emis": 3, "aviz tehnic emis": 3, "factura atr": 3,
-        "asteapta instalare": 4, "programat pentru montaj": 4, "in executie": 4,
-        "instalat": 5, "montaj efectuat": 5,
-        "pv teste pif": 6, "probe si pif": 6, "probe si punere in functiune": 6,
-        "punere in functiune": 6,
-        "prosumator activ": 7, "finalizat": 7,
-    }
-    return aliases.get(key)
-
-def sign_public(r: dict) -> dict:
-    out = {k: r.get(k) for k in ("id", "group_id", "dossier_id", "module", "client_name", "pos_key", "doc_title", "signer_name", "signer_email",
-                                 "signer_phone", "role", "expires_at", "created_at", "signed_at", "refused_reason", "doc_sha256", "signed_sha256", "revoked")}
-    out["status"] = sign_status(r)
-    out["history"] = r.get("history", [])
-    out["has_signed_file"] = bool(r.get("signed_file"))
-    return out
-
-def client_meta(request: Request) -> dict:
-    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "")).split(",")[0].strip()
-    return {"ip": ip, "ua": request.headers.get("user-agent", "")[:300]}
-
-def hist(action: str, meta: dict = None, detail: str = "") -> dict:
-    return {"at": now_iso(), "action": action, "detail": detail, **(meta or {})}
-
-def parse_days(v) -> int:
-    try:
-        d = int(v if v not in (None, "") else 7)
-        if str(v).strip() not in ("", "None") and float(v) != d:
-            raise ValueError
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Valabilitatea trebuie sÄƒ fie un numÄƒr Ã®ntreg de zile (1â€“90)")
-    if not 1 <= d <= 90:
-        raise HTTPException(status_code=400, detail="Valabilitatea trebuie sÄƒ fie Ã®ntre 1 È™i 90 de zile")
-    return d
-
-def new_token(days: float):
-    t = secrets.token_urlsafe(32)
-    return t, sha(t.encode()), (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
-
-@api_router.post("/sign/requests")
-async def sign_create(request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True); need(user, "sign_remote", True)
-    b = await request.json()
-    did, keys, signers = b.get("dossier_id"), b.get("pos_keys") or [], b.get("signers") or []
-    days = parse_days(b.get("expires_days"))
-    if not keys or not signers:
-        raise HTTPException(status_code=400, detail="Alege documentele È™i semnatarii")
-    if len(signers) != 1:
-        raise HTTPException(status_code=400, detail="Documentele dosarului se trimit la semnare doar cÄƒtre client (un singur semnatar)")
-    signers = [{**signers[0], "role": "Beneficiar"}]
-    for s in signers:
-        if not (s.get("name") or "").strip() or "@" not in (s.get("email") or ""):
-            raise HTTPException(status_code=400, detail="Fiecare semnatar are nevoie de nume È™i e-mail valid (pentru codul de verificare)")
-    return await create_sign_requests(user, did, keys, signers, days)
-
-async def create_sign_requests(user, did, keys, signers, days):
-    rec, client, settings, info = await dossier_ctx(user, did)
-    pos = {p["key"]: p for p in info["positions"]}
-    out = []
-    st_sld = SZ.state(rec, client, settings)
-    if any(k in ("schema", "fisa_tehnica") for k in keys) and st_sld["status"] != "approved":
-        raise HTTPException(status_code=400, detail="Schema monofilarÄƒ / fiÈ™a tehnicÄƒ pot fi trimise la semnare doar dupÄƒ aprobarea tehnicÄƒ")
-    for k in keys:
-        if k not in pos:
-            raise HTTPException(status_code=404, detail=f"PoziÈ›ie inexistentÄƒ: {k}")
-        parts = await OPIS.position_pdf(pos[k], rec, client, settings, info["titles"], get_object, force_generated=True)
-        if not parts:
-            raise HTTPException(status_code=400, detail=f"Documentul â€ž{pos[k]['title']}â€ nu poate fi generat")
-        w = PdfWriter()
-        for part in parts:
-            for pg in PdfReader(io.BytesIO(part)).pages:
-                w.add_page(pg)
-        o = io.BytesIO(); w.write(o); pdf = o.getvalue()
-        gid = str(uuid.uuid4())
-        stored = put_object(f"{APP_NAME}/sign/{user['id']}/{gid}/original.pdf", pdf, "application/pdf")
-        for s in signers:
-            t, th, exp = new_token(days)
-            r = _new(user, {"group_id": gid, "dossier_id": did, "client_name": client.get("name") or rec.get("client_name"), "pos_key": k,
-                            "doc_title": pos[k]["title"], "doc_path": stored["path"], "doc_sha256": sha(pdf), "signer_name": s["name"].strip(),
-                            "signer_email": s["email"].strip(), "signer_phone": (s.get("phone") or "").strip(), "role": (s.get("role") or "Beneficiar").strip(),
-                            "status": "De trimis", "token_hash": th, "expires_at": exp, "otp_sends": 0, "otp_attempts": 0,
-                            "sld_hash": st_sld["fingerprint"] if k in ("schema", "fisa_tehnica") else None,
-                            "pif_hash": OPIS.PIFDOC.fingerprint(rec) if k == "pif_pv" else None, "is_test": bool(rec.get("is_test")),
-                            "history": [hist("Cerere creatÄƒ", None, f"de {user.get('email')}; link valabil pÃ¢nÄƒ la {exp[:16]} UTC")]})
-            await db.sign_requests.insert_one(dict(r))
-            out.append({**sign_public(r), "token": t})
-        await db.prosumator.update_one({"id": did, "owner": user["id"]}, {"$set": {f"opis.{k}.status": "necesitÄƒ semnÄƒturÄƒ"}})
-    await audit(user, "cerere semnare", "prosumator", did, keys)
-    return out
-
-@api_router.get("/sign/requests")
-async def sign_list(dossier_id: Optional[str] = None, client_name: Optional[str] = None, module: str = "prosumator", user: dict = Depends(get_current_user)):
-    need(user, "sign_remote")
-    q = {"owner": user["id"]}
-    if not is_admin(user):
-        q["dossier_id"] = {"$in": [x["id"] for m in ("prosumator", "diu") for x in await db[m].find(scope_q(user, m), {"id": 1}).to_list(5000)]}
-    if dossier_id:
-        if module not in ("prosumator", "diu"):
-            raise HTTPException(status_code=400, detail="Modul invalid")
-        await check_access(user, module, dossier_id)
-        q["dossier_id"] = dossier_id
-    if client_name:
-        q["client_name"] = client_name
-    return [sign_public(r) for r in await db.sign_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)]
-
-async def sign_own(user, rid):
-    r = await db.sign_requests.find_one({"id": rid, "owner": user["id"]}, {"_id": 0})
-    if not r:
-        raise HTTPException(status_code=404, detail="Cerere inexistentÄƒ")
-    if not is_admin(user):
-        if (r.get("module") or "prosumator") == "contracts":
-            need(user, "oferte")
-        else:
-            await check_access(user, r.get("module") or "prosumator", r["dossier_id"])
-    return r
-
-@api_router.post("/sign/requests/{rid}/sent")
-async def sign_mark_sent(rid: str, request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True); need(user, "sign_remote", True)
-    r = await sign_own(user, rid)
-    ch = ((await request.json()).get("channel") or "copiat")[:30]
-    upd = {"$push": {"history": hist("Link trimis", None, f"canal: {ch}; de {user.get('email')}")}}
-    if sign_status(r) == "De trimis":
-        upd["$set"] = {"status": "Link trimis"}
-    await db.sign_requests.update_one({"id": rid}, upd)
-    return {"ok": True}
-
-@api_router.post("/sign/requests/{rid}/new-link")
-async def sign_new_link(rid: str, request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True); need(user, "sign_remote", True)
-    r = await sign_own(user, rid)
-    if r["status"] in ("Semnat", "Refuzat"):
-        raise HTTPException(status_code=400, detail="Documentul a fost deja semnat sau refuzat â€” creeazÄƒ o cerere nouÄƒ")
-    days = parse_days((await request.json()).get("expires_days"))
-    t, th, exp = new_token(days)
-    await db.sign_requests.update_one({"id": rid}, {"$set": {"token_hash": th, "expires_at": exp, "status": "De trimis", "revoked": False, "otp_hash": None,
-                                                              "otp_attempts": 0, "otp_sends": 0, "otp_last": None}, "$push": {"history": hist("Link nou generat", None, f"linkul anterior invalidat; valabil pÃ¢nÄƒ la {exp[:16]} UTC; de {user.get('email')}")}})
-    return {**sign_public({**r, "status": "De trimis", "expires_at": exp}), "token": t}
-
-@api_router.post("/sign/requests/{rid}/revoke")
-async def sign_revoke(rid: str, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True); need(user, "sign_remote", True)
-    r = await sign_own(user, rid)
-    if r["status"] in ("Semnat", "Refuzat"):
-        raise HTTPException(status_code=400, detail="Cererea este deja Ã®nchisÄƒ")
-    await db.sign_requests.update_one({"id": rid}, {"$set": {"status": "Expirat", "revoked": True, "token_hash": None},
-                                                    "$push": {"history": hist("Link revocat", None, f"de {user.get('email')}")}})
-    return {"ok": True}
-
-@api_router.get("/sign/requests/{rid}/file")
-async def sign_file(rid: str, kind: str = "signed", authorization: str = Header(None), auth: str = Query(None)):
-    user = await user_from_token(authorization, auth)
-    r = await sign_own(user, rid)
-    path = r.get("signed_file", {}).get("storage_path") if kind == "signed" else r["doc_path"]
-    if not path:
-        raise HTTPException(status_code=404, detail="Documentul semnat nu existÄƒ Ã®ncÄƒ")
-    data, _ = get_object(path)
-    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{kind}_{r['pos_key']}.pdf")})
-
-async def sign_by_token(token: str) -> dict:
-    r = await db.sign_requests.find_one({"token_hash": sha(token.encode())}, {"_id": 0}) if token else None
-    if not r:
-        raise HTTPException(status_code=404, detail="Link invalid sau revocat")
-    return r
-
-def public_dossier_messages(messages) -> list[dict]:
-    return public_client_messages(messages)
-
-def public_client_access(r: dict) -> bool:
-    return (r.get("module") or "prosumator") == "prosumator" and (
-        sign_status(r) in SIGN_ACTIVE or signed_portal_active(r)
-    )
-
-async def client_portal_payload(r: dict) -> dict:
-    rec = await db.prosumator.find_one(
-        {"id": r.get("dossier_id"), "owner": r.get("owner")},
-        {"_id": 0, "workflow_status": 1, "status": 1, "operator_stage": 1, "client_messages": 1},
-    )
-    current = str((rec or {}).get("workflow_status") or (rec or {}).get("status") or
-                  (rec or {}).get("operator_stage") or "Dosar Ã®n pregÄƒtire")
-    return {
-        "status": current,
-        "stage_index": client_portal_stage(current),
-        "stages": CLIENT_PORTAL_STAGES,
-        "signed_document_available": bool((r.get("signed_file") or {}).get("storage_path")),
-        "client_messages": public_dossier_messages((rec or {}).get("client_messages")),
-    }
-
-def clean_message_attachments(value, owner: str) -> list[dict]:
-    if value is None:
-        return []
-    if not isinstance(value, list) or len(value) > 5:
-        raise HTTPException(status_code=400, detail="PoÈ›i ataÈ™a cel mult 5 fiÈ™iere la un mesaj")
-    prefix = f"{APP_NAME}/uploads/{owner}/"
-    files = []
-    for item in value:
-        if not isinstance(item, dict):
-            raise HTTPException(status_code=400, detail="AtaÈ™ament invalid")
-        path = str(item.get("storage_path") or "")
-        if not path.startswith(prefix) or ".." in path:
-            raise HTTPException(status_code=403, detail="AtaÈ™amentul nu aparÈ›ine acestui cont")
-        try:
-            size = int(item.get("size") or 0)
-        except (TypeError, ValueError):
-            size = 0
-        files.append({"storage_path": path, "original_filename": str(item.get("original_filename") or "document")[:255],
-                      "content_type": str(item.get("content_type") or "application/octet-stream")[:120],
-                      "size": max(0, min(size, MAX_UPLOAD_BYTES))})
-    return files
-
-def clean_message_text(value) -> str:
-    text = str(value or "").strip()
-    if not text or len(text) > 2000:
-        raise HTTPException(status_code=400, detail="Mesajul trebuie sÄƒ aibÄƒ Ã®ntre 1 È™i 2.000 de caractere")
-    return text
-
-@api_router.get("/dossier/{did}/client-messages")
-async def dossier_client_messages(did: str, user: dict = Depends(get_current_user)):
-    guard("prosumator", user)
-    rec = await check_access(user, "prosumator", did)
-    return {"messages": rec.get("client_messages") or []}
-
-@api_router.post("/dossier/{did}/client-messages")
-async def dossier_add_client_message(did: str, request: Request, user: dict = Depends(get_current_user)):
-    guard("prosumator", user, write=True)
-    rec = await check_access(user, "prosumator", did)
-    body = await request.json()
-    audience = body.get("audience") or "client"
-    if audience not in ("client", "internal"):
-        raise HTTPException(status_code=400, detail="DestinaÈ›ie mesaj invalidÄƒ")
-    attachments = clean_message_attachments(body.get("attachments"), str(user["id"])) if audience == "client" else []
-    raw_text = str(body.get("text") or "").strip()
-    message_text = clean_message_text(raw_text) if raw_text else ""
-    if not message_text and not attachments:
-        raise HTTPException(status_code=400, detail="AdaugÄƒ un mesaj sau un ataÈ™ament")
-    message = {"id": str(uuid.uuid4()), "sender": "team", "sender_name": str(user.get("name") or user.get("email") or "Echipa DNS")[:120],
-               "audience": audience, "text": message_text, "attachments": attachments, "created_at": now_iso()}
-    await db.prosumator.update_one({"id": did, "owner": rec.get("owner")}, {"$push": {"client_messages": {"$each": [message], "$slice": -300}}})
-    await audit(user, "mesaj Ã®n dosar", "prosumator", did, ["client_messages"])
-    return {"message": message}
-
-@api_router.get("/public/sign/{token}/messages")
-async def public_sign_messages(token: str):
-    r = await sign_by_token(token)
-    if not public_client_access(r):
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    rec = await db.prosumator.find_one({"id": r.get("dossier_id"), "owner": r.get("owner")}, {"_id": 0, "client_messages": 1})
-    return {"messages": public_dossier_messages((rec or {}).get("client_messages"))}
-
-@api_router.get("/public/sign/{token}/message-files/{message_id}/{file_index}")
-async def public_sign_message_file(token: str, message_id: str, file_index: int):
-    r = await sign_by_token(token)
-    if not public_client_access(r):
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    rec = await db.prosumator.find_one({"id": r.get("dossier_id"), "owner": r.get("owner")}, {"_id": 0, "client_messages": 1})
-    message = next((item for item in (rec or {}).get("client_messages", []) if isinstance(item, dict) and item.get("id") == message_id and item.get("audience") == "client"), None)
-    files = (message or {}).get("attachments") or []
-    if file_index < 0 or file_index >= len(files):
-        raise HTTPException(status_code=404, detail="AtaÈ™amentul nu existÄƒ")
-    item = files[file_index]
-    storage_path = str(item.get("storage_path") or "")
-    if not is_client_upload_path(storage_path, APP_NAME, str(r.get("owner") or ""), str(r.get("id") or "")):
-        raise HTTPException(status_code=404, detail="AtaÈ™amentul nu existÄƒ")
-    data, content_type = get_object(storage_path)
-    return Response(content=data, media_type=content_type or "application/octet-stream",
-                    headers={"Content-Disposition": disp("attachment", item.get("original_filename") or "document"),
-                             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
-
-
-@api_router.post("/public/sign/{token}/message-uploads")
-async def public_sign_message_upload(token: str, file: UploadFile = File(...)):
-    r = await sign_by_token(token)
-    if not public_client_access(r):
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    data = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="FiÈ™ierul depÄƒÈ™eÈ™te limita de 25 MB")
-    if not data:
-        raise HTTPException(status_code=400, detail="FiÈ™ierul este gol")
-    filename = str(file.filename or "document.pdf")
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
-    content_type = str(file.content_type or "").split(";", 1)[0].strip().lower()
-    if not content_type or content_type == "application/octet-stream":
-        content_type = MIME_TYPES.get(ext, "application/octet-stream")
-    content_type = validate_upload_payload(filename, content_type, data)
-    quota = await db.sign_requests.update_one(
-        {"id": r["id"], "token_hash": r["token_hash"], "$or": [
-            {"client_upload_count": {"$lt": 10}}, {"client_upload_count": {"$exists": False}},
-        ]},
-        {"$inc": {"client_upload_count": 1}},
-    )
-    if not quota.modified_count:
-        raise HTTPException(status_code=429, detail="Ai atins limita de 10 fiÈ™iere Ã®ncÄƒrcate prin acest link")
-    stored = put_object(f"{APP_NAME}/uploads/{r['owner']}/sign/{r['id']}/{uuid.uuid4()}.{ext}", data, content_type)
-    original = filename.replace("\\", "/").rsplit("/", 1)[-1][:255] or "document"
-    return {"file": {"storage_path": stored["path"], "original_filename": original,
-                     "content_type": content_type, "size": len(data)}}
-
-
-@api_router.post("/public/sign/{token}/messages")
-async def public_sign_add_message(token: str, request: Request):
-    r = await sign_by_token(token)
-    if not public_client_access(r):
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    did, owner = r.get("dossier_id"), r.get("owner")
-    rec = await db.prosumator.find_one({"id": did, "owner": owner}, {"_id": 0, "client_messages": 1})
-    if not rec:
-        raise HTTPException(status_code=404, detail="Dosarul nu mai este disponibil")
-    messages = rec.get("client_messages") or []
-    if len(messages) >= 300 or sum(1 for item in messages if isinstance(item, dict) and item.get("sender") == "client") >= 100:
-        raise HTTPException(status_code=429, detail="A fost atinsÄƒ limita de mesaje pentru acest dosar")
-    last = next((item for item in reversed(messages) if isinstance(item, dict) and item.get("sender") == "client"), None)
-    if last and last.get("created_at"):
-        try:
-            last_at = datetime.fromisoformat(last["created_at"].replace("Z", "+00:00"))
-            if datetime.now(timezone.utc) - last_at < timedelta(seconds=10):
-                raise HTTPException(status_code=429, detail="AÈ™teaptÄƒ cÃ¢teva secunde Ã®nainte de a trimite alt mesaj")
-        except ValueError:
-            pass
-    body = await request.json()
-    attachments = clean_message_attachments(body.get("attachments"), str(owner))
-    if any(not is_client_upload_path(item["storage_path"], APP_NAME, str(owner), str(r["id"])) for item in attachments):
-        raise HTTPException(status_code=403, detail="AtaÈ™amentul nu a fost Ã®ncÄƒrcat prin acest link de semnare")
-    raw_text = str(body.get("text") or "").strip()
-    message_text = clean_message_text(raw_text) if raw_text else ""
-    if not message_text and not attachments:
-        raise HTTPException(status_code=400, detail="AdaugÄƒ un mesaj sau cel puÈ›in un fiÈ™ier")
-    message = {"id": str(uuid.uuid4()), "sender": "client", "sender_name": str(r.get("signer_name") or "Client")[:120],
-               "audience": "client", "text": message_text, "attachments": attachments, "created_at": now_iso()}
-    await db.prosumator.update_one({"id": did, "owner": owner}, {"$push": {"client_messages": {"$each": [message], "$slice": -300}}})
-    await db.sign_requests.update_one({"id": r["id"]}, {"$push": {"history": hist("Mesaj de la client", client_meta(request))}})
-    return {"message": message}
-
-def mask(e: str) -> str:
-    u, _, d = e.partition("@")
-    return (u[:2] + "***@" + d) if d else "***"
-
-@api_router.get("/public/sign/{token}")
-async def pub_sign_info(token: str, request: Request):
-    r = await sign_by_token(token)
-    st = sign_status(r)
-    if st == "Expirat" and r["status"] != "Expirat":
-        await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Expirat"}, "$push": {"history": hist("Link expirat", client_meta(request))}})
-    elif st in SIGN_ACTIVE:
-        upd = {"$push": {"history": hist("Document deschis", client_meta(request))}}
-        if st != "Deschis":
-            upd["$set"] = {"status": "Deschis", "opened_at": now_iso()}
-        await db.sign_requests.update_one({"id": r["id"]}, upd)
-        st = "Deschis"
-    s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
-    pages = 0
-    if st in SIGN_ACTIVE:
-        import pymupdf
-        data, _ = get_object(r["doc_path"])
-        pages = pymupdf.open(stream=data, filetype="pdf").page_count
-    portal = await client_portal_payload(r) if public_client_access(r) else None
-    dossier_messages = (portal or {}).get("client_messages", [])
-    return {"status": st, "pages": pages, "doc_title": r["doc_title"], "signer_name": r["signer_name"], "role": r["role"], "client_name": r["client_name"],
-            "company": s.get("company") or "DNS HOSTESS SRL", "email_masked": mask(r["signer_email"]), "expires_at": r["expires_at"],
-            "doc_sha256": r["doc_sha256"], "signed_at": r.get("signed_at"), "client_messages": dossier_messages,
-            "portal": portal if st == "Semnat" and signed_portal_active(r) else None}
-
-@api_router.get("/public/sign/{token}/signed-document")
-async def pub_signed_document(token: str):
-    r = await sign_by_token(token)
-    if not signed_portal_active(r):
-        raise HTTPException(status_code=410, detail="Portalul clientului nu mai este activ")
-    path = (r.get("signed_file") or {}).get("storage_path")
-    if not path:
-        raise HTTPException(status_code=404, detail="PDF-ul semnat nu este disponibil")
-    data, content_type = get_object(path)
-    return Response(content=data, media_type=content_type or "application/pdf",
-                    headers={"Content-Disposition": 'inline; filename="document-semnat.pdf"',
-                             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
-
-@api_router.get("/public/sign/{token}/document")
-async def pub_sign_doc(token: str):
-    r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE:
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    data, _ = get_object(r["doc_path"])
-    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": 'inline; filename="document.pdf"'})
-
-@api_router.get("/public/sign/{token}/page/{n}")
-async def pub_sign_page(token: str, n: int):
-    import pymupdf
-    r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE:
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    data, _ = get_object(r["doc_path"])
-    d = pymupdf.open(stream=data, filetype="pdf")
-    if n < 0 or n >= d.page_count:
-        raise HTTPException(status_code=404, detail="PaginÄƒ inexistentÄƒ")
-    return Response(content=d[n].get_pixmap(dpi=150).tobytes("png"), media_type="image/png")
-
-@api_router.post("/public/sign/{token}/otp")
-async def pub_sign_otp(token: str, request: Request):
-    r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE:
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    if r.get("otp_sends", 0) >= 5:
-        raise HTTPException(status_code=429, detail="Ai cerut prea multe coduri. ContacteazÄƒ emitentul documentului.")
-    if r.get("otp_last") and r["otp_last"] > (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat():
-        raise HTTPException(status_code=429, detail="AÈ™teaptÄƒ 45 de secunde Ã®nainte de un cod nou")
-    code = f"{secrets.randbelow(1000000):06d}"
-    html = (f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0b1f3a">'
-            f'<p>BunÄƒ ziua, {hesc(r["signer_name"])},</p><p>Codul pentru semnarea documentului <b>{hesc(r["doc_title"])}</b> este:</p>'
-            f'<p style="font-size:28px;font-weight:bold;letter-spacing:6px">{code}</p>'
-            f'<p>Codul este valabil 10 minute. Introdu-l doar pe pagina de semnare deschisÄƒ din linkul primit. DacÄƒ nu ai cerut acest cod, ignorÄƒ mesajul.</p>'
-            f'<p style="font-size:12px;color:#888">Trimis de {hesc(EMAIL_FROM_NAME)}. Nu Ã®È›i vom cere niciodatÄƒ parole sau date de card prin e-mail.</p></td></tr></table>')
-    if not await deliver(r["owner"], bool(r.get("is_test")), r["signer_email"], f"Cod de semnare â€” {r['doc_title'][:60]}", html):
-        raise HTTPException(status_code=400, detail="Dosar de TEST: nu este configurat un e-mail de test Ã®n SetÄƒri de bazÄƒ â€” codul nu a fost trimis")
-    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"otp_hash": sha(f"{r['id']}:{code}".encode()), "otp_exp": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
-                                                                 "otp_last": now_iso(), "otp_attempts": 0}, "$inc": {"otp_sends": 1},
-                                                        "$push": {"history": hist("Cod de verificare trimis", client_meta(request), f"cÄƒtre {mask(r['signer_email'])}")}})
-    return {"ok": True, "email_masked": mask(r["signer_email"])}
-
-def evidence_page(r: dict, sig_png: bytes, meta: dict, declared: str, signed_at: str, owner_company: str) -> bytes:
-    buf = io.BytesIO()
-    c = rlc.Canvas(buf, pagesize=RA4)
-    W, H = RA4
-    y = H - 60
-    c.setFont("LSB", 14); c.drawString(50, y, "FIÈ˜Ä‚ DE EVIDENÈšÄ‚ A SEMNÄ‚RII ELECTRONICE" + (" â€” TEST" if r.get("is_test") else ""))
-    if r.get("is_test"):
-        c.setFillColorRGB(0.7, 0.15, 0.15); c.setFont("LSB", 10); c.drawString(50, y - 32, "SEMNÄ‚TURÄ‚ DE TEST â€” date fictive. NU este o semnÄƒturÄƒ oficialÄƒ È™i nu are efecte juridice."); c.setFillColorRGB(0, 0, 0); y -= 14
-    y -= 18; c.setFont("LS", 9); c.drawString(50, y, "Tip semnÄƒturÄƒ: semnÄƒturÄƒ electronicÄƒ SIMPLÄ‚ (Reg. UE 910/2014 eIDAS, art. 3 pct. 10). Nu este semnÄƒturÄƒ avansatÄƒ sau calificatÄƒ.")
-    rows = [("Document", r["doc_title"]), ("Emitent", owner_company), ("Beneficiar / dosar", r.get("client_name") or ""),
-            ("Semnatar (identitate declaratÄƒ)", declared), ("Rol", r["role"]), ("E-mail verificat prin cod unic", r["signer_email"]),
-            ("Data È™i ora semnÄƒrii (UTC, server)", signed_at), ("AdresÄƒ IP", meta["ip"]), ("Browser / dispozitiv", meta["ua"][:110]),
-            ("SHA-256 document semnat (original)", r["doc_sha256"]), ("ID cerere", r["id"]),
-            ("DeclaraÈ›ie", "Am citit integral documentul È™i Ã®mi exprim explicit intenÈ›ia de a-l semna electronic.")]
-    y -= 26
-    for k, v in rows:
-        c.setFont("LSB", 8.5); c.drawString(50, y, k)
-        c.setFont("LS", 8.5)
-        txt = str(v)
-        while txt:
-            part = txt[:85]; txt = txt[85:]
-            c.drawString(230, y, part); y -= 12
-        y -= 4
-    y -= 10; c.setFont("LSB", 9); c.drawString(50, y, "SemnÄƒtura olografÄƒ trasatÄƒ pe ecran:")
-    img = ImageReader(io.BytesIO(sig_png))
-    iw, ih = img.getSize(); s = min(260 / iw, 110 / ih)
-    c.drawImage(img, 50, y - 10 - ih * s, iw * s, ih * s, mask="auto")
-    c.rect(48, y - 12 - ih * s, iw * s + 4, ih * s + 4)
-    c.setFont("LS", 7); c.drawString(50, 40, "Istoricul complet al acÈ›iunilor (deschideri, coduri trimise, semnare) este pÄƒstrat Ã®n aplicaÈ›ia emitentului.")
-    c.save()
-    return buf.getvalue()
-
-def stamp_pages(pdf: bytes, text: str) -> bytes:
-    w = PdfWriter()
-    for page in PdfReader(io.BytesIO(pdf)).pages:
-        pw, ph = float(page.mediabox.width), float(page.mediabox.height)
-        b = io.BytesIO(); c = rlc.Canvas(b, pagesize=(pw, ph)); c.setFont("LS", 6.5); c.setFillGray(0.35)
-        c.drawString(20, 10, text[:180]); c.save()
-        page.merge_page(PdfReader(io.BytesIO(b.getvalue())).pages[0]); w.add_page(page)
-    o = io.BytesIO(); w.write(o); return o.getvalue()
-
-async def rebuild_group(owner: str, gid: str):
-    reqs = await db.sign_requests.find({"owner": owner, "group_id": gid}, {"_id": 0}).sort("created_at", 1).to_list(50)
-    signed = [x for x in reqs if x["status"] == "Semnat" and x.get("evidence_path")]
-    base, _ = get_object(reqs[0]["doc_path"])
-    w = PdfWriter()
-    for pg in PdfReader(io.BytesIO(stamp_pages(base, ("[TEST â€” NU ESTE SEMNÄ‚TURÄ‚ OFICIALÄ‚] " if reqs[0].get("is_test") else "") + "Semnat electronic (semnÄƒturÄƒ simplÄƒ) de: " + ", ".join(f"{x['signer_name']} {x['signed_at'][:16]} UTC" for x in signed) + f" Â· SHA-256 original {reqs[0]['doc_sha256'][:16]}â€¦"))).pages:
-        w.add_page(pg)
-    for x in signed:
-        ev, _ = get_object(x["evidence_path"])
-        for pg in PdfReader(io.BytesIO(ev)).pages:
-            w.add_page(pg)
-    o = io.BytesIO(); w.write(o); final = o.getvalue()
-    st = put_object(f"{APP_NAME}/sign/{owner}/{gid}/signed_{len(signed)}.pdf", final, "application/pdf")
-    f = {"storage_path": st["path"], "original_filename": f"{reqs[0]['pos_key']}_semnat.pdf", "content_type": "application/pdf", "size": len(final)}
-    if reqs[0].get("sld_hash"):
-        f["sld_hash"] = reqs[0]["sld_hash"]
-    if reqs[0].get("pif_hash"):
-        f["pif_hash"] = reqs[0]["pif_hash"]
-    await db.sign_requests.update_many({"owner": owner, "group_id": gid}, {"$set": {"signed_file": f, "signed_sha256": sha(final)}})
-    if len(signed) == len(reqs):
-        did, mod = reqs[0]["dossier_id"], reqs[0].get("module") or "prosumator"
-        if mod == "diu":
-            await db.diu.update_one({"id": did, "owner": owner}, {"$set": {f"signed.{reqs[0]['pos_key']}": {**f, "signed_at": signed[-1]["signed_at"]}}})
-        elif mod == "contracts":
-            await db.contracts.update_one({"id": did, "owner": owner}, {"$set": {"signed": {**f, "signed_at": signed[-1]["signed_at"]}, "status": "Semnat"},
-                                                                        "$push": {"history": {"at": now_iso(), "by": "semnÄƒturÄƒ electronicÄƒ client", "event": "contract semnat de beneficiar"}}})
-        else:
-            await db.prosumator.update_one({"id": did, "owner": owner},
-                                           {"$set": {f"opis.{reqs[0]['pos_key']}.upload": f, f"opis.{reqs[0]['pos_key']}.status": "ataÈ™at"}})
-        prec = await db[mod].find_one({"id": did, "owner": owner}, {"_id": 0}) or {}
-        cl = await get_client(owner, prec)
-        await db.documents.insert_one({"id": str(uuid.uuid4()), "owner": owner, "created_at": now_iso(), "updated_at": now_iso(), "client_id": cl.get("id"),
-                                       "dossier_id": reqs[0]["dossier_id"], "client_name": reqs[0].get("client_name"), "kind": "Semnat electronic",
-                                       "doc_type": f"{reqs[0]['doc_title']} â€” semnat", **f})
-        if cl.get("id"):
-            await db.clients.update_one({"id": cl["id"], "owner": owner}, {"$push": {"docs.semnate": {**f, "original_filename": f"{reqs[0]['doc_title']} â€” semnat.pdf",
-                                                                                                    "signed_at": signed[-1]["signed_at"]}}})
-
-@api_router.post("/public/sign/{token}/sign")
-async def pub_sign(token: str, request: Request):
-    r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE:
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    b = await request.json()
-    declared = (b.get("declared_name") or "").strip()
-    if not b.get("intent") or not declared:
-        raise HTTPException(status_code=400, detail="ConfirmÄƒ intenÈ›ia de semnare È™i scrie numele complet")
-    if not r.get("otp_hash") or (r.get("otp_exp") or "") < now_iso():
-        raise HTTPException(status_code=400, detail="Cere un cod de verificare pe e-mail")
-    if r.get("otp_attempts", 0) >= 5:
-        raise HTTPException(status_code=429, detail="Prea multe Ã®ncercÄƒri. Cere un cod nou.")
-    if sha(f"{r['id']}:{str(b.get('otp') or '').strip()}".encode()) != r["otp_hash"]:
-        await db.sign_requests.update_one({"id": r["id"]}, {"$inc": {"otp_attempts": 1}, "$push": {"history": hist("Cod greÈ™it", client_meta(request))}})
-        raise HTTPException(status_code=400, detail="Cod incorect")
-    m = re.match(r"^data:image/png;base64,(.+)$", b.get("signature") or "")
-    if not m:
-        raise HTTPException(status_code=400, detail="DeseneazÄƒ semnÄƒtura")
-    png = base64.b64decode(m.group(1))
-    if len(png) < 800 or len(png) > 2_000_000:
-        raise HTTPException(status_code=400, detail="SemnÄƒtura nu este validÄƒ")
-    meta, at = client_meta(request), now_iso()
-    claim = await db.sign_requests.update_one({"id": r["id"], "token_hash": r["token_hash"], "status": {"$in": list(SIGN_ACTIVE)}, "otp_hash": r["otp_hash"]},
-                                              {"$set": {"status": "Semnat", "signed_at": at, "otp_hash": None}})
-    if claim.modified_count == 0:
-        raise HTTPException(status_code=409, detail="Documentul a fost deja semnat")
-    s = await db.settings.find_one({"owner": r["owner"]}, {"_id": 0, "company": 1}) or {}
-    ev = evidence_page(r, png, meta, declared, at, s.get("company") or "DNS HOSTESS SRL")
-    evp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/evidence_{r['id']}.pdf", ev, "application/pdf")
-    sigp = put_object(f"{APP_NAME}/sign/{r['owner']}/{r['group_id']}/signature_{r['id']}.png", png, "image/png")
-    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"declared_name": declared,
-        "evidence_path": evp["path"], "signature_path": sigp["path"], "sign_meta": meta, "otp_hash": None},
-        "$push": {"history": hist("Semnat", meta, f"identitate declaratÄƒ: {declared}; cod e-mail verificat; intenÈ›ie confirmatÄƒ")}})
-    await rebuild_group(r["owner"], r["group_id"])
-    return {"ok": True, "signed_at": at}
-
-@api_router.post("/public/sign/{token}/refuse")
-async def pub_refuse(token: str, request: Request):
-    r = await sign_by_token(token)
-    if sign_status(r) not in SIGN_ACTIVE:
-        raise HTTPException(status_code=410, detail="Linkul nu mai este activ")
-    reason = ((await request.json()).get("reason") or "").strip()[:500]
-    await db.sign_requests.update_one({"id": r["id"]}, {"$set": {"status": "Refuzat", "refused_reason": reason},
-                                                        "$push": {"history": hist("Refuzat", client_meta(request), reason)}})
-    return {"ok": True}
-
-# ---------------- Dosar de test ----------------
-import test_data as TD
-
-@api_router.post("/test-dossier")
-async def test_dossier_create(user: dict = Depends(get_current_user)):
-    require(user, "admin")
-    existing = await db.prosumator.find_one(
-        {"owner": user["id"], "is_test": True},
-        {"_id": 0, "id": 1, "number": 1, "client_name": 1},
-    )
-    if existing:
-        return {
-            "prosumator_id": existing["id"],
-            "number": existing.get("number"),
-            "client": existing.get("client_name"),
-            "already_exists": True,
-        }
-    st = await db.settings.find_one({"owner": user["id"]}, {"_id": 0, "test_email": 1}) or {}
-    stamp = datetime.now(timezone.utc).strftime("%m%d%H%M%S")
-    files = {}
-    for k, title in [("auth", "AutorizaÈ›ie personal (TEST)"), ("cert", "Certificat etalonare aparat (TEST)"), ("datasheet", "FiÈ™Äƒ tehnicÄƒ echipament (TEST)"),
-                     ("conformity", "DeclaraÈ›ie de conformitate echipament (TEST)"), ("clientdoc", "Document client (TEST)")]:
-        data = TD.placeholder_pdf(title)
-        stored = put_object(f"{APP_NAME}/uploads/{user['id']}/test_{stamp}_{k}.pdf", data, "application/pdf")
-        files[k] = {"storage_path": stored["path"], "original_filename": f"TEST_{k}.pdf", "content_type": "application/pdf", "size": len(data)}
-    D = TD.build(stamp, (st.get("test_email") or "").strip() or None, files)
-    mk = lambda d: _new(user, {**d, "is_test": True})
-    staff = {}
-    for p in D["staff"]:
-        doc = mk({k: v for k, v in p.items() if k != "key"}); await db.staff.insert_one(dict(doc)); staff[p["key"]] = doc["id"]
-    inst = mk(D["instrument"]); await db.instruments.insert_one(dict(inst))
-    cat = {}
-    for c in D["catalog"]:
-        doc = mk(c); await db.catalog.insert_one(dict(doc)); cat[c["category"]] = doc["id"]
-    client_doc = mk(D["client"]); await db.clients.insert_one(dict(client_doc))
-    pros = D["prosumator"]
-    inv = pros["cef"]["inverters"][0]
-    inv["catalog_id"], inv["panel_catalog_id"] = cat["Invertor"], cat["Panou"]
-    inv["battery"]["catalog_id"] = cat["Baterie"]
-    pros["cef"]["grid"]["meter_catalog_id"] = cat["Smart meter"]
-    pros.update({"client_id": client_doc["id"], "instrument_id": inst["id"], "signers": {"designer": staff["designer"], "verifier": staff["verifier"]}})
-    pros = derive_cef(pros)
-    pdoc = mk(pros); await db.prosumator.insert_one(dict(pdoc))
-    diu = mk(D["diu"]); await db.diu.insert_one(dict(diu))
-    await db.pram.insert_one(dict(mk({**D["pram"], "diu_ref": diu["number"]})))
-    await audit(user, "creare dosar de test", "prosumator", pdoc["id"], [])
-    return {"prosumator_id": pdoc["id"], "number": pdoc["number"], "client": client_doc["name"], "test_email": st.get("test_email") or None}
-
-@api_router.delete("/test-dossier")
-async def test_dossier_delete(user: dict = Depends(get_current_user)):
-    require(user, "admin")
-    q = {"owner": user["id"], "is_test": True}
-    ids = [x["id"] for x in await db.prosumator.find(q, {"id": 1}).to_list(1000)]
-    n = (await db.sign_requests.delete_many({"owner": user["id"], "$or": [{"is_test": True}, {"dossier_id": {"$in": ids}}]})).deleted_count
-    for c in TD.TEST_COLLECTIONS:
-        n += (await db[c].delete_many(q)).deleted_count
-    n += (await db.documents.delete_many({"owner": user["id"], "client_name": {"$regex": "^TEST â€” "}})).deleted_count
-    await audit(user, "È™tergere date de test", "prosumator", "", [str(n)])
-    return {"deleted": n}
-
-# ---------------- Startup ----------------
-@app.on_event("startup")
-async def startup():
-    await db.users.create_index("email", unique=True)
-    # Failed-login records are queried and upserted on every authentication attempt.
-    # Uniqueness avoids duplicate rows during concurrent failures; TTL bounds storage.
-    await db.login_attempts.create_index("identifier", unique=True, name="login_attempt_identifier_unique")
-    await db.login_attempts.create_index("expires_at", expireAfterSeconds=0, name="login_attempt_expires_at_ttl")
-    await db.password_resets.create_index("lookup_hash", unique=True, name="password_reset_lookup_unique")
-    await db.password_resets.create_index("expires_ts", expireAfterSeconds=0, name="password_reset_expiry_ttl")
-    await db.password_reset_limits.create_index([("key", 1), ("bucket", 1)], unique=True, name="password_reset_limit_bucket_unique")
-    await db.password_reset_limits.create_index("expires_at", expireAfterSeconds=0, name="password_reset_limit_expiry_ttl")
-    for m in MODULES:
-        await db[m].create_index("owner")
-        # Keep tenant-scoped list and quick-search sorts efficient as collections grow.
-        await db[m].create_index([("owner", 1), ("created_at", -1)], name="owner_created_at")
-        await db[m].create_index([("owner", 1), ("updated_at", -1)], name="owner_updated_at")
-    for field in NUMERIC_CLIENT_SEARCH_FIELDS:
-        await db.clients.create_index([("owner", 1), (field, 1)], name=f"owner_{field}")
-    await db.prosumator.create_index([("owner", 1), ("client_id", 1), ("updated_at", -1)], name="owner_client_id_updated_at")
-    admin_email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "")
-    jwt_secret = os.environ.get("JWT_SECRET", "")
-    if PRIVATE_MODE:
-        # Never boot a private staging service with fallback/default credentials.
-        if not admin_email or not admin_password:
-            raise RuntimeError("Private mode requires ADMIN_EMAIL and ADMIN_PASSWORD environment secrets")
-        if len(admin_password) < 16:
-            raise RuntimeError("Private mode requires ADMIN_PASSWORD with at least 16 characters")
-        if len(jwt_secret) < 32:
-            raise RuntimeError("Private mode requires JWT_SECRET with at least 32 characters")
-    else:
-        # Local development still needs explicit credentials; do not silently create admin123.
-        if not admin_email or not admin_password or not jwt_secret:
-            raise RuntimeError("Set ADMIN_EMAIL, ADMIN_PASSWORD and JWT_SECRET in backend/.env before startup")
-    existing = await db.users.find_one({"email": admin_email})
-    if not existing:
-        await db.users.insert_one({"id": str(uuid.uuid4()), "email": admin_email,
-            "password_hash": hash_password(admin_password), "name": "Administrator",
-            "role": "admin", "created_at": datetime.now(timezone.utc).isoformat()})
-        logger.info("Admin seeded")
-        existing = await db.users.find_one({"email": admin_email})
-    recovery_nonce = os.environ.get("ADMIN_PASSWORD_RESET_NONCE", "").strip()
-    if existing and recovery_nonce:
-        nonce_hash = admin_reset_nonce_hash(recovery_nonce)
-        recovery = await db.admin_password_recovery.find_one({"_id": "primary-admin"}, {"_id": 0, "nonce_hash": 1})
-        if not recovery or recovery.get("nonce_hash") != nonce_hash:
-            reset_at = datetime.now(timezone.utc).isoformat()
-            await db.users.update_one({"id": existing["id"], "email": admin_email}, {"$set": {
-                "password_hash": hash_password(admin_password), "password_changed_at": reset_at,
-            }, "$inc": {"token_version": 1}})
-            await db.login_attempts.delete_many({"identifier": f"login:{admin_email}"})
-            await db.admin_password_recovery.update_one({"_id": "primary-admin"}, {"$set": {
-                "nonce_hash": nonce_hash, "applied_at": reset_at,
-            }}, upsert=True)
-            existing = await db.users.find_one({"email": admin_email})
-            logger.warning("Primary admin password reset using one-time environment recovery")
-    if existing and not existing.get("password_hash"):
-        # Seed a missing credential once; do not overwrite an existing password on every deploy.
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
-    PLATFORM["id"] = (await db.users.find_one({"email": admin_email}))["id"]
-    await db.users.update_one({"id": PLATFORM["id"]}, {"$set": {"role": "admin", "status": "active", "tenant": None}})
-    for pl in DEFAULT_PLANS:
-        await db.plans.update_one({"code": pl["code"]}, {"$setOnInsert": pl}, upsert=True)
-    await db.billing_config.update_one({"id": "main"}, {"$setOnInsert": {"id": "main", "vat_rate": 21.0, "expired_policy": "read_only", "currency": "RON"}}, upsert=True)
-    docgen.IMG_LOADER = lambda p: get_object(p)[0]
-    await forms_routes.seed()
-    # Fail fast: do not report a healthy API when private file storage is unavailable.
-    init_storage()
-    logger.info("MongoDB GridFS object storage initialized")
-
-@app.on_event("shutdown")
-async def shutdown():
-    client.close()
-
-import billing_routes  # noqa: E402
-import forms_routes  # noqa: E402
-import atr_routes  # noqa: E402
-import sld_edit_routes  # noqa: E402
-import modules_routes  # noqa: E402
-import ai_routes  # noqa: E402
-import diu_routes  # noqa: E402
-import offers_routes  # noqa: E402
-import operator_routes  # noqa: E402
-import anre_routes  # noqa: E402
-import anre_templates  # noqa: E402
-app.include_router(api_router)
-# Restrict browser access to explicitly configured frontend origins.
-# Preserve deployment-specific origins and always allow the configured staging and DNS Energy web origins.
-_cors_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
-_cors_origins = [origin.strip().rstrip("/") for origin in _cors_raw.split(",") if origin.strip()]
-for _required_origin in (
-    "https://dns-energy-web.onrender.com",
-    "https://dns-energy.ro",
-    "https://www.dns-energy.ro",
-):
-    if _required_origin not in _cors_origins:
-        _cors_origins.append(_required_origin)
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=False,
-    allow_origins=_cors_origins,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
-)
-
-
-
-
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×M7÷dèµ©hºÚn¶X§zÍZ[\Ü\Þ[˜Ú[ÃBš[\Ü˜\ÙMB™œ›ÛHÝ[ˆ[\ÜØYÙÝ[ƒB™œ›ÛH]Xˆ[\Ü]Bš[\ÜÜÃBƒB”“ÓÕÑTˆH]
+×Ùš[W×ÊKœ\™[B›ØYÙÝ[Š“ÓÕÑTˆÈ	Ë™[‰ÊCBƒB™œ›ÛH˜\Ý\H[\Ü˜\ÝTKTT›Ý]\‹^Ù\[Û‹™\]Y\Ý\[™Ë\ØYš[Kš[K›Ü›K™\ÜÛœÙKXY\‹]Y\žCB™œ›ÛH˜\Ý\Kœ™\ÜÛœÙ\È[\Ü”ÓÓ”™\ÜÛœÙCB™œ›ÛHÝ\›]K›ZY]Ø\™K˜ÛÜœÈ[\ÜÓÔ”ÓZY]Ø\™CB™œ›ÛH[ÝÜ‹›[ÝÜ—Ø\Þ[˜Ú[È[\Ü\Þ[˜ÒSÓ[ÝÜÛY[B™œ›ÛHY[XÈ[\Ü˜\ÙS[Ù[[XZ[ÝƒB™œ›ÛH\[™È[\ÜÜ[Û˜[Bš[\ÜÙÙÚ[™ÃBš[\Ü]ZYBš[\Ü™CBš[\Ü˜Üž\Bš[\ÜÝBš[\Ü™\]Y\ÝÃB™œ›ÛHÛY[ÜÙX\˜Ú[\ÜZ[ØÛY[ÜÙX\˜ÚÜ]Y\šY\Ë•SQT’P×ÐÓQS•ÔÑPTÒÑ’QSÃB™œ›ÛHÛY[ÜÜ[[\Ü\×ØÛY[Ý\ØYÜ]X›X×ØÛY[ÛY\ÜØYÙ\ÃB™œ›ÛH\ÜÝÛÜ™Ü™\Ù][\ÜYZ[—Ü™\Ù]Û›Û˜ÙWÚ\Ú™\Ù]ÛÛÚÝ\Ú\Ú™\Ù]Ü˜]WÚÙ^K™\Ù]ÝÚÙ[—Ú\Ú\ÝYÜ™\Ù]ÛÜšYÚ[ƒB™œ›ÛH]]ÜÛXÞH[\Üš]˜]WÛ[ÙWØXØÛÝ[Ø[ÝÙYBš[\Ü[ÃBš[\Üš\š[CB™œ›ÛH]][YH[\Ü]][YK[Y^›Û™K[YY[CB™œ›ÛH›Û™Z[™›È[\Ü›Û™R[™›ÃBƒBˆÈKKKKKKKKKKKKKKKHˆKKKKKKKKKKKKKKKCB›[Û™Û×Ý\›HÜË™[š\›Û–ÉÓSÓ‘Ó×ÕT“	×CB˜ÛY[H\Þ[˜ÒSÓ[ÝÜÛY[
+[Û™Û×Ý\›
+CB™ˆHÛY[ÛÜË™[š\›Û–ÉÑ—ÓSQI×WCBƒB”’UUWÓSÑHHÜË™[š\›Û‹™Ù]
+‘”×ÑS‘T‘ÖWÔ’UUWÓSÑH‹™˜[ÙHŠKœÝš\
+
+K›ÝÙ\Š
+H[ˆ
+ŒH‹YH‹žY\È‹›ÛˆŠCB˜\H˜\ÝTJBˆØÜ×Ý\›S›Û™HYˆ’UUWÓSÑH[ÙH‹ÙØÜÈ‹Bˆ™YØ×Ý\›S›Û™HYˆ’UUWÓSÑH[ÙH‹Ü™YØÈ‹BˆÜ[˜\WÝ\›S›Û™HYˆ’UUWÓSÑH[ÙH‹ÛÜ[˜\KšœÛÛˆ‹BŠCB˜\WÜ›Ý]\ˆHTT›Ý]\Š™Yš^H‹Ø\HŠCBƒB\™Ù]
+‹ÚX[ˆ‹[˜ÛYWÚ[—ÜØÚ[XOQ˜[ÙJCB˜\Þ[˜ÈYˆX[Š
+NƒBˆ™]\›ˆÈœÝ]\ÈŽˆ›ÚÈŸCBƒBƒB\™Ù]
+‹Ü™XY^ˆ‹[˜ÛYWÚ[—ÜØÚ[XOQ˜[ÙJCB˜\Þ[˜ÈYˆ™XY^Š
+NƒBˆžNƒBˆ]ØZ]\Þ[˜Ú[ËØZ]Ù›ÜŠÛY[˜YZ[‹˜ÛÛ[X[™
+œ[™ÈŠK[Y[Ý]MKŒ
+CBˆ^Ù\^Ù\[ÛŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMLË]Z[^ÈœÝ]\ÈŽˆ››ÝÜ™XYH‹˜ÚXÚÜÈŽˆÈ›[Û™ÛÙˆŽˆ[˜]˜Z[X›HŸ_JCBˆ™]\›ˆÈœÝ]\ÈŽˆœ™XYH‹˜ÚXÚÜÈŽˆÈ›[Û™ÛÙˆŽˆ›ÚÈŸ_CBƒBƒBˆÈ™[™\‰ÜÈÝ\œ™[THÙ\šXÙHÝ[›Ø™\ÈÙØÜËˆ[ˆš]˜]H[ÙHÙY\\ÃBˆÈÛÛ\]Xš[]HT“\ÈH]™[™\ÜÈÚXÚÈÛ›NÈ[Û™ÛÑˆ™XY[™\ÜÈÝ^\ÈÛˆÜ™XY^‹ƒBšYˆ’UUWÓSÑNƒBˆ\˜YØ\WÜ›Ý]J‹ÙØÜÈ‹X[‹Y]ÙÏVÈ‘ÑU—K[˜ÛYWÚ[—ÜØÚ[XOQ˜[ÙK˜[YOHœ™[™\—ÚX[ØÛÛ\]ŠCBƒBƒB›ÙÙÚ[™Ë˜˜\ÚXÐÛÛ™šYÊ]™[[ÙÙÚ[™Ë’S‘“ÊCB›ÙÙÙ\ˆHÙÙÚ[™Ë™Ù]ÙÙÙ\Š™Y[™\™ÞHŠCBƒBˆÈKKKKKKKKKKKKKKKH]][\œÈKKKKKKKKKKKKKKKCB’•ÕÐSÓÔ’UHH’ÌMˆƒBƒB™YˆÙ]ÚÝÜÙXÜ™]
+
+HOˆÝŽƒBˆ™]\›ˆÜË™[š\›Û–È’•ÕÔÑPÔ‘U—CBƒB™Yˆ\ÚÜ\ÜÝÛÜ™
+\ÜÝÛÜ™ˆÝŠHOˆÝŽƒBˆ™]\›ˆ˜Üž\š\ÚÊ\ÜÝÛÜ™™[˜ÛÙJ]‹NŠK˜Üž\™Ù[œØ[
+
+JK™XÛÙJ]‹NŠCBƒB™Yˆ™\šYžWÜ\ÜÝÛÜ™
+Z[ŽˆÝ‹\ÚYˆÝŠHOˆ›ÛÛƒBˆ™]\›ˆ˜Üž\˜ÚXÚÜÊZ[‹™[˜ÛÙJ]‹NŠK\ÚY™[˜ÛÙJ]‹NŠJCBƒB™YˆÜ™X]WØXØÙ\Ü×ÝÚÙ[Š\Ù\—ÚYˆÝ‹[XZ[ˆÝ‹ÚÙ[—Ý™\œÚ[ÛŽˆ[H
+HOˆÝŽƒBˆ^[ØYHÈœÝXˆŽˆ\Ù\—ÚY™[XZ[Žˆ[XZ[Bˆ™\ˆŽˆÚÙ[—Ý™\œÚ[Û‹™^Žˆ]][YK››ÝÊ[Y^›Û™K]ÊH
+È[YY[J^\ÏMÊK\HŽˆ˜XØÙ\ÜÈŸCBˆ™]\›ˆÝ™[˜ÛÙJ^[ØYÙ]ÚÝÜÙXÜ™]
+
+K[ÛÜš]OR•ÕÐSÓÔ’UJCBƒB˜\Þ[˜ÈYˆÙ]ØÝ\œ™[Ý\Ù\Š™\]Y\Ýˆ™\]Y\Ý
+HOˆXÝƒBˆÚÙ[ˆH™\]Y\Ý˜ÛÛÚÚY\Ë™Ù]
+˜XØÙ\Ü×ÝÚÙ[ˆŠCBˆYˆ›ÝÚÙ[ŽƒBˆ]]H™\]Y\ÝšXY\œË™Ù]
+]]Üš^˜][Ûˆ‹ˆŠCBˆYˆ]]œÝ\ÝÚ]
+™X\™\ˆŠNƒBˆÚÙ[ˆH]]ÍÎ—CBˆYˆ›ÝÚÙ[ŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMK]Z[H“™X]][YšXØ]ŠCBˆžNƒBˆ^[ØYHÝ™XÛÙJÚÙ[‹Ù]ÚÝÜÙXÜ™]
+
+K[ÛÜš]\ÏVÒ•ÕÐSÓÔ’UWJCBˆ\Ù\ˆH]ØZ]‹\Ù\œË™š[™ÛÛ™JÈšYŽˆ^[ØYÈœÝXˆ—_JCBˆYˆ›Ý\Ù\ŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMK]Z[H•][^˜]Üˆ[™^\Ý[ŠCBˆYˆ[
+^[ØY™Ù]
+™\ˆ‹
+JHOH[
+\Ù\‹™Ù]
+ÚÙ[—Ý™\œÚ[Ûˆ‹
+JNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMK]Z[H”Ù\Ú][™XHH›ÜÝ™]›ØØ]1 Ëˆ]][YšXñ Ë]H[ˆ›ÝKˆŠCBˆYˆÜË™[š\›Û‹™Ù]
+‘”×ÑS‘T‘ÖWÔ’UUWÓSÑH‹™˜[ÙHŠKœÝš\
+
+K›ÝÙ\Š
+H[ˆ
+ŒH‹YH‹žY\È‹›ÛˆŠNƒBˆYZ[—Ù[XZ[HÜË™[š\›Û‹™Ù]
+QRS—ÑSPRS‹ˆŠKœÝš\
+
+K›ÝÙ\Š
+CBˆYˆ›Ýš]˜]WÛ[ÙWØXØÛÝ[Ø[ÝÙY
+\Ù\‹YZ[—Ù[XZ[
+NƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[HXØÙ\È\›Z\ÈYZ[š\Ý˜]Ü[ZH2&ZH\[™\š[Üˆ\›Ø˜r&ÚH”È[™\™ÞHŠCBˆ\Ù\‹œÜ
+œ\ÜÝÛÜ™Ú\Ú‹›Û™JCBˆ\Ù\‹œÜ
+—ÚY‹›Û™JCBˆYˆ\Ù\‹™Ù]
+œÝ]\È‹˜XÝ]™HŠHOH˜XÝ]™HŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[TÕUT×ÓTÑË™Ù]
+\Ù\‹™Ù]
+œÝ]\ÈŠKÛÛ[˜XÝ]ˆŠJCBˆ™]\›ˆ]ØZ]š[š\ÚÝ\Ù\Š\Ù\ŠCBˆ^Ù\Ý‘^\™YÚYÛ˜]\™Q\œ›ÜŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMK]Z[H”Ù\Ú][™H^\˜]1 ÈŠCBˆ^Ù\Ý’[˜[YÚÙ[‘\œ›ÜŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMK]Z[H•ÚÙ[ˆ[˜[YŠCBƒB”U“Ô“HHÈšYŽˆ›Û™_CBSÑ‘PUT‘TÈHÈœ›ÜÝ[X]ÜˆŽˆ‘ÜØ\™HH›ÜÝ[X]Üˆ‹™]HŽˆ‘ÜØ\ˆ[œÝ[r&ÚYHH][^˜\™H
+KUJH‹›[Û›ÈŽˆ”ØÚ[YH[Û›Ùš[\™H
+[Ù[
+H‹Bˆœ[™[ÈŽˆ•X›Ý\šH[XÝšXÙH‹˜[HŽˆ[Z[œÝ[\š^˜\™H‹œ˜[HŽˆ[][™HSH‹™\]Z\Y[Žˆ‘XÚ\[Y[H‹BˆœÝÙ\ˆŽˆ”ÜÜˆH]\™HÈ“T‹˜]ˆŽˆÙ\™\™HUˆ
+]š^ˆZšXÈH˜XÛÜ™\™JH‹ÛÜšÜÈŽˆ‘Ù\Ý[Û˜\™XHXÜ± Üš[Üˆ‹œ›Ú™XÝÈŽˆ”Ú[][\™H›ÚYXÝ‹œÚYÛ—Ü™[[ÝHŽˆ”Ù[[˜\™HH\Ý[²&ñ È‹Bˆ˜ZWÙ^˜XÝŽˆ’[\Ü]]ÛX][ˆØÝ[Y[H
+RJH‹˜ZWÙÜŽˆ\Ú\Ý[RHÚ]Ô
+Ú]™\šYšXØ\™HÜØ\‹™YXÝ\™K[\Ü
+H‹›Ù™\HŽˆ“Ù™\HH™r&È2&ZHÛÛ˜XÝHŸCB“SÑSWÑ‘PUT‘HHÈ˜ÛY[ÈŽˆœ›ÜÝ[X]Üˆ‹œ›ÜÝ[X]ÜˆŽˆœ›ÜÝ[X]Üˆ‹™ØÝ[Y[ÈŽˆœ›ÜÝ[X]Üˆ‹˜\˜Ú]™YÙÜÜÚY\œÈŽˆœ›ÜÝ[X]Üˆ‹˜Ø][ÙÈŽˆœ›ÜÝ[X]Üˆ‹›Ü\˜]Ü—ÛY\ÜØYÙ\ÈŽˆœ›ÜÝ[X]Üˆ‹œÝY™ˆŽˆœ›ÜÝ[X]Üˆ‹Bˆš[œÝ[Y[ÈŽˆœ›ÜÝ[X]Üˆ‹™]HŽˆ™]H‹›[Û›ÈŽˆ›[Û›È‹œ[™[ÈŽˆœ[™[È‹˜[HŽˆ˜[H‹œ˜[HŽˆœ˜[H‹Bˆ™\]Z\Y[Žˆ™\]Z\Y[‹œÝÙ\ˆŽˆœÝÙ\ˆ‹˜]ˆŽˆ˜]ˆ‹ÛÜšÜÈŽˆÛÜšÜÈ‹œ›Ú™XÝÈŽˆœ›Ú™XÝÈŸCB‘QUSÔS”ÈHÃBˆÈ˜ÛÙHŽˆœÝ\‹›˜[YHŽˆ”ÕT•‹œšXÙHŽˆLŒ™™X]\™\ÈŽˆÈœ›ÜÝ[X]Üˆ—K›X^Ú[™\\œÈŽˆK›Ü™\ˆŽˆKBˆ™\ØÜš\[ÛˆŽˆ‘ÜØ\™HH›ÜÝ[X]ÜˆÚ[\KX^[][H[ˆ[™\Üˆ\ˆÜØ\‹ˆŸKBˆÈ˜ÛÙHŽˆœ›È‹›˜[YHŽˆ”“È‹œšXÙHŽˆLŒ™™X]\™\ÈŽˆÈœ›ÜÝ[X]Üˆ‹™]H—K›X^Ú[™\\œÈŽˆ›Ü™\ˆŽˆ‹Bˆ™\ØÜš\[ÛˆŽˆ•Ø]H[˜ò&ÚZ[HÕT•
+ÈÜØ\™HH›ÜÝ[X]Üˆ± Ü± È[Z]1 ÈH[™\Ø\™H
+È[Ù[[KUKˆŸKBˆÈ˜ÛÙHŽˆ™[‹›˜[YHŽˆ‘•S‹œšXÙHŽˆLŒ™™X]\™\ÈŽˆÈŠˆ—K›X^Ú[™\\œÈŽˆ›Ü™\ˆŽˆËBˆ™\ØÜš\[ÛˆŽˆXØÙ\ÈÛÛ\]HØ]H[Ù[[H2&ZH[˜ò&ÚZ[H]›Ü›YZK[˜Û\Ú]ˆÙ[HY1 ÝYØ]H[\š[Ü‹ˆŸWCBƒB˜\Þ[˜ÈYˆš[[™×ØÙ™Ê
+HOˆXÝƒBˆ™]\›ˆ]ØZ]‹˜š[[™×ØÛÛ™šYË™š[™ÛÛ™JÈšYŽˆ›XZ[ˆŸKÈ—ÚYŽˆJHÜˆÈ˜]Ü˜]HŽˆŒKŒ™^\™YÜÛXÞHŽˆœ™XYÛÛ›HŸCBƒB˜\Þ[˜ÈYˆ[—Ú[™›Ê\Ù\ŽˆXÝ
+HOˆXÝƒBˆYˆ\Ù\–ÈšY—HOHU“Ô“VÈšY—NƒBˆ™]\›ˆÈ˜ÛÙHŽˆ™[‹›˜[YHŽˆ‘•S‹™^[\ŽˆYK˜XÝ]™HŽˆYKœÝ]\ÈŽˆ™XÚ\H]›Ü›YZH‹™™X]\™\ÈŽˆÈŠˆ—K›X^Ú[™\\œÈŽˆœÛXÞHŽˆ™[ŸCBˆÝXˆH]ØZ]‹œÝXœØÜš\[ÛœË™š[™ÛÛ™JÈ[˜[Žˆ\Ù\–ÈšY—_KÈ—ÚYŽˆJHÜˆßCBˆ[ˆH]ØZ]‹œ[œË™š[™ÛÛ™JÈ˜ÛÙHŽˆÝX‹™Ù]
+œ[ˆŠ_KÈ—ÚYŽˆJHYˆÝX‹™Ù]
+œ[ˆŠH[ÙH›Û™CBˆÙ^HH]][YK››ÝÊ[Y^›Û™K]ÊK™]J
+Kš\ÛÙ›Ü›X]
+
+CBˆÝ]\ÈHÝX‹™Ù]
+œÝ]\ÈŠHÜˆ™± Ü± ÈX›Û˜[Y[ƒBˆYˆÝ]\ÈOH˜XÝ]ˆˆ[™
+ÝX‹™Ù]
+˜[YÝ[[ŠHÜˆˆŠHÙ^NƒBˆÝ]\ÈH™^\˜]ƒBˆXÝ]™HH›ÛÛ
+[ŠH[™Ý]\ÈOH˜XÝ]ˆƒBˆÙ™ÈH]ØZ]š[[™×ØÙ™Ê
+CBˆÜH]ØZ]‹›Ü\˜]ÜœË™š[™ÛÛ™JÈ[˜[Žˆ\Ù\–ÈšY—_KÈ—ÚYŽˆœÝ]\ÈŽˆK˜]\ÝÝ˜[YŽˆ_JHÜˆßCBˆÜÝHÜ™Ù]
+œÝ]\ÈŠHÜˆ›\ñ ÈƒBˆYˆÜÝOH˜\›Ø˜]ˆ[™Ü™Ù]
+˜]\ÝÝ˜[YŠH[™ÜÈ˜]\ÝÝ˜[Y—HÙ^NƒBˆÜÝH™^\˜]ƒBˆÝÛ™\ˆH\Ù\ˆYˆ\Ù\‹™Ù]
+ZY‹\Ù\–ÈšY—JHOH\Ù\–ÈšY—H[ÙH
+]ØZ]‹\Ù\œË™š[™ÛÛ™JÈšYŽˆ\Ù\–ÈšY—_KÈ˜Ü™X]YØ]Žˆ_JHÜˆßJCBˆYØXÞHH›ÝÙ™Ë™Ù]
+˜]\ÝØ›ØÚ×Ù^\Ý[™ÈŠH[™
+ÝÛ™\‹™Ù]
+˜Ü™X]YØ]ŠHÜˆˆŠH
+Ù™Ë™Ù]
+˜]\ÝØÝ]Ù™ˆŠHÜˆˆŠH[™ÜÝ[ˆ
+›\ñ È‹°ë›ˆr&]\\™HŠCBˆ]\ÝÛÚÈHÜÝOH˜\›Ø˜]ˆÜˆYØXÞCBˆYˆXÝ]™H[™›Ý]\ÝÛÚÎƒBˆXÝ]™KÝ]\ÈH˜[ÙKˆ˜]\Ý]S”‘HÛÜÝYˆÜÝOH	Û\ñ ÉÈ[ÙH	Û™]š[Z\ÉßH8 %XØÙ\È›ØØ]0è›± ÈH\›Ø˜\™HƒBˆ™]\›ˆÈ˜ÛÙHŽˆ[–È˜ÛÙH—HYˆ[ˆ[ÙH›Û™K›˜[YHŽˆ[–È›˜[YH—HYˆ[ˆ[ÙH‘± Ü± ÈX›Û˜[Y[‹™^[\Žˆ˜[ÙK˜XÝ]™HŽˆXÝ]™KBˆ˜]\ÝŽˆÜÝ˜]\ÝÛYØXÞHŽˆYØXÞKBˆœÝ]\ÈŽˆÝ]\Ë˜[YÝ[[ŽˆÝX‹™Ù]
+˜[YÝ[[ŠK™™X]\™\ÈŽˆ
+[ˆÜˆßJK™Ù]
+™™X]\™\È‹×JHYˆXÝ]™H[ÙH×KBˆ›X^Ú[™\\œÈŽˆ[
+
+[ˆÜˆßJK™Ù]
+›X^Ú[™\\œÈŠHÜˆ
+KœÛXÞHŽˆÙ™Ë™Ù]
+™^\™YÜÛXÞH‹œ™XYÛÛ›HŠ_CBƒB˜\Þ[˜ÈYˆš[š\ÚÝ\Ù\Š\Ù\ŽˆXÝ
+HOˆXÝƒBˆ\Ù\–ÈZY—HH\Ù\–ÈšY—CBˆ\Ù\–ÈšY—HH\Ù\‹™Ù]
+[˜[ŠHÜˆ\Ù\–ÈšY—CBˆ\Ù\‹œÙ]Y˜][
+œ›ÛH‹˜YZ[ˆŠCBˆ\Ù\–Èœ[ˆ—HH]ØZ][—Ú[™›Ê\Ù\ŠCBˆHH]ØZ]‹œ]›Ü›WÛ[Ù[\Ë™š[™ÛÛ™JÈšYŽˆ›XZ[ˆŸKÈ—ÚYŽˆJHÜˆßCBˆ\Ù\–Èœ[ˆ—VÈ™\ØX›Y—HH×HYˆ\Ù\–ÈZY—HOHU“Ô“VÈšY—H[ÙHÙˆ›Üˆˆ[ˆK™Ù]
+™\ØX›Y‹×JHYˆˆ[ˆSÑ‘PUT‘T×CBˆ™]\›ˆ\Ù\ƒBƒB™Yˆ\×Ù™X]\™J\Ù\ŽˆXÝ™X]ˆÜ[Û˜[ÜÝ—JHOˆ›ÛÛƒBˆH\Ù\‹™Ù]
+œ[ˆŠHÜˆßCBˆ™]\›ˆ™Ù]
+™^[\ŠHÜˆ›Ý™X]ÜˆŠˆˆ[ˆ™Ù]
+™™X]\™\È‹×JHÜˆ™X][ˆ™Ù]
+™™X]\™\È‹×JCBƒB™Yˆ™YY
+\Ù\ŽˆXÝ™X]ˆÜ[Û˜[ÜÝ—KÜš]Nˆ›ÛÛH˜[ÙJNƒBˆH\Ù\‹™Ù]
+œ[ˆŠHÜˆßCBˆYˆ™X][™™X][ˆ™Ù]
+™\ØX›Y‹×JNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[Yˆ“[Ù[[8 'žÐSÑ‘PUT‘TË™Ù]
+™X]™X]
+_x 'H\ÝH[™\ÜÛšXš[[ÛY[[ˆ
+^˜XÝ]˜]HYZ[š\Ý˜]Ü[]›Ü›YZJKˆŠCBˆYˆ™Ù]
+™^[\ŠNƒBˆ™]\›ƒBˆYˆ›Ý™Ù]
+˜XÝ]™HŠNƒBˆYˆÜš]HÜˆ™Ù]
+œÛXÞHŠHOH˜›ØÚÙYŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM‹]Z[YˆX›Û˜[Y[[H\ÝHXÝ]ˆ
+Ü™Ù]
+	ÜÝ]\ÉÊ_JKˆ][HœËˆÝ[1 ÜÝ˜]NÈˆ
+ÃBˆ
+›H]r&ÚHÛÛœÝ[K\ˆˆYˆ™Ù]
+œÛXÞHŠHOH˜›ØÚÙYˆ[ÙHˆŠH
+Èœ[HHÜ™XHØ]H[ÙYšXØHÜØ\™HXÝ]˜r&ÚH[ˆX›Û˜[Y[[ˆYÚ[˜H8 'X›Û˜[Y[8 'KˆŠCBˆ™]\›ƒBˆYˆ›Ý\×Ù™X]\™J\Ù\‹™X]
+NƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM‹]Z[Yˆ“[Ù[[8 'žÐSÑ‘PUT‘TË™Ù]
+™X]™X]
+_x 'HH\ÝH[˜Û\È0ë›ˆX›Û˜[Y[[Ü™Ù]
+	Û˜[YIÊ_Kˆ™XÙr&ÚHH[ˆX›Û˜[Y[Ý\\š[Üˆ[ˆYÚ[˜H8 'X›Û˜[Y[8 'KˆŠCBƒB™Yˆ[—ØÛÝ[
+ˆXÝ
+HOˆ[ƒBˆ[™\\œÈH
+™Ù]
+˜ÙYˆŠHÜˆßJK™Ù]
+š[™\\œÈŠHÜˆ×CBˆYˆ›Ý[™\\œÎƒBˆ™]\›ˆHYˆ™Ù]
+š[™\\ˆŠH[ÙHBˆÝ[HBˆ›Üˆ[™\\ˆ[ˆ[™\\œÎƒBˆ˜]×ØÛÝ[H[™\\‹™Ù]
+˜ÛÝ[‹[™\\‹™Ù]
+œ]X[]H‹JJCBˆžNƒBˆÛÝ[H›Ø]
+˜]×ØÛÝ[ÜˆJCBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠNƒBˆÛÝ[HCBˆÈ]X[]Y\È\™H\ÚXØ[[š]ÎÈ›Ý[™HX[›Ü›YYœ˜XÝ[Û˜[˜[YH\BˆÈÛÈ]Ø[››Ýž\\ÜÈH[ˆ[Z]ƒBˆÝ[
+ÏHX^
+K[
+ÛÝ[
+H
+È
+HYˆÛÝ[ˆ[
+ÛÝ[
+H[ÙH
+JCBˆ™]\›ˆÝ[BƒB™YˆÚXÚ×Ú[™\\œÊ\Ù\ŽˆXÝˆXÝ
+NƒBˆ^H
+\Ù\‹™Ù]
+œ[ˆŠHÜˆßJK™Ù]
+›X^Ú[™\\œÈŠHÜˆBˆYˆ›Ý
+\Ù\‹™Ù]
+œ[ˆŠHÜˆßJK™Ù]
+™^[\ŠH[™^[™[—ØÛÝ[
+
+Hˆ^ƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM‹]Z[YˆX›Û˜[Y[[Ý\Ù\–ÉÜ[‰×VÉÛ˜[YI×_H\›Z]HX^[][HÛ^H[™\Üˆ\ˆÜØ\ˆ
+ÜØ\[\™HÚ[—ØÛÝ[
+
+_JKˆƒBˆ‘ÜØ\[HØ]HšHØ[˜]Ø]Hš[˜[^˜]8 %™XÙr&ÚHHX›Û˜[Y[[“ÈØ]H•S[HÜØ\™HÝHXZH][H[™\Ø\™KˆŠCBƒBˆÈKKKKKKKKKKKKKKKHØš™XÝÝÜ˜YÙHKKKKKKKKKKKKKKKCBˆÈ™]Èš[\È\ÙH[Û™ÛÑˆÜšY”ÎÈYØXÞHš[\È\™H™XY]›ÝYÚZYÜ˜]YÛ›HÚ[ˆHÛÛÝ\˜ÙH™[XZ[œÈXØÙ\ÜÚX›KƒB™œ›ÛHÜšYœ×ÜÝÜ˜YÙH[\Ü[š]ÜÝÜ˜YÙK]ÛØš™XÝÙ]ÛØš™XÝ\×ÙÜšYœ×ÛØš™XÝYØXÞSØš™XÝ[˜]˜Z[X›CB™œ›ÛH]XÚY[ØÚXÚÈ[\Ü™\šYžWÙÜÜÚY\—Ø]XÚY[ÃBƒB\™^Ù\[Û—Ú[™\ŠYØXÞSØš™XÝ[˜]˜Z[X›JCB˜\Þ[˜ÈYˆYØXÞWÙš[WÝ[˜]˜Z[X›J™\]Y\Ýˆ™\]Y\Ý^ÎˆYØXÞSØš™XÝ[˜]˜Z[X›JNƒBˆ™]\›ˆ”ÓÓ”™\ÜÛœÙJÝ]\×ØÛÙOMLÛÛ[^È™]Z[ŽˆÝŠ^Ê_JCBƒBƒBˆÈ˜[Y\ÜXÙH\ÙY›Üˆ\ØYYš[HÙ^\È[ˆ[Û™ÛÑˆÜšY”ËƒBTÓSQHHÜË™[š\›Û‹™Ù]
+TÓSQH‹™œËY[™\™ÞHŠKœÝš\
+‹ÈŠHÜˆ™œËY[™\™ÞHƒBƒB“RSQWÕTTÈHÈšœÈŽˆš[XYÙKÚœYÈ‹šœYÈŽˆš[XYÙKÚœYÈ‹œ™ÈŽˆš[XYÙKÜ™È‹™ÚYˆŽˆš[XYÙKÙÚYˆ‹BˆÙXœŽˆš[XYÙKÝÙXœ‹šZXÈŽˆš[XYÙKÚZXÈ‹šZYˆŽˆš[XYÙKÚZYˆ‹œˆŽˆ˜\XØ][Û‹Üˆ‹™ØÈŽˆ˜\XØ][Û‹Û\ÝÛÜ™‹Bˆ™ØÞŽˆ˜\XØ][Û‹Ý›™›Ü[ž[›Ü›X]Ë[Ù™šXÙYØÝ[Y[ÛÜ™›ØÙ\ÜÚ[™Û[™ØÝ[Y[‹BˆžÈŽˆ˜\XØ][Û‹Ý›™›\ËY^Ù[‹BˆžÞŽˆ˜\XØ][Û‹Ý›™›Ü[ž[›Ü›X]Ë[Ù™šXÙYØÝ[Y[œÜ™XYÚY][œÚY]ŸCB“PVÕTÐQÐ–UTÈHH
+ˆL
+ˆLBƒBƒB™Yˆ˜[Y]WÝ\ØYÜ^[ØY
+š[[˜[YNˆÝ‹XÛ\™YÝ\NˆÝˆ›Û™K]Nˆž]\ÊHOˆÝŽƒBˆˆˆ•˜[Y]HH\ØYYž]\ÈYØZ[œÝZ\ˆ^[œÚ[Ûˆ[™RSQH\H™Y›Ü™HÝÜ˜YÙHÜˆ\œÚ[™ËˆˆˆƒBˆ^Hš[[˜[YKœœÜ]
+‹ˆ‹JVËLWK›ÝÙ\Š
+HYˆ‹ˆˆ[ˆš[[˜[YH[ÙHˆƒBˆ^XÝYHRSQWÕTTË™Ù]
+^
+CBˆYˆ›Ý^XÝYƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMMK]Z[H•\[šr&ZY\[ZHH\ÝHXØÙ\]ŠCBˆXÛ\™YHÝŠXÛ\™YÝ\HÜˆˆŠKœÜ]
+ŽÈ‹JVÌKœÝš\
+
+K›ÝÙ\Š
+CBˆ[ÝÙYÙXÛ\™YHÙ^XÝY˜\XØ][Û‹ÛØÝ]\Ý™X[HŸCBˆYˆ^OHšZXÈŽƒBˆ[ÝÙYÙXÛ\™Y˜Y
+š[XYÙKÚZXË\Ù\]Y[˜ÙHŠCBˆYˆ^OHšZYˆŽƒBˆ[ÝÙYÙXÛ\™Y˜Y
+š[XYÙKÚZY‹\Ù\]Y[˜ÙHŠCBˆYˆXÛ\™Y[™XÛ\™Y›Ý[ˆ[ÝÙYÙXÛ\™YƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMMK]Z[H•\[šr&ZY\[ZHHÛÜ™\Ü[™H^[œÚYZHŠCBˆYˆ›Ý]NƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H‘šr&ZY\[\ÝHÛÛŠCBƒBˆÚYÛ˜]\™\ÈHÃBˆšœÈŽˆ]KœÝ\ÝÚ]
+ˆ—™—™ˆŠKBˆšœYÈŽˆ]KœÝ\ÝÚ]
+ˆ—™—™ˆŠKBˆœ™ÈŽˆ]KœÝ\ÝÚ]
+ˆ—T‘×——XWˆŠKBˆ™ÚYˆŽˆ]KœÝ\ÝÚ]
+
+ˆ‘ÒQŽØH‹ˆ‘ÒQŽXHŠJKBˆÙXœŽˆ[Š]JHHLˆ[™]VÎHOHˆ”’Q‘ˆˆ[™]VÎŒL—HOHˆ•ÑP”‹BˆœˆŽˆ]KœÝ\ÝÚ]
+ˆ‰T‹HŠKBˆ™ØÈŽˆ]KœÝ\ÝÚ]
+ˆ—Ù—LWLLWŒWXWLHŠKBˆžÈŽˆ]KœÝ\ÝÚ]
+ˆ—Ù—LWLLWŒWXWLHŠKBˆšZXÈŽˆ[Š]JHHLˆ[™]VÍŽHOHˆ™\ˆ[™]VÎŒL—H[ˆØˆšZXÈ‹ˆšZ^‹ˆš]˜È‹ˆš]ž‹ˆ›ZYŒH‹ˆ›\ÙŒH‹ˆšZXÜÈ‹ˆšZYœÈŸKBˆšZYˆŽˆ[Š]JHHLˆ[™]VÍŽHOHˆ™\ˆ[™]VÎŒL—H[ˆØˆšZXÈ‹ˆšZ^‹ˆš]˜È‹ˆš]ž‹ˆ›ZYŒH‹ˆ›\ÙŒH‹ˆšZXÜÈ‹ˆšZYœÈŸKBˆCBˆYˆ^[ˆ
+™ØÞ‹žÞŠNƒBˆžNƒBˆÚ]š\š[K–š\š[J[Ëž]\ÒSÊ]JJH\È\˜Ú]™NƒBˆ[šY\ÈH\˜Ú]™Kš[™›Û\Ý
+
+CBˆÝ[Ý[˜ÛÛ\™\ÜÙYHÝ[J[žK™š[WÜÚ^™H›Üˆ[žH[ˆ[šY\ÊCBˆ™\]Z\™YÜ\HÛÜ™ÙØÝ[Y[ž[ˆYˆ^OH™ØÞˆ[ÙHžÝÛÜšØ›ÛÚËž[ƒBˆ˜[YH
+[Š[šY\ÊHHL[™Ý[Ý[˜ÛÛ\™\ÜÙYHPVÕTÐQÐ–UTÈ
+ˆBˆ[™–ÐÛÛ[Õ\\×Kž[ˆ[ˆ\˜Ú]™K›˜[Y[\Ý
+
+H[™™\]Z\™YÜ\[ˆ\˜Ú]™K›˜[Y[\Ý
+
+JCBˆ^Ù\
+ÔÑ\œ›Ü‹š\š[K˜Yš\š[Kš\š[K“\™ÙVš\š[JNƒBˆ˜[YH˜[ÙCBˆÚYÛ˜]\™\ÖÙ^HH˜[YBˆYˆ›ÝÚYÛ˜]\™\Ë™Ù]
+^˜[ÙJNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMMK]Z[HÛÛ²&Ú[][šr&ZY\[ZHH\ÝH˜[Y[H\[XÛ\˜]ŠCBˆ™]\›ˆ^XÝYBƒBƒBˆÈKKKKKKKKKKKKKKKH[Ù[ÈKKKKKKKKKKKKKKKCB˜Û\ÜÈ™YÚ\Ý\”™\J˜\ÙS[Ù[
+NƒBˆ[XZ[ˆ[XZ[ÝƒBˆ\ÜÝÛÜ™ˆÝƒBˆ˜[YNˆÜ[Û˜[ÜÝ—HH›Û™CBˆš[[™ÎˆÜ[Û˜[ÙXÝHH›Û™CBˆXØÛÝ[Ý\NˆÜ[Û˜[ÜÝ—HH›Û™CBˆ[œ™WØÙ\YšXØ]WÛ[X™\ŽˆÜ[Û˜[ÜÝ—HH›Û™CBˆ[œ™WØÙ\YšXØ]WÙš[[˜[YNˆÜ[Û˜[ÜÝ—HH›Û™CBˆ[œ™WØÙ\YšXØ]WÝ\NˆÜ[Û˜[ÜÝ—HH›Û™CBˆ[œ™WØÙ\YšXØ]WØ˜\ÙMˆÜ[Û˜[ÜÝ—HH›Û™CBˆÙ—ØXÚÛ›ÝÛYÙYˆ›ÛÛH˜[ÙCBˆÙ—Û›ÝXÙWÝ™\œÚ[ÛŽˆÜ[Û˜[ÜÝ—HH›Û™CBƒB˜Û\ÜÈÙÚ[”™\J˜\ÙS[Ù[
+NƒBˆ[XZ[ˆ[XZ[ÝƒBˆ\ÜÝÛÜ™ˆÝƒBƒB˜Û\ÜÈ\ÜÝÛÜ™Ú[™ÙT™\J˜\ÙS[Ù[
+NƒBˆÝ\œ™[Ü\ÜÝÛÜ™ˆÝƒBˆ™]×Ü\ÜÝÛÜ™ˆÝƒBƒB˜Û\ÜÈ›Ü™ÛÝ\ÜÝÛÜ™™\J˜\ÙS[Ù[
+NƒBˆ[XZ[ˆ[XZ[ÝƒBƒB˜Û\ÜÈ™\Ù]\ÜÝÛÜ™™\J˜\ÙS[Ù[
+NƒBˆÚÙ[ŽˆÝƒBˆ™]×Ü\ÜÝÛÜ™ˆÝƒBƒBƒB”TÔÕÓÔ‘Ô‘TÑUÓQTÔÐQÑHH‘Xñ È^\Ý1 È[ˆÛÛXÝ]ˆ[HXÙX\Ý1 ÈY™\ñ Ë™ZHš[ZH[ˆK[XZ[ÝHr&ZZHH™\Ù]\™Kˆ™\šYšXñ È2&ZH›Û\[Ü[KˆƒBƒBƒB\WÜ›Ý]\‹œÜÝ
+‹Ø]]Ù›Ü™ÛÝ\\ÜÝÛÜ™ŠCB˜\Þ[˜ÈYˆ›Ü™ÛÝÜ\ÜÝÛÜ™
+›ÙNˆ›Ü™ÛÝ\ÜÝÛÜ™™\K™\]Y\Ýˆ™\]Y\Ý
+NƒBˆˆˆ”Ù[™HÙ[™\šXËÛ™K][YH\ÜÝÛÜ™™XÛÝ™\žH[šÈÚ]Ý]\ØÛÜÚ[™ÈXØÛÝ[^\Ý[˜ÙKˆˆˆƒBˆ[XZ[HÝŠ›ÙK™[XZ[
+KœÝš\
+
+K›ÝÙ\Š
+CBˆ›ÝÈH]][YK››ÝÊ[Y^›Û™K]ÊCBˆXÚÙ]H[
+›ÝË[Y\Ý[\
+
+HËÈÍŒ
+CBˆ^\™\×Ø]H]][YK™œ›Û][Y\Ý[\
+
+XÚÙ]
+È
+H
+ˆÍŒ[Y^›Û™K]ÊCBˆ\H™\]Y\Ý˜ÛY[šÜÝYˆ™\]Y\Ý˜ÛY[[ÙH[šÛ›ÝÛˆƒBˆ˜]WÚÙ^\ÈH
+™\Ù]Ü˜]WÚÙ^J™[XZ[‹[XZ[
+K™\Ù]Ü˜]WÚÙ^Jš\‹\
+JCBˆ[Z]YH˜[ÙCBˆ›ÜˆÙ^H[ˆ˜]WÚÙ^\ÎƒBˆ]ØZ]‹œ\ÜÝÛÜ™Ü™\Ù]Û[Z]Ë\]WÛÛ™JBˆÈšÙ^HŽˆÙ^K˜XÚÙ]ŽˆXÚÙ]KBˆÈ‰Ù]Û’[œÙ\ŽˆÈ™^\™\×Ø]Žˆ^\™\×Ø]K‰[˜ÈŽˆÈ˜ÛÝ[Žˆ__KBˆ\Ù\UYKBˆ
+CBˆÛÝ[\ˆH]ØZ]‹œ\ÜÝÛÜ™Ü™\Ù]Û[Z]Ë™š[™ÛÛ™JÈšÙ^HŽˆÙ^K˜XÚÙ]ŽˆXÚÙ]KÈ—ÚYŽˆ˜ÛÝ[Žˆ_JCBˆ[Z]YH[Z]YÜˆ[
+
+ÛÝ[\ˆÜˆßJK™Ù]
+˜ÛÝ[‹
+JHˆCBˆYˆ[Z]YƒBˆ™]\›ˆÈ›ÚÈŽˆYK›Y\ÜØYÙHŽˆTÔÕÓÔ‘Ô‘TÑUÓQTÔÐQÑ_CBƒBˆXØÛÝ[H]ØZ]‹\Ù\œË™š[™ÛÛ™JÈ™[XZ[Žˆ[XZ[‰ÜˆŽˆÃBˆÈœÝ]\ÈŽˆ˜XÝ]™HŸKÈœÝ]\ÈŽˆÈ‰^\ÝÈŽˆ˜[Ù__KÈœÝ]\ÈŽˆ›Û™_KBˆ_KÈ—ÚYŽˆšYŽˆK™[XZ[ŽˆK›˜[YHŽˆ_JCBˆYˆ›ÝXØÛÝ[ƒBˆ™]\›ˆÈ›ÚÈŽˆYK›Y\ÜØYÙHŽˆTÔÕÓÔ‘Ô‘TÑUÓQTÔÐQÑ_CBƒBˆÚÙ[ˆHÙXÜ™]ËÚÙ[—Ý\›ØY™JÌŠCBˆ™\Ù]Ù^\™\ÈH›ÝÈ
+È[YY[JZ[]\ÏLÌ
+CBˆ]ØZ]‹œ\ÜÝÛÜ™Ü™\Ù]Ë™[]WÛX[žJÈ\Ù\—ÚYŽˆXØÛÝ[ÈšY—K\ÙYØ]ŽˆÈ‰^\ÝÈŽˆ˜[Ù__JCBˆ]ØZ]‹œ\ÜÝÛÜ™Ü™\Ù]Ëš[œÙ\ÛÛ™JÃBˆ\Ù\—ÚYŽˆXØÛÝ[ÈšY—K™[XZ[Žˆ[XZ[Bˆ›ÛÚÝ\Ú\ÚŽˆ™\Ù]ÛÛÚÝ\Ú\Ú
+ÚÙ[ŠKBˆÚÙ[—Ú\ÚŽˆ™\Ù]ÝÚÙ[—Ú\Ú
+XØÛÝ[ÈšY—KÚÙ[ŠKBˆ˜Ü™X]YØ]Žˆ›ÝËš\ÛÙ›Ü›X]
+
+K™^\™\×Ø]Žˆ™\Ù]Ù^\™\Ëš\ÛÙ›Ü›X]
+
+KBˆ™^\™\×ÝÈŽˆ™\Ù]Ù^\™\ËBˆJCBˆžNƒBˆÜšYÚ[ˆH\ÝYÜ™\Ù]ÛÜšYÚ[Š™\]Y\ÝšXY\œË™Ù]
+›ÜšYÚ[ˆŠKÜË™[š\›Û‹™Ù]
+ÓÔ”×ÓÔ’QÒS”È‹ˆŠKÜË™[š\›Û‹™Ù]
+”P“P×ÐTÕT“ŠJCBˆÈÙY\H™X\™\ˆÚÙ[ˆ[ˆHT“œ˜YÛY[ˆœ›ÝÜÙ\œÈÈ›ÝÙ[™]ÃBˆÈHÙXˆÙ\™\ˆ[ˆ™\]Y\ÝËXØÙ\ÜÈÙÜËÜˆ™Y™\œ™\ˆXY\œËƒBˆ[šÈHˆžÛÜšYÚ[ŸKÜ™\Ù]\\ÜÝÛÜ™ÝÚÙ[^ÝÚÙ[ŸHƒBˆ[H
+‰Ï]ˆÝ[OH™›ÛY˜[Z[N\šX[Ø[œË\Ù\šYŽØÛÛÜŽˆÌŒYŒØH‰ÃBˆ‰Ï[± Èš]XKÚ\ØÊÝŠXØÛÝ[™Ù]
+›˜[YHŠHÜˆ[XZ[
+J_KÜ‰ÃBˆ‰ÏZHÛÛXÚ]]ØÚ[X˜\™XH\›ÛZHÛÛ[ZH”È[™\™ÞKÜ‰ÃBˆ‰ÏH™YHžÚ\ØÊ[šÊ_H”™\Ù]X^± È\›ÛH0ë›ˆ”È[™\™ÞOØOÜ‰ÃBˆ‰Ï“[šÝ[^\± È0ë›ˆÌHZ[]H2&ZHØ]HšH›ÛÜÚ]ÈÚ[™Ý\± È]1 ËˆXñ ÈHZHÙ\]XÙX\Ý1 ÈØÚ[X˜\™KYÛ›Ü± ÈY\ØZ[Ü‰ÃBˆ‰ÏÝ[OH™›Û\Ú^™NŒLœØÛÛÜŽˆÎ•š[Z\ÈHÚ\ØÊSPRSÑ”“ÓWÓSQJ_KˆH± ÜÜ[™HÝH\›ÛHHHXÙ\ÝK[XZ[ÜÙ]‰ÊCBˆ]ØZ]Ù[™Ù[XZ[
+ÏY[XZ[ÝXš™XÝH”™\Ù]\™H\›Û1 È”È[™\™ÞH‹[Z[
+CBˆ^Ù\^Ù\[Ûˆ\È^ÎƒBˆÙÙÙ\‹Ø\›š[™Ê”\ÜÝÛÜ™™\Ù][XZ[ÛÝ[›Ý™HÙ[ˆ	\È‹\J^ÊK—×Û˜[YW×ÊCBˆ™]\›ˆÈ›ÚÈŽˆYK›Y\ÜØYÙHŽˆTÔÕÓÔ‘Ô‘TÑUÓQTÔÐQÑ_CBƒBƒB\WÜ›Ý]\‹œÜÝ
+‹Ø]]Ü™\Ù]\\ÜÝÛÜ™ŠCB˜\Þ[˜ÈYˆ™\Ù]Ü\ÜÝÛÜ™
+›ÙNˆ™\Ù]\ÜÝÛÜ™™\JNƒBˆÚÙ[ˆHÝŠ›ÙKÚÙ[ˆÜˆˆŠKœÝš\
+
+CBˆ™]×Ü\ÜÝÛÜ™H›ÙK›™]×Ü\ÜÝÛÜ™ÜˆˆƒBˆYˆ[Š™]×Ü\ÜÝÛÜ™
+HLŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”\›ÛH›Ýq È™XZYHñ ÈZX± ÈÙ[r&Ú[ˆLˆØ\˜XÝ\™HŠCBˆYˆ[Š™]×Ü\ÜÝÛÜ™™[˜ÛÙJ]‹NŠJHˆÌŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”\›ÛH›Ýq È\ÝH™XH[™ñ ÎÈ[Z]H\ÝHÌˆHØÝr&ÚHŠCBˆYˆ›ÝÚÙ[ˆÜˆ[ŠÚÙ[ŠHˆŒƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[šÈH™\Ù]\™H[˜[YØ]H^\˜]ŠCBˆ›ÝÈH]][YK››ÝÊ[Y^›Û™K]ÊCBˆØ[™Y]HH]ØZ]‹œ\ÜÝÛÜ™Ü™\Ù]Ë™š[™ÛÛ™JÃBˆ›ÛÚÝ\Ú\ÚŽˆ™\Ù]ÛÛÚÝ\Ú\Ú
+ÚÙ[ŠKBˆ™^\™\×ÝÈŽˆÈ‰ÝŽˆ›ÝßKBˆ\ÙYØ]ŽˆÈ‰^\ÝÈŽˆ˜[Ù_KBˆKÈ—ÚYŽˆJCBˆYˆ›ÝØ[™Y]HÜˆØ[™Y]K™Ù]
+ÚÙ[—Ú\ÚŠHOH™\Ù]ÝÚÙ[—Ú\Ú
+Ø[™Y]K™Ù]
+\Ù\—ÚY‹ˆŠKÚÙ[ŠNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[šÈH™\Ù]\™H[˜[YØ]H^\˜]ŠCBˆÛÛœÝ[YYH]ØZ]‹œ\ÜÝÛÜ™Ü™\Ù]Ë\]WÛÛ™JBˆÈ\Ù\—ÚYŽˆØ[™Y]VÈ\Ù\—ÚY—KÚÙ[—Ú\ÚŽˆØ[™Y]VÈÚÙ[—Ú\Ú—K™^\™\×ÝÈŽˆÈ‰ÝŽˆ›ÝßK\ÙYØ]ŽˆÈ‰^\ÝÈŽˆ˜[Ù__KBˆÈ‰Ù]ŽˆÈ\ÙYØ]Žˆ›ÝËš\ÛÙ›Ü›X]
+
+__KBˆ
+CBˆYˆÛÛœÝ[YY›X]ÚYØÛÝ[OHNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[šÈH™\Ù]\™H[˜[YØ]H^\˜]ŠCBˆ™\Ý[H]ØZ]‹\Ù\œË\]WÛÛ™JBˆÈšYŽˆØ[™Y]VÈ\Ù\—ÚY—K™[XZ[ŽˆØ[™Y]K™Ù]
+™[XZ[ŠK‰ÜˆŽˆÃBˆÈœÝ]\ÈŽˆ˜XÝ]™HŸKÈœÝ]\ÈŽˆÈ‰^\ÝÈŽˆ˜[Ù__KÈœÝ]\ÈŽˆ›Û™_KBˆ_KBˆÈ‰Ù]ŽˆÈœ\ÜÝÛÜ™Ú\ÚŽˆ\ÚÜ\ÜÝÛÜ™
+™]×Ü\ÜÝÛÜ™
+Kœ\ÜÝÛÜ™ØÚ[™ÙYØ]Žˆ›ÝËš\ÛÙ›Ü›X]
+
+_K‰[˜ÈŽˆÈÚÙ[—Ý™\œÚ[ÛˆŽˆ__KBˆ
+CBˆYˆ™\Ý[›X]ÚYØÛÝ[OHNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[šÈH™\Ù]\™H[˜[YØ]H^\˜]ŠCBˆ]ØZ]‹œ\ÜÝÛÜ™Ü™\Ù]Ë™[]WÛX[žJÈ\Ù\—ÚYŽˆØ[™Y]VÈ\Ù\—ÚY—KÚÙ[—Ú\ÚŽˆÈ‰™HŽˆØ[™Y]VÈÚÙ[—Ú\Ú—__JCBˆ]ØZ]‹›ÙÚ[—Ø][\Ë™[]WÛX[žJÈšY[YšY\ˆŽˆˆ›ÙÚ[ŽžØØ[™Y]VÉÙ[XZ[	×_HŸJCBˆ™]\›ˆÈ›ÚÈŽˆYK›Y\ÜØYÙHŽˆ”\›ÛHH›ÜÝØÚ[X˜]1 ËˆHò&ÚH]][YšXØH›ÛÜÚ[™\›ÛH›Ýq ËˆŸCBƒBˆÈKKKKKKKKKKKKKKKH]]›Ý]\ÈKKKKKKKKKKKKKKKCB”ÕUT×ÓTÑÈHÈœ[™[™ÈŽˆÛÛ[r&]X\1 È\›Ø˜\™XHYZ[š\Ý˜]Ü[ZH‹œÝ\Ü[™YŽˆÛÛ[\ÝHÝ\Ü[™]8 %ÛÛXÝr&ÚHYZ[š\Ý˜]Ü[‹Bˆ™\ØX›YŽˆÛÛ[\ÝH^˜XÝ]˜]ŸCB”“ÓTÈHÈ˜YZ[ˆŽˆYZ[š\Ý˜]Üˆ‹š[™Ú[™\ˆŽˆ’[™Ú[™\ˆÈ›ÚYXÝ[‹™[XÝšXÚX[ˆŽˆ‘[XÝšXÚX[ˆ]]Üš^˜]‹š[œÝ[]ÜˆŽˆ’[œÝ[]Üˆ‹›[Z]]ŽˆXØÙ\È[Z]]ŸCB‘QUÔ“ÓTÈH
+˜YZ[ˆ‹š[™Ú[™\ˆ‹™[XÝšXÚX[ˆ‹š[œÝ[]ÜˆŠCBƒB™YˆX—Ý\Ù\ŠNˆXÝ
+HOˆXÝƒBˆ™]\›ˆÈšYŽˆK™Ù]
+ZYŠHÜˆVÈšY—K™[XZ[ŽˆVÈ™[XZ[—K›˜[YHŽˆK™Ù]
+›˜[YHŠKœ›ÛHŽˆK™Ù]
+œ›ÛH‹˜YZ[ˆŠKœÝ]\ÈŽˆK™Ù]
+œÝ]\È‹˜XÝ]™HŠKBˆœÛ™HŽˆK™Ù]
+œÛ™HŠK™[˜Ý[ÛˆŽˆK™Ù]
+™[˜Ý[ÛˆŠKœÝY™—ÚYŽˆK™Ù]
+œÝY™—ÚYŠK˜XØÛÝ[Ý\HŽˆK™Ù]
+˜XØÛÝ[Ý\HŠHÜˆ
+X[HˆYˆK™Ù]
+[˜[ŠH[ÙH›ÝÛ™\ˆŠKBˆ˜[œ™WØÙ\YšXØ]WÛ[X™\ˆŽˆK™Ù]
+˜[œ™WØÙ\YšXØ]WÛ[X™\ˆŠKBˆœ[ˆŽˆK™Ù]
+œ[ˆŠKœ]›Ü›HŽˆ›ÛÛ
+U“Ô“VÈšY—JH[™
+K™Ù]
+ZYŠHÜˆVÈšY—JHOHU“Ô“VÈšY—_CBƒB\WÜ›Ý]\‹œÜÝ
+‹Ø]]Ü™YÚ\Ý\ˆŠCB˜\Þ[˜ÈYˆ™YÚ\Ý\Š›ÙNˆ™YÚ\Ý\”™\K™\]Y\Ýˆ™\]Y\Ý
+NƒBˆ[XZ[H›ÙK™[XZ[›ÝÙ\Š
+KœÝš\
+
+CBˆÛÛ™šYÝ\™YØYZ[ˆHÜË™[š\›Û‹™Ù]
+QRS—ÑSPRS‹ˆŠKœÝš\
+
+K›ÝÙ\Š
+CBˆ^\Ý[™×ØYZ[ˆH]ØZ]‹\Ù\œË™š[™ÛÛ™JÈœ›ÛHŽˆ˜YZ[ˆ‹[˜[ŽˆÈ‰[ˆŽˆÓ›Û™Kˆ—__JCBƒBˆÈ™\Ù\™Hš\œÝ\[ˆYZ[š\Ý˜]Üˆ›ÛÝÝ˜\ÈX›XÈ™YÚ\Ý˜][ÛœÈ™]™\ƒBˆÈ™XÙZ]™H[ˆYZ[š\Ý˜]]™H›ÛHY\ˆ[ˆYZ[š\Ý˜]Üˆ^\ÝËƒBˆYˆ›Ý^\Ý[™×ØYZ[ˆ[™›Ý›ÙK˜XØÛÝ[Ý\NƒBˆYˆ›ÝÛÛ™šYÝ\™YØYZ[ˆÜˆ[XZ[OHÛÛ™šYÝ\™YØYZ[ŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[H°ã›œ™YÚ\Ý˜\™XH[šr&ÚX[1 È\ÝH\›Z\ñ È[XZHYZ[š\Ý˜]Ü[ZH”È[™\™ÞKˆŠCBˆYˆ]ØZ]‹\Ù\œË™š[™ÛÛ™JÈ™[XZ[Žˆ[XZ[JNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H‘[XZ[Z˜H0ë›œ™YÚ\Ý˜]ŠCBˆYˆ[Š›ÙKœ\ÜÝÛÜ™ÜˆˆŠHƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”\›ÛH™XZYHñ ÈZX± ÈZ[š[][HØ\˜XÝ\™HŠCBˆZYHÝŠ]ZY]ZY
+
+JCBˆØÈHÈšYŽˆZY™[XZ[Žˆ[XZ[œ\ÜÝÛÜ™Ú\ÚŽˆ\ÚÜ\ÜÝÛÜ™
+›ÙKœ\ÜÝÛÜ™
+K›˜[YHŽˆ›ÙK›˜[YHÜˆ[XZ[œÜ]
+ŠVÌKBˆœ›ÛHŽˆ˜YZ[ˆ‹œÝ]\ÈŽˆ˜XÝ]™H‹[˜[Žˆ›Û™K˜XØÛÝ[Ý\HŽˆ›ÝÛ™\ˆ‹Bˆ˜Ü™X]YØ]Žˆ]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+_CBˆ]ØZ]‹\Ù\œËš[œÙ\ÛÛ™JØÊCBˆ™]\›ˆÈ˜XØÙ\Ü×ÝÚÙ[ˆŽˆÜ™X]WØXØÙ\Ü×ÝÚÙ[ŠZY[XZ[[
+ØË™Ù]
+ÚÙ[—Ý™\œÚ[Ûˆ‹
+JJK\Ù\ˆŽˆX—Ý\Ù\ŠØÊ_CBƒBˆYˆ›Ý^\Ý[™×ØYZ[ŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMLË]Z[H°ã›œ™YÚ\Ý˜\™XHÛÛ\š[ÜˆH\[™\ˆH\ÝH\ÜÛšXš[1 È0è›± ÈHÛÛ™šYÝ\˜\™XHYZ[š\Ý˜]Ü[ZKˆŠCBˆYˆ›ÙK˜XØÛÝ[Ý\H›Ý[ˆ
+š[œÝ[\ˆ‹œ\™\ˆŠNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H[YÙr&ÚH\[HÛÛˆ[œÝ[]ÜˆØ]H\[™\‹ˆŠCBˆYˆ›Ý›ÙK™Ù—ØXÚÛ›ÝÛYÙYÜˆ›ÙK™Ù—Û›ÝXÙWÝ™\œÚ[ÛˆOHœ\™\‹\™YÚ\Ý˜][Û‹]ŒKLŒ‹LLHŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[HÚ]r&ÚH[™›Ü›X\™XHš]š[™][H\œÛÛ˜[H2&ZHÛÛ™š\›Xr&ÚHXÛÜ™[0ë›˜Z[HHš[Z]\™KˆŠCBˆYˆ]ØZ]‹\Ù\œË™š[™ÛÛ™JÈ™[XZ[Žˆ[XZ[JNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H‘[XZ[Z˜H0ë›œ™YÚ\Ý˜]ŠCBˆ\ÜÝÛÜ™H›ÙKœ\ÜÝÛÜ™ÜˆˆƒBˆYˆ[Š\ÜÝÛÜ™
+HLŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”\›ÛH™XZYHñ ÈZX± ÈZ[š[][HLˆØ\˜XÝ\™HŠCBˆYˆ[Š\ÜÝÛÜ™™[˜ÛÙJ]‹NŠJHˆÌŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”\›ÛH\ÝH™XH[™ñ ÎÈ[Z]H\ÝHÌˆHØÝr&ÚKˆŠCBƒBˆÙ\Û[X™\ˆH™KœÝXŠˆ—ÊÈ‹ˆ‹ÝŠ›ÙK˜[œ™WØÙ\YšXØ]WÛ[X™\ˆÜˆˆŠJKœÝš\
+
+CBˆš[[˜[YHHÜËœ]˜˜\Ù[˜[YJÝŠ›ÙK˜[œ™WØÙ\YšXØ]WÙš[[˜[YHÜˆˆŠKœ™\XÙJ—‹‹ÈŠJCBˆ[˜ÛÙYHÝŠ›ÙK˜[œ™WØÙ\YšXØ]WØ˜\ÙMÜˆˆŠKœÝš\
+
+CBˆYˆ›ÝÙ\Û[X™\ˆÜˆ›Ýš[[˜[YHÜˆ›Ý[˜ÛÙYƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[HÛÛ\]r&ÚH[q Ü[]]Üš^˜r&ÚYZHS”‘H2&ZH]r&Xr&ÚHÙ\YšXØ][ˆŠCBˆYˆ[Š[˜ÛÙY
+HˆLˆ
+ˆL
+ˆLƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMLË]Z[HÙ\YšXØ][\1 ò&Yr&]H[Z]HHP‹ˆŠCBˆžNƒBˆÙ\Ù]HH˜\ÙM˜XÛÙJ[˜ÛÙY˜[Y]OUYJCBˆ^Ù\^Ù\[ÛŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H‘šr&ZY\[Ù\YšXØ][ZHHØ]HšHÚ]]ˆŠCBˆYˆ[ŠÙ\Ù]JHˆ
+ˆL
+ˆLƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMLË]Z[HÙ\YšXØ][\1 ò&Yr&]H[Z]HHP‹ˆŠCBˆ^Hš[[˜[YKœœÜ]
+‹ˆ‹JVËLWK›ÝÙ\Š
+HYˆ‹ˆˆ[ˆš[[˜[YH[ÙHˆƒBˆYˆ^›Ý[ˆ
+œˆ‹šœÈ‹šœYÈ‹œ™ÈŠNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMMK]Z[H]r&Xr&ÚHÙ\YšXØ][S”‘H0ë›ˆ›Ü›X]‹”ÈØ]H‘ËˆŠCBˆÙ\Ý\HH˜[Y]WÝ\ØYÜ^[ØY
+š[[˜[YK›ÙK˜[œ™WØÙ\YšXØ]WÝ\KÙ\Ù]JCBƒBˆZYHÝŠ]ZY]ZY
+
+JCBˆ›ÝÈH]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+CBˆÙ\Ü]HˆžÐTÓSQ_KÜ\™\‹X\XØ][ÛœËÞÝZYKØ[œ™KXÙ\YšXØ]KžÙ^HƒBˆØÈHÈšYŽˆZY™[XZ[Žˆ[XZ[œ\ÜÝÛÜ™Ú\ÚŽˆ\ÚÜ\ÜÝÛÜ™
+\ÜÝÛÜ™
+KBˆ›˜[YHŽˆÝŠ›ÙK›˜[YHÜˆˆŠKœÝš\
+
+VÎŒLŒHÜˆ[XZ[œÜ]
+ŠVÌKBˆœ›ÛHŽˆ›[Z]]‹œÝ]\ÈŽˆœ[™[™È‹[˜[Žˆ^\Ý[™×ØYZ[–ÈšY—KBˆ˜XØÛÝ[Ý\HŽˆ›ÙK˜XØÛÝ[Ý\K˜[œ™WØÙ\YšXØ]WÛ[X™\ˆŽˆÙ\Û[X™\‹Bˆ˜[œ™WØÙ\YšXØ]WÜ]ŽˆÙ\Ü]˜[œ™WØÙ\YšXØ]WÙš[[˜[YHŽˆš[[˜[YKBˆ˜Ü™X]YØ]Žˆ›ÝË™Ù—Û›ÝXÙWÝ™\œÚ[ÛˆŽˆ›ÙK™Ù—Û›ÝXÙWÝ™\œÚ[Û‹Bˆ™Ù—ØXÚÛ›ÝÛYÙYØ]Žˆ›ÝßCBˆ]ØZ]‹\Ù\œËš[œÙ\ÛÛ™JØÊCBˆžNƒBˆ]ÛØš™XÝ
+Ù\Ü]Ù\Ù]KÙ\Ý\JCBˆ^Ù\^Ù\[Ûˆ\È^ÎƒBˆ]ØZ]‹\Ù\œË™[]WÛÛ™JÈšYŽˆZYJCBˆÙÙÙ\‹™\œ›ÜŠS”‘HÙ\YšXØ]HÝÜ˜YÙH˜Z[Y›ÜˆXØÛÝ[™\]Y\Ý
+	\ÊH‹\J^ÊK—×Û˜[YW×ÊCBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMLË]Z[H“H[H]]1 ÜÝ˜HÙ\YšXØ][S”‘Kˆ0ã›˜Ù\˜Ør&ÚH[ˆ›ÝKˆŠCBˆžNƒBˆ]ØZ]‹˜]Y]š[œÙ\ÛÛ™JÈ›ÝÛ™\ˆŽˆ^\Ý[™×ØYZ[–ÈšY—K\Ù\ˆŽˆ[XZ[Bˆ˜XÝ[ÛˆŽˆˆ˜Ù\™\™HÛÛØ›ÙK˜XØÛÝ[Ý\_H8 %™\šYšXØ\™HÙ\YšXØ]S”‘H‹Bˆ›[Ù[HŽˆ\Ù\œÈ‹š][WÚYŽˆZY™šY[ÈŽˆÈ˜XØÛÝ[Ý\H‹˜[œ™WØÙ\YšXØ]WÛ[X™\ˆ‹™Ù—Û›ÝXÙWÝ™\œÚ[Ûˆ—KBˆ˜]Žˆ›ÝßJCBˆ^Ù\^Ù\[Ûˆ\È^ÎƒBˆÙÙÙ\‹Ø\›š[™Ê”\™\ˆXØÛÝ[™\]Y\Ý]Y]ÛÝ[›Ý™H™XÛÜ™Y
+	\ÊH‹\J^ÊK—×Û˜[YW×ÊCBˆ™]\›ˆÈœ[™[™ÈŽˆYK›Y\ÜØYÙHŽˆÙ\™\™XHH›ÜÝš[Z\ñ ËˆÛÛ[˜HšHXÝ]˜]\1 È™\šYšXØ\™XHÙ\YšXØ][ZHS”‘HHñ Ý™HYZ[š\Ý˜]Ü‹ˆŸCBƒBƒB\WÜ›Ý]\‹œÜÝ
+‹Ø]]ÛÙÚ[ˆŠCB˜\Þ[˜ÈYˆÙÚ[Š›ÙNˆÙÚ[”™\K™\]Y\Ýˆ™\]Y\Ý
+NƒBˆ[XZ[H›ÙK™[XZ[›ÝÙ\Š
+CBˆY[Hˆ›ÙÚ[ŽžÙ[XZ[HƒBˆ]H]ØZ]‹›ÙÚ[—Ø][\Ë™š[™ÛÛ™JÈšY[YšY\ˆŽˆY[JCBˆYˆ][™]™Ù]
+˜ÛÝ[‹
+HHH[™]™Ù]
+[[‹ˆŠHˆ]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+NƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMŽK]Z[H”™XH][H0ë›˜Ù\˜ñ ÜšHr&]X]Kˆ0ã›˜Ù\˜Ør&ÚH[ˆ›ÝH\ÝHMHZ[]KˆŠCBˆš]˜]WÛ[ÙHHÜË™[š\›Û‹™Ù]
+‘”×ÑS‘T‘ÖWÔ’UUWÓSÑH‹™˜[ÙHŠKœÝš\
+
+K›ÝÙ\Š
+H[ˆ
+ŒH‹YH‹žY\È‹›ÛˆŠCBˆYZ[—Ù[XZ[HÜË™[š\›Û‹™Ù]
+QRS—ÑSPRS‹ˆŠKœÝš\
+
+K›ÝÙ\Š
+CBˆ\Ù\ˆH]ØZ]‹\Ù\œË™š[™ÛÛ™JÈ™[XZ[Žˆ[XZ[JCBˆYˆ›Ý\Ù\ˆÜˆ›Ý™\šYžWÜ\ÜÝÛÜ™
+›ÙKœ\ÜÝÛÜ™\Ù\–Èœ\ÜÝÛÜ™Ú\Ú—JNƒBˆØÚ×Ý[[H]][YK››ÝÊ[Y^›Û™K]ÊH
+È[YY[JZ[]\ÏLMJCBˆ]ØZ]‹›ÙÚ[—Ø][\Ë\]WÛÛ™JÈšY[YšY\ˆŽˆY[KÃBˆ‰[˜ÈŽˆÈ˜ÛÝ[Žˆ_K‰Ù]ŽˆÈ[[ŽˆØÚ×Ý[[š\ÛÙ›Ü›X]
+
+K™^\™\×Ø]ŽˆØÚ×Ý[[CBˆK\Ù\UYJCBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMK]Z[H‘[XZ[Ø]H\›Û1 È[˜ÛÜ™XÝ1 ÈŠCBˆ]ØZ]‹›ÙÚ[—Ø][\Ë™[]WÛX[žJÈšY[YšY\ˆŽˆY[JCBˆYˆš]˜]WÛ[ÙH[™›Ýš]˜]WÛ[ÙWØXØÛÝ[Ø[ÝÙY
+\Ù\‹YZ[—Ù[XZ[
+NƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[HXØÙ\È\›Z\ÈYZ[š\Ý˜]Ü[ZH2&ZH\[™\š[Üˆ\›Ø˜r&ÚH”È[™\™ÞHŠCBˆYˆ\Ù\‹™Ù]
+œÝ]\È‹˜XÝ]™HŠHOH˜XÝ]™HŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[TÕUT×ÓTÑË™Ù]
+\Ù\‹™Ù]
+œÝ]\ÈŠKÛÛ[˜XÝ]ˆŠJCBˆÚÈHÜ™X]WØXØÙ\Ü×ÝÚÙ[Š\Ù\–ÈšY—K[XZ[[
+\Ù\‹™Ù]
+ÚÙ[—Ý™\œÚ[Ûˆ‹
+JJCBˆ™]\›ˆÈ˜XØÙ\Ü×ÝÚÙ[ˆŽˆÚË\Ù\ˆŽˆX—Ý\Ù\Š]ØZ]š[š\ÚÝ\Ù\Š\Ù\ŠJ_CBƒB\WÜ›Ý]\‹™Ù]
+‹Ø]]ÛYHŠCB˜\Þ[˜ÈYˆYJ\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆ™]\›ˆX—Ý\Ù\Š\Ù\ŠCBƒB\WÜ›Ý]\‹œÜÝ
+‹Ø]]ØÚ[™ÙK\\ÜÝÛÜ™ŠCB˜\Þ[˜ÈYˆÚ[™ÙWÜ\ÜÝÛÜ™
+›ÙNˆ\ÜÝÛÜ™Ú[™ÙT™\K\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆÝ\œ™[H›ÙK˜Ý\œ™[Ü\ÜÝÛÜ™ÜˆˆƒBˆ™]ÈH›ÙK›™]×Ü\ÜÝÛÜ™ÜˆˆƒBˆYˆ[Š™]ÊHLŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”\›ÛH›Ýq È™XZYHñ ÈZX± ÈÙ[r&Ú[ˆLˆØ\˜XÝ\™HŠCBˆYˆ[Š™]Ë™[˜ÛÙJ]‹NŠJHˆÌŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”\›ÛH›Ýq È\ÝH™XH[™ñ ÎÈ[Z]H\ÝHÌˆHØÝr&ÚHŠCBˆYˆÝ\œ™[OH™]ÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H[YÙHÈ\›Û1 ÈY™\š]1 ÈHÙXHXÝX[1 ÈŠCBˆXØÛÝ[H]ØZ]‹\Ù\œË™š[™ÛÛ™JÈšYŽˆ\Ù\–ÈZY—_KÈ—ÚYŽˆœ\ÜÝÛÜ™Ú\ÚŽˆK™[XZ[Žˆ_JCBˆžNƒBˆ˜[YH›ÛÛ
+XØÛÝ[[™™\šYžWÜ\ÜÝÛÜ™
+Ý\œ™[XØÛÝ[™Ù]
+œ\ÜÝÛÜ™Ú\ÚŠHÜˆˆŠJCBˆ^Ù\
+˜[YQ\œ›Ü‹\Q\œ›ÜŠNƒBˆ˜[YH˜[ÙCBˆYˆ›Ý˜[YƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”\›ÛHXÝX[1 È\ÝH[˜ÛÜ™XÝ1 ÈŠCBˆ]ØZ]‹\Ù\œË\]WÛÛ™JÈšYŽˆ\Ù\–ÈZY—_KÈ‰Ù]ŽˆÃBˆœ\ÜÝÛÜ™Ú\ÚŽˆ\ÚÜ\ÜÝÛÜ™
+™]ÊKœ\ÜÝÛÜ™ØÚ[™ÙYØ]Žˆ]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+CBˆK‰[˜ÈŽˆÈÚÙ[—Ý™\œÚ[ÛˆŽˆ__JCBˆ]ØZ]‹›ÙÚ[—Ø][\Ë™[]WÛX[žJÈšY[YšY\ˆŽˆˆ›ÙÚ[ŽžØXØÛÝ[ÉÙ[XZ[	×K›ÝÙ\Š
+_HŸJCBˆ]ØZ]]Y]
+\Ù\‹œØÚ[X˜\™H\›Û1 È‹˜]]‹\Ù\–ÈZY—K×JCBˆ™]\›ˆÈ›ÚÈŽˆY_CBƒB™Yˆ™\]Z\™J\Ù\ŽˆXÝ
+œ›Û\ÊNƒBˆYˆ\Ù\‹™Ù]
+œ›ÛH‹˜YZ[ˆŠH›Ý[ˆ›Û\ÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[H“H]™r&ÚH™\[[HXÙX\Ý1 ÈXò&Ú][™HŠCBƒB™Yˆ\×ØYZ[Š\Ù\ŽˆXÝ
+HOˆ›ÛÛƒBˆ™]\›ˆ\Ù\‹™Ù]
+œ›ÛH‹˜YZ[ˆŠHOH˜YZ[ˆƒBƒB”ÐÓÔQH
+˜ÛY[È‹œ›ÜÝ[X]Üˆ‹™]H‹›[Û›È‹œ[™[È‹˜[H‹œ˜[H‹™\]Z\Y[‹œÝÙ\ˆ‹˜]ˆ‹ÛÜšÜÈ‹œ›Ú™XÝÈ‹™ØÝ[Y[È‹›Ü\˜]Ü—ÛY\ÜØYÙ\ÈŠCBƒB™YˆØÛÜWÜJ\Ù\ŽˆXÝ[Ù[NˆÝŠHOˆXÝƒBˆHHÈ›ÝÛ™\ˆŽˆ\Ù\–ÈšY—_CBˆYˆ›Ý\×ØYZ[Š\Ù\ŠH[™[Ù[H[ˆÐÓÔQƒBˆVÈ‰Üˆ—HHÞÈ˜Ü™X]YØžHŽˆÈ‰[ˆŽˆÝ\Ù\–ÈZY—K\Ù\‹™Ù]
+™[XZ[ŠW__KÈ˜\ÜÚYÛ™YÝÈŽˆ\Ù\–ÈZY—_WCBˆ™]\›ˆCBƒB˜\Þ[˜ÈYˆÚXÚ×ØXØÙ\ÜÊ\Ù\ŽˆXÝ[Ù[NˆÝ‹][WÚYˆÝŠHOˆXÝƒBˆ™YY
+\Ù\‹SÑSWÑ‘PUT‘K™Ù]
+[Ù[JJCBˆ™XÈH]ØZ]–Û[Ù[WK™š[™ÛÛ™JÊŠœØÛÜWÜJ\Ù\‹[Ù[JKšYŽˆ][WÚYKÈ—ÚYŽˆJCBˆYˆ›Ý™XÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H°ã›œ™YÚ\Ý˜\™H[™^\Ý[1 ÈØ]H± Ü± È™\HXØÙ\ÈŠCBˆ™]\›ˆ™XÃBƒB\WÜ›Ý]\‹™Ù]
+‹ØYZ[‹Ý\Ù\œÈŠCB˜\Þ[˜ÈYˆYZ[—Ý\Ù\œÊ\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆ™\]Z\™J\Ù\‹˜YZ[ˆŠCBˆ\ÈH]ØZ]‹\Ù\œË™š[™
+È‰ÜˆŽˆÞÈ[˜[Žˆ\Ù\–ÈšY—_KÈšYŽˆ\Ù\–ÈšY—_W_KÈ—ÚYŽˆœ\ÜÝÛÜ™Ú\ÚŽˆJKœÛÜ
+˜Ü™X]YØ]‹JK×Û\Ý
+L
+CBˆ™]\›ˆÈ\Ù\œÈŽˆÜX—Ý\Ù\ŠJHÈ˜Ü™X]YØ]ŽˆK™Ù]
+˜Ü™X]YØ]ŠKBˆ˜[œ™WØÙ\YšXØ]WÜ]ŽˆK™Ù]
+˜[œ™WØÙ\YšXØ]WÜ]ŠKBˆ˜[œ™WØÙ\YšXØ]WÙš[[˜[YHŽˆK™Ù]
+˜[œ™WØÙ\YšXØ]WÙš[[˜[YHŠ_H›ÜˆH[ˆ\×Kœ›Û\ÈŽˆ“ÓTßCBƒB\WÜ›Ý]\‹™Ù]
+‹ØYZ[‹Ý\Ù\œËÞÝZYKØ[œ™KXÙ\YšXØ]HŠCB˜\Þ[˜ÈYˆYZ[—Ý\Ù\—Ø[œ™WØÙ\YšXØ]JZYˆÝ‹\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆ™\]Z\™J\Ù\‹˜YZ[ˆŠCBˆXØÛÝ[H]ØZ]‹\Ù\œË™š[™ÛÛ™JÈšYŽˆZY[˜[Žˆ\Ù\–ÈšY—_KÈ—ÚYŽˆ˜[œ™WØÙ\YšXØ]WÜ]ŽˆK˜[œ™WØÙ\YšXØ]WÙš[[˜[YHŽˆ_JCBˆYˆ›ÝXØÛÝ[Üˆ›ÝXØÛÝ[™Ù]
+˜[œ™WØÙ\YšXØ]WÜ]ŠNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[HÙ\YšXØ][S”‘HH\ÝH\ÜÛšXš[ˆŠCBˆžNƒBˆ]KÛÛ[Ý\HH]ØZ]\Þ[˜Ú[Ë×Ý™XY
+Ù]ÛØš™XÝXØÛÝ[È˜[œ™WØÙ\YšXØ]WÜ]—JCBˆ^Ù\^Ù\[ÛŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H‘šr&ZY\[Ù\YšXØ][ZHHH›ÜÝñ ÜÚ]ˆŠCBˆØY™WÛ˜[YHH™KœÝXŠˆ–×KV˜K^ŒNK—ËWH‹—È‹XØÛÝ[™Ù]
+˜[œ™WØÙ\YšXØ]WÙš[[˜[YHŠHÜˆ˜Ù\YšXØ]X[œ™KœˆŠCBˆ™]\›ˆ™\ÜÛœÙJÛÛ[Y]KYYXWÝ\OXÛÛ[Ý\KBˆXY\œÏ^ÈÛÛ[Q\ÜÜÚ][ÛˆŽˆ‰Ø]XÚY[Èš[[˜[YOHžÜØY™WÛ˜[Y_H‰ËØXÚKPÛÛ›ÛŽˆ››Ë\ÝÜ™HŸJCBƒBƒB\WÜ›Ý]\‹œ]
+‹ØYZ[‹Ý\Ù\œËÞÝZYHŠCB˜\Þ[˜ÈYˆYZ[—Ý\Ù\—Ý\]JZYˆÝ‹™\]Y\Ýˆ™\]Y\Ý\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆ™\]Z\™J\Ù\‹˜YZ[ˆŠCBˆˆH]ØZ]™\]Y\ÝšœÛÛŠ
+CBˆHH]ØZ]‹\Ù\œË™š[™ÛÛ™JÈšYŽˆZY[˜[Žˆ\Ù\–ÈšY—_JCBˆYˆ›ÝNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H•][^˜]Üˆ[™^\Ý[
+YZ[š\Ý˜]Ü[š[˜Ú\[HØ]HšH[ÙYšXØ]ZXÚJHŠCBˆ\HÚÎˆ–Ú×H›ÜˆÈ[ˆ
+›˜[YH‹œÛ™H‹™[˜Ý[Ûˆ‹œÝY™—ÚYŠHYˆÈ[ˆŸCBˆYˆœ›ÛHˆ[ˆŽƒBˆYˆ–Èœ›ÛH—H›Ý[ˆ“ÓTÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”›Û[˜[YŠCBˆ\Èœ›ÛH—HH–Èœ›ÛH—CBˆYˆœÝ]\Èˆ[ˆŽƒBˆYˆ–ÈœÝ]\È—H›Ý[ˆ
+œ[™[™È‹˜XÝ]™H‹œÝ\Ü[™Y‹™\ØX›YŠNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”Ý\™H[˜[Y1 ÈŠCBˆ\ÈœÝ]\È—HH–ÈœÝ]\È—CBˆYˆ–ÈœÝ]\È—HOH˜XÝ]™Hˆ[™K™Ù]
+˜XØÛÝ[Ý\HŠH[ˆ
+š[œÝ[\ˆ‹œ\™\ˆŠH[™œ›ÛHˆ›Ý[ˆŽƒBˆ\Èœ›ÛH—HHš[œÝ[]ÜˆƒBˆ]ØZ]‹\Ù\œË\]WÛÛ™JÈšYŽˆZYKÈ‰Ù]Žˆ\JCBˆ]ØZ]]Y]
+\Ù\‹˜ÛÛ][^˜]Üˆ‹\Ù\œÈ‹ZY\Ý
+\šÙ^\Ê
+JH
+ÈÜÝŠ\™Ù]
+œÝ]\ÈŠHÜˆˆŠKÝŠ\™Ù]
+œ›ÛHŠHÜˆˆŠWJCBˆ™]\›ˆÈ›ÚÈŽˆY_CBƒB\WÜ›Ý]\‹œ]
+‹Ø]]Ü›Ùš[HŠCB˜\Þ[˜ÈYˆ^WÜ›Ùš[J™\]Y\Ýˆ™\]Y\Ý\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆˆH]ØZ]™\]Y\ÝšœÛÛŠ
+CBˆ\HÚÎˆ–Ú×H›ÜˆÈ[ˆ
+›˜[YH‹œÛ™H‹™[˜Ý[ÛˆŠHYˆÈ[ˆŸCBˆ]ØZ]‹\Ù\œË\]WÛÛ™JÈšYŽˆ\Ù\–ÈZY—_KÈ‰Ù]Žˆ\JCBˆ™]\›ˆÈ›ÚÈŽˆY_CBƒB\WÜ›Ý]\‹œÜÝ
+‹Ø]]ÛÙÛÝ]ŠCB˜\Þ[˜ÈYˆÙÛÝ]
+\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆ™]\›ˆÈ›ÚÈŽˆY_CBƒBˆÈKKKKKKKKKKKKKKKHÙ[™\šXÈ[Ù[HÔ•QKKKKKKKKKKKKKKKCB“SÑSTÈHÈ˜ÛY[È‹œ›ÜÝ[X]Üˆ‹™]H‹›[Û›È‹œ[™[È‹˜[H‹œ˜[H‹™\]Z\Y[‹œÝÙ\ˆ‹˜]ˆ‹ÛÜšÜÈ‹œ›Ú™XÝÈ‹™ØÝ[Y[È‹˜\˜Ú]™YÙÜÜÚY\œÈ‹˜Ø][ÙÈ‹›Ü\˜]Ü—ÛY\ÜØYÙ\È‹œÝY™ˆ‹š[œÝ[Y[È—CBƒB™YˆÛX[ŠØÎˆXÝ
+HOˆXÝƒBˆØËœÜ
+—ÚY‹›Û™JCBˆYˆ\Ú[œÝ[˜ÙJØË™Ù]
+˜]—Ý˜XÚÈŠKXÝ
+NƒBˆØÖÈ˜]—Ý˜XÚÈ—HHÚÎˆˆ›ÜˆËˆ[ˆØÖÈ˜]—Ý˜XÚÈ—Kš][\Ê
+HYˆÈOHÚÙ[ˆŸCBˆ™]\›ˆØÃBƒBƒB”URPÒ×ÔÑPTÒÓSÑSTÈHÃBˆ
+˜ÛY[È‹ÛY[‹˜ÛY[Û˜[YH‹È›˜[YH‹œÛ™H‹™[XZ[‹˜Ûœ‹šYÛÙH‹˜ÝZH‹œ™YØÛÛH‹šYÜÙ\šY\È‹šYÛ[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[H—K‹ØÛY[HŠKBˆ
+œ›ÜÝ[X]Üˆ‹‘ÜØ\ˆ›ÜÝ[X]Üˆ‹˜ÛY[Û˜[YH‹È˜ÛY[Û˜[YH‹›[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[H‹›Ü\˜]Üˆ—K‹Ü›ÜÝ[X]ÜˆŠKBˆ
+˜]ˆ‹Ù\™\™HUˆ‹˜ÛY[Û˜[YH‹È˜ÛY[Û˜[YH‹›[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹œÝ]\È‹›Ü\˜]Üˆ—K‹ØÙ\™\™KX]ˆŠKBˆ
+œÝÙ\ˆ‹”ÜÜˆH]\™H‹˜ÛY[Û˜[YH‹È˜ÛY[Û˜[YH‹›[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹œÝ]\È‹›Ü\˜]Üˆ—K‹ÜÜÜ‹\]\™HŠKBˆ
+™]H‹‘ÜØ\ˆUH‹˜ÛY[Û˜[YH‹È˜ÛY[Û˜[YH‹›[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹œÝ]\È‹›Ü\˜]Üˆ—K‹Ù]HŠKBˆ
+™ØÝ[Y[È‹‘ØÝ[Y[‹˜ÛY[Û˜[YH‹È˜ÛY[Û˜[YH‹]H‹›˜[YH‹™š[[˜[YH‹›ÜšYÚ[˜[Ùš[[˜[YH‹™Ø×Ý\H‹šÚ[™‹\H‹œÙ—K‹ÙØÝ[Y[HŠKBˆ
+˜Ø][ÙÈ‹‘XÚ\[Y[Ø][ÙÈ‹˜œ˜[™Û[Ù[‹È˜œ˜[™Û[Ù[‹˜Ø]YÛÜžH‹œÝ\Y\ˆ—K‹ØØ][ÙËYXÚ\[Y[HŠKB—CBƒBƒB\WÜ›Ý]\‹™Ù]
+‹Ü]ZXÚË\ÙX\˜ÚŠCB˜\Þ[˜ÈYˆ]ZXÚ×ÜÙX\˜Ú
+NˆÝˆH]Y\žJ‹‹‹Z[—Û[™ÝL‹X^Û[™ÝN
+K\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆˆˆ”ÙX\˜ÚHÚYÛ™YZ[ˆ[˜[	ÜÈÛY[[™ÜÜÚY\ˆ™XÛÜ™ÈÚ]Ý]ØY[™ÈÚÛHÛÛXÝ[ÛœËˆˆˆƒBˆ\›HHKœÝš\
+
+CBˆYˆ[Š\›JHŽƒBˆ™]\›ˆÈœ™\Ý[ÈŽˆ×_CBˆ]\›ˆH™K˜ÛÛ\[J™K™\ØØ\J\›JK™K’QÓ“Ô‘PÐTÑJCBƒBˆ\Þ[˜ÈYˆÙX\˜ÚÛ[Ù[JÜXÊNƒBˆ[Ù[KX™[˜[YWÚÙ^KšY[Ë›Ý]HHÜXÃBˆžNƒBˆÝX\™
+[Ù[K\Ù\ŠCBˆ^Ù\^Ù\[ÛŽƒBˆ™]\›ˆ×CBˆšY[Ü]Y\žHHÈ‰ÜˆŽˆÞÙšY[ˆ]\›ŸH›ÜˆšY[[ˆšY[×_CBˆ]Y\žHHÈ‰[™ŽˆÜØÛÜWÜJ\Ù\‹[Ù[JKšY[Ü]Y\žW_CBˆ›ÝÜÈH]ØZ]–Û[Ù[WK™š[™
+]Y\žKÈ—ÚYŽˆšYŽˆK›˜[YHŽˆK˜ÛY[Û˜[YHŽˆK˜ÛY[ÚYŽˆKBˆ›[X™\ˆŽˆK›ÜšYÚ[˜[Ùš[[˜[YHŽˆK™Ø×Ý\HŽˆKšÚ[™ŽˆKBˆ˜œ˜[™Û[Ù[ŽˆK˜Ø]YÛÜžHŽˆKœÝ\Y\ˆŽˆKBˆœÙŽˆK˜Y™\ÜÈŽˆK›ØØ[]HŽˆK˜ÛÝ[HŽˆKœÛ™HŽˆK™[XZ[ŽˆK˜ÝZHŽˆKœ™YØÛÛHŽˆKBˆ›Ü\˜]ÜˆŽˆK]HŽˆK™š[[˜[YHŽˆK\HŽˆKBˆš\×Ý\ÝŽˆ_JKœÛÜ
+\]YØ]‹LJK›[Z]
+JK×Û\Ý
+JCBˆX]Ú\ÈH×CBˆ›Üˆ›ÝÈ[ˆ›ÝÜÎƒBˆYˆ›ÝË™Ù]
+š\×Ý\ÝŠHÜˆ™KœÙX\˜Ú
+ˆ—•TÕˆ‹ˆ‹š›Ú[ŠÝŠ›ÝË™Ù]
+ÊHÜˆˆŠH›ÜˆÈ[ˆ
+›˜[YH‹˜ÛY[Û˜[YH‹›[X™\ˆŠJK™K’JNƒBˆÛÛ[YCBˆ][WÚYHÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠCBˆYˆ›Ý][WÚYƒBˆÛÛ[YCBˆÛY[Û˜[YHH›ÝË™Ù]
+˜[YWÚÙ^JHÜˆ›ÝË™Ù]
+›˜[YHŠHÜˆ°ã›œ™YÚ\Ý˜\™H± Ü± È[YHƒBˆ]Z[Hˆ0­È‹š›Ú[ŠÝŠ›ÝË™Ù]
+ÊJH›ÜˆÈ[ˆ
+›[X™\ˆ‹œÙ‹œÛ™H‹™[XZ[‹˜ÝZH‹œ™YØÛÛH‹›ØØ[]H‹˜ÛÝ[H‹›Ü\˜]ÜˆŠHYˆ›ÝË™Ù]
+ÊJCBˆ]HHÛY[Û˜[YCBˆ™YˆHˆžÜ›Ý]_OÙY]^Ú][WÚYHƒBˆYˆ[Ù[HOH˜Ø][ÙÈŽƒBˆ]HH›ÝË™Ù]
+˜œ˜[™Û[Ù[ŠHÜˆÛY[Û˜[YCBˆ]Z[Hˆ0­È‹š›Ú[ŠÝŠ˜[YJH›Üˆ˜[YH[ˆ
+›ÝË™Ù]
+˜Ø]YÛÜžHŠK›ÝË™Ù]
+œÝ\Y\ˆŠJHYˆ˜[YJCBˆ™YˆHˆ‹ØØ][ÙËYXÚ\[Y[OÜO^×ÜJÝŠ›ÝË™Ù]
+	Øœ˜[™Û[Ù[	ÊHÜˆ	ÉÊJ_I˜Ø]YÛÜžO^×ÜJÝŠ›ÝË™Ù]
+	ØØ]YÛÜžIÊHÜˆ	Ò[™\Ü‰ÊJ_HƒBˆYˆ[Ù[HOH™ØÝ[Y[ÈŽƒBˆ]HH›ÝË™Ù]
+›ÜšYÚ[˜[Ùš[[˜[YHŠHÜˆ›ÝË™Ù]
+]HŠHÜˆ›ÝË™Ù]
+™š[[˜[YHŠHÜˆ›ÝË™Ù]
+™Ø×Ý\HŠHÜˆ›ÝË™Ù]
+šÚ[™ŠHÜˆÛY[Û˜[YCBˆ]Z[Hˆ0­È‹š›Ú[ŠÝŠ˜[YJH›Üˆ˜[YH[ˆ
+ÛY[Û˜[YK›ÝË™Ù]
+™Ø×Ý\HŠHÜˆ›ÝË™Ù]
+šÚ[™ŠK]Z[
+HYˆ˜[YJCBˆ™YˆHˆžÜ›Ý]_OÙØÒY^Ú][WÚYHƒBˆX]Ú\Ë˜\[™
+ÈšYŽˆ][WÚY›[Ù[HŽˆ[Ù[K›X™[ŽˆX™[]HŽˆ]KBˆ™]Z[Žˆ]Z[š™YˆŽˆ™YŸJCBˆ™]\›ˆX]Ú\ÃBƒBˆ[Ù[WÛX]Ú\ÈH]ØZ]\Þ[˜Ú[Ë™Ø]\Š
+ŠÙX\˜ÚÛ[Ù[JÜXÊH›ÜˆÜXÈ[ˆURPÒ×ÔÑPTÒÓSÑSTÊK™]\›—Ù^Ù\[ÛœÏUYJCBˆÛÛXÝ[ÛœÈH×CBˆ[˜]˜Z[X›HH×CBˆ›ÜˆÜXËX]Ú\È[ˆš\
+URPÒ×ÔÑPTÒÓSÑSTË[Ù[WÛX]Ú\ÊNƒBˆYˆ\Ú[œÝ[˜ÙJX]Ú\Ë^Ù\[ÛŠNƒBˆÙÙÙ\‹Ø\›š[™Ê”]ZXÚÈÙX\˜ÚÛÛXÝ[Ûˆ˜Z[Yˆ	\È‹\JX]Ú\ÊK—×Û˜[YW×ÊCBˆÛÛXÝ[ÛœË˜\[™
+×JCBˆ[˜]˜Z[X›K˜\[™
+ÜXÖÌWJCBˆÛÛ[YCBˆÛÛXÝ[ÛœË˜\[™
+X]Ú\ÊCBƒBˆÈ[\›X]™HÛÛXÝ[ÛœÈÛÈH\ÞHÛY[ÙÜÜÚY\ˆ[Ù[HØ[››ÝYH]™\žCBˆÈ\]Z\Y[ÜˆØÝ[Y[™\Ý[™Z[™HÛØ˜[\™\Ý[Ø\ƒBˆ™\Ý[ÈH×CBˆ\HX^
+
+[Š][\ÊH›Üˆ][\È[ˆÛÛXÝ[ÛœÊKY˜][L
+CBˆ›Üˆ[™^[ˆ˜[™ÙJ\
+NƒBˆ›Üˆ][\È[ˆÛÛXÝ[ÛœÎƒBˆYˆ[™^[Š][\ÊNƒBˆ™\Ý[Ë˜\[™
+][\ÖÚ[™^JCBˆYˆ[Š™\Ý[ÊHHƒBˆ™]\›ˆÈœ™\Ý[ÈŽˆ™\Ý[Ë[˜]˜Z[X›HŽˆ[˜]˜Z[X›_CBˆ™]\›ˆÈœ™\Ý[ÈŽˆ™\Ý[Ë[˜]˜Z[X›HŽˆ[˜]˜Z[X›_CBƒB\WÜ›Ý]\‹™Ù]
+‹ØÛY[ËÜÙX\˜ÚŠCB˜\Þ[˜ÈYˆ]ZXÚ×ØÛY[ÜÙX\˜Ú
+NˆÝˆH]Y\žJ‹‹‹Z[—Û[™ÝL‹X^Û[™ÝN
+K\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆˆˆ”ÙX\˜ÚÛ›HHÚYÛ™YZ[ˆ[˜[	ÜÈÛY[È›ÜˆH\Ú›Ø\™\XZXYˆˆˆƒBˆ\›HHKœÝš\
+
+CBˆYˆ[Š\›JHŽƒBˆ™]\›ˆÈœ™\Ý[ÈŽˆ×K[˜]˜Z[X›HŽˆ×_CBˆÝX\™
+˜ÛY[È‹\Ù\ŠCBˆ]Y\šY\ÈHZ[ØÛY[ÜÙX\˜ÚÜ]Y\šY\ÊØÛÜWÜJ\Ù\‹˜ÛY[ÈŠK\›JCBˆ›Ú™XÝ[ÛˆHÈ—ÚYŽˆšYŽˆK›˜[YHŽˆKœÙŽˆKœÛ™HŽˆK™[XZ[ŽˆKBˆ˜Y™\ÜÈŽˆK›ØØ[]HŽˆK˜ÛÝ[HŽˆK˜ÝZHŽˆKœ™YØÛÛHŽˆKš\×Ý\ÝŽˆK\]YØ]Žˆ_CBƒBˆ\Þ[˜ÈYˆ™]ÚÛX]Ú\Ê]Y\žNˆXÝ[™^YÙšY[ˆÝˆ›Û™HH›Û™JNƒBˆÝ\œÛÜˆH‹˜ÛY[Ë™š[™
+]Y\žK›Ú™XÝ[ÛŠCBˆYˆ[™^YÙšY[ƒBˆÈÙY\™Yš^ÙX\˜Ú\ÈÛˆÝÛ™\ŠÙšY[[™^\ËˆÚ]Ý]H[BˆÈH[›™\ˆX^HÚÛÜÙHÝÛ™\ŠÝ\]YØ][™ØØ[ˆ]™\žHÛY[BˆÈ™[Û™Ú[™ÈÈ\È[˜[™Y›Ü™H\Z[™ÈHY[YšY\ˆš[\‹ƒBˆÝ\œÛÜˆHÝ\œÛÜ‹š[
+ˆ›ÝÛ™\—ÞÚ[™^YÙšY[HŠCBˆ™]\›ˆ]ØZ]Ý\œÛÜ‹œÛÜ
+\]YØ]‹LJK›[Z]
+
+K×Û\Ý
+
+CBƒBˆYˆ\›Kš\ÙYÚ]
+
+NƒBˆ]Y\žWÜ›ÝÜÈH]ØZ]\Þ[˜Ú[Ë™Ø]\Š
+ŠBˆ™]ÚÛX]Ú\Ê]Y\žKšY[
+CBˆ›Üˆ]Y\žKšY[[ˆš\
+]Y\šY\Ë•SQT’P×ÐÓQS•ÔÑPTÒÑ’QSÊCBˆ
+JCBˆ[ÙNƒBˆ]Y\žWÜ›ÝÜÈH]ØZ]\Þ[˜Ú[Ë™Ø]\Š
+Š™]ÚÛX]Ú\Ê]Y\žJH›Üˆ]Y\žH[ˆ]Y\šY\ÊJCBˆžWÚYHßCBˆ›Üˆ›ÝÜÈ[ˆ]Y\žWÜ›ÝÜÎƒBˆ›Üˆ›ÝÈ[ˆ›ÝÜÎƒBˆ][WÚYHÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠCBˆYˆ›Ý][WÚYƒBˆÛÛ[YCBˆ™]š[Ý\ÈHžWÚY™Ù]
+][WÚY
+CBˆYˆ™]š[Ý\È\È›Û™HÜˆÝŠ›ÝË™Ù]
+\]YØ]ŠHÜˆˆŠHˆÝŠ™]š[Ý\Ë™Ù]
+\]YØ]ŠHÜˆˆŠNƒBˆžWÚYÚ][WÚYHH›ÝÃBƒBˆ™\Ý[ÈH×CBˆ›Üˆ›ÝÈ[ˆÛÜY
+žWÚY˜[Y\Ê
+KÙ^O[[X™H][NˆÝŠ][K™Ù]
+\]YØ]ŠHÜˆˆŠK™]™\œÙOUYJVÎŽNƒBˆ˜[YHHÝŠ›ÝË™Ù]
+›˜[YHŠHÜˆˆŠCBˆYˆ›ÝË™Ù]
+š\×Ý\ÝŠHÜˆ™KœÙX\˜Ú
+ˆ—•TÕˆ‹˜[YK™K’JNƒBˆÛÛ[YCBˆ][WÚYHÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠCBˆ]Z[Hˆ0­È‹š›Ú[ŠÝŠ›ÝË™Ù]
+ÊJH›ÜˆÈ[ˆ
+œÙ‹œÛ™H‹™[XZ[‹˜ÝZH‹œ™YØÛÛH‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[HŠHYˆ›ÝË™Ù]
+ÊJCBˆ™\Ý[Ë˜\[™
+ÈšYŽˆ][WÚY›[Ù[HŽˆ˜ÛY[È‹›X™[ŽˆÛY[‹Bˆ]HŽˆ˜[YHÜˆÛY[± Ü± È[YH‹™]Z[Žˆ]Z[Bˆš™YˆŽˆˆ‹ØÛY[OÙY]^Ú][WÚYHŸJCBˆ™]\›ˆÈœ™\Ý[ÈŽˆ™\Ý[Ë[˜]˜Z[X›HŽˆ×_CBƒBƒBUU×ÐTÒU‘WÓSÑSTÈH
+œ›ÜÝ[X]Üˆ‹˜]ˆ‹œÝÙ\ˆ‹™]H‹›[Û›È‹˜[œ™WÙÜÜÚY\œÈŠCB—Ø\˜Ú]™WÜÝÙY\Ø]HßCB—ÐTÒU‘WÔÕÑQTÒS•T•SH[YY[JÝ\œÏLJCB—ÐTÒU‘WÒSPÕU‘WÐQ•TˆH[YY[J^\ÏLNÊCBƒBƒB™YˆÜÜÚY\—Ø\˜Ú]™WÙš[\Š[˜ÛYWØ\˜Ú]™Yˆ›ÛÛH˜[ÙJHOˆXÝƒBˆˆˆ•™X][žH™]Ù\ˆØ]™YXÝ]š]H\È[ˆ]]ÛX]XÈ™]\›ˆÈHXÝ]™HÛÜšÙ›ÝËˆˆˆƒBˆÚ[™ÙYØY\—Ø\˜Ú]™HHÈ‰^ˆŽˆÈ‰ÝŽˆÈ‰\]YØ]‹‰\˜Ú]™YØ]—__CBˆYˆ[˜ÛYWØ\˜Ú]™YƒBˆ™]\›ˆÈ‰[™ŽˆÃBˆÈ˜\˜Ú]™YØ]ŽˆÈ‰^\ÝÈŽˆYK‰š[ˆŽˆÓ›Û™Kˆ—__KBˆÈ‰›ÜˆŽˆØÚ[™ÙYØY\—Ø\˜Ú]™W_KBˆ_CBˆ™]\›ˆÈ‰ÜˆŽˆÃBˆÈ˜\˜Ú]™YØ]ŽˆÈ‰^\ÝÈŽˆ˜[Ù__KBˆÈ˜\˜Ú]™YØ]Žˆ›Û™_KBˆÈ˜\˜Ú]™YØ]ŽˆˆŸKBˆÚ[™ÙYØY\—Ø\˜Ú]™KBˆ_CBƒBƒB˜\Þ[˜ÈYˆ\˜Ú]™WÚ[˜XÝ]™WÙÜÜÚY\œÊ\Ù\ŽˆXÝ
+NƒBˆˆˆ”ÛÙX\˜Ú]™HÜÜÚY\ˆÛÜšÙ›ÝÜÈÚ]›ÈØ]™YXÝ]š]H›ÜˆX›Ý]Ú^[ÛËˆˆˆƒBˆ\Ù\—ÚYHÝŠ\Ù\‹™Ù]
+šYŠHÜˆˆŠCBˆYˆ›Ý\Ù\—ÚYƒBˆ™]\›ƒBˆÝ\œ™[H]][YK››ÝÊ[Y^›Û™K]ÊCBˆ™]š[Ý\ÈHØ\˜Ú]™WÜÝÙY\Ø]™Ù]
+\Ù\—ÚY
+CBˆYˆ™]š[Ý\È[™Ý\œ™[H™]š[Ý\ÈÐTÒU‘WÔÕÑQTÒS•T•SƒBˆ™]\›ƒBˆÝ]Ù™ˆH
+Ý\œ™[HÐTÒU‘WÒSPÕU‘WÐQ•TŠKš\ÛÙ›Ü›X]
+
+CBˆ\˜Ú]™YØ]HÝ\œ™[š\ÛÙ›Ü›X]
+
+CBˆ›ÜˆÛÛXÝ[Ûˆ[ˆUU×ÐTÒU‘WÓSÑSTÎƒBˆ˜\ÙWÜØÛÜHHØÛÜWÜJ\Ù\‹ÛÛXÝ[ÛŠCBˆÝ[HHÈ‰[™ŽˆÃBˆ˜\ÙWÜØÛÜKBˆÈ‰ÜˆŽˆÃBˆÈ˜\˜Ú]™YØ]ŽˆÈ‰^\ÝÈŽˆ˜[Ù__KBˆÈ‰^ˆŽˆÈ‰ÝŽˆÈ‰\]YØ]‹‰\˜Ú]™YØ]—__KBˆ_KBˆÈ‰ÜˆŽˆÃBˆÈ\]YØ]ŽˆÈ‰ŽˆÝ]Ù™Ÿ_KBˆÈ\]YØ]ŽˆÈ‰^\ÝÈŽˆ˜[Ù_K˜Ü™X]YØ]ŽˆÈ‰ŽˆÝ]Ù™Ÿ_KBˆ_KBˆ_CBˆ]ØZ]–ØÛÛXÝ[Û—K\]WÛX[žJÝ[KÈ‰Ù]ŽˆÃBˆ˜\˜Ú]™YØ]Žˆ\˜Ú]™YØ]Bˆ˜\˜Ú]™WÜ™X\ÛÛˆŽˆš[˜XÝ]š]]WÍ—Û[šH‹Bˆ˜\˜Ú]™YØžHŽˆœÞ\Ý[H‹Bˆ_JCBˆØ\˜Ú]™WÜÝÙY\Ø]Ý\Ù\—ÚYHHÝ\œ™[BƒBƒB\WÜ›Ý]\‹™Ù]
+‹Ù]KÞÛ[Ù[_HŠCB˜\Þ[˜ÈYˆ\ÝÚ][\Ê[Ù[NˆÝ‹NˆÜ[Û˜[ÜÝ—HH›Û™K[˜ÛYWØ\˜Ú]™Yˆ›ÛÛH˜[ÙKBˆ\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆYˆ[Ù[H›Ý[ˆSÑSTÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[Ù[[™^\Ý[ŠCBˆÝX\™
+[Ù[K\Ù\ŠCBˆ]Y\žHHØÛÜWÜJ\Ù\‹[Ù[JCBˆYˆ[Ù[HOH˜Ø][ÙÈŽƒBˆÈÙY\\ÝÙ[[È›ÝÜÈ[XÝ[ˆÝÜ˜YÙK]™]™\ˆÚÝÈ[H[ˆCBˆÈÛÜšÚ[™È\]Z\Y[Ø][ÙÈÜˆ]ÈÜÜÚY\ˆÙ[XÝÜœËƒBˆ]Y\žHHÈ‰[™ŽˆÜ]Y\žKÈš\×Ý\ÝŽˆÈ‰™HŽˆY__W_CBˆYˆ[Ù[H[ˆUU×ÐTÒU‘WÓSÑSTÎƒBˆ]ØZ]\˜Ú]™WÚ[˜XÝ]™WÙÜÜÚY\œÊ\Ù\ŠCBˆ]Y\žHHÈ‰[™ŽˆÜ]Y\žKÜÜÚY\—Ø\˜Ú]™WÙš[\Š[˜ÛYWØ\˜Ú]™Y
+W_CBˆYˆ[Ù[HOH˜Ø][ÙÈŽƒBˆ]ØZ]ÙYYØØ][ÙÊ\Ù\–ÈšY—JCBˆÙX\˜ÚÙšY[ÈHÃBˆ˜ÛY[ÈŽˆ
+›˜[YH‹œÛ™H‹™[XZ[‹˜Ûœ‹šYÛÙH‹šYÛ[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[H‹˜ÝZH‹œ™YØÛÛHŠKBˆœ›ÜÝ[X]ÜˆŽˆ
+˜ÛY[Û˜[YH‹›[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[H‹›Ü\˜]Üˆ‹œÝ]\È‹œ™\]Y\ÝÝ\HŠKBˆ™]HŽˆ
+˜ÛY[Û˜[YH‹›[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[H‹›Ü\˜]Üˆ‹œÝ]\È‹œ›Ü×ÚYŠKBˆ˜]ˆŽˆ
+˜ÛY[Û˜[YH‹›[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[H‹›Ü\˜]Üˆ‹œÝ]\È‹œ™\]Y\ÝÝ\HŠKBˆœÝÙ\ˆŽˆ
+˜ÛY[Û˜[YH‹›[X™\ˆ‹œÙ‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[H‹›Ü\˜]Üˆ‹œÝ]\È‹œ™\]Y\ÝÝ\HŠKBˆ™ØÝ[Y[ÈŽˆ
+˜ÛY[Û˜[YH‹™ÜÜÚY\—ÚY‹]H‹›˜[YH‹™š[[˜[YH‹›ÜšYÚ[˜[Ùš[[˜[YH‹™Ø×Ý\H‹šÚ[™‹\H‹œÙŠKBˆ›Ü\˜]Ü—ÛY\ÜØYÙ\ÈŽˆ
+˜ÛY[Û˜[YH‹›Ü\˜]Üˆ‹œÝXš™XÝ‹œ™Y™\™[˜ÙH‹›Y\ÜØYÙWÝ\H‹œÝ]\È‹›™^ØXÝ[ÛˆŠKBˆ˜Ø][ÙÈŽˆ
+˜œ˜[™Û[Ù[‹˜Ø]YÛÜžH‹œÝ\Y\ˆ‹›X[Y˜XÝ\™\ˆ‹›[Ù[ŠKBˆœ›Ú™XÝÈŽˆ
+›˜[YH‹›[X™\ˆ‹˜ÛY[Û˜[YH‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[H‹œÝ]\ÈŠKBˆÛÜšÜÈŽˆ
+›˜[YH‹›[X™\ˆ‹˜ÛY[Û˜[YH‹˜Y™\ÜÈ‹›ØØ[]H‹˜ÛÝ[H‹œÝ]\ÈŠKBˆ›[Û›ÈŽˆ
+˜ÛY[Û˜[YH‹›[X™\ˆ‹]H‹˜Y™\ÜÈ‹œÙ‹œÝ]\ÈŠKBˆœ[™[ÈŽˆ
+˜ÛY[Û˜[YH‹›[X™\ˆ‹]H‹˜Y™\ÜÈ‹œÙ‹œÝ]\ÈŠKBˆ˜[HŽˆ
+˜ÛY[Û˜[YH‹›[X™\ˆ‹]H‹˜Y™\ÜÈ‹œÙ‹œÝ]\ÈŠKBˆœ˜[HŽˆ
+˜ÛY[Û˜[YH‹›[X™\ˆ‹]H‹œÙ‹š[œÝ[Y[‹œÝ]\ÈŠKBˆ™\]Z\Y[Žˆ
+›˜[YH‹˜œ˜[™Û[Ù[‹˜Ø]YÛÜžH‹œÙ\šX[‹›X[Y˜XÝ\™\ˆŠKBˆ˜\˜Ú]™YÙÜÜÚY\œÈŽˆ
+˜ÛY[Û˜[YH‹›[X™\ˆ‹]H‹˜Y™\ÜÈ‹œÙ‹›Ü\˜]ÜˆŠKBˆœÝY™ˆŽˆ
+›˜[YH‹™[XZ[‹œÛ™H‹™[˜Ý[Ûˆ‹œÝY™—ÚYŠKBˆš[œÝ[Y[ÈŽˆ
+›˜[YH‹›[Ù[‹œÙ\šX[‹\H‹›X[Y˜XÝ\™\ˆŠKBˆCBˆ\›HHÝŠHÜˆˆŠKœÝš\
+
+CBˆYˆ\›H[™[Ù[H[ˆÙX\˜ÚÙšY[ÎƒBˆÈ\HHš[\ˆ[ˆ[Û™ÛÑ‹ˆ]›ÚY˜[œÙ™\œš[™È\™ÙHÜÜÚY\ˆ›ÝÜÈ[™BˆÈ[X™YYš[HY]Y]HÈHœ›ÝÜÙ\ˆ\ÝÈÙX\˜ÚZ\ˆ”ÓÓˆ^ƒBˆ]\›ˆH™K˜ÛÛ\[J™K™\ØØ\J\›JK™K’QÓ“Ô‘PÐTÑJCBˆ]Y\žHHÈ‰[™ŽˆÜ]Y\žKÈ‰ÜˆŽˆÞÙšY[ˆ]\›ŸH›ÜˆšY[[ˆÙX\˜ÚÙšY[ÖÛ[Ù[WW_W_CBˆ™]\›ˆØÛX[ŠJH›ÜˆH[ˆ]ØZ]–Û[Ù[WK™š[™
+]Y\žJKœÛÜ
+˜Ü™X]YØ]‹LJK›[Z]
+Œ
+K×Û\Ý
+Œ
+WCBˆ][\ÈH]ØZ]–Û[Ù[WK™š[™
+]Y\žJKœÛÜ
+˜Ü™X]YØ]‹LJK›[Z]
+Œ
+K×Û\Ý
+Œ
+CBˆ][\ÈHØÛX[ŠJH›ÜˆH[ˆ][\×CBˆYˆ\›NƒBˆ[H\›K›ÝÙ\Š
+CBˆ][\ÈHÚH›ÜˆH[ˆ][\ÈYˆ[[ˆÝŠJK›ÝÙ\Š
+WCBˆ™]\›ˆ][\ÃBƒBƒB\WÜ›Ý]\‹™Ù]
+‹ÝÛÜšË[X\ŠCB˜\Þ[˜ÈYˆ\ÝÝÛÜš×ÛX\
+[˜ÛYWØ\˜Ú]™Yˆ›ÛÛH˜[ÙK\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆˆˆ”™]\›ˆÛ›HHšY[È™YYY›ÜˆHÛÜšÈX\È™]™\ˆ^ÜÙHÜÜÚY\ˆÛÛ[È\™KˆˆˆƒBˆ[Ù[\ÈHÃBˆ
+œ›ÜÝ[X]Üˆ‹‘ÜØ\ˆ›ÜÝ[X]ÜˆŠKBˆ
+˜]ˆ‹Ù\™\™HUˆŠKBˆ
+œÝÙ\ˆ‹”ÜÜˆH]\™HŠKBˆ
+™]H‹‘ÜØ\ˆKUHŠKBˆCBˆ]ØZ]\˜Ú]™WÚ[˜XÝ]™WÙÜÜÚY\œÊ\Ù\ŠCBˆ™\Ý[H×CBˆ›Ú™XÝ[ÛˆHÃBˆšYŽˆK›[X™\ˆŽˆK›ØØ[]HŽˆK˜ÛÝ[HŽˆK›Ü\˜]ÜˆŽˆKBˆÛÜšÙ›Ý×ÜÝ]\ÈŽˆKœÝ]\ÈŽˆK›Ü\˜]Ü—ÜÝYÙHŽˆK˜\˜Ú]™YØ]ŽˆKBˆCBˆ›Üˆ[Ù[KX™[[ˆ[Ù[\ÎƒBˆžNƒBˆÝX\™
+[Ù[K\Ù\ŠCBˆ^Ù\^Ù\[Ûˆ\È^ÎƒBˆYˆ^ËœÝ]\×ØÛÙH[ˆ
+‹Ë
+NƒBˆÛÛ[YCBˆ˜Z\ÙCBˆ]Y\žHHÈ‰[™ŽˆÜØÛÜWÜJ\Ù\‹[Ù[JKÜÜÚY\—Ø\˜Ú]™WÙš[\Š[˜ÛYWØ\˜Ú]™Y
+W_CBˆ™XÛÜ™ÈH]ØZ]–Û[Ù[WK™š[™
+]Y\žK›Ú™XÝ[ÛŠKœÛÜ
+\]YØ]‹LJK›[Z]
+Œ
+K×Û\Ý
+Œ
+CBˆ›Üˆ™XÛÜ™[ˆ™XÛÜ™ÎƒBˆ™\Ý[˜\[™
+ÃBˆšYŽˆÝŠ™XÛÜ™™Ù]
+šYŠHÜˆˆŠKBˆ›[Ù[HŽˆ[Ù[KBˆ›[Ù[WÛX™[ŽˆX™[Bˆ›[X™\ˆŽˆÝŠ™XÛÜ™™Ù]
+›[X™\ˆŠHÜˆˆŠKBˆ›ØØ[]HŽˆÝŠ™XÛÜ™™Ù]
+›ØØ[]HŠHÜˆˆŠKBˆ˜ÛÝ[HŽˆÝŠ™XÛÜ™™Ù]
+˜ÛÝ[HŠHÜˆˆŠKBˆ›Ü\˜]ÜˆŽˆÝŠ™XÛÜ™™Ù]
+›Ü\˜]ÜˆŠHÜˆˆŠKBˆœÝYÙHŽˆÝŠ™XÛÜ™™Ù]
+ÛÜšÙ›Ý×ÜÝ]\ÈŠHÜˆ™XÛÜ™™Ù]
+œÝ]\ÈŠHÜˆ™XÛÜ™™Ù]
+›Ü\˜]Ü—ÜÝYÙHŠHÜˆ°ã›ˆXÜHŠKBˆ˜\˜Ú]™YŽˆ›ÛÛ
+™XÛÜ™™Ù]
+˜\˜Ú]™YØ]ŠJKBˆJCBˆ™]\›ˆ™\Ý[BƒB\WÜ›Ý]\‹œÜÝ
+‹Ù]KÞÛ[Ù[_HŠCB˜\Þ[˜ÈYˆÜ™X]WÚ][J[Ù[NˆÝ‹™\]Y\Ýˆ™\]Y\Ý\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆYˆ[Ù[H›Ý[ˆSÑSTÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[Ù[[™^\Ý[ŠCBˆ]HH]ØZ]™\]Y\ÝšœÛÛŠ
+CBˆ]HH]ØZ]\WÜÙ[XÝYØÛY[ÙY˜][Ê\Ù\–ÈšY—K[Ù[K]JCBˆYˆ[Ù[HOHœ›ÜÝ[X]ÜˆŽƒBˆ]KœÙ]Y˜][
+™Ø×Ù]H‹]][YK››ÝÊ›Û™R[™›Ê‘]\›ÜKÐXÚ\™\ÝŠJK™]J
+Kš\ÛÙ›Ü›X]
+
+JCBˆ]KœÜ
+—ÚY‹›Û™JCBˆ]KœÜ
+˜]—Ý˜XÚÈ‹›Û™JCBˆ]VÈšY—HHÝŠ]ZY]ZY
+
+JCBˆ]VÈ›ÝÛ™\ˆ—HH\Ù\–ÈšY—CBˆ]VÈ˜Ü™X]YØ]—HH]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+CBˆ]VÈ\]YØ]—HH]VÈ˜Ü™X]YØ]—CBˆÝX\™
+[Ù[K\Ù\‹Üš]OUYJCBˆYˆ[Ù[HOHœ›ÜÝ[X]ÜˆŽƒBˆÚXÚ×Ú[™\\œÊ\Ù\‹]JCBˆ]VÈ˜Ü™X]YØžH—HH\Ù\–ÈZY—CBˆ]VÈ˜Ü™X]YØžWÙ[XZ[—HH\Ù\‹™Ù]
+™[XZ[ŠCBˆYˆ›Ý\×ØYZ[Š\Ù\ŠNƒBˆ]KœÜ
+˜\ÜÚYÛ™YÝÈ‹›Û™JCBˆ]ØZ]–Û[Ù[WKš[œÙ\ÛÛ™JXÝ
+]JJCBˆ]ØZ]]Y]
+\Ù\‹˜Ü™X\™H‹[Ù[K]VÈšY—K\Ý
+]KšÙ^\Ê
+JJCBˆÜÝÜØ]™WÝØ\›š[™ÜÈH×CBˆYˆ[Ù[HOHœ›ÜÝ[X]ÜˆŽƒBˆžNƒBˆ]ØZ]Þ[˜×ØØ][Ù×Ùš[\×Ý×ÙØÝ[Y[Ê\Ù\‹]JCBˆÜÝÜØ]™WÝØ\›š[™ÜË™^[™
+]K™Ù]
+—ØØ][Ù×ÜÞ[˜×ÝØ\›š[™ÜÈŠHÜˆ×JCBˆ]HH]ØZ]–Û[Ù[WK™š[™ÛÛ™JÈšYŽˆ]VÈšY—K›ÝÛ™\ˆŽˆ\Ù\–ÈšY—_JHÜˆ]CBˆ^Ù\^Ù\[Ûˆ\ÈNƒBˆÈHÜÜÚY\ˆ\È[™XYHØ]™YÈÜ[Û˜[Ø][ÙÈØÝ[Y[È]\Ý›Ý\›ƒBˆÈHÝXØÙ\ÜÙ[Ü™X]H[ÈHÛY[]š\ÚX›H˜Z[\™KƒBˆÙÙÙ\‹™^Ù\[ÛŠØ][ÙÈØÝ[Y[Þ[˜È˜Z[YY\ˆ›ÜÝ[Y\ˆÜÜÚY\ˆÜ™X]Nˆ	\È‹JCBˆ™\ÜÛœÙHHÛX[Š]JCBˆYˆÜÝÜØ]™WÝØ\›š[™ÜÎƒBˆ™\ÜÛœÙVÈš[ZÙWÝØ\›š[™ÜÈ—HHÜÝÜØ]™WÝØ\›š[™ÜÃBˆ™]\›ˆ™\ÜÛœÙCBƒB\WÜ›Ý]\‹™Ù]
+‹Ù]KÞÛ[Ù[_KÞÚ][WÚYHŠCB˜\Þ[˜ÈYˆÙ]Ú][J[Ù[NˆÝ‹][WÚYˆÝ‹\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆYˆ[Ù[H›Ý[ˆSÑSTÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[Ù[[™^\Ý[ŠCBˆÝX\™
+[Ù[K\Ù\ŠCBˆØÈH]ØZ]–Û[Ù[WK™š[™ÛÛ™JÊŠœØÛÜWÜJ\Ù\‹[Ù[JKšYŽˆ][WÚYJCBˆYˆ›ÝØÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H°ã›œ™YÚ\Ý˜\™H[™^\Ý[1 ÈŠCBˆ™]\›ˆÛX[ŠØÊCBƒB\WÜ›Ý]\‹œ]
+‹Ù]KÞÛ[Ù[_KÞÚ][WÚYHŠCB˜\Þ[˜ÈYˆ\]WÚ][J[Ù[NˆÝ‹][WÚYˆÝ‹™\]Y\Ýˆ™\]Y\Ý\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆYˆ[Ù[H›Ý[ˆSÑSTÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[Ù[[™^\Ý[ŠCBˆÝX\™
+[Ù[K\Ù\‹Üš]OUYJCBˆÝ\ˆH]ØZ]ÚXÚ×ØXØÙ\ÜÊ\Ù\‹[Ù[K][WÚY
+CBˆ]HH]ØZ]™\]Y\ÝšœÛÛŠ
+CBˆ]KœÜ
+—ÚY‹›Û™JNÈ]KœÜ
+šY‹›Û™JCBˆ]KœÜ
+˜]—Ý˜XÚÈ‹›Û™JNÈ]KœÜ
+›ÝÛ™\ˆ‹›Û™JNÈ]KœÜ
+˜Ü™X]YØ]‹›Û™JNÈ]KœÜ
+˜Ü™X]YØžH‹›Û™JNÈ]KœÜ
+˜Ü™X]YØžWÙ[XZ[‹›Û™JCBˆYˆ[Ù[HOHœ›ÜÝ[X]ÜˆŽƒBˆ]KœÜ
+œYˆ‹›Û™JCBˆYˆ[Ù[H[ˆ
+œ›ÜÝ[X]Üˆ‹™]HŠNƒBˆ]KœÜ
+˜ZWÜ™XÚXÚÈ‹›Û™JNÈ]KœÜ
+œÚYÛ™Y‹›Û™JCBˆYˆ[Ù[HOH˜ÛY[Èˆ[™\Ú[œÝ[˜ÙJ]K™Ù]
+™ØÜÈŠKXÝ
+NƒBˆ]VÈ™ØÜÈ—VÈœÙ[[˜]H—HH
+Ý\‹™Ù]
+™ØÜÈŠHÜˆßJK™Ù]
+œÙ[[˜]HŠHÜˆ×CBˆ]VÈ\]YØžH—HH\Ù\‹™Ù]
+™[XZ[ŠCBˆYˆ›Ý\×ØYZ[Š\Ù\ŠNƒBˆ]KœÜ
+˜\ÜÚYÛ™YÝÈ‹›Û™JCBˆ]VÈ\]YØ]—HH]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+CBˆYˆ[Ù[HOHœ›ÜÝ[X]ÜˆŽƒBˆ]HH\š]™WØÙYŠ]JCBˆ]KœÜ
+›Ü\È‹›Û™JNÈ]KœÜ
+œÛ˜\ÚÝ‹›Û™JNÈ]KœÜ
+œÛ˜\ÚÝÚ\ÝÜžH‹›Û™JNÈ]KœÜ
+œÛ‹›Û™JCBˆÚXÚ×Ú[™\\œÊ\Ù\‹ÊŠ˜Ý\‹
+Š™]_JCBˆYˆ]K™Ù]
+˜ÛY[Û˜[YHŠNƒBˆÈH]ØZ]‹˜ÛY[Ë™š[™ÛÛ™JÊŠœØÛÜWÜJ\Ù\‹˜ÛY[ÈŠK›˜[YHŽˆ]VÈ˜ÛY[Û˜[YH—_KÈšYŽˆ_JCBˆYˆÎƒBˆ]VÈ˜ÛY[ÚY—HHÖÈšY—CBˆ™\ÈH]ØZ]–Û[Ù[WK\]WÛÛ™JBˆÈšYŽˆ][WÚY›ÝÛ™\ˆŽˆ\Ù\–ÈšY—_KBˆÈ‰Ù]Žˆ]K‰[œÙ]ŽˆÈ˜\˜Ú]™YØ]Žˆˆ‹˜\˜Ú]™WÜ™X\ÛÛˆŽˆˆ‹˜\˜Ú]™YØžHŽˆˆŸ_KBˆ
+CBˆYˆ™\Ë›X]ÚYØÛÝ[OHƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H°ã›œ™YÚ\Ý˜\™H[™^\Ý[1 ÈŠCBˆ]ØZ]]Y]
+\Ù\‹›[ÙYšXØ\™H‹[Ù[K][WÚY\Ý
+]KšÙ^\Ê
+JJCBˆYˆ[Ù[HOHœ›ÜÝ[X]ÜˆŽƒBˆžNƒBˆ]ØZ]™\]Y\ÝØ\›Ý˜[
+\Ù\‹][WÚY™\]Y\ÝšXY\œË™Ù]
+›ÜšYÚ[ˆŠHÜˆˆ‹YJCBˆ^Ù\^Ù\[ÛŽƒBˆ\ÜÃBˆ^Ù\^Ù\[Ûˆ\ÈNƒBˆÙÙÙ\‹™\œ›ÜŠˆ˜]]È\›Ý˜[™\]Y\ÝˆÙ_HŠCBˆØÈH]ØZ]–Û[Ù[WK™š[™ÛÛ™JÈšYŽˆ][WÚY›ÝÛ™\ˆŽˆ\Ù\–ÈšY—_JCBˆÜÝÜØ]™WÝØ\›š[™ÜÈH×CBˆYˆ[Ù[HOHœ›ÜÝ[X]ÜˆŽƒBˆžNƒBˆ]ØZ]Þ[˜×ØØ][Ù×Ùš[\×Ý×ÙØÝ[Y[Ê\Ù\‹ØÊCBˆÜÝÜØ]™WÝØ\›š[™ÜË™^[™
+ØË™Ù]
+—ØØ][Ù×ÜÞ[˜×ÝØ\›š[™ÜÈŠHÜˆ×JCBˆ^Ù\^Ù\[Ûˆ\ÈNƒBˆÈØ]š[™ÈHÜÜÚY\ˆ\ÈHš[X\žHÜ\˜][Û‹ˆH[\Ü˜\žHÝ\Y\ˆƒBˆÈÝ]YÙH]\Ý›Ý\›ˆHÝXØÙ\ÜÙ[Ø]™H[ÈHÛY[]š\ÚX›H˜Z[\™KƒBˆÙÙÙ\‹™^Ù\[ÛŠØ][ÙÈØÝ[Y[Þ[˜È˜Z[YY\ˆ›ÜÝ[Y\ˆÜÜÚY\ˆ\]H	\Îˆ	\È‹][WÚYJCBˆÜÝÜØ]™WÝØ\›š[™ÜË˜\[™
+Bˆ‘ÜØ\[H›ÜÝØ[˜]ˆ[™[Hšr&YHZšXÙHHËX]H]]]r&XHXÝ[NÈ™pë›˜ÙX\˜ñ ÈÚ[˜Ü›Ûš^˜\™XH[ˆØ\™[ØÝ[Y[[Ü‹ˆƒBˆ
+CBˆØÈH]ØZ]–Û[Ù[WK™š[™ÛÛ™JÈšYŽˆ][WÚY›ÝÛ™\ˆŽˆ\Ù\–ÈšY—_JCBˆ™\ÜÛœÙHHÛX[ŠØÊCBˆYˆÜÝÜØ]™WÝØ\›š[™ÜÎƒBˆ™\ÜÛœÙVÈš[ZÙWÝØ\›š[™ÜÈ—HHÜÝÜØ]™WÝØ\›š[™ÜÃBˆ™]\›ˆ™\ÜÛœÙCBƒB\WÜ›Ý]\‹œ]Ú
+‹Ù]KÞÛ[Ù[_KÞÚ][WÚYKÜÝ]\ÈŠCB˜\Þ[˜ÈYˆ\]WÙÜÜÚY\—ÝÛÜšÙ›Ý×ÜÝ]\Ê[Ù[NˆÝ‹][WÚYˆÝ‹™\]Y\Ýˆ™\]Y\Ý\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆˆˆ•\]HH\Ú›Ø\™ÛÜšÙ›ÝÈX™[Ú]Ý]Ý™\Üš][™ÈHÜÜÚY\‰ÜÈXÚšXØ[ÛÜ\˜]ÜˆÝ]\ËˆˆˆƒBˆYˆ[Ù[H›Ý[ˆ
+œ›ÜÝ[X]Üˆ‹˜]ˆ‹œÝÙ\ˆ‹™]H‹›[Û›È‹›Ü\˜]Ü—ÛY\ÜØYÙ\ÈŠNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[Ù[[HXØÙ\1 ÈÝYZHHXÜH˜\YHŠCBˆÝX\™
+[Ù[K\Ù\‹Üš]OUYJCBˆ™XÈH]ØZ]ÚXÚ×ØXØÙ\ÜÊ\Ù\‹[Ù[K][WÚY
+CBˆ›ÙHH]ØZ]™\]Y\ÝšœÛÛŠ
+CBˆÝ]\ÈHÝŠ›ÙK™Ù]
+œÝ]\ÈŠHÜˆˆŠKœÝš\
+
+CBˆYˆ[Ù[HOH›Ü\˜]Ü—ÛY\ÜØYÙ\ÈŽƒBˆ[ÝÙYÜÝ]\Ù\ÈHÈ“›ÝH‹°ã›ˆXÜH‹”± ÜÜ[œÈ˜[œÛZ\È‹”™^›Û˜]ŸCBˆYˆÝ]\È›Ý[ˆ[ÝÙYÜÝ]\Ù\ÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”Ý]\Ý[Y\ØZ[ZHÑH\ÝH˜[YˆŠCBˆ™]š[Ý\ÈHÝŠ™XË™Ù]
+œÝ]\ÈŠHÜˆ“›ÝHŠKœÝš\
+
+CBˆÝ]\×ÙšY[HœÝ]\ÈƒBˆ[ÙNƒBˆYˆ›ÝÝ]\ÈÜˆ[ŠÝ]\ÊHˆƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H”ÝY][™XZYHñ ÈÛÛ²&Ú[± È0ë›™HH2&ZHHØ\˜XÝ\™KˆŠCBˆ™]š[Ý\ÈHÝŠ™XË™Ù]
+ÛÜšÙ›Ý×ÜÝ]\ÈŠHÜˆ™XË™Ù]
+œÝ]\ÈŠHÜˆ™XË™Ù]
+›Ü\˜]Ü—ÜÝYÙHŠHÜˆ°ã›ˆXÜHŠKœÝš\
+
+CBˆÝ]\×ÙšY[HÛÜšÙ›Ý×ÜÝ]\ÈƒBˆYˆÝ]\ÈOH™]š[Ý\ÎƒBˆ™]\›ˆÈ›ÚÈŽˆYKšYŽˆ][WÚY›[Ù[HŽˆ[Ù[KœÝ]\ÈŽˆÝ]\Ë\]YØ]Žˆ™XË™Ù]
+\]YØ]ŠKš\ÝÜžWÙ[žHŽˆ›Û™_CBˆ\]YØ]H]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+CBˆ\ÝÜžWÙ[žHHÈ™œ›ÛHŽˆ™]š[Ý\ËÈŽˆÝ]\Ë˜]Žˆ\]YØ]˜žHŽˆ\Ù\‹™Ù]
+™[XZ[ŠHÜˆ\Ù\‹™Ù]
+šYŠ_CBˆ™\Ý[H]ØZ]–Û[Ù[WK\]WÛÛ™JBˆÊŠœØÛÜWÜJ\Ù\‹[Ù[JKšYŽˆ][WÚYKBˆÈ‰Ù]ŽˆÜÝ]\×ÙšY[ˆÝ]\Ë\]YØ]Žˆ\]YØ]\]YØžHŽˆ\Ù\‹™Ù]
+™[XZ[Š_KBˆ‰[œÙ]ŽˆÈ˜\˜Ú]™YØ]Žˆˆ‹˜\˜Ú]™WÜ™X\ÛÛˆŽˆˆ‹˜\˜Ú]™YØžHŽˆˆŸKBˆ‰\ÚŽˆÈÛÜšÙ›Ý×Ú\ÝÜžHŽˆÈ‰XXÚŽˆÚ\ÝÜžWÙ[žWK‰ÛXÙHŽˆML__KBˆ
+CBˆYˆ™\Ý[›X]ÚYØÛÝ[OHƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H‘ÜØ\ˆ[™^\Ý[ŠCBˆ]ØZ]]Y]
+\Ù\‹˜XÝX[^˜\™HÝY]H›^‹[Ù[K][WÚYÜÝ]\×ÙšY[JCBˆ™]\›ˆÈ›ÚÈŽˆYKšYŽˆ][WÚY›[Ù[HŽˆ[Ù[KœÝ]\ÈŽˆÝ]\Ë\]YØ]Žˆ\]YØ]š\ÝÜžWÙ[žHŽˆ\ÝÜžWÙ[ž_CBƒBƒBƒB\WÜ›Ý]\‹œÜÝ
+‹Ù]KÞÛ[Ù[_KÞÚ][WÚYKÜ™\ÝÜ™HŠCB˜\Þ[˜ÈYˆ™\ÝÜ™WØ\˜Ú]™YÙÜÜÚY\Š[Ù[NˆÝ‹][WÚYˆÝ‹\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆYˆ[Ù[H›Ý[ˆUU×ÐTÒU‘WÓSÑSTÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[Ù[[H›ÛÜÙr&]H\š]˜\™XH]]ÛX]1 ÈŠCBˆÝX\™
+[Ù[K\Ù\‹Üš]OUYJCBˆ™XÛÜ™H]ØZ]ÚXÚ×ØXØÙ\ÜÊ\Ù\‹[Ù[K][WÚY
+CBˆYˆ›Ý™XÛÜ™™Ù]
+˜\˜Ú]™YØ]ŠNƒBˆ™]\›ˆÈ›ÚÈŽˆYKœ™\ÝÜ™YŽˆ˜[ÙKšYŽˆ][WÚYCBˆ™\ÝÜ™YØ]H]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+CBˆ™\Ý[H]ØZ]–Û[Ù[WK\]WÛÛ™JBˆÊŠœØÛÜWÜJ\Ù\‹[Ù[JKšYŽˆ][WÚY˜\˜Ú]™YØ]ŽˆÈ‰^\ÝÈŽˆY__KBˆÈ‰Ù]ŽˆÈ\]YØ]Žˆ™\ÝÜ™YØ]\]YØžHŽˆ\Ù\‹™Ù]
+™[XZ[Š_KBˆ‰[œÙ]ŽˆÈ˜\˜Ú]™YØ]Žˆˆ‹˜\˜Ú]™WÜ™X\ÛÛˆŽˆˆ‹˜\˜Ú]™YØžHŽˆˆŸKBˆ‰\ÚŽˆÈÛÜšÙ›Ý×Ú\ÝÜžHŽˆÈ‰XXÚŽˆÞÃBˆ™]™[Žˆ‘ÜØ\ˆ™XY\È[ˆ\š]± È‹Bˆ˜]Žˆ™\ÝÜ™YØ]Bˆ˜žHŽˆ\Ù\‹™Ù]
+™[XZ[ŠHÜˆ\Ù\‹™Ù]
+šYŠKBˆWK‰ÛXÙHŽˆML__KBˆ
+CBˆYˆ™\Ý[›X]ÚYØÛÝ[OHƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H‘ÜØ\[\š]˜]HXZH^\Ý1 ÈŠCBˆ]ØZ]]Y]
+\Ù\‹œ™\Ý]\˜\™H[ˆ\š]± È]]ÛX]1 È‹[Ù[K][WÚYÈ˜\˜Ú]™YØ]—JCBˆ™]\›ˆÈ›ÚÈŽˆYKœ™\ÝÜ™YŽˆYKšYŽˆ][WÚY\]YØ]Žˆ™\ÝÜ™YØ]CBƒBƒB\WÜ›Ý]\‹™[]J‹Ù]KÞÛ[Ù[_KÞÚ][WÚYHŠCB˜\Þ[˜ÈYˆ[]WÚ][J[Ù[NˆÝ‹][WÚYˆÝ‹\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆYˆ[Ù[H›Ý[ˆSÑSTÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOM]Z[H“[Ù[[™^\Ý[ŠCBˆÝX\™
+[Ù[K\Ù\‹Üš]OUYJCBˆYˆ›Ý\×ØYZ[Š\Ù\ŠH[™[Ù[H[ˆ
+œ›ÜÝ[X]Üˆ‹˜ÛY[ÈŠNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[H‘Ø\ˆYZ[š\Ý˜]Ü[Ø]H2&]\™ÙHÜØ\™H2&ZHÛY[²&ÚHŠCBˆ™XÛÜ™H]ØZ]ÚXÚ×ØXØÙ\ÜÊ\Ù\‹[Ù[K][WÚY
+CBˆYˆ[Ù[HOH˜Ø][ÙÈˆ[™™XÛÜ™ƒBˆÙ^HHØØ][Ù×ÜÙYYÚÙ^J™XÛÜ™™Ù]
+˜Ø]YÛÜžHŠK™XÛÜ™™Ù]
+˜œ˜[™Û[Ù[ŠJCBˆYˆÙ^H[ˆ×ØØ][Ù×ÜÙYYÚÙ^J][K™Ù]
+˜Ø]YÛÜžHŠK][K™Ù]
+˜œ˜[™Û[Ù[ŠJH›Üˆ][H[ˆÐUSÑ×ÔÑQQNƒBˆ]ØZ]‹œÙ][™ÜË\]WÛÛ™JBˆÈ›ÝÛ™\ˆŽˆ\Ù\–ÈšY—_KBˆÈ‰YÔÙ]ŽˆÈ˜Ø][Ù×Ù[]YÜÙYYÚÙ^\ÈŽˆÙ^__KBˆ\Ù\UYKBˆ
+CBˆ]ØZ]–Û[Ù[WK™[]WÛÛ™JÈšYŽˆ][WÚY›ÝÛ™\ˆŽˆ\Ù\–ÈšY—_JCBˆ]ØZ]]Y]
+\Ù\‹²&]\™Ù\™H‹[Ù[K][WÚY×JCBˆYˆ[Ù[HOHœ›ÜÝ[X]ÜˆŽƒBˆ›ÜˆH[ˆ
+ÛÜšÜÈ‹›[Û›È‹™\]Z\Y[ŠNƒBˆ]ØZ]–ÛWK™[]WÛX[žJÈ›ÝÛ™\ˆŽˆ\Ù\–ÈšY—Kœ›Ü×Ü™YˆŽˆ][WÚYJCBˆ™]\›ˆÈ›ÚÈŽˆY_CBƒBˆÈKKKKKKKKKKKKKKKH\Ú›Ø\™KKKKKKKKKKKKKKKCB\WÜ›Ý]\‹™Ù]
+‹ÜÝ]ËÙ\Ú›Ø\™ŠCB˜\Þ[˜ÈYˆ\Ú›Ø\™ÜÝ]Ê\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆ]ØZ]\˜Ú]™WÚ[˜XÝ]™WÙÜÜÚY\œÊ\Ù\ŠCBˆÝÛ™\ˆHØÛÜWÜJ\Ù\‹™]HŠCBˆ\ÝÙÜÜÚY\—Ùš[\ˆHÈ‰[™ŽˆÃBˆÜÜÚY\—Ø\˜Ú]™WÙš[\Š˜[ÙJKBˆÈš\×Ý\ÝŽˆÈ‰™HŽˆY__KBˆÈ‰›ÜˆŽˆÃBˆÈ˜ÛY[Û˜[YHŽˆÈ‰™YÙ^Žˆˆ—•TÕ‹‰Ü[ÛœÈŽˆšHŸ_KBˆÈ›[X™\ˆŽˆÈ‰™YÙ^Žˆˆ—•TÕËW×H‹‰Ü[ÛœÈŽˆšHŸ_KBˆÈ˜ÛÛ\[žK›˜[YHŽˆÈ‰™YÙ^Žˆˆ—•TÕ‹‰Ü[ÛœÈŽˆšHŸ_KBˆ_KBˆ_CBˆÛY[Ý\ÝÙš[\ˆHÈ‰[™ŽˆÃBˆÈš\×Ý\ÝŽˆÈ‰™HŽˆY__KBˆÈ‰›ÜˆŽˆÃBˆÈ›˜[YHŽˆÈ‰™YÙ^Žˆˆ—•TÕ‹‰Ü[ÛœÈŽˆšHŸ_KBˆÈ˜ÛY[Û˜[YHŽˆÈ‰™YÙ^Žˆˆ—•TÕ‹‰Ü[ÛœÈŽˆšHŸ_KBˆÈ˜ÛÛ\[žWÛ˜[YHŽˆÈ‰™YÙ^Žˆˆ—•TÕ‹‰Ü[ÛœÈŽˆšHŸ_KBˆ_KBˆ_CBˆÛY[ÈH]ØZ]‹˜ÛY[Ë˜ÛÝ[ÙØÝ[Y[ÊÊŠœØÛÜWÜJ\Ù\‹˜ÛY[ÈŠK
+Š˜ÛY[Ý\ÝÙš[\ŸJCBˆ]HH]ØZ]‹™]K˜ÛÝ[ÙØÝ[Y[ÊÊŠ›ÝÛ™\‹
+Š\ÝÙÜÜÚY\—Ùš[\ŸJCBˆ[Û›ÈH]ØZ]‹›[Û›Ë˜ÛÝ[ÙØÝ[Y[ÊÊŠœØÛÜWÜJ\Ù\‹›[Û›ÈŠK
+Š\ÝÙÜÜÚY\—Ùš[\ŸJCBˆ™XÙ[H]ØZ]‹™]K™š[™
+ÊŠ›ÝÛ™\‹
+Š\ÝÙÜÜÚY\—Ùš[\ŸJKœÛÜ
+˜Ü™X]YØ]‹LJK×Û\Ý
+JCBƒBˆÈHÛÛ\XÝXÝ[Û˜X›HÛÜšÈ[˜›Þ[œÜ\™YžHH™Y™\™[˜ÙH\	ÜÈÜÜÚY\ˆ\ÝƒBˆÈ]™\žH]Y\žHÝ^\È[œÚYHHÚYÛ™YZ[ˆ\Ù\‰ÜÈ^\Ý[™È[Ù[HØÛÜKƒBˆ[˜›ÞÛ[Ù[\ÈHÃBˆ
+œ›ÜÝ[X]Üˆ‹‘ÜØ\ˆ›ÜÝ[X]ÜˆŠKBˆ
+˜]ˆ‹Ù\™\™HUˆŠKBˆ
+œÝÙ\ˆ‹”ÜÜˆH]\™HŠKBˆ
+™]H‹‘ÜØ\ˆKUHŠKBˆ
+›[Û›È‹”ØÚ[q È[Û›Ùš[\± ÈŠKBˆ
+˜[œ™WÙÜÜÚY\œÈ‹‘ÜØ\ˆS”‘HŠKBˆCBˆ[˜›ÞH×CBˆ›Ú™XÝ[ÛˆHÈ—ÚYŽˆšYŽˆK˜ÛY[Û˜[YHŽˆK›[X™\ˆŽˆKBˆœÙŽˆK›Ü\˜]ÜˆŽˆK›Ü\˜]Ü—Û˜[YHŽˆK™\ÝšX]ÜˆŽˆKBˆ›ØØ[]HŽˆK˜ÛÝ[HŽˆKBˆ˜ÛÛ\[žK›˜[YHŽˆKBˆšÝÜŽˆKš[™\\—ÚÝÈŽˆKœÝ]\ÈŽˆKÛÜšÙ›Ý×ÜÝ]\ÈŽˆK›Ü\˜]Ü—ÜÝYÙHŽˆKBˆÛÜšÙ›Ý×Ø›ØÚÙ\œÈŽˆKBˆ›™^ØXÝ[ÛˆŽˆK›™^ØXÝ[Û—ÙYHŽˆKBˆ\]YØ]ŽˆK˜Ü™X]YØ]Žˆ_CBˆ›Üˆ[Ù[KX™[[ˆ[˜›ÞÛ[Ù[\ÎƒBˆ[Ù[WÜØÛÜHHÊŠœØÛÜWÜJ\Ù\‹[Ù[JK
+Š\ÝÙÜÜÚY\—Ùš[\ŸCBˆ™XÙ[Ü›ÝÜÈH]ØZ]–Û[Ù[WK™š[™
+[Ù[WÜØÛÜK›Ú™XÝ[ÛŠKœÛÜ
+\]YØ]‹LJK›[Z]
+JK×Û\Ý
+JCBˆØÚY[YÜ›ÝÜÈH]ØZ]–Û[Ù[WK™š[™
+BˆÊŠ›[Ù[WÜØÛÜK›™^ØXÝ[ÛˆŽˆÈ‰^\ÝÈŽˆYK‰š[ˆŽˆÓ›Û™Kˆ—__K›Ú™XÝ[ÛƒBˆ
+KœÛÜ
+›™^ØXÝ[Û—ÙYH‹JK›[Z]
+JK×Û\Ý
+JCBˆ›ÝÜÈH\Ý
+Ü›ÝË™Ù]
+šYŠNˆ›ÝÈ›Üˆ›ÝÈ[ˆÊœ™XÙ[Ü›ÝÜË
+œØÚY[YÜ›ÝÜ×HYˆ›ÝË™Ù]
+šYŠ_K˜[Y\Ê
+JCBˆ›Üˆ›ÝÈ[ˆ›ÝÜÎƒBˆ[˜›Þ˜\[™
+ÃBˆšYŽˆ›ÝË™Ù]
+šYŠKBˆ›[Ù[HŽˆ[Ù[KBˆ›X™[ŽˆX™[Bˆ˜ÛY[Û˜[YHŽˆ›ÝË™Ù]
+˜ÛY[Û˜[YHŠHÜˆ
+›ÝË™Ù]
+˜ÛÛ\[žHŠHÜˆßJK™Ù]
+›˜[YHŠHÜˆˆ‹Bˆ›[X™\ˆŽˆ›ÝË™Ù]
+›[X™\ˆŠHÜˆˆ‹BˆœÙŽˆ›ÝË™Ù]
+œÙŠHÜˆ›ÝË™Ù]
+œÙÛ[X™\ˆŠHÜˆˆ‹Bˆ›Ü\˜]ÜˆŽˆ›ÝË™Ù]
+›Ü\˜]ÜˆŠHÜˆ›ÝË™Ù]
+›Ü\˜]Ü—Û˜[YHŠHÜˆ›ÝË™Ù]
+™\ÝšX]ÜˆŠHÜˆˆ‹BˆÈH\Ú›Ø\™X\ÚÜÝ]\Ù\È][šXÚ\[]KØÛÝ[HÛ›NÃBˆÈ™]™\ˆÙ[™HÝ\ÝÛY\‰ÜÈÝ™Y]Y™\ÜÈÜˆÑÈX\ËƒBˆ›ØØ[]HŽˆ›ÝË™Ù]
+›ØØ[]HŠHÜˆˆ‹Bˆ˜ÛÝ[HŽˆ›ÝË™Ù]
+˜ÛÝ[HŠHÜˆˆ‹BˆšÝÜŽˆ›ÝË™Ù]
+šÝÜŠHÜˆ›ÝË™Ù]
+œ[™[ÚÝÜŠHÜˆˆ‹Bˆš[™\\—ÚÝÈŽˆ›ÝË™Ù]
+š[™\\—ÚÝÈŠHÜˆ›ÝË™Ù]
+œÝÙ\—ÚÝÈŠHÜˆˆ‹BˆœÝ]\ÈŽˆ›ÝË™Ù]
+ÛÜšÙ›Ý×ÜÝ]\ÈŠHÜˆ›ÝË™Ù]
+œÝ]\ÈŠHÜˆ›ÝË™Ù]
+›Ü\˜]Ü—ÜÝYÙHŠHÜˆ°ã›ˆXÜH‹BˆÛÜšÙ›Ý×Ø›ØÚÙ\œÈŽˆÜÝŠ˜[YJKœÝš\
+
+H›Üˆ˜[YH[ˆ›ÝË™Ù]
+ÛÜšÙ›Ý×Ø›ØÚÙ\œÈ‹×JCBˆYˆÝŠ˜[YHÜˆˆŠKœÝš\
+
+WHYˆ\Ú[œÝ[˜ÙJ›ÝË™Ù]
+ÛÜšÙ›Ý×Ø›ØÚÙ\œÈŠK\Ý
+H[ÙH×KBˆ›™^ØXÝ[ÛˆŽˆ›ÝË™Ù]
+›™^ØXÝ[ÛˆŠHÜˆˆ‹Bˆ›™^ØXÝ[Û—ÙYHŽˆ›ÝË™Ù]
+›™^ØXÝ[Û—ÙYHŠHÜˆˆ‹Bˆ\]YØ]Žˆ›ÝË™Ù]
+\]YØ]ŠHÜˆ›ÝË™Ù]
+˜Ü™X]YØ]ŠHÜˆˆ‹BˆJCBˆÈÝ\™˜XÙHÑÛÜœ™\ÜÛ™[˜ÙH[ˆHØ[YHÜ\˜][Û˜[[˜›ÞÚ[HÙY\[™È]BˆÈÙ\\˜]Hœ›ÛHÜÜÚY\ˆÝYÙKÛÜ\˜]ÜˆYÙÜ™YØ]HÛÝ[È™[ÝËƒBˆY\ÜØYÙWÜØÛÜHHÊŠœØÛÜWÜJ\Ù\‹›Ü\˜]Ü—ÛY\ÜØYÙ\ÈŠK
+Š\ÝÙÜÜÚY\—Ùš[\ŸCBˆY\ÜØYÙWÜ›Ú™XÝ[ÛˆHÈ—ÚYŽˆšYŽˆK˜ÛY[Û˜[YHŽˆK›Ü\˜]ÜˆŽˆKBˆœÝXš™XÝŽˆKœ™Y™\™[˜ÙHŽˆKœ™XÙZ]™YØ]ŽˆKœÝ]\ÈŽˆKBˆ›™^ØXÝ[ÛˆŽˆK›™^ØXÝ[Û—ÙYHŽˆK\]YØ]ŽˆK˜Ü™X]YØ]Žˆ_CBˆ™XÙ[ÛY\ÜØYÙ\ÈH]ØZ]‹›Ü\˜]Ü—ÛY\ÜØYÙ\Ë™š[™
+Y\ÜØYÙWÜØÛÜKY\ÜØYÙWÜ›Ú™XÝ[ÛŠKœÛÜ
+œ™XÙZ]™YØ]‹LJK›[Z]
+JK×Û\Ý
+JCBˆØÚY[YÛY\ÜØYÙ\ÈH]ØZ]‹›Ü\˜]Ü—ÛY\ÜØYÙ\Ë™š[™
+BˆÊŠ›Y\ÜØYÙWÜØÛÜK›™^ØXÝ[ÛˆŽˆÈ‰^\ÝÈŽˆYK‰š[ˆŽˆÓ›Û™Kˆ—__KY\ÜØYÙWÜ›Ú™XÝ[ÛƒBˆ
+KœÛÜ
+›™^ØXÝ[Û—ÙYH‹JK›[Z]
+JK×Û\Ý
+JCBˆY\ÜØYÙ\ÈH\Ý
+Ü›ÝË™Ù]
+šYŠNˆ›ÝÈ›Üˆ›ÝÈ[ˆÊœ™XÙ[ÛY\ÜØYÙ\Ë
+œØÚY[YÛY\ÜØYÙ\×HYˆ›ÝË™Ù]
+šYŠ_K˜[Y\Ê
+JCBˆ›Üˆ›ÝÈ[ˆY\ÜØYÙ\ÎƒBˆ[˜›Þ˜\[™
+ÃBˆšYŽˆ›ÝË™Ù]
+šYŠKBˆ›[Ù[HŽˆ›Ü\˜]Ü—ÛY\ÜØYÙ\È‹Bˆ›X™[ŽˆÛÜ™\ÜÛ™[²&ñ ÈÑ‹Bˆ˜ÛY[Û˜[YHŽˆ›ÝË™Ù]
+˜ÛY[Û˜[YHŠHÜˆ›ÝË™Ù]
+œÝXš™XÝŠHÜˆˆ‹Bˆ›[X™\ˆŽˆ›ÝË™Ù]
+œ™Y™\™[˜ÙHŠHÜˆˆ‹BˆœÙŽˆˆ‹Bˆ›Ü\˜]ÜˆŽˆ›ÝË™Ù]
+›Ü\˜]ÜˆŠHÜˆˆ‹Bˆ›ØØ[]HŽˆˆ‹Bˆ˜ÛÝ[HŽˆˆ‹BˆœÝ]\ÈŽˆ›ÝË™Ù]
+œÝ]\ÈŠHÜˆ“›ÝH‹BˆÛÜšÙ›Ý×Ø›ØÚÙ\œÈŽˆ×KBˆ›™^ØXÝ[ÛˆŽˆ›ÝË™Ù]
+›™^ØXÝ[ÛˆŠHÜˆˆ‹Bˆ›™^ØXÝ[Û—ÙYHŽˆ›ÝË™Ù]
+›™^ØXÝ[Û—ÙYHŠHÜˆˆ‹Bˆ\]YØ]Žˆ›ÝË™Ù]
+\]YØ]ŠHÜˆ›ÝË™Ù]
+œ™XÙZ]™YØ]ŠHÜˆ›ÝË™Ù]
+˜Ü™X]YØ]ŠHÜˆˆ‹BˆJCBƒBˆÈš[Üš]^™HØÚY[YÛÜšËˆH\Ù\ˆ[\œÈ›ÝXÝ[Ûˆ[™YH]NÈÙHÈ›Ý[™™\ˆZ]\‹ƒBˆ[˜›ÞœÛÜ
+Ù^O[[X™H][Nˆ
+Bˆ›Ý›ÛÛ
+][K™Ù]
+›™^ØXÝ[ÛˆŠJKBˆÝŠ][K™Ù]
+›™^ØXÝ[Û—ÙYHŠHÜˆŽNNNKLL‹LÌHŠKBˆÝŠ][K™Ù]
+\]YØ]ŠHÜˆˆŠKBˆ
+JCBƒBˆÈ[ÛÜšÛØYÝ[[X\šY\È›ÜˆH\Ú›Ø\™È[›ZÙHH[˜›Þ\ÙH\™CBˆÈYÙÜ™YØ]HÛÝ[ÈÝ™\ˆ]™\žH›Û‹]\Ý™XÛÜ™[ˆH\Ù\‰ÜÈÝÛˆØÛÜKƒBˆÝYÙWØÛÝ[ÈHßCBˆÜ\˜]Ü—ØÛÝ[ÈHßCBˆØØ[Û›ÝÈH]][YK››ÝÊ›Û™R[™›Ê‘]\›ÜKÐXÚ\™\ÝŠJCBˆ[ÛÛØØ[ÜÝ\HØØ[Û›ÝËœ™\XÙJ^OLKÝ\LZ[]OLÙXÛÛ™LZXÜ›ÜÙXÛÛ™L
+CBˆYˆØØ[Û›ÝË›[ÛOHLŽƒBˆ™^Û[ÛÛØØ[ÜÝ\HØØ[Û›ÝËœ™\XÙJYX\[ØØ[Û›ÝËžYX\ˆ
+ÈK[ÛLK^OLKÝ\LZ[]OLÙXÛÛ™LZXÜ›ÜÙXÛÛ™L
+CBˆ[ÙNƒBˆ™^Û[ÛÛØØ[ÜÝ\HØØ[Û›ÝËœ™\XÙJ[Û[ØØ[Û›ÝË›[Û
+ÈK^OLKÝ\LZ[]OLÙXÛÛ™LZXÜ›ÜÙXÛÛ™L
+CBˆ[ÛÜÝ\H[ÛÛØØ[ÜÝ\˜\Ý[Y^›Û™J[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+CBˆ[ÛÙ[™H™^Û[ÛÛØØ[ÜÝ\˜\Ý[Y^›Û™J[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+CBˆÝX›Z]YÜÝYÙ\ÈHÃBˆ‘\\È‹‘\\ñ È‹‘\\ÈHÜ\˜]Üˆ‹‘\\ÈHÜ\˜]Ü[H\ÝšXr&ÚYH‹BˆCBˆXÝ]˜]YÜÝYÙ\ÈHÈ”›ÜÝ[X]ÜˆXÝ]ˆ—CBˆÝX›Z]YÝ\×Û[ÛHBˆXÝ]˜]YÝ\×Û[ÛHBˆÝYÙWÙ^ˆHÈ‰]ŽˆÈ˜\œÈŽˆÈ˜[YHŽˆÈ‰Y“[ŽˆÈ‰ÛÜšÙ›Ý×ÜÝ]\È‹È‰Y“[ŽˆÈ‰Ý]\È‹‰Ü\˜]Ü—ÜÝYÙH—_W__KBˆš[ˆŽˆÈ‰ÛÛ™ŽˆÞÈ‰ÜˆŽˆÞÈ‰\HŽˆÈ‰	˜[YH‹›Û™W_KÈ‰\HŽˆÈ‰	˜[YH‹ˆ—_W_K°ã›ˆXÜH‹‰	˜[YH—___CBˆÜ\˜]Ü—Ù^ˆHÈ‰]ŽˆÈ˜\œÈŽˆÈ˜[YHŽˆÈ‰Y“[ŽˆÈ‰Ü\˜]Üˆ‹È‰Y“[ŽˆÈ‰Ü\˜]Ü—Û˜[YH‹‰\ÝšX]Üˆ—_W__KBˆš[ˆŽˆÈ‰ÛÛ™ŽˆÞÈ‰ÜˆŽˆÞÈ‰\HŽˆÈ‰	˜[YH‹›Û™W_KÈ‰\HŽˆÈ‰	˜[YH‹ˆ—_W_K“Ü\˜]Üˆ™XÛÛ\]]‹‰	˜[YH—___CBˆ›Üˆ[Ù[KÛX™[[ˆ[˜›ÞÛ[Ù[\ÎƒBˆX]ÚHÊŠœØÛÜWÜJ\Ù\‹[Ù[JK
+Š\ÝÙÜÜÚY\—Ùš[\ŸCBˆÈÛÝ[[š\]YHÜÜÚY\œÈÚ][ˆ^XÚ]HØ]™Y˜[œÚ][Ûˆ[ˆ\È[ÛƒBˆÝX›Z]YÝ\×Û[Û
+ÏH]ØZ]–Û[Ù[WK˜ÛÝ[ÙØÝ[Y[ÊÃBˆ
+Š›X]ÚBˆÛÜšÙ›Ý×Ú\ÝÜžHŽˆÈ‰[[SX]ÚŽˆÃBˆÈŽˆÈ‰[ˆŽˆÝX›Z]YÜÝYÙ\ßKBˆ˜]ŽˆÈ‰ÝHŽˆ[ÛÜÝ\‰Žˆ[ÛÙ[™KBˆ_KBˆJCBˆXÝ]˜]YÝ\×Û[Û
+ÏH]ØZ]–Û[Ù[WK˜ÛÝ[ÙØÝ[Y[ÊÃBˆ
+Š›X]ÚBˆÛÜšÙ›Ý×Ú\ÝÜžHŽˆÈ‰[[SX]ÚŽˆÃBˆÈŽˆÈ‰[ˆŽˆXÝ]˜]YÜÝYÙ\ßKBˆ˜]ŽˆÈ‰ÝHŽˆ[ÛÜÝ\‰Žˆ[ÛÙ[™KBˆ_KBˆJCBˆ›Üˆ›ÝÈ[ˆ]ØZ]–Û[Ù[WK˜YÙÜ™YØ]JÃBˆÈ‰X]ÚŽˆX]ÚKBˆÈ‰›Ú™XÝŽˆÈ™Ü›Ý\ŽˆÝYÙWÙ^Ÿ_KBˆÈ‰Ü›Ý\ŽˆÈ—ÚYŽˆ‰Ü›Ý\‹˜ÛÝ[ŽˆÈ‰Ý[HŽˆ___KBˆJK×Û\Ý
+[™ÝS›Û™JNƒBˆÝYÙHHÝŠ›ÝË™Ù]
+—ÚYŠHÜˆ°ã›ˆXÜHŠCBˆÝYÙWØÛÝ[ÖÜÝYÙWHHÝYÙWØÛÝ[Ë™Ù]
+ÝYÙK
+H
+È[
+›ÝË™Ù]
+˜ÛÝ[ŠHÜˆ
+CBˆYˆ[Ù[HOH˜[œ™WÙÜÜÚY\œÈŽƒBˆÛÛ[YCBˆ›Üˆ›ÝÈ[ˆ]ØZ]–Û[Ù[WK˜YÙÜ™YØ]JÃBˆÈ‰X]ÚŽˆX]ÚKBˆÈ‰›Ú™XÝŽˆÈ™Ü›Ý\ŽˆÜ\˜]Ü—Ù^Ÿ_KBˆÈ‰Ü›Ý\ŽˆÈ—ÚYŽˆ‰Ü›Ý\‹˜ÛÝ[ŽˆÈ‰Ý[HŽˆ___KBˆJK×Û\Ý
+[™ÝS›Û™JNƒBˆÜ\˜]ÜˆHÝŠ›ÝË™Ù]
+—ÚYŠHÜˆ“Ü\˜]Üˆ™XÛÛ\]]ŠCBˆÜ\˜]Ü—ØÛÝ[ÖÛÜ\˜]Ü—HHÜ\˜]Ü—ØÛÝ[Ë™Ù]
+Ü\˜]Ü‹
+H
+È[
+›ÝË™Ù]
+˜ÛÝ[ŠHÜˆ
+CBƒBˆÈÛÝ[ÛÜšÈ]Ý[™YYÈ][[ÛˆXÜ›ÜÜÈ]™\žHÜÜÚY\ˆ[Ù[HÚÝÛƒBˆÈ[ˆH[˜›Þ›Ý\ÝKUKˆHÙ\\˜]HÛÜšÙ›Ý×ÜÝ]\ÈZÙ\È™XÙY[˜ÙCBˆÈÝ™\ˆHXÚšXØ[ÜˆÜ\˜]ÜˆÝ]\ÈÝÜ™Y[ˆÝ]\ØƒBˆ][[Û—ÜÝYÙ\ÈHÃBˆ°ã›ˆXÜH‹‘ØÝ[Y[HHÛÛ\]]‹°ã›ˆ™\šYšXØ\™H‹‘ØÝ[Y[H\ñ È‹Bˆ°ã›ˆÛÛ\]\™H‹Ú[Ü›± È‹r&]X\1 È\[™\™H‹”™Yñ Ý][H\[™\™H‹Bˆ”™Yñ Ý][HÙ[[˜\™H‹‘˜XÝ\± ÈUˆ‹r&]X\1 È[œÝ[\™H‹’[œÝ[]‹”ˆ\ÝHÈQˆ‹BˆCBˆ[™[™ÈHÝ[JÛÝ[›ÜˆÝYÙKÛÝ[[ˆÝYÙWØÛÝ[Ëš][\Ê
+HYˆÝYÙH[ˆ][[Û—ÜÝYÙ\ÊCBƒBˆÈÝ\™˜XÙH^XÚ]H™XÛÜ™Y›ØÚÙ\œÈÛˆ]™\žHXÝ]™HÜÜÚY\‹›ÝÛ›HCBˆÈÛX[™XÙ[]ÛÜšÈØ[\H\ÙYžHH\Ú›Ø\™[˜›ÞƒBˆ›ØÚÙ\—ÙÜÜÚY\œÈHBˆ›ØÚÙ\—ØÛÝ[HBˆ›Üˆ[Ù[KÛX™[[ˆ[˜›ÞÛ[Ù[\ÎƒBˆX]ÚHÊŠœØÛÜWÜJ\Ù\‹[Ù[JK
+Š\ÝÙÜÜÚY\—Ùš[\‹Bˆ‰ÜˆŽˆÃBˆÈÛÜšÙ›Ý×Ø›ØÚÙ\œÈŽˆÈ‰\HŽˆ˜\œ˜^H‹‰™HŽˆ×__KBˆÈÛÜšÙ›Ý×Ø›ØÚÙ\œÈŽˆÈ‰\HŽˆœÝš[™È‹‰š[ˆŽˆÓ›Û™Kˆ—__KBˆ_CBˆ›Üˆ›ÝÈ[ˆ]ØZ]–Û[Ù[WK™š[™
+X]ÚÈ—ÚYŽˆÛÜšÙ›Ý×Ø›ØÚÙ\œÈŽˆ_JK×Û\Ý
+[™ÝS›Û™JNƒBˆ˜[Y\ÈH›ÝË™Ù]
+ÛÜšÙ›Ý×Ø›ØÚÙ\œÈŠCBˆYˆ\Ú[œÝ[˜ÙJ˜[Y\Ë\Ý
+NƒBˆXÝ]™HHÜÝŠ˜[YJKœÝš\
+
+H›Üˆ˜[YH[ˆ˜[Y\ÈYˆÝŠ˜[YHÜˆˆŠKœÝš\
+
+WCBˆ[Yˆ\Ú[œÝ[˜ÙJ˜[Y\ËÝŠH[™˜[Y\ËœÝš\
+
+NƒBˆXÝ]™HHÛ[™KœÝš\
+
+H›Üˆ[™H[ˆ˜[Y\ËœÜ][™\Ê
+HYˆ[™KœÝš\
+
+WCBˆ[ÙNƒBˆXÝ]™HH×CBˆYˆXÝ]™NƒBˆ›ØÚÙ\—ÙÜÜÚY\œÈ
+ÏHCBˆ›ØÚÙ\—ØÛÝ[
+ÏH[ŠXÝ]™JCBƒBˆ™]\›ˆÈ˜ÛY[ÈŽˆÛY[Ë™]HŽˆ]K›[Û›ÈŽˆ[Û›Ëœ[™[™ÈŽˆ[™[™ËBˆœ™XÙ[ŽˆØÛX[ŠŠH›Üˆˆ[ˆ™XÙ[Kš[˜›ÞŽˆ[˜›ÞÎŒKBˆ˜›ØÚÙ\—ÙÜÜÚY\œÈŽˆ›ØÚÙ\—ÙÜÜÚY\œË˜›ØÚÙ\—ØÛÝ[Žˆ›ØÚÙ\—ØÛÝ[BˆœÝX›Z]YÝ\×Û[ÛŽˆÝX›Z]YÝ\×Û[Û˜XÝ]˜]YÝ\×Û[ÛŽˆXÝ]˜]YÝ\×Û[ÛBˆÝ[ÙÜÜÚY\œÈŽˆÝ[JÝYÙWØÛÝ[Ë˜[Y\Ê
+JKBˆœÝYÙWØÛÝ[ÈŽˆXÝ
+ÛÜY
+ÝYÙWØÛÝ[Ëš][\Ê
+KÙ^O[[X™H][Nˆ
+Z][VÌWK][VÌJJJKBˆ›Ü\˜]Ü—ØÛÝ[ÈŽˆXÝ
+ÛÜY
+Ü\˜]Ü—ØÛÝ[Ëš][\Ê
+KÙ^O[[X™H][Nˆ
+Z][VÌWK][VÌJJJ_CBƒBˆÈKKKKKKKKKKKKKKKHÙ][™ÜÈ
+Ú[™Û]Ûˆ\ˆÝÛ™\ŠHKKKKKKKKKKKKKKKCB”’UUHH
+œÝY™ˆ‹š[œÝ[Y[ÈŠCBƒB™YˆÝX\™
+[Ù[NˆÝ‹\Ù\ŽˆXÝÜš]Nˆ›ÛÛH˜[ÙJNƒBˆ™YY
+\Ù\‹SÑSWÑ‘PUT‘K™Ù]
+[Ù[JKÜš]JCBˆ›ÛHH\Ù\‹™Ù]
+œ›ÛH‹˜YZ[ˆŠCBˆYˆ[Ù[H[ˆ’UUH[™Üš]H[™›ÛHOH˜YZ[ˆŽƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[H‘Ø\ˆYZ[š\Ý˜]Ü[Ø]H[ÙYšXØH\œÛÛ˜[[2&ZH\\˜][HHq ÜÝ\± ÈŠCBˆYˆ[Ù[H[ˆ’UUH[™›ÛH›Ý[ˆ
+˜YZ[ˆ‹š[™Ú[™\ˆ‹™[XÝšXÚX[ˆ‹š[œÝ[]ÜˆŠNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[HXØÙ\È™\ÝšXò&Ú[Û˜]HØÝ[Y[[H\œÛÛ˜[[ZHŠCBˆYˆÜš]H[™›ÛH›Ý[ˆQUÔ“ÓTÎƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[HÛÛ[\™HXØÙ\È[Z]]
+Ø\ˆÛÛœÝ[\™JHŠCBˆYˆÜš]H[™[Ù[HOH˜Ø][ÙÈˆ[™›ÛH›Ý[ˆ
+˜YZ[ˆ‹š[™Ú[™\ˆŠNƒBˆ˜Z\ÙH^Ù\[ÛŠÝ]\×ØÛÙOMË]Z[H‘Ø\ˆYZ[š\Ý˜]Ü[È[™Ú[™\[[ÙYšXñ ÈØ][ÙÝ[ŠCBƒB˜\Þ[˜ÈYˆ]Y]
+\Ù\ŽˆXÝXÝ[ÛŽˆÝ‹[Ù[NˆÝ‹][WÚYˆÝ‹šY[Îˆ\Ý
+NƒBˆ]ØZ]‹˜]Y]š[œÙ\ÛÛ™JÈ›ÝÛ™\ˆŽˆ\Ù\–ÈšY—K\Ù\ˆŽˆ\Ù\‹™Ù]
+™[XZ[ŠK˜XÝ[ÛˆŽˆXÝ[Û‹›[Ù[HŽˆ[Ù[Kš][WÚYŽˆ][WÚYBˆ™šY[ÈŽˆÙˆ›Üˆˆ[ˆšY[ÈYˆˆ›Ý[ˆ
+\]YØ]‹›ÝÛ™\ˆ‹šY‹˜Ü™X]YØ]ŠWVÎKBˆ˜]Žˆ]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+_JCBƒB\WÜ›Ý]\‹™Ù]
+‹Ø]Y]ŠCB˜\Þ[˜ÈYˆ]Y]ÛÙÊ[Ù[NˆÜ[Û˜[ÜÝ—HH›Û™K][WÚYˆÜ[Û˜[ÜÝ—HH›Û™K\Ù\ŽˆXÝH\[™ÊÙ]ØÝ\œ™[Ý\Ù\ŠJNƒBˆHHÈ›ÝÛ™\ˆŽˆ\Ù\–ÈšY—_CBˆYˆ›Ý\×ØYZ[Š\Ù\ŠNƒBˆYˆ›Ý][WÚYƒBˆ˜Z\ÙHyÓv¶‰žËkºwµçd4(€€€Ü€ôA‘™]É¥Ñ•È ¤4(€€€™½Èˆ¥¸Á…ÉÑÌè4(€€€€€€€ÑÉäè4(€€€€€€€€€€€™½ÈÁœ¥¸A‘™I•…‘•È¡¥¼¹	åÑ•Í%<¡ˆ¤¤¹Á…•Ìè4(€€€€€€€€€€€€€€€Ü¹…‘‘}Á…”¡Áœ¤4(€€€€€€€•á•ÁÐá•ÁÑ¥½¸…Ì”è4(€€€€€€€€€€€±½•È¹•ÉÉ½È¡˜‰…ÑÈµ•É”èí•ôˆ¤4(€€€¼€ô¥¼¹	åÑ•Í%< ¤ìÜ¹ÝÉ¥Ñ”¡¼¤4(€€€¥¹½µÁ±•Ñ”€ô‰½½°¡µ¥ÍÌ½ÈÕ¹…Ù…¥±…‰±”½ÈÉ•ÅÕ•ÍÑ}ÑåÁ•}µ¥ÍÍ¥¹œ½È…¹¹•á}¥ÍÍÕ•Ì½È…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”¤4(€€€¹…µ”€ô˜‰ì=MI}QHœ¥˜™Õ±°•±Í”€II}QHõ}ì¡±¥•¹Ð¹•Ð ¹…µ”œ¤½ÈÉ•Œ¹•Ð ±¥•¹Ñ}¹…µ”œ¤½È€œœ¤¹É•Á±…” œ€œ°€|œ¥õì}%9=5A1Pœ¥˜™Õ±°…¹¥¹½µÁ±•Ñ”•±Í”€œô¹Á‘˜ˆ4(€€€É•ÑÕÉ¸¼¹•ÑÙ…±Õ” ¤°¹…µ”4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½Á½Ý•È½í¥Ñ•µ}¥‘ô½½™™¥¥…°µ‘½àˆ¤4)…Íå¹Œ‘•˜Á½Ý•É}½™™¥¥…±}‘½à¡¥Ñ•µ}¥èÍÑÈ°…ÕÑ¡½É¥é…Ñ¥½¸èÍÑÈ€ô!•…‘•È¡9½¹”¤°…ÕÑ èÍÑÈ€ôEÕ•Éä¡9½¹”¤¤è4(€€€€ˆˆ‰•¹•É…Ñ”Ñ¡”½™™¥¥…°H¹¹•à€Ä=`™½È„Á½Ý•Èµ¥¹É•…Í”É•ÅÕ•ÍÐ¸ˆˆˆ4(€€€ÕÍ•È€ô…Ý…¥ÐÕÍ•É}™É½µ}Ñ½­•¸¡…ÕÑ¡½É¥é…Ñ¥½¸°…ÕÑ ¤4(€€€É•Œ€ô…Ý…¥Ð¡•­}…•ÍÌ¡ÕÍ•È°€‰Á½Ý•Èˆ°¥Ñ•µ}¥¤4(€€€±¥•¹Ð€ô…Ý…¥Ð•Ñ}±¥•¹Ð¡ÕÍ•Él‰¥‰t°É•Œ¤4(€€€Í•ÑÑ¥¹Ì€ô…Ý…¥Ð‘ˆ¹Í•ÑÑ¥¹Ì¹™¥¹‘}½¹”¡ì‰½Ý¹•ÈˆèÕÍ•Él‰¥‰uô°ì‰}¥ˆè€Áô¤½Èíô4(€€€ÁÉ½Ì€ôíô4(€€€¥˜É•Œ¹•Ð ‰ÁÉ½Í}¥ˆ¤…¹…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹” 4(€€€€€€€ì¨©Í½Á•}Ä¡ÕÍ•È°€‰ÁÉ½ÍÕµ…Ñ½Èˆ¤°€‰¥ˆèÉ•l‰ÁÉ½Í}¥‰uô°ì‰¥ˆè€Åô4(€€€€¤è4(€€€€€€€ÁÉ½Ì°Á±¥•¹Ð°Í•ÑÑ¥¹Ì°|€ô…Ý…¥Ð‘½ÍÍ¥•É}Ñà¡ÕÍ•È°É•l‰ÁÉ½Í}¥‰t¤4(€€€€€€€±¥•¹Ð€ôì¨¨¡Á±¥•¹Ð½Èíô¤°€¨¨¡±¥•¹Ð½Èíô¥ô4(€€€•±Í”è4(€€€€€€€™É½´…ÑÉ}•ÅÕ¥Áµ•¹Ð¥µÁ½ÉÐ™É½µ}É•ÅÕ•ÍÐ4(€€€€€€€ÁÉ½Ì€ô™É½µ}É•ÅÕ•ÍÐ¡É•Œ°™¥•±ô‰Á½Ý•É}•˜ˆ¤4(4(€€€Õ…É‘}Á½Ý•É}ÁÉ½ÍÕµ•É}Í½Á”¡É•Œ°ÁÉ½Ì¤4(€€€½Á•É…Ñ½È€ôQH¹½Á}­•ä¡É•Œ¹•Ð ‰½Á•É…Ñ½Èˆ¤°ÁÉ½Ì¹•Ð ‰½Á•É…Ñ½Èˆ¤°±¥•¹Ð¹•Ð ‰½Á•É…Ñ½Èˆ¤¤4(€€€¥˜½Á•É…Ñ½È€„ô€‰‘••Èˆè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈÈ°‘•Ñ…¥°ô‰½ÉµÕ±…ÉÕ°=`½µÁ±•Ñ…‰¥°•ÍÑ”‘¥ÍÁ½¹¥‰¥°Á•¹ÑÉÔH¸A•¹ÑÉÔ…³"m¤½Á•É…Ñ½É¤°™½±½Í§"m¤™½ÉµÕ±…É•±”½™¥¥…±”‘¥¸É•¥ÍÑÉÕ°=¸ˆ¤4(€€€±¥•¹Ñ}­¥¹€ôÍÑÈ¡±¥•¹Ð¹•Ð ‰­¥¹ˆ¤½ÈÉ•Œ¹•Ð ‰…ÁÁ±¥…¹Ñ}ÑåÁ”ˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¤¹…Í•™½± ¤4(€€€…ÁÁ±¥…¹Ñ}ÑåÁ”€ôÉ•Œ¹•Ð ‰…ÁÁ±¥…¹Ñ}ÑåÁ”ˆ¤4(€€€¥˜¹½Ð…ÁÁ±¥…¹Ñ}ÑåÁ”è4(€€€€€€€¥˜€‰©ÕÉ¥ˆ¥¸±¥•¹Ñ}­¥¹½È±¥•¹Ñ}­¥¹¥¸€ ‰Á¨ˆ°€‰½µÁ…¹äˆ°€‰™¥É·ˆ°€‰™¥Éµ„ˆ¤è4(€€€€€€€€€€€…ÁÁ±¥…¹Ñ}ÑåÁ”€ô€‰A•ÉÍ½…»©ÕÉ¥‘¥ˆ4(€€€€€€€•±¥˜€‰™¥é¥Œˆ¥¸±¥•¹Ñ}­¥¹½È±¥•¹Ñ}­¥¹¥¸€ ‰Á˜ˆ°€‰¥¹‘¥Ù¥‘Õ…°ˆ¤è4(€€€€€€€€€€€…ÁÁ±¥…¹Ñ}ÑåÁ”€ô€‰A•ÉÍ½…»™¥é¥ˆ4(€€€€€€€•±Í”è4(€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈÈ°‘•Ñ…¥°ô‰M•±•Ñ‡"m¤Ñ¥ÁÕ°±¥•¹ÑÕ±Õ¤€¡Á•ÉÍ½…»™¥é¥Í…Ô©ÕÉ¥‘¥¤ƒ¹¸™§"e„±¥•¹ÑÕ±Õ¤ƒ¹¹…¥¹Ñ”‘”•¹•É…É•„™½ÉµÕ±…ÉÕ±Õ¤½™¥¥…°¸ˆ¤4(4(€€€…Í”€ô€‰±½Œ¹½Ôˆ¥˜É•Œ¹•Ð ‰É•ÅÕ•ÍÑ}­¥¹ˆ¤€ôô€‰¹½Ôˆ•±Í”€‰ÍÁ½È‘”ÁÕÑ•É”ˆ4(€€€½™™¥¥…±}É•Œ€ôì4(€€€€€€€€¨©É•Œ°4(€€€€€€€€‰½Á•É…Ñ½ÈˆèÉ•Œ¹•Ð ‰½Á•É…Ñ½Èˆ¤½ÈÁÉ½Ì¹•Ð ‰½Á•É…Ñ½Èˆ¤½È±¥•¹Ð¹•Ð ‰½Á•É…Ñ½Èˆ¤½È€‰Hˆ°4(€€€€€€€€‰‘••É}…Í”ˆè…Í”°4(€€€€€€€€‰É•ÅÕ•ÍÑ}ÑåÁ”ˆè€‰¹½Ôˆ¥˜É•Œ¹•Ð ‰É•ÅÕ•ÍÑ}­¥¹ˆ¤€ôô€‰¹½Ôˆ•±Í”€‰ÍÁ½Èˆ°4(€€€€€€€€‰…ÁÁ±¥…¹Ñ}ÑåÁ”ˆè…ÁÁ±¥…¹Ñ}ÑåÁ”°4(€€€ô4(€€€¥˜É•Œ¹•Ð ‰É•ÅÕ•ÍÑ•‘}­Ù„ˆ¤¹½Ð¥¸€¡9½¹”°€ˆˆ¤…¹½™™¥¥…±}É•Œ¹•Ð ‰Á}…‰Í}­Ù„ˆ¤¥¸€¡9½¹”°€ˆˆ¤è4(€€€€€€€½™™¥¥…±}É•l‰Á}…‰Í}­Ù„‰t€ôÉ•l‰É•ÅÕ•ÍÑ•‘}­Ù„‰t4(€€€ÑÉäè4(€€€€€€€Á…å±½…€ôQH¹É•¹‘•É}‘••É}½™™¥¥…±}‘½à¡½™™¥¥…±}É•Œ°±¥•¹Ð½Èíô°Í•ÑÑ¥¹Ì°ÁÉ½Ì½Èíô¤4(€€€•á•ÁÐY…±Õ•ÉÉ½È…Ì•áŒè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈÈ°‘•Ñ…¥°õÍÑÈ¡•áŒ¤¤4(€€€•á•ÁÐá•ÁÑ¥½¸è4(€€€€€€€±½•È¹•á•ÁÑ¥½¸ ‰HÁ½Ý•Èµ¥¹É•…Í”½™™¥¥…°=`•¹•É…Ñ¥½¸™…¥±•ˆ¤4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÔÀÀ°‘•Ñ…¥°ô‰9Ô…´ÁÕÑÕÐ•¹•É„™½ÉµÕ±…ÉÕ°H¸Y•É¥™¥‡"m¤‘…ƒ"e…‰±½¹Õ°½™¥¥…°•ÍÑ”‘¥ÍÁ½¹¥‰¥°¸ˆ¤4(€€€Í…™•}¹…µ”€ô€ˆˆ¹©½¥¸¡ ¥˜ ¹¥Í…±¹Õ´ ¤½È ¥¸€ˆµ|€ˆ•±Í”€‰|ˆ™½È ¥¸ÍÑÈ ¡±¥•¹Ð½Èíô¤¹•Ð ‰¹…µ”ˆ¤½È€‰±¥•¹Ðˆ¤¤¹ÍÑÉ¥À ¤¹É•Á±…” ˆ€ˆ°€‰|ˆ¤4(€€€…Í•}¹…µ”€ô€‰±½}¹½Ôˆ¥˜É•Œ¹•Ð ‰É•ÅÕ•ÍÑ}­¥¹ˆ¤€ôô€‰¹½Ôˆ•±Í”€‰ÍÁ½É}ÁÕÑ•É”ˆ4(€€€™¥±•¹…µ”€ô˜‰I}¹•á„Å}í…Í•}¹…µ•õ}íÍ…™•}¹…µ•ô¹‘½àˆ4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹ÐõÁ…å±½…°µ•‘¥…}ÑåÁ”ô‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½Á•¹áµ±™½Éµ…ÑÌµ½™™¥•‘½Õµ•¹Ð¹Ý½É‘ÁÉ½•ÍÍ¥¹µ°¹‘½Õµ•¹Ðˆ°4(€€€€€€€€€€€€€€€€€€€¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè‘¥ÍÀ ‰…ÑÑ…¡µ•¹Ðˆ°™¥±•¹…µ”¥ô¤4(4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½Á½Ý•È½í¥Ñ•µ}¥‘ô½½™™¥¥…°µ…¹¹•àˆ¤4)…Íå¹Œ‘•˜Á½Ý•É}½™™¥¥…±}…¹¹•à¡¥Ñ•µ}¥èÍÑÈ°…ÕÑ¡½É¥é…Ñ¥½¸èÍÑÈ€ô!•…‘•È¡9½¹”¤°…ÕÑ èÍÑÈ€ôEÕ•Éä¡9½¹”¤¤è4(€€€€ˆˆ‰½Ý¹±½…Ñ¡”Í•±•Ñ•½Á•É…Ñ½ÈÌ½™™¥¥…°¹¹•à€Ä°ÁÉ•™¥±±•½¹±äÝ¡•É”Í…™”¸ˆˆˆ4(€€€ÕÍ•È€ô…Ý…¥ÐÕÍ•É}™É½µ}Ñ½­•¸¡…ÕÑ¡½É¥é…Ñ¥½¸°…ÕÑ ¤4(€€€É•Œ€ô…Ý…¥Ð¡•­}…•ÍÌ¡ÕÍ•È°€‰Á½Ý•Èˆ°¥Ñ•µ}¥¤4(€€€±¥•¹Ð€ô…Ý…¥Ð•Ñ}±¥•¹Ð¡ÕÍ•Él‰¥‰t°É•Œ¤4(€€€Í•ÑÑ¥¹Ì€ô…Ý…¥Ð‘ˆ¹Í•ÑÑ¥¹Ì¹™¥¹‘}½¹”¡ì‰½Ý¹•ÈˆèÕÍ•Él‰¥‰uô°ì‰}¥ˆè€Áô¤½Èíô4(€€€ÁÉ½Ì€ôíô4(€€€¥˜É•Œ¹•Ð ‰ÁÉ½Í}¥ˆ¤…¹…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹” 4(€€€€€€€ì¨©Í½Á•}Ä¡ÕÍ•È°€‰ÁÉ½ÍÕµ…Ñ½Èˆ¤°€‰¥ˆèÉ•l‰ÁÉ½Í}¥‰uô°ì‰¥ˆè€Åô4(€€€€¤è4(€€€€€€€ÁÉ½Ì°Á±¥•¹Ð°Í•ÑÑ¥¹Ì°|€ô…Ý…¥Ð‘½ÍÍ¥•É}Ñà¡ÕÍ•È°É•l‰ÁÉ½Í}¥‰t¤4(€€€€€€€±¥•¹Ð€ôì¨¨¡Á±¥•¹Ð½Èíô¤°€¨¨¡±¥•¹Ð½Èíô¥ô4(€€€•±Í”è4(€€€€€€€™É½´…ÑÉ}•ÅÕ¥Áµ•¹Ð¥µÁ½ÉÐ™É½µ}É•ÅÕ•ÍÐ4(€€€€€€€ÁÉ½Ì€ô™É½µ}É•ÅÕ•ÍÐ¡É•Œ°™¥•±ô‰Á½Ý•É}•˜ˆ¤4(4(€€€Õ…É‘}Á½Ý•É}ÁÉ½ÍÕµ•É}Í½Á”¡É•Œ°ÁÉ½Ì¤4(€€€½Á•É…Ñ½É}­•ä€ôQH¹½Á}­•ä¡É•Œ¹•Ð ‰½Á•É…Ñ½Èˆ¤°ÁÉ½Ì¹•Ð ‰½Á•É…Ñ½Èˆ¤°±¥•¹Ð¹•Ð ‰½Á•É…Ñ½Èˆ¤¤4(€€€¥˜¹½Ð½Á•É…Ñ½É}­•äè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈÈ°‘•Ñ…¥°ô‰M•±•Ñ‡"m¤½Á•É…Ñ½ÉÕ°‘”‘¥ÍÑÉ¥‰×"m¥”ƒ¹¸‘½Í…È¸ˆ¤4(€€€¥Í}¹•Ü€ôÉ•Œ¹•Ð ‰É•ÅÕ•ÍÑ}­¥¹ˆ¤€ôô€‰¹½Ôˆ4(€€€…Í”€ô€‰±½Œ¹½Ôˆ¥˜¥Í}¹•Ü•±Í”€‰ÍÁ½È‘”ÁÕÑ•É”ˆ4(€€€…¹¹•á}É•Œ€ôì4(€€€€€€€€¨©É•Œ°4(€€€€€€€€‰½Á•É…Ñ½ÈˆèÉ•Œ¹•Ð ‰½Á•É…Ñ½Èˆ¤½ÈÁÉ½Ì¹•Ð ‰½Á•É…Ñ½Èˆ¤½È±¥•¹Ð¹•Ð ‰½Á•É…Ñ½Èˆ¤°4(€€€€€€€€‰É•ÅÕ•ÍÑ}ÑåÁ”ˆè€‰¹½Ôˆ¥˜¥Í}¹•Ü•±Í”€‰ÍÁ½Èˆ°4(€€€€€€€€‰‘••É}…Í”ˆè…Í”°4(€€€€€€€€‰­¥¹ˆèÉ•Œ¹•Ð ‰­¥¹ˆ¤½È€‰±½Œ‘”½¹ÍÕ´ƒ"e¤‘”ÁÉ½‘Õ•É”ˆ°4(€€€ô4(€€€¥˜É•Œ¹•Ð ‰É•ÅÕ•ÍÑ•‘}­Ù„ˆ¤¹½Ð¥¸€¡9½¹”°€ˆˆ¤…¹…¹¹•á}É•Œ¹•Ð ‰Á}…‰Í}­Ù„ˆ¤¥¸€¡9½¹”°€ˆˆ¤è4(€€€€€€€…¹¹•á}É•l‰Á}…‰Í}­Ù„‰t€ôÉ•l‰É•ÅÕ•ÍÑ•‘}­Ù„‰t4(4(€€€¥˜½Á•É…Ñ½É}­•ä€ôô€‰‘••Èˆè4(€€€€€€€±¥•¹Ñ}­¥¹€ôÍÑÈ¡±¥•¹Ð¹•Ð ‰­¥¹ˆ¤½ÈÉ•Œ¹•Ð ‰…ÁÁ±¥…¹Ñ}ÑåÁ”ˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¤¹…Í•™½± ¤4(€€€€€€€…ÁÁ±¥…¹Ñ}ÑåÁ”€ôÉ•Œ¹•Ð ‰…ÁÁ±¥…¹Ñ}ÑåÁ”ˆ¤4(€€€€€€€¥˜¹½Ð…ÁÁ±¥…¹Ñ}ÑåÁ”è4(€€€€€€€€€€€¥˜€‰©ÕÉ¥ˆ¥¸±¥•¹Ñ}­¥¹½È±¥•¹Ñ}­¥¹¥¸€ ‰Á¨ˆ°€‰½µÁ…¹äˆ°€‰™¥É·ˆ°€‰™¥Éµ„ˆ¤è4(€€€€€€€€€€€€€€€…ÁÁ±¥…¹Ñ}ÑåÁ”€ô€‰A•ÉÍ½…»©ÕÉ¥‘¥ˆ4(€€€€€€€€€€€•±¥˜€‰™¥é¥Œˆ¥¸±¥•¹Ñ}­¥¹½È±¥•¹Ñ}­¥¹¥¸€ ‰Á˜ˆ°€‰¥¹‘¥Ù¥‘Õ…°ˆ¤è4(€€€€€€€€€€€€€€€…ÁÁ±¥…¹Ñ}ÑåÁ”€ô€‰A•ÉÍ½…»™¥é¥ˆ4(€€€€€€€€€€€•±Í”è4(€€€€€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈÈ°‘•Ñ…¥°ô‰M•±•Ñ‡"m¤Ñ¥ÁÕ°±¥•¹ÑÕ±Õ¤ƒ¹¸™§"e„±¥•¹ÑÕ±Õ¤ƒ¹¹…¥¹Ñ”‘”•¹•É…É•„…¹•á•¤½™¥¥…±”¸ˆ¤4(€€€€€€€…¹¹•á}É•l‰…ÁÁ±¥…¹Ñ}ÑåÁ”‰t€ô…ÁÁ±¥…¹Ñ}ÑåÁ”4(€€€€€€€ÑÉäè4(€€€€€€€€€€€Á…å±½…€ôQH¹É•¹‘•É}‘••É}½™™¥¥…±}‘½à¡…¹¹•á}É•Œ°±¥•¹Ð½Èíô°Í•ÑÑ¥¹Ì°ÁÉ½Ì½Èíô¤4(€€€€€€€•á•ÁÐY…±Õ•ÉÉ½È…Ì•áŒè4(€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈÈ°‘•Ñ…¥°õÍÑÈ¡•áŒ¤¤4(€€€€€€€•á•ÁÐá•ÁÑ¥½¸è4(€€€€€€€€€€€±½•È¹•á•ÁÑ¥½¸ ‰HÁ½Ý•È½™™¥¥…°…¹¹•à•¹•É…Ñ¥½¸™…¥±•ˆ¤4(€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÔÀÀ°‘•Ñ…¥°ô‰9Ô…´ÁÕÑÕÐ•¹•É„™½ÉµÕ±…ÉÕ°½™¥¥…°H¸ˆ¤4(€€€€€€€Í…™•}¹…µ”€ô€ˆˆ¹©½¥¸¡ ¥˜ ¹¥Í…±¹Õ´ ¤½È ¥¸€ˆµ|€ˆ•±Í”€‰|ˆ™½È ¥¸ÍÑÈ ¡±¥•¹Ð½Èíô¤¹•Ð ‰¹…µ”ˆ¤½È€‰±¥•¹Ðˆ¤¤¹ÍÑÉ¥À ¤¹É•Á±…” ˆ€ˆ°€‰|ˆ¤4(€€€€€€€™¥±•¹…µ”€ô˜‰I}¹•á„Å}ì±½}¹½Ôœ¥˜¥Í}¹•Ü•±Í”€ÍÁ½É}ÁÕÑ•É”õ}íÍ…™•}¹…µ•ô¹‘½àˆ4(€€€€€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹ÐõÁ…å±½…°µ•‘¥…}ÑåÁ”ô‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½Á•¹áµ±™½Éµ…ÑÌµ½™™¥•‘½Õµ•¹Ð¹Ý½É‘ÁÉ½•ÍÍ¥¹µ°¹‘½Õµ•¹Ðˆ°4(€€€€€€€€€€€€€€€€€€€€€€€¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè‘¥ÍÀ ‰…ÑÑ…¡µ•¹Ðˆ°™¥±•¹…µ”¥ô¤4(4(€€€™É½´…ÑÉ}É½ÕÑ•Ì¥µÁ½ÉÐ}É•¥ÍÑÉå}™½ÉµÍ}™½É}É•ÅÕ•ÍÐ°}™•Ñ¡}É•¥ÍÑÉå}…¹¹•à°}ÁÉ•™¥±±}½™™¥¥…±}Á‘˜4(€€€…¹¹•á}¹¼°™½ÉµÌ€ô…Ý…¥Ð}É•¥ÍÑÉå}™½ÉµÍ}™½É}É•ÅÕ•ÍÐ¡½Á•É…Ñ½É}­•ä°…¹¹•á}É•Œ°ÁÉ½Ì½Èíô¤4(€€€¥˜¹½Ð…¹¹•á}¹¼½È¹½Ð™½ÉµÌè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰9Ô•á¥ÍÓÕ¸™½ÉµÕ±…È½™¥¥…°Ù•É¥™¥…ÐÁ•¹ÑÉÔÑ¥ÁÕ°•É•É¥¤ƒ"e¤½Á•É…Ñ½ÉÕ°Í•±•Ñ…Ð¸Y•É¥™¥‡"m¤I•¥ÍÑÉÕ°™½ÉµÕ±…É•±½È½™¥¥…±”¸ˆ¤4(€€€ÑÉäè4(€€€€€€€Á…å±½…°™¥±•¹…µ”€ô…Ý…¥Ð}™•Ñ¡}É•¥ÍÑÉå}…¹¹•à¡™½ÉµÍlÁt°½Á•É…Ñ½É}­•ä¤4(€€€•á•ÁÐá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€±½•È¹Ý…É¹¥¹œ ‰=™™¥¥…°Á½Ý•È…¹¹•à™•Ñ ™…¥±•€ •Ì¤è€•Ìˆ°½Á•É…Ñ½É}­•ä°•áŒ¤4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÔÀÈ°‘•Ñ…¥°ô‰½ÉµÕ±…ÉÕ°½™¥¥…°…°½Á•É…Ñ½ÉÕ±Õ¤¹Ô•ÍÑ”‘¥ÍÁ½¹¥‰¥°µ½µ•¹Ñ…¸¸Y•É¥™¥‡"m¤I•¥ÍÑÉÕ°™½ÉµÕ±…É•±½È½™¥¥…±”¸ˆ¤4(€€€¥˜™¥±•¹…µ”¹±½Ý•È ¤¹•¹‘ÍÝ¥Ñ  ˆ¹Á‘˜ˆ¤è4(€€€€€€€Á…å±½…°}™¥±±•‘}™¥•±‘Ì€ô}ÁÉ•™¥±±}½™™¥¥…±}Á‘˜¡Á…å±½…°…¹¹•á}É•Œ°±¥•¹Ð½Èíô°ÁÉ½Ì½Èíô¤4(€€€€€€€µ•‘¥…}ÑåÁ”€ô€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ4(€€€•±¥˜™¥±•¹…µ”¹±½Ý•È ¤¹•¹‘ÍÝ¥Ñ  ˆ¹‘½àˆ¤è4(€€€€€€€µ•‘¥…}ÑåÁ”€ô€‰…ÁÁ±¥…Ñ¥½¸½Ù¹¹½Á•¹áµ±™½Éµ…ÑÌµ½™™¥•‘½Õµ•¹Ð¹Ý½É‘ÁÉ½•ÍÍ¥¹µ°¹‘½Õµ•¹Ðˆ4(€€€•±Í”è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÔÀÈ°‘•Ñ…¥°ô‰½Éµ…ÑÕ°™½ÉµÕ±…ÉÕ±Õ¤½™¥¥…°¹Ô•ÍÑ”…•ÁÑ…Ð¸ˆ¤4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹ÐõÁ…å±½…°µ•‘¥…}ÑåÁ”õµ•‘¥…}ÑåÁ”°4(€€€€€€€€€€€€€€€€€€€¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè‘¥ÍÀ ‰…ÑÑ…¡µ•¹Ðˆ°™¥±•¹…µ”¥ô¤4(4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½Á½Ý•È½í¥Ñ•µ}¥‘ô½Á‘˜ˆ¤4)…Íå¹Œ‘•˜Á½Ý•É}Á‘˜¡¥Ñ•µ}¥èÍÑÈ°™Õ±°è¥¹Ð€ô€À°…ÕÑ¡½É¥é…Ñ¥½¸èÍÑÈ€ô!•…‘•È¡9½¹”¤°…ÕÑ èÍÑÈ€ôEÕ•Éä¡9½¹”¤¤è4(€€€ÕÍ•È€ô…Ý…¥ÐÕÍ•É}™É½µ}Ñ½­•¸¡…ÕÑ¡½É¥é…Ñ¥½¸°…ÕÑ ¤4(€€€É•Œ€ô…Ý…¥Ð¡•­}…•ÍÌ¡ÕÍ•È°€‰Á½Ý•Èˆ°¥Ñ•µ}¥¤4(€€€±¥•¹Ð€ô…Ý…¥Ð•Ñ}±¥•¹Ð¡ÕÍ•Él‰¥‰t°É•Œ¤4(€€€‰…Í”€ô…Ý…¥Ð‘ˆ¹Í•ÑÑ¥¹Ì¹™¥¹‘}½¹”¡ì‰½Ý¹•ÈˆèÕÍ•Él‰¥‰uô°ì‰}¥ˆè€Áô¤½Èíô4(€€€ÁÉ½Ì°…ÕÑ¼°¥¹™¼€ô9½¹”°íô°9½¹”4(€€€¥˜É•Œ¹•Ð ‰ÁÉ½Í}¥ˆ¤…¹…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹”¡ì¨©Í½Á•}Ä¡ÕÍ•È°€‰ÁÉ½ÍÕµ…Ñ½Èˆ¤°€‰¥ˆèÉ•l‰ÁÉ½Í}¥‰uô°ì‰¥ˆè€Åô¤è4(€€€€€€€ÁÉ½Ì°Á±¥•¹Ð°ÁÌ°¥¹™¼€ô…Ý…¥Ð‘½ÍÍ¥•É}Ñà¡ÕÍ•È°É•l‰ÁÉ½Í}¥‰t¤4(€€€€€€€±¥•¹Ð€ô±¥•¹Ð½ÈÁ±¥•¹Ð4(€€€€€€€‰…Í”€ôÁÌ4(€€€€€€€‰å­•ä€ôíÁl‰­•ä‰tèÀ™½ÈÀ¥¸¥¹™½l‰Á½Í¥Ñ¥½¹Ì‰uô4(€€€€€€€…ÕÑ¼€ôì‰ ˆèm‰å­•ä¹•Ð ‰É••ÁÑ¥”ˆ¥t°€‰¤ˆèm‰å­•ä¹•Ð ‰ÁÉ¥é„ˆ¥t°€‰¬ˆèm‰å­•ä¹•Ð ‰Í¡•µ„ˆ¥t°4(€€€€€€€€€€€€€€€€‰¨ˆèmÀ™½ÈÀ¥¸¥¹™½l‰Á½Í¥Ñ¥½¹Ì‰t¥˜À¹•Ð ‰Í½ÕÉ”ˆ¤€ôô€‰…Ñ…±½œˆ…¹À¹•Ð ‰™¥±•Ìˆ¥uô4(€€€•±Í”è4(€€€€€€€™É½´…ÑÉ}•ÅÕ¥Áµ•¹Ð¥µÁ½ÉÐ™É½µ}É•ÅÕ•ÍÐ4(€€€€€€€ÁÉ½Ì€ô™É½µ}É•ÅÕ•ÍÐ¡É•Œ°™¥•±ô‰Á½Ý•É}•˜ˆ¤½È9½¹”4(€€€Õ…É‘}Á½Ý•É}ÁÉ½ÍÕµ•É}Í½Á”¡É•Œ°ÁÉ½Ì½Èíô¤4(€€€Á½Ý•É}…Ñ…±½}™¥±•Ì€ômt4(€€€‘¥É•Ñ}…Ñ…±½}½µÁ±•Ñ”€ô…±Í”4(€€€¥˜ÁÉ½Ìè4(€€€€€€€™É½´…ÑÉ}•ÅÕ¥Áµ•¹Ð¥µÁ½ÉÐ…Ñ…±½}‘½Õµ•¹ÑÍ}½µÁ±•Ñ”…Ì‘¥É•Ñ}…Ñ…±½}‘½Õµ•¹ÑÍ}½µÁ±•Ñ”4(€€€€€€€…Ý…¥Ð…ÕÑ½}¥µÁ½ÉÑ}Í•±•Ñ•‘}…Ñ…±½}‘½Õµ•¹ÑÌ¡ÕÍ•È°ÁÉ½Ì¤4(€€€€€€€Á½Ý•É}…Ñ…±½}™¥±•Ì€ô…Ý…¥Ð…Ñ…±½}™¥±•Ì¡ÕÍ•Él‰¥‰t°ÁÉ½Ì¤4(€€€€€€€¥˜¥¹™¼¥Ì9½¹”è4(€€€€€€€€€€€‘¥É•Ñ}…Ñ…±½}½µÁ±•Ñ”€ô‘¥É•Ñ}…Ñ…±½}‘½Õµ•¹ÑÍ}½µÁ±•Ñ”¡ÁÉ½Ì¹•Ð ‰•˜ˆ¤°Á½Ý•É}…Ñ…±½}™¥±•Ì¤4(€€€€€€€•±Í”è4(€€€€€€€€€€€ÁÉ½Ì°Á±¥•¹Ð°‰…Í”°¥¹™¼€ô…Ý…¥Ð‘½ÍÍ¥•É}Ñà¡ÕÍ•È°É•l‰ÁÉ½Í}¥‰t¤4(€€€€€€€€€€€±¥•¹Ð€ô±¥•¹Ð½ÈÁ±¥•¹Ð4(€€€…ÑÐ€ôÉ•Œ¹•Ð ‰…ÑÑ…¡µ•¹ÑÌˆ¤½Èíô4(€€€…ÑÑ…¡•€ôí¬™½È¬°Ø¥¸…ÑÐ¹¥Ñ•µÌ ¤¥˜Ùô4(€€€¥˜ÁÉ½Ì…¹¥¹™¼¥Ì9½¹”è4(€€€€€€€¥˜‘¥É•Ñ}…Ñ…±½}½µÁ±•Ñ”è4(€€€€€€€€€€€…ÑÑ…¡•¹…‘ ‰¨ˆ¤4(€€€€€€€•±Í”è4(€€€€€€€€€€€…ÑÑ…¡•¹‘¥Í…É ‰¨ˆ¤4(€€€€Œ=¹±äµ…É¬…ÕÑ¼µ±¥¹­•Í½ÕÉ”‘½Õµ•¹ÑÌÁÉ•Í•¹Ð…™Ñ•ÈÑ¡”ÁÉ½ÍÕµ•È½Á¥Ì¡…Ì4(€€€€Œ±•…É•Ñ¡•¥Èµ¥ÍÍ¥¹œµ‘…Ñ„…¹…ÁÁÉ½Ù…°¡•­Ì¸É…™ÐAÌµ…äÍÑ¥±°‰”4(€€€€Œ¥¹±Õ‘•¥¸Ñ¡”™Õ±°‰Õ¹‘±”°‰ÕÐÑ¡•ä…¹¹½Ðµ…­”¹•á„€Ä…ÁÁ•…È½µÁ±•Ñ”¸4(€€€Í½ÕÉ•}Á½Í¥Ñ¥½¹Ì€ôì4(€€€€€€€€‰ ˆè€¡…ÕÑ¼¹•Ð ‰ ˆ¤½Èm9½¹•t¥lÁt°4(€€€€€€€€‰¤ˆè€¡…ÕÑ¼¹•Ð ‰¤ˆ¤½Èm9½¹•t¥lÁt°4(€€€€€€€€‰¬ˆè€¡…ÕÑ¼¹•Ð ‰¬ˆ¤½Èm9½¹•t¥lÁt°4(€€€ô4(€€€™½È­•ä°Á½Í¥Ñ¥½¸¥¸Í½ÕÉ•}Á½Í¥Ñ¥½¹Ì¹¥Ñ•µÌ ¤è4(€€€€€€€¥˜Á½Í¥Ñ¥½¸…¹Á½Í¥Ñ¥½¸¹•Ð ‰…ÕÑ½}ÍÑ…ÑÕÌˆ¤¥¸€ ‰•¹•É…Ðˆ°€‰…Ñ‡"e…Ðˆ¤è4(€€€€€€€€€€€…ÑÑ…¡•¹…‘¡­•ä¤4(€€€¥˜ÁÉ½Ì…¹¥¹™¼¥Ì¹½Ð9½¹”…¹¹½ÐÉ•Œ¹•Ð ‰¥Í}Ñ•ÍÐˆ¤…¹…Ñ…±½}‘½Õµ•¹ÑÍ}½µÁ±•Ñ”¡ÁÉ½Ì°¥¹™¼¹•Ð ‰Á½Í¥Ñ¥½¹Ìˆ°mt¤¤è4(€€€€€€€…ÑÑ…¡•¹…‘ ‰¨ˆ¤4(€€€Á…ÉÑÌ€ômA]H¹É•¹‘•É}…¹•á„Ä¡É•Œ°±¥•¹Ð°‰…Í”°ÁÉ½Ì½Èíô°…ÑÑ…¡•°QH¹½Á}­•ä¡É•Œ¹•Ð ‰½Á•É…Ñ½Èˆ¤°€¡ÁÉ½Ì½Èíô¤¹•Ð ‰½Á•É…Ñ½Èˆ¤°±¥•¹Ð¹•Ð ‰½Á•É…Ñ½Èˆ¤¤¥t4(€€€Õ¹…Ù…¥±…‰±”€ômt4(€€€…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”€ô€ˆˆ4(€€€¥˜ÁÉ½Ì…¹¥¹™¼¥Ì¹½Ð9½¹”…¹¹½ÐÉ•Œ¹•Ð ‰¥Í}Ñ•ÍÐˆ¤è4(€€€€€€€€ŒUÍ”Ñ¡”Í…µ”Á•Èµµ½‘•°…Ñ…±½œ•Ù¥‘•¹”…ÌÑ¡”ÁÉ½ÍÕµ•È…¹QH‘½ÍÍ¥•ÉÌì4(€€€€€€€€Œ„‘…Ñ…Í¡••Ð™½È½¹”µ½‘•°…¹¹½ÐÍ…Ñ¥Í™ä…¹½Ñ¡•Èµ½‘•°ÌÉ•ÅÕ¥É•µ•¹Ð¸4(€€€€€€€¥˜¹½Ð…Ñ…±½}‘½Õµ•¹ÑÍ}½µÁ±•Ñ”¡ÁÉ½Ì°¥¹™¼¹•Ð ‰Á½Í¥Ñ¥½¹Ìˆ°mt¤¤è4(€€€€€€€€€€€…ÑÑ…¡•¹‘¥Í…É ‰¨ˆ¤4(€€€€€€€€€€€Á…ÉÑÍlÁt€ôA]H¹É•¹‘•É}…¹•á„Ä¡É•Œ°±¥•¹Ð°‰…Í”°ÁÉ½Ì°…ÑÑ…¡•°4(€€€€€€€€€€€€€€€QH¹½Á}­•ä¡É•Œ¹•Ð ‰½Á•É…Ñ½Èˆ¤°ÁÉ½Ì¹•Ð ‰½Á•É…Ñ½Èˆ¤°±¥•¹Ð¹•Ð ‰½Á•É…Ñ½Èˆ¤¤¤4(€€€¥˜™Õ±°è4(€€€€€€€½Á•É…Ñ½É}­•ä€ôQH¹½Á}­•ä¡É•Œ¹•Ð ‰½Á•É…Ñ½Èˆ¤°€¡ÁÉ½Ì½Èíô¤¹•Ð ‰½Á•É…Ñ½Èˆ¤°±¥•¹Ð¹•Ð ‰½Á•É…Ñ½Èˆ¤¤4(€€€€€€€¥Í}¹•Ü€ôÉ•Œ¹•Ð ‰É•ÅÕ•ÍÑ}­¥¹ˆ¤€ôô€‰¹½Ôˆ4(€€€€€€€…¹¹•á}É•Œ€ôì4(€€€€€€€€€€€€¨©É•Œ°4(€€€€€€€€€€€€‰½Á•É…Ñ½ÈˆèÉ•Œ¹•Ð ‰½Á•É…Ñ½Èˆ¤½È€¡ÁÉ½Ì½Èíô¤¹•Ð ‰½Á•É…Ñ½Èˆ¤½È±¥•¹Ð¹•Ð ‰½Á•É…Ñ½Èˆ¤°4(€€€€€€€€€€€€‰É•ÅÕ•ÍÑ}ÑåÁ”ˆè€‰¹½Ôˆ¥˜¥Í}¹•Ü•±Í”€‰ÍÁ½Èˆ°4(€€€€€€€€€€€€‰‘••É}…Í”ˆè€‰±½Œ¹½Ôˆ¥˜¥Í}¹•Ü•±Í”€‰ÍÁ½È‘”ÁÕÑ•É”ˆ°4(€€€€€€€€€€€€‰­¥¹ˆèÉ•Œ¹•Ð ‰­¥¹ˆ¤½È€‰±½Œ‘”½¹ÍÕ´ƒ"e¤‘”ÁÉ½‘Õ•É”ˆ°4(€€€€€€€ô4(€€€€€€€¥˜É•Œ¹•Ð ‰É•ÅÕ•ÍÑ•‘}­Ù„ˆ¤¹½Ð¥¸€¡9½¹”°€ˆˆ¤…¹…¹¹•á}É•Œ¹•Ð ‰Á}…‰Í}­Ù„ˆ¤¥¸€¡9½¹”°€ˆˆ¤è4(€€€€€€€€€€€…¹¹•á}É•l‰Á}…‰Í}­Ù„‰t€ôÉ•l‰É•ÅÕ•ÍÑ•‘}­Ù„‰t4(€€€€€€€¥˜½Á•É…Ñ½É}­•äè4(€€€€€€€€€€€¥˜½Á•É…Ñ½É}­•ä€ôô€‰‘••Èˆè4(€€€€€€€€€€€€€€€…¹¹•á}Ñ¥Ñ±”€ô€‰¹•á„€Ä½™¥¥…³H€¡=`ƒŠP‘•ÍÉ…É”Í•Á…É…Ó¤ˆ4(€€€€€€€€€€€€€€€…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”€ô€‰½ÉµÕ±…ÉÕ°½™¥¥…°H•ÍÑ”=`ƒ"e¤Í”‘•Í…ÉÍ•Á…É…Ð‘¥¸‰ÕÑ½¹Õ°ƒ
+­¹•á„€Ä½™¥¥…³K
+ììAµÕ°‘½Í…ÉÕ±Õ¤½»"m¥¹”™§"e„‘”ÁÉ•½µÁ±•Ñ…É”°¹Ô™½ÉµÕ±…ÉÕ°½Á•É…Ñ½ÉÕ±Õ¤¸ˆ4(€€€€€€€€€€€€€€€…¹¹•á}¹¼°™½ÉµÌ€ô€Ä°mì‰Ñ¥Ñ±”ˆè…¹¹•á}Ñ¥Ñ±•õt4(€€€€€€€€€€€•±Í”è4(€€€€€€€€€€€€€€€™É½´…ÑÉ}É½ÕÑ•Ì¥µÁ½ÉÐ}É•¥ÍÑÉå}™½ÉµÍ}™½É}É•ÅÕ•ÍÐ°}™•Ñ¡}É•¥ÍÑÉå}…¹¹•à°}ÁÉ•™¥±±}½™™¥¥…±}Á‘˜4(€€€€€€€€€€€€€€€…¹¹•á}¹¼°™½ÉµÌ€ô…Ý…¥Ð}É•¥ÍÑÉå}™½ÉµÍ}™½É}É•ÅÕ•ÍÐ¡½Á•É…Ñ½É}­•ä°…¹¹•á}É•Œ°ÁÉ½Ì½Èíô¤4(€€€€€€€€€€€€€€€…¹¹•á}Ñ¥Ñ±”€ô€¡™½ÉµÍlÁt¹•Ð ‰Ñ¥Ñ±”ˆ¤¥˜™½ÉµÌ•±Í”€ˆˆ¤4(€€€€€€€€€€€¥˜…¹¹•á}¹¼è4(€€€€€€€€€€€€€€€Á…ÉÑÌ¹…ÁÁ•¹¡QH¹É•¹‘•É}½Á•É…Ñ½É}…¹¹•á}ÁÉ•À 4(€€€€€€€€€€€€€€€€€€€…¹¹•á}É•Œ°±¥•¹Ð½Èíô°ÁÉ½Ì½Èíô°½Á•É…Ñ½É}­•ä°…¹¹•á}¹¼°…¹¹•á}Ñ¥Ñ±”¤¤4(€€€€€€€€€€€¥˜¹½Ð™½ÉµÌè4(€€€€€€€€€€€€€€€…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”€ô…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”½È˜‰9Ô•á¥ÍÓÕ¸™½ÉµÕ±…È½™¥¥…°Ù•É¥™¥…Ðƒ¹¸É•¥ÍÑÉÔÁ•¹ÑÉÔ¹•á„í…¹¹•á}¹¼½È€Åô„½Á•É…Ñ½ÉÕ±Õ¤Í•±•Ñ…Ð¸ˆ4(€€€€€€€€€€€•±¥˜½Á•É…Ñ½É}­•ä€„ô€‰‘••Èˆè4(€€€€€€€€€€€€€€€ÑÉäè4(€€€€€€€€€€€€€€€€€€€½™™¥¥…±}‘…Ñ„°½™™¥¥…±}¹…µ”€ô…Ý…¥Ð}™•Ñ¡}É•¥ÍÑÉå}…¹¹•à¡™½ÉµÍlÁt°½Á•É…Ñ½É}­•ä¤4(€€€€€€€€€€€€€€€€€€€¥˜½™™¥¥…±}¹…µ”¹±½Ý•È ¤¹•¹‘ÍÝ¥Ñ  ˆ¹Á‘˜ˆ¤è4(€€€€€€€€€€€€€€€€€€€€€€€½µÁ±•Ñ•‘}‘…Ñ„°™¥±±•‘}™¥•±‘Ì€ô}ÁÉ•™¥±±}½™™¥¥…±}Á‘˜ 4(€€€€€€€€€€€€€€€€€€€€€€€€€€€½™™¥¥…±}‘…Ñ„°…¹¹•á}É•Œ°±¥•¹Ð½Èíô°ÁÉ½Ì½Èíô¤4(€€€€€€€€€€€€€€€€€€€€€€€Á…ÉÑÌ¹…ÁÁ•¹¡½µÁ±•Ñ•‘}‘…Ñ„¥˜™¥±±•‘}™¥•±‘Ì•±Í”½™™¥¥…±}‘…Ñ„¤4(€€€€€€€€€€€€€€€€€€€€€€€¥˜¹½Ð™¥±±•‘}™¥•±‘Ìè4(€€€€€€€€€€€€€€€€€€€€€€€€€€€…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”€ô€‰½ÉµÕ±…ÉÕ°A½™¥¥…°¹Ô…É”‰µÁÕÉ¤Ñ•áÐÍ•µ…¹Ñ¥”½µÁ…Ñ¥‰¥±”ì½É¥¥¹…±Õ°ƒ"e¤™§"e„9L‘”ÁÉ•½µÁ±•Ñ…É”ÍÕ¹Ð¥¹±ÕÍ”°¥…È™½ÉµÕ±…ÉÕ°ÑÉ•‰Õ¥”Ù•É¥™¥…Ð½½µÁ±•Ñ…Ðµ…¹Õ…°¸ˆ4(€€€€€€€€€€€€€€€€€€€•±Í”è4(€€€€€€€€€€€€€€€€€€€€€€€…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”€ô˜‰½ÉµÕ±…ÉÕ°½™¥¥…°í½™™¥¥…±}¹…µ•ô•ÍÑ”=`ƒ"e¤Í”‘•Í…ÉÍ•Á…É…Ð‘¥¸‰ÕÑ½¹Õ°ƒ
+­¹•á„€Ä½™¥¥…³=
+ììAµÕ°‘½Í…ÉÕ±Õ¤¹Ôƒ¹°Á½…Ñ”ƒ¹¹½ÉÁ½É„¸ˆ4(€€€€€€€€€€€€€€€•á•ÁÐá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€€€€€€€€€€€€€±½•È¹Ý…É¹¥¹œ ‰=™™¥¥…°Á½Ý•È…¹¹•à½Õ±¹½Ð‰”¥¹±Õ‘•è€•Ìˆ°•áŒ¤4(€€€€€€€€€€€€€€€€€€€…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”€ô€‰½ÉµÕ±…ÉÕ°½™¥¥…°¹Ô„ÁÕÑÕÐ™¤ÁÉ•±Õ…Ð±„•¹•É…É”ì‘•ÍÉ‡"m¤µ°Í•Á…É…Ð‘¥¸I•¥ÍÑÉÕ°™½ÉµÕ±…É•±½È½™¥¥…±”¸ˆ4(€€€€€€€•±Í”è4(€€€€€€€€€€€…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”€ô€‰M•±•Ñ‡"m¤½Á•É…Ñ½ÉÕ°‘”‘¥ÍÑÉ¥‰×"m¥”Á•¹ÑÉÔ„ÍÑ…‰¥±¤™½ÉµÕ±…ÉÕ°½™¥¥…°…Á±¥…‰¥°¸ˆ4(€€€€€€€™½È¬°Ñ¥Ñ±”¥¸A]H¹=Lè4(€€€€€€€€€€€™½È˜¥¸…ÑÐ¹•Ð¡¬¤½Èmtè4(€€€€€€€€€€€€€€€ÑÉäè4(€€€€€€€€€€€€€€€€€€€‘…Ñ„°Ð€ô•Ñ}½‰©•Ð¡™l‰ÍÑ½É…•}Á…Ñ ‰t¤4(€€€€€€€€€€€€€€€€€€€Á…ÉÑÌ¹…ÁÁ•¹¡=A%L¹™¥±•}Á‘˜¡‘…Ñ„°Ð¤¤4(€€€€€€€€€€€€€€€•á•ÁÐá•ÁÑ¥½¸…Ì”è4(€€€€€€€€€€€€€€€€€€€±½•È¹•ÉÉ½È¡˜‰Á½Ý•È…ÑÑ… í­ôèí•ôˆ¤4(€€€€€€€€€€€€€€€€€€€Õ¹…Ù…¥±…‰±”¹…ÁÁ•¹¡˜‰íÑ¥Ñ±•ôƒŠPí˜¹•Ð ½É¥¥¹…±}™¥±•¹…µ”œ¤½È€™§"e¥•È…Ñ‡"e…Ðôˆ¤4(€€€€€€€€€€€€Œ%¹±Õ‘”µ½‘•°µ±¥¹­•…Ñ…±½œ•Ù¥‘•¹”…±½¹Í¥‘”µ…¹Õ…°…ÑÑ…¡µ•¹ÑÌ¸4(€€€€€€€€€€€¥˜¹½Ð…ÑÐ¹•Ð¡¬¤½È¬€ôô€‰¨ˆè4(€€€€€€€€€€€€€€€™½ÈÀ¥¸…ÕÑ¼¹•Ð¡¬¤½Èmtè4(€€€€€€€€€€€€€€€€€€€ÑÉäè4(€€€€€€€€€€€€€€€€€€€€€€€¥˜Àè4(€€€€€€€€€€€€€€€€€€€€€€€€€€€Á…ÉÑÌ€¬ô…Ý…¥Ð=A%L¹Á½Í¥Ñ¥½¹}Á‘˜¡À°ÁÉ½Ì°±¥•¹Ð°‰…Í”°¥¹™½l‰Ñ¥Ñ±•Ì‰t°•Ñ}½‰©•Ð¤4(€€€€€€€€€€€€€€€€€€€•á•ÁÐá•ÁÑ¥½¸…Ì”è4(€€€€€€€€€€€€€€€€€€€€€€€±½•È¹•ÉÉ½È¡˜‰Á½Ý•È…ÕÑ¼í­ôèí•ôˆ¤4(€€€€€€€€€€€€€€€€€€€€€€€Õ¹…Ù…¥±…‰±”¹…ÁÁ•¹¡À¹•Ð ‰Ñ¥Ñ±”ˆ¤½ÈÑ¥Ñ±”¤4(€€€€€€€¥˜¥¹™¼¥Ì9½¹”…¹Á½Ý•É}…Ñ…±½}™¥±•Ìè4(€€€€€€€€€€€™½È…Ñ…±½}™¥±”¥¸Á½Ý•É}…Ñ…±½}™¥±•Ìè4(€€€€€€€€€€€€€€€ÑÉäè4(€€€€€€€€€€€€€€€€€€€Á…å±½…°½¹Ñ•¹Ñ}ÑåÁ”€ô•Ñ}½‰©•Ð¡…Ñ…±½}™¥±•l‰ÍÑ½É…•}Á…Ñ ‰t¤4(€€€€€€€€€€€€€€€€€€€Á…ÉÑÌ¹…ÁÁ•¹¡=A%L¹™¥±•}Á‘˜¡Á…å±½…°½¹Ñ•¹Ñ}ÑåÁ”¤¤4(€€€€€€€€€€€€€€€•á•ÁÐá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€€€€€€€€€€€€€±½•È¹Ý…É¹¥¹œ ‰A½Ý•È‘¥É•Ð…Ñ…±½œA½Õ±¹½Ð‰”¥¹±Õ‘•è€•Ìˆ°•áŒ¤4(€€€€€€€€€€€€€€€€€€€Õ¹…Ù…¥±…‰±”¹…ÁÁ•¹¡…Ñ…±½}™¥±”¹•Ð ‰½É¥¥¹…±}™¥±•¹…µ”ˆ¤½È…Ñ…±½}™¥±”¹•Ð ‰µ½‘•°ˆ¤½È€‰™§"g…Ñ…±½œˆ¤4(€€€¹•Ý}É•ÅÕ•ÍÐ€ôÉ•Œ¹•Ð ‰É•ÅÕ•ÍÑ}­¥¹ˆ¤€ôô€‰¹½Ôˆ4(€€€©ÕÉ¥‘¥…°€ô€‰©ÕÉ¥ˆ¥¸ÍÑÈ ¡±¥•¹Ð½Èíô¤¹•Ð ‰­¥¹ˆ¤½È€ˆˆ¤¹±½Ý•È ¤4(€€€É•ÅÕ¥É•‘}­•åÌ€ôì‰„‰ôð€¡ì‰ˆ‰ô¥˜©ÕÉ¥‘¥…°•±Í”Í•Ð ¤¤ð€¡ì‰Œˆ°€‰ˆ°€‰”ˆ°€‰˜ˆ°€‰œ‰ô¥˜¹•Ý}É•ÅÕ•ÍÐ•±Í”ì‰ ˆ°€‰¤ˆ°€‰¨ˆ°€‰¬‰ô¤4(€€€µ¥ÍÍ¥¹}­•åÌ€ôÍ½ÉÑ•¡¬™½È¬¥¸É•ÅÕ¥É•‘}­•åÌ¥˜¬¹½Ð¥¸…ÑÑ…¡•¤4(€€€ÁÝÉ}Ñ¥Ñ±•Ì€ô‘¥Ð¡A]H¹=L¤4(€€€µ¥ÍÍ¥¹}Ñ¥Ñ±•Ì€ôm˜‰½Õµ•¹Ð½‰±¥…Ñ½É¥Ô±¥ÁÏèíÁÝÉ}Ñ¥Ñ±•Ì¹•Ð¡¬°¬¥ôˆ™½È¬¥¸µ¥ÍÍ¥¹}­•åÍt4(€€€¥˜…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”è4(€€€€€€€µ¥ÍÍ¥¹}Ñ¥Ñ±•Ì¹…ÁÁ•¹¡…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”¤4(€€€É•Á½ÉÐ€ô=A%L¹}¥¹½µÁ±•Ñ•}É•Á½ÉÐ¡ì‰Á½Í¥Ñ¥½¹Ìˆèmt°€‰½µµ½¹}µ¥ÍÍ¥¹œˆèµ¥ÍÍ¥¹}Ñ¥Ñ±•Íô°Õ¹…Ù…¥±…‰±”¤4(€€€¥˜™Õ±°…¹É•Á½ÉÐè4(€€€€€€€Á…ÉÑÌ¹…ÁÁ•¹¡É•Á½ÉÐ¤4(€€€Ü€ôA‘™]É¥Ñ•È ¤4(€€€™½Èˆ¥¸Á…ÉÑÌè4(€€€€€€€ÑÉäè4(€€€€€€€€€€€™½ÈÁœ¥¸A‘™I•…‘•È¡¥¼¹	åÑ•Í%<¡ˆ¤¤¹Á…•Ìè4(€€€€€€€€€€€€€€€Ü¹…‘‘}Á…”¡Áœ¤4(€€€€€€€•á•ÁÐá•ÁÑ¥½¸…Ì”è4(€€€€€€€€€€€±½•È¹•ÉÉ½È¡˜‰Á½Ý•Èµ•É”èí•ôˆ¤4(€€€¼€ô¥¼¹	åÑ•Í%< ¤ìÜ¹ÝÉ¥Ñ”¡¼¤4(€€€¥¹½µÁ±•Ñ”€ô‰½½°¡µ¥ÍÍ¥¹}­•åÌ½ÈÕ¹…Ù…¥±…‰±”½È…¹¹•á}É•¥ÍÑÉå}¥ÍÍÕ”¤4(€€€¹…µ”€ô˜‰ì=MI}MA=I}AUQIœ¥˜™Õ±°•±Í”€9aÅ}Hõ}ì¡±¥•¹Ð¹•Ð ¹…µ”œ¤½ÈÉ•Œ¹•Ð ±¥•¹Ñ}¹…µ”œ¤½È€œœ¤¹É•Á±…” œ€œ°€|œ¥õì}%9=5A1Pœ¥˜™Õ±°…¹¥¹½µÁ±•Ñ”•±Í”€œô¹Á‘˜ˆ4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹Ðõ¼¹•ÑÙ…±Õ” ¤°µ•‘¥…}ÑåÁ”ô‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ°¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè‘¥ÍÀ ¥¹±¥¹”œ°¹…µ”¥ô¤4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½Á½Ý•È½í¥Ñ•µ}¥‘ô½Á…­…”¹é¥Àˆ¤4)…Íå¹Œ‘•˜Á½Ý•É}Á…­…”¡¥Ñ•µ}¥èÍÑÈ°…ÕÑ¡½É¥é…Ñ¥½¸èÍÑÈ€ô!•…‘•È¡9½¹”¤°…ÕÑ èÍÑÈ€ôEÕ•Éä¡9½¹”¤¤è4(€€€€ˆˆ‰É•…Ñ”„ÑÉ…¹Í™•ÈµÉ•…‘äi%@Ý¥Ñ Ñ¡”‘½ÍÍ¥•È°=…¹¹•à°Í½ÕÉ”™¥±•Ì…¹Í•Á…É…Ñ”Í¡•µ„½AI4¸ˆˆˆ4(€€€¥µÁ½ÉÐ¥¼4(€€€¥µÁ½ÉÐ½Ì4(€€€¥µÁ½ÉÐÉ”4(€€€¥µÁ½ÉÐé¥Á™¥±”4(4(€€€ÕÍ•È€ô…Ý…¥ÐÕÍ•É}™É½µ}Ñ½­•¸¡…ÕÑ¡½É¥é…Ñ¥½¸°…ÕÑ ¤4(€€€É•Œ€ô…Ý…¥Ð¡•­}…•ÍÌ¡ÕÍ•È°€‰Á½Ý•Èˆ°¥Ñ•µ}¥¤4(€€€Á…­…”€ô¥¼¹	åÑ•Í%< ¤4(€€€¹½Ñ•Ì€ôl4(€€€€€€€€‰9L¹•ÉäƒŠPÁ…¡•ÐÁ•¹ÑÉÔ‘•ÁÕ¹•É•„•É•É¥¤‘”ÍÁ½È€¼É…½É‘…É”¸ˆ°4(€€€€€€€€‰Y•É¥™¥‡"m¤‘½Õµ•¹Ñ•±”°‘…Ñ•±”ƒ"e¤Ù•ÉÍ¥Õ¹•„™½ÉµÕ±…É•±½Èƒ¹¸Á½ÉÑ…±Õ°½™¥¥…°…°½Á•É…Ñ½ÉÕ±Õ¤ƒ¹¹…¥¹Ñ”‘”‘•ÁÕ¹•É”¸ˆ°4(€€€€€€€€‰½Õµ•¹Ñ•±”•¹•É…Ñ”ÍÕ¹Ðµ…É…Ñ”¥½É»‰¹±¥ÁÍ•ÍŒ‘…Ñ”Í…Ô…ÁÉ½‰…É•„Ñ•¡¹¥ìÁ…¡•ÑÕ°¹Ô…Ñ•ÍÓ½¹™½Éµ¥Ñ…Ñ•„±•…³¸ˆ°4(€€€t4(€€€Ñ½Ñ…±}Í¥é”€ô€À4(€€€µ…á}Í¥é”€ô€ÄÀÀ€¨€ÄÀÈÐ€¨€ÄÀÈÐ4(4(€€€‘•˜…‘‘}™¥±”¡…É¡¥Ù”°…É¹…µ”°Á…å±½…¤è4(€€€€€€€¹½¹±½…°Ñ½Ñ…±}Í¥é”4(€€€€€€€Á…å±½…€ô‰åÑ•Ì¡Á…å±½…¤4(€€€€€€€¥˜±•¸¡Á…å±½…¤€øµ…á}Í¥é”½ÈÑ½Ñ…±}Í¥é”€¬±•¸¡Á…å±½…¤€øµ…á}Í¥é”è4(€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰§"e¥•È½µ¥Ì°±¥µ¥Ñ„Á…¡•ÑÕ±Õ¤‘”€ÄÀÀ5„™½ÍÐ‘•Ã"e¥Óèí…É¹…µ•ôˆ¤4(€€€€€€€€€€€É•ÑÕÉ¸…±Í”4(€€€€€€€Í…™•}Á…ÉÑÌ€ômÁ…ÉÐ™½ÈÁ…ÉÐ¥¸ÍÑÈ¡…É¹…µ”¤¹É•Á±…” ‰qpˆ°€ˆ¼ˆ¤¹ÍÁ±¥Ð ˆ¼ˆ¤¥˜Á…ÉÐ¹½Ð¥¸€ ˆˆ°€ˆ¸ˆ°€ˆ¸¸ˆ¥t4(€€€€€€€Í…™•}¹…µ”€ô€ˆ¼ˆ¹©½¥¸¡Í…™•}Á…ÉÑÌ¤½È€‰‘½Õµ•¹Ðˆ4(€€€€€€€…É¡¥Ù”¹ÝÉ¥Ñ•ÍÑÈ¡Í…™•}¹…µ”°Á…å±½…¤4(€€€€€€€Ñ½Ñ…±}Í¥é”€¬ô±•¸¡Á…å±½…¤4(€€€€€€€É•ÑÕÉ¸QÉÕ”4(4(€€€±¥•¹Ð€ô…Ý…¥Ð•Ñ}±¥•¹Ð¡ÕÍ•Él‰¥‰t°É•Œ¤½Èíô4(€€€±¥•¹Ñ}¹…µ”€ôÍÑÈ¡±¥•¹Ð¹•Ð ‰¹…µ”ˆ¤½ÈÉ•Œ¹•Ð ‰±¥•¹Ñ}¹…µ”ˆ¤½È€‰±¥•¹Ðˆ¤4(€€€Í…™•}±¥•¹Ð€ô€ˆˆ¹©½¥¸¡ ¥˜ ¹¥Í…±¹Õ´ ¤½È ¥¸€ˆµ|€ˆ•±Í”€‰|ˆ™½È ¥¸±¥•¹Ñ}¹…µ”¤¹ÍÑÉ¥À ¤¹É•Á±…” ˆ€ˆ°€‰|ˆ¤½È€‰±¥•¹Ðˆ4(€€€Á‘™}É•ÍÁ½¹Í”€ô…Ý…¥ÐÁ½Ý•É}Á‘˜¡¥Ñ•µ}¥°™Õ±°ôÄ°…ÕÑ¡½É¥é…Ñ¥½¸õ…ÕÑ¡½É¥é…Ñ¥½¸°…ÕÑ õ…ÕÑ ¤4(4(€€€Ý¥Ñ é¥Á™¥±”¹i¥Á¥±”¡Á…­…”°€‰Üˆ°½µÁÉ•ÍÍ¥½¸õé¥Á™¥±”¹i%A}1Q¤…Ì…É¡¥Ù”è4(€€€€€€€…‘‘}™¥±”¡…É¡¥Ù”°˜‰=MI}MA=I}AUQI}íÍ…™•}±¥•¹Ñô¹Á‘˜ˆ°Á‘™}É•ÍÁ½¹Í”¹‰½‘ä¤4(4(€€€€€€€ÑÉäè4(€€€€€€€€€€€½™™¥¥…±}É•ÍÁ½¹Í”€ô…Ý…¥ÐÁ½Ý•É}½™™¥¥…±}…¹¹•à¡¥Ñ•µ}¥°…ÕÑ¡½É¥é…Ñ¥½¸õ…ÕÑ¡½É¥é…Ñ¥½¸°…ÕÑ õ…ÕÑ ¤4(€€€€€€€€€€€‘¥ÍÁ½Í¥Ñ¥½¸€ô½™™¥¥…±}É•ÍÁ½¹Í”¹¡•…‘•ÉÌ¹•Ð ‰½¹Ñ•¹Ðµ‘¥ÍÁ½Í¥Ñ¥½¸ˆ°€ˆˆ¤4(€€€€€€€€€€€µ…Ñ €ôÉ”¹Í•…É ¡È™¥±•¹…µ”ôˆü¡mxˆít¬¤ˆüœ°‘¥ÍÁ½Í¥Ñ¥½¸°É”¹$¤4(€€€€€€€€€€€½™™¥¥…±}¹…µ”€ô½Ì¹Á…Ñ ¹‰…Í•¹…µ”¡µ…Ñ ¹É½ÕÀ Ä¤¤¥˜µ…Ñ •±Í”€‰¹•á„Å}½™¥¥…±…}=ˆ4(€€€€€€€€€€€…‘‘}™¥±”¡…É¡¥Ù”°˜‰¹•á”½™¥¥…±”½í½™™¥¥…±}¹…µ•ôˆ°½™™¥¥…±}É•ÍÁ½¹Í”¹‰½‘ä¤4(€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰½ÉµÕ±…È½™¥¥…°¥¹±ÕÌèí½™™¥¥…±}¹…µ•ô¸Y•É¥™¥‡"m¤ƒ"e¤Í•µ¹‡"m¤Ù…É¥…¹Ñ„•ÉÕÓ‘”½Á•É…Ñ½È¸ˆ¤4(€€€€€€€•á•ÁÐ!QQAá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰½ÉµÕ±…ÉÕ°½™¥¥…°=¹Ô„ÁÕÑÕÐ™¤¥¹±ÕÌ…ÕÑ½µ…Ð€¡!QQ@í•áŒ¹ÍÑ…ÑÕÍ}½‘•ô¤èí•áŒ¹‘•Ñ…¥±ôˆ¤4(4(€€€€€€€™É½´…ÑÉ}É½ÕÑ•Ì¥µÁ½ÉÐI}UQ!9Q%%Qe}UI0°I}AI}UI0°I}%5AUQI9%%I}UI0°}™•Ñ¡}É•¥ÍÑÉå}…¹¹•à4(€€€€€€€ÁÉ½Í}½Á•É…Ñ½È€ô€ˆˆ4(€€€€€€€±¥¹­•‘}ÁÉ½Ì€ô9½¹”4(€€€€€€€±¥¹­•‘}ÁÉ½Í}¥€ôÉ•Œ¹•Ð ‰ÁÉ½Í}¥ˆ¤4(€€€€€€€¥˜±¥¹­•‘}ÁÉ½Í}¥è4(€€€€€€€€€€€±¥¹­•‘}ÁÉ½Ì€ô…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹” 4(€€€€€€€€€€€€€€€ì¨©Í½Á•}Ä¡ÕÍ•È°€‰ÁÉ½ÍÕµ…Ñ½Èˆ¤°€‰¥ˆè±¥¹­•‘}ÁÉ½Í}¥‘ô°ì‰¥ˆè€Ä°€‰½Á•É…Ñ½Èˆè€Åô¤4(€€€€€€€½Á•É…Ñ½É}­•ä€ôQH¹½Á}­•ä¡É•Œ¹•Ð ‰½Á•É…Ñ½Èˆ¤°€¡±¥¹­•‘}ÁÉ½Ì½Èíô¤¹•Ð ‰½Á•É…Ñ½Èˆ¤°±¥•¹Ð¹•Ð ‰½Á•É…Ñ½Èˆ¤¤4(€€€€€€€¥˜½Á•É…Ñ½É}­•ä€ôô€‰‘••Èˆè4(€€€€€€€€€€€É•ÅÕ¥É•‘}½™™¥¥…±}‘½Ì€ôl4(€€€€€€€€€€€€€€€€ ‰•±…É‡"m¥”½™¥¥…³H‘”…ÕÑ•¹Ñ¥¥Ñ…Ñ”„‘…Ñ•±½Èˆ°I}UQ!9Q%%Qe}UI0¤°4(€€€€€€€€€€€€€€€€ ‰9½Ó½™¥¥…³H‘”¥¹™½Éµ…É”AHˆ°I}AI}UI0¤°4(€€€€€€€€€€€t4(€€€€€€€€€€€¥˜ÍÑÈ¡É•Œ¹•Ð ‰ÍÕ‰µ¥ÍÍ¥½¹}µ½‘”ˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¤¹…Í•™½± ¤€ôô€‰ÁÉ¥¸ƒ¹µÁÕÑ•É¹¥¥Ðˆ¹…Í•™½± ¤è4(€€€€€€€€€€€€€€€É•ÅÕ¥É•‘}½™™¥¥…±}‘½Ì¹…ÁÁ•¹  ‰5½‘•°ƒ¹µÁÕÑ•É¹¥¥É”Hˆ°I}%5AUQI9%%I}UI0¤¤4(€€€€€€€€€€€™½ÈÑ¥Ñ±”°Í½ÕÉ•}ÕÉ°¥¸É•ÅÕ¥É•‘}½™™¥¥…±}‘½Ìè4(€€€€€€€€€€€€€€€ÑÉäè4(€€€€€€€€€€€€€€€€€€€Á…å±½…°™¥±•¹…µ”€ô…Ý…¥Ð}™•Ñ¡}É•¥ÍÑÉå}…¹¹•à¡ì‰Ñ¥Ñ±”ˆèÑ¥Ñ±”°€‰ÕÉ°ˆèÍ½ÕÉ•}ÕÉ±ô°€‰‘••Èˆ¤4(€€€€€€€€€€€€€€€€€€€…‘‘}™¥±”¡…É¡¥Ù”°˜‰¹•á”½™¥¥…±”½í™¥±•¹…µ•ôˆ°Á…å±½…¤4(€€€€€€€€€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰½Õµ•¹ÐH¥¹±ÕÌ„ÍÕÉÏ½™¥¥…³¹•½µÁ±•Ñ…Óèí™¥±•¹…µ•ô¸½µÁ±•Ñ‡"m¤ƒ"e¤Í•µ¹‡"m¤Õ¹‘”•ÍÑ”…éÕ°¸ˆ¤4(€€€€€€€€€€€€€€€•á•ÁÐá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€€€€€€€€€€€€€±½•È¹Ý…É¹¥¹œ ‰H½™™¥¥…°‘½Õµ•¹Ð™•Ñ ™…¥±•€ •Ì¤è€•Ìˆ°Ñ¥Ñ±”°•áŒ¤4(€€€€€€€€€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰½Õµ•¹ÐH½‰±¥…Ñ½É¥Ô½É•±•Ù…¹Ð¥¹‘¥ÍÁ½¹¥‰¥°±„•¹•É…É•„i%@èíÑ¥Ñ±•ô¸•ÍÉ‡"m¤µ°‘”±„íÍ½ÕÉ•}ÕÉ±ô¸ˆ¤4(4(€€€€€€€½Ý¹•É}ÁÉ•™¥à€ô˜‰íAA}95ô½ÕÁ±½…‘Ì½íÕÍ•Él¥uô¼ˆ4(€€€€€€€…ÑÑ…¡µ•¹Ñ}½Õ¹Ð€ô€À4(€€€€€€€™½ÈÍ±½Ð°™¥±•Ì¥¸€¡É•Œ¹•Ð ‰…ÑÑ…¡µ•¹ÑÌˆ¤½Èíô¤¹¥Ñ•µÌ ¤è4(€€€€€€€€€€€™½È•¹ÑÉä¥¸™¥±•Ì½Èmtè4(€€€€€€€€€€€€€€€Á…Ñ €ôÍÑÈ ¡•¹ÑÉä½Èíô¤¹•Ð ‰ÍÑ½É…•}Á…Ñ ˆ¤½È€ˆˆ¤4(€€€€€€€€€€€€€€€½É¥¥¹…°€ô½Ì¹Á…Ñ ¹‰…Í•¹…µ”¡ÍÑÈ ¡•¹ÑÉä½Èíô¤¹•Ð ‰½É¥¥¹…±}™¥±•¹…µ”ˆ¤½È˜‰íÍ±½Ñô¹Á‘˜ˆ¤¤4(€€€€€€€€€€€€€€€¥˜¹½ÐÁ…Ñ ¹ÍÑ…ÉÑÍÝ¥Ñ ¡½Ý¹•É}ÁÉ•™¥à¤è4(€€€€€€€€€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰§"e¥•È…Ñ‡"e…Ð¥¹½É…Ð‘•½…É•”¹Ô…Á…Ë"m¥¹”ÍÁ‡"m¥Õ±Õ¤…•ÍÑÕ¤½¹Ðèí½É¥¥¹…±ôˆ¤4(€€€€€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”4(€€€€€€€€€€€€€€€ÑÉäè4(€€€€€€€€€€€€€€€€€€€Á…å±½…°}½¹Ñ•¹Ñ}ÑåÁ”€ô•Ñ}½‰©•Ð¡Á…Ñ ¤4(€€€€€€€€€€€€€€€€€€€¥˜…‘‘}™¥±”¡…É¡¥Ù”°˜‰½Õµ•¹Ñ”…Ñ‡"e…Ñ”½íÍ±½Ñô½í½É¥¥¹…±ôˆ°Á…å±½…¤è4(€€€€€€€€€€€€€€€€€€€€€€€…ÑÑ…¡µ•¹Ñ}½Õ¹Ð€¬ô€Ä4(€€€€€€€€€€€€€€€•á•ÁÐá•ÁÑ¥½¸è4(€€€€€€€€€€€€€€€€€€€±½•È¹•á•ÁÑ¥½¸ ‰A½Ý•ÈÁ…­…”…ÑÑ…¡µ•¹Ð½Õ±¹½Ð‰”É•…€ •Ì¤ˆ°Á…Ñ ¤4(€€€€€€€€€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰§"e¥•È…Ñ‡"e…Ð¥¹‘¥ÍÁ½¹¥‰¥°ƒ¹¸ÍÑ½…É”èí½É¥¥¹…±ôˆ¤4(€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰§"e¥•É”…Ñ‡"e…Ñ”Í•Á…É…Ð¥¹±ÕÍ”èí…ÑÑ…¡µ•¹Ñ}½Õ¹Ñô¸ˆ¤4(4(€€€€€€€ÁÉ½Í}¥€ôÉ•Œ¹•Ð ‰ÁÉ½Í}¥ˆ¤4(€€€€€€€¥˜ÁÉ½Í}¥…¹…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹”¡ì¨©Í½Á•}Ä¡ÕÍ•È°€‰ÁÉ½ÍÕµ…Ñ½Èˆ¤°€‰¥ˆèÁÉ½Í}¥‘ô°ì‰¥ˆè€Åô¤è4(€€€€€€€€€€€™½È­•ä°±…‰•°°™¥±•¹…µ”¥¸€ 4(€€€€€€€€€€€€€€€€ ‰Í¡•µ„ˆ°€‰M¡•µ„µ½¹½™¥±…Ëˆ°˜‰M¡•µ…}µ½¹½™¥±…Ë}íÍ…™•}±¥•¹Ñô¹Á‘˜ˆ¤°4(€€€€€€€€€€€€€€€€ ‰ÁÉ¥é„ˆ°€‰	Õ±•Ñ¥¸AI4€¼ÁÉ¥ë‘”Ã·‰¹Ðˆ°˜‰	Õ±•Ñ¥¹}AI5}íÍ…™•}±¥•¹Ñô¹Á‘˜ˆ¤°4(€€€€€€€€€€€€¤è4(€€€€€€€€€€€€€€€ÑÉäè4(€€€€€€€€€€€€€€€€€€€É•ÍÁ½¹Í”€ô…Ý…¥Ð‘½ÍÍ¥•É}™¥±”¡ÁÉ½Í}¥°­•ä°‘½Ý¹±½…ôÄ°…ÕÑ¡½É¥é…Ñ¥½¸õ…ÕÑ¡½É¥é…Ñ¥½¸°…ÕÑ õ…ÕÑ ¤4(€€€€€€€€€€€€€€€€€€€…‘‘}™¥±”¡…É¡¥Ù”°˜‰½Õµ•¹Ñ”Í•Á…É…Ñ”½í™¥±•¹…µ•ôˆ°É•ÍÁ½¹Í”¹‰½‘ä¤4(€€€€€€€€€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰í±…‰•±ôè¥¹±ÕÌÍ•Á…É…ÐìÙ•É¥™¥‡"m¤µ…É…©Õ°¥½É»½…ÁÉ½‰…Ðƒ"e¤½µÁ±•Ñ¥ÑÕ‘¥¹•„ƒ¹¹…¥¹Ñ”‘”‘•ÁÕ¹•É”¸ˆ¤4(€€€€€€€€€€€€€€€•á•ÁÐ!QQAá•ÁÑ¥½¸…Ì•áŒè4(€€€€€€€€€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹¡˜‰í±…‰•±ôè¹Ô„ÁÕÑÕÐ™¤•¹•É…Ð½…Ñ‡"e…Ð€¡!QQ@í•áŒ¹ÍÑ…ÑÕÍ}½‘•ô¤èí•áŒ¹‘•Ñ…¥±ôˆ¤4(€€€€€€€•±Í”è4(€€€€€€€€€€€¹½Ñ•Ì¹…ÁÁ•¹ ‰M¡•µ„ƒ"e¤AI4Í•Á…É…Ð¹Ô…ÔÁÕÑÕÐ™¤•áÑÉ…Í”è‘½Í…ÉÕ°‘”ÍÁ½È¹Ô…É”Õ¸‘½Í…È‘”ÁÉ½ÍÕµ…Ñ½È…Í½¥…Ð¸ˆ¤4(4(€€€€€€€…É¡¥Ù”¹ÝÉ¥Ñ•ÍÑÈ ‰%QMQ}%9%9Q¹ÑáÐˆ°€‰q¸ˆ¹©½¥¸¡¹½Ñ•Ì¤¤4(4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í” 4(€€€€€€€½¹Ñ•¹ÐõÁ…­…”¹•ÑÙ…±Õ” ¤°4(€€€€€€€µ•‘¥…}ÑåÁ”ô‰…ÁÁ±¥…Ñ¥½¸½é¥Àˆ°4(€€€€€€€¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè‘¥ÍÀ ‰…ÑÑ…¡µ•¹Ðˆ°˜‰A…¡•Ñ}‘•ÁÕ¹•É•}ÍÁ½É}íÍ…™•}±¥•¹Ñô¹é¥Àˆ¥ô°4(€€€€¤4(4(4(Œ€´´´´´´´´´´´´´´´´M•µ¹…É”±„‘¥ÍÑ…»"o€¡Í•µ»ÑÕË•±•ÑÉ½¹¥Í¥µÁ³¤€´´´´´´´´´´´´´´´´4)¥µÁ½ÉÐ¡…Í¡±¥ˆ4)¥µÁ½ÉÐÉ”4)¥µÁ½ÉÐÍ•É•ÑÌ4)¥µÁ½ÉÐ‰…Í”ØÐ4)¥µÁ½ÉÐÕ¹¥½‘•‘…Ñ„4)™É½´¡Ñµ°¥µÁ½ÉÐ•Í…Á”…Ì¡•ÍŒ4)™É½´µ…¥±•È¥µÁ½ÉÐÍ•¹‘}•µ…¥°°5%1}I=5}954)™É½´É•Á½ÉÑ±…ˆ¹Á‘™•¸¥µÁ½ÉÐ…¹Ù…Ì…ÌÉ±Œ4)™É½´É•Á½ÉÑ±…ˆ¹±¥ˆ¹Á…•Í¥é•Ì¥µÁ½ÉÐÐ…ÌIÐ4)™É½´É•Á½ÉÑ±…ˆ¹±¥ˆ¹ÕÑ¥±Ì¥µÁ½ÉÐ%µ…•I•…‘•È4(4)M%9}Q%Y€ô€ ‰”ÑÉ¥µ¥Ìˆ°€‰1¥¹¬ÑÉ¥µ¥Ìˆ°€‰•Í¡¥Ìˆ¤4)Í¡„€ô±…µ‰‘„ˆè¡…Í¡±¥ˆ¹Í¡„ÈÔØ¡ˆ¤¹¡•á‘¥•ÍÐ ¤4)¹½Ý}¥Í¼€ô±…µ‰‘„è‘…Ñ•Ñ¥µ”¹¹½Ü¡Ñ¥µ•é½¹”¹ÕÑŒ¤¹¥Í½™½Éµ…Ð ¤4(4)‘•˜Í¥¹}ÍÑ…ÑÕÌ¡Èè‘¥Ð¤€´øÍÑÈè4(€€€¥˜Él‰ÍÑ…ÑÕÌ‰t¥¸M%9}Q%Y…¹È¹•Ð ‰•áÁ¥É•Í}…Ðˆ¤…¹Él‰•áÁ¥É•Í}…Ð‰t€ð¹½Ý}¥Í¼ ¤è4(€€€€€€€É•ÑÕÉ¸€‰áÁ¥É…Ðˆ4(€€€É•ÑÕÉ¸Él‰ÍÑ…ÑÕÌ‰t4(4)‘•˜Í¥¹•‘}Á½ÉÑ…±}…Ñ¥Ù”¡Èè‘¥Ð°¹½Üè‘…Ñ•Ñ¥µ”ð9½¹”€ô9½¹”¤€´ø‰½½°è4(€€€€ˆˆ‰±±½ÜÑ¡”±¥•¹ÐÁ½ÉÑ…°½¹±ä…™Ñ•ÈÑ¡¥ÌÉ•ÅÕ•ÍÐÝ…ÌÍ¥¹•°™½È€ÄàÀ‘…åÌ¸ˆˆˆ4(€€€¥˜È¹•Ð ‰ÍÑ…ÑÕÌˆ¤€„ô€‰M•µ¹…Ðˆ½È¹½ÐÈ¹•Ð ‰Í¥¹•‘}…Ðˆ¤è4(€€€€€€€É•ÑÕÉ¸…±Í”4(€€€ÑÉäè4(€€€€€€€Í¥¹•‘}…Ð€ô‘…Ñ•Ñ¥µ”¹™É½µ¥Í½™½Éµ…Ð¡ÍÑÈ¡Él‰Í¥¹•‘}…Ð‰t¤¹É•Á±…” ‰hˆ°€ˆ¬ÀÀèÀÀˆ¤¤4(€€€•á•ÁÐ€¡QåÁ•ÉÉ½È°Y…±Õ•ÉÉ½È¤è4(€€€€€€€É•ÑÕÉ¸…±Í”4(€€€¥˜Í¥¹•‘}…Ð¹Ñé¥¹™¼¥Ì9½¹”è4(€€€€€€€Í¥¹•‘}…Ð€ôÍ¥¹•‘}…Ð¹É•Á±…”¡Ñé¥¹™¼õÑ¥µ•é½¹”¹ÕÑŒ¤4(€€€¹½Ü€ô¹½Ü½È‘…Ñ•Ñ¥µ”¹¹½Ü¡Ñ¥µ•é½¹”¹ÕÑŒ¤4(€€€¥˜¹½Ü¹Ñé¥¹™¼¥Ì9½¹”è4(€€€€€€€¹½Ü€ô¹½Ü¹É•Á±…”¡Ñé¥¹™¼õÑ¥µ•é½¹”¹ÕÑŒ¤4(€€€É•ÑÕÉ¸Í¥¹•‘}…Ð€ðô¹½Ü€ðôÍ¥¹•‘}…Ð€¬Ñ¥µ•‘•±Ñ„¡‘…åÌôÄàÀ¤4(4)1%9Q}A=IQ1}MQL€ôl4(€€€€‰½Í…Èƒ¹¸ÁÉ•ŸÑ¥É”ˆ°€‰…Ñ„‘”‘•ÁÕ¹•É”ˆ°€‰•ÁÕÌ±„½Á•É…Ñ½ÉÕ°‘”‘¥ÍÑÉ¥‰×"m¥”ˆ°4(€€€€‰Ù¥èÑ•¡¹¥Œ•µ¥Ìˆ°€‰AÉ½É…µ…ÐÁ•¹ÑÉÔµ½¹Ñ…¨ˆ°€‰5½¹Ñ…¨•™•ÑÕ…Ðˆ°4(€€€€‰AÉ½‰”ƒ"e¤ÁÕ¹•É”ƒ¹¸™Õ¹"m¥Õ¹”ˆ°€‰AÉ½ÍÕµ…Ñ½È…Ñ¥Øˆ°4)t4(4)‘•˜±¥•¹Ñ}Á½ÉÑ…±}ÍÑ…”¡Ù…±Õ”èÍÑÈð9½¹”¤€´ø¥¹Ðð9½¹”è4(€€€Á±…¥¸€ôÕ¹¥½‘•‘…Ñ„¹¹½Éµ…±¥é” ‰9-ˆ°ÍÑÈ¡Ù…±Õ”½È€ˆˆ¤¹…Í•™½± ¤¤¹•¹½‘” ‰…Í¥¤ˆ°€‰¥¹½É”ˆ¤¹‘•½‘” ‰…Í¥¤ˆ¤4(€€€­•ä€ôÉ”¹ÍÕˆ¡È‰my„µèÀ´åt¬ˆ°€ˆ€ˆ°Á±…¥¸¤¹ÍÑÉ¥À ¤4(€€€…±¥…Í•Ì€ôì4(€€€€€€€€‰¥¸±ÕÉÔˆè€À°€‰‘½Í…È¥¸ÁÉ•…Ñ¥É”ˆè€À°€‰¥¸ÁÉ•…Ñ¥É”ˆè€À°4(€€€€€€€€‰‘…Ñ”‘”½µÁ±•Ñ…Ðˆè€À°€‰‘½Õµ•¹Ñ”‘”½µÁ±•Ñ…Ðˆè€À°4(€€€€€€€€‰¥¸Ù•É¥™¥…É”ˆè€Ä°€‰…Ñ„‘”‘•ÁÕ¹•É”ˆè€Ä°€‰ÁÉ•…Ñ¥ÐÁ•¹ÑÉÔ‘•ÁÕ¹•É”ˆè€Ä°€‰‘½Í…È•¹•É…Ðˆè€Ä°4(€€€€€€€€‰‘•ÁÕÌˆè€È°€‰‘•ÁÕÍ„ˆè€È°€‰‘•ÁÕÌ±„½Á•É…Ñ½Èˆè€È°€‰‘•ÁÕÌ±„½Á•É…Ñ½ÉÕ°‘”‘¥ÍÑÉ¥‰ÕÑ¥”ˆè€È°4(€€€€€€€€‰¥¸…ÍÑ•ÁÑ…É”±„½Á•É…Ñ½Èˆè€È°€‰…ÍÑ•…ÁÑ„½Á•É…Ñ½Èˆè€È°€‰½µÁ±•Ñ…É¤•ÉÕÑ”ˆè€È°4(€€€€€€€€‰½µÁ±•Ñ…É¤Í½±¥¥Ñ…Ñ”ˆè€È°€‰‘½Í…È‘•ÁÕÌˆè€È°4(€€€€€€€€‰…ÑÈ•µ¥Ìˆè€Ì°€‰…Ù¥é…Ðˆè€Ì°€‰…Ù¥è•µ¥Ìˆè€Ì°€‰…Ù¥èÑ•¡¹¥Œ•µ¥Ìˆè€Ì°€‰™…ÑÕÉ„…ÑÈˆè€Ì°4(€€€€€€€€‰…ÍÑ•…ÁÑ„¥¹ÍÑ…±…É”ˆè€Ð°€‰ÁÉ½É…µ…ÐÁ•¹ÑÉÔµ½¹Ñ…¨ˆè€Ð°€‰¥¸•á•ÕÑ¥”ˆè€Ð°4(€€€€€€€€‰¥¹ÍÑ…±…Ðˆè€Ô°€‰µ½¹Ñ…¨•™•ÑÕ…Ðˆè€Ô°4(€€€€€€€€‰ÁØÑ•ÍÑ”Á¥˜ˆè€Ø°€‰ÁÉ½‰”Í¤Á¥˜ˆè€Ø°€‰ÁÉ½‰”Í¤ÁÕ¹•É”¥¸™Õ¹Ñ¥Õ¹”ˆè€Ø°4(€€€€€€€€‰ÁÕ¹•É”¥¸™Õ¹Ñ¥Õ¹”ˆè€Ø°4(€€€€€€€€‰ÁÉ½ÍÕµ…Ñ½È…Ñ¥Øˆè€Ü°€‰™¥¹…±¥é…Ðˆè€Ü°4(€€€ô4(€€€É•ÑÕÉ¸…±¥…Í•Ì¹•Ð¡­•ä¤4(4)‘•˜Í¥¹}ÁÕ‰±¥Œ¡Èè‘¥Ð¤€´ø‘¥Ðè4(€€€½ÕÐ€ôí¬èÈ¹•Ð¡¬¤™½È¬¥¸€ ‰¥ˆ°€‰É½ÕÁ}¥ˆ°€‰‘½ÍÍ¥•É}¥ˆ°€‰µ½‘Õ±”ˆ°€‰±¥•¹Ñ}¹…µ”ˆ°€‰Á½Í}­•äˆ°€‰‘½}Ñ¥Ñ±”ˆ°€‰Í¥¹•É}¹…µ”ˆ°€‰Í¥¹•É}•µ…¥°ˆ°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Í¥¹•É}Á¡½¹”ˆ°€‰É½±”ˆ°€‰•áÁ¥É•Í}…Ðˆ°€‰É•…Ñ•‘}…Ðˆ°€‰Í¥¹•‘}…Ðˆ°€‰É•™ÕÍ•‘}É•…Í½¸ˆ°€‰‘½}Í¡„ÈÔØˆ°€‰Í¥¹•‘}Í¡„ÈÔØˆ°€‰É•Ù½­•ˆ¥ô4(€€€½ÕÑl‰ÍÑ…ÑÕÌ‰t€ôÍ¥¹}ÍÑ…ÑÕÌ¡È¤4(€€€½ÕÑl‰¡¥ÍÑ½Éä‰t€ôÈ¹•Ð ‰¡¥ÍÑ½Éäˆ°mt¤4(€€€½ÕÑl‰¡…Í}Í¥¹•‘}™¥±”‰t€ô‰½½°¡È¹•Ð ‰Í¥¹•‘}™¥±”ˆ¤¤4(€€€É•ÑÕÉ¸½ÕÐ4(4)‘•˜±¥•¹Ñ}µ•Ñ„¡É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ¤€´ø‘¥Ðè4(€€€¥À€ô€¡É•ÅÕ•ÍÐ¹¡•…‘•ÉÌ¹•Ð ‰àµ™½ÉÝ…É‘•µ™½Èˆ¤½È€¡É•ÅÕ•ÍÐ¹±¥•¹Ð¹¡½ÍÐ¥˜É•ÅÕ•ÍÐ¹±¥•¹Ð•±Í”€ˆˆ¤¤¹ÍÁ±¥Ð ˆ°ˆ¥lÁt¹ÍÑÉ¥À ¤4(€€€É•ÑÕÉ¸ì‰¥Àˆè¥À°€‰Õ„ˆèÉ•ÅÕ•ÍÐ¹¡•…‘•ÉÌ¹•Ð ‰ÕÍ•Èµ…•¹Ðˆ°€ˆˆ¥lèÌÀÁuô4(4)‘•˜¡¥ÍÐ¡…Ñ¥½¸èÍÑÈ°µ•Ñ„è‘¥Ð€ô9½¹”°‘•Ñ…¥°èÍÑÈ€ô€ˆˆ¤€´ø‘¥Ðè4(€€€É•ÑÕÉ¸ì‰…Ðˆè¹½Ý}¥Í¼ ¤°€‰…Ñ¥½¸ˆè…Ñ¥½¸°€‰‘•Ñ…¥°ˆè‘•Ñ…¥°°€¨¨¡µ•Ñ„½Èíô¥ô4(4)‘•˜Á…ÉÍ•}‘…åÌ¡Ø¤€´ø¥¹Ðè4(€€€ÑÉäè4(€€€€€€€€ô¥¹Ð¡Ø¥˜Ø¹½Ð¥¸€¡9½¹”°€ˆˆ¤•±Í”€Ü¤4(€€€€€€€¥˜ÍÑÈ¡Ø¤¹ÍÑÉ¥À ¤¹½Ð¥¸€ ˆˆ°€‰9½¹”ˆ¤…¹™±½…Ð¡Ø¤€„ôè4(€€€€€€€€€€€É…¥Í”Y…±Õ•ÉÉ½È4(€€€•á•ÁÐ€¡QåÁ•ÉÉ½È°Y…±Õ•ÉÉ½È¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰Y…±…‰¥±¥Ñ…Ñ•„ÑÉ•‰Õ¥”Ï™¥”Õ¸¹Õ·Èƒ¹¹ÑÉ•œ‘”é¥±”€ ÇŠLäÀ¤ˆ¤4(€€€¥˜¹½Ð€Ä€ðô€ðô€äÀè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰Y…±…‰¥±¥Ñ…Ñ•„ÑÉ•‰Õ¥”Ï™¥”ƒ¹¹ÑÉ”€Äƒ"e¤€äÀ‘”é¥±”ˆ¤4(€€€É•ÑÕÉ¸4(4)‘•˜¹•Ý}Ñ½­•¸¡‘…åÌè™±½…Ð¤è4(€€€Ð€ôÍ•É•ÑÌ¹Ñ½­•¹}ÕÉ±Í…™” ÌÈ¤4(€€€É•ÑÕÉ¸Ð°Í¡„¡Ð¹•¹½‘” ¤¤°€¡‘…Ñ•Ñ¥µ”¹¹½Ü¡Ñ¥µ•é½¹”¹ÕÑŒ¤€¬Ñ¥µ•‘•±Ñ„¡‘…åÌõ‘…åÌ¤¤¹¥Í½™½Éµ…Ð ¤4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½Í¥¸½É•ÅÕ•ÍÑÌˆ¤4)…Íå¹Œ‘•˜Í¥¹}É•…Ñ”¡É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ°ÕÍ•Èè‘¥Ð€ô•Á•¹‘Ì¡•Ñ}ÕÉÉ•¹Ñ}ÕÍ•È¤¤è4(€€€Õ…É ‰ÁÉ½ÍÕµ…Ñ½Èˆ°ÕÍ•È°ÝÉ¥Ñ”õQÉÕ”¤ì¹••¡ÕÍ•È°€‰Í¥¹}É•µ½Ñ”ˆ°QÉÕ”¤4(€€€ˆ€ô…Ý…¥ÐÉ•ÅÕ•ÍÐ¹©Í½¸ ¤4(€€€‘¥°­•åÌ°Í¥¹•ÉÌ€ôˆ¹•Ð ‰‘½ÍÍ¥•É}¥ˆ¤°ˆ¹•Ð ‰Á½Í}­•åÌˆ¤½Èmt°ˆ¹•Ð ‰Í¥¹•ÉÌˆ¤½Èmt4(€€€‘…åÌ€ôÁ…ÉÍ•}‘…åÌ¡ˆ¹•Ð ‰•áÁ¥É•Í}‘…åÌˆ¤¤4(€€€¥˜¹½Ð­•åÌ½È¹½ÐÍ¥¹•ÉÌè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰±•”‘½Õµ•¹Ñ•±”ƒ"e¤Í•µ¹…Ñ…É¥¤ˆ¤4(€€€¥˜±•¸¡Í¥¹•ÉÌ¤€„ô€Äè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰½Õµ•¹Ñ•±”‘½Í…ÉÕ±Õ¤Í”ÑÉ¥µ¥Ð±„Í•µ¹…É”‘½…ÈÑÉ”±¥•¹Ð€¡Õ¸Í¥¹ÕÈÍ•µ¹…Ñ…È¤ˆ¤4(€€€Í¥¹•ÉÌ€ômì¨©Í¥¹•ÉÍlÁt°€‰É½±”ˆè€‰	•¹•™¥¥…È‰õt4(€€€™½ÈÌ¥¸Í¥¹•ÉÌè4(€€€€€€€¥˜¹½Ð€¡Ì¹•Ð ‰¹…µ”ˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¤½È€‰ ˆ¹½Ð¥¸€¡Ì¹•Ð ‰•µ…¥°ˆ¤½È€ˆˆ¤è4(€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰¥•…É”Í•µ¹…Ñ…È…É”¹•Ù½¥”‘”¹Õµ”ƒ"e¤”µµ…¥°Ù…±¥€¡Á•¹ÑÉÔ½‘Õ°‘”Ù•É¥™¥…É”¤ˆ¤4(€€€É•ÑÕÉ¸…Ý…¥ÐÉ•…Ñ•}Í¥¹}É•ÅÕ•ÍÑÌ¡ÕÍ•È°‘¥°­•åÌ°Í¥¹•ÉÌ°‘…åÌ¤4(4)…Íå¹Œ‘•˜É•…Ñ•}Í¥¹}É•ÅÕ•ÍÑÌ¡ÕÍ•È°‘¥°­•åÌ°Í¥¹•ÉÌ°‘…åÌ¤è4(€€€É•Œ°±¥•¹Ð°Í•ÑÑ¥¹Ì°¥¹™¼€ô…Ý…¥Ð‘½ÍÍ¥•É}Ñà¡ÕÍ•È°‘¥¤4(€€€Á½Ì€ôíÁl‰­•ä‰tèÀ™½ÈÀ¥¸¥¹™½l‰Á½Í¥Ñ¥½¹Ì‰uô4(€€€½ÕÐ€ômt4(€€€ÍÑ}Í±€ôMh¹ÍÑ…Ñ”¡É•Œ°±¥•¹Ð°Í•ÑÑ¥¹Ì¤4(€€€¥˜…¹ä¡¬¥¸€ ‰Í¡•µ„ˆ°€‰™¥Í…}Ñ•¡¹¥„ˆ¤™½È¬¥¸­•åÌ¤…¹ÍÑ}Í±‘l‰ÍÑ…ÑÕÌ‰t€„ô€‰…ÁÁÉ½Ù•ˆè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰M¡•µ„µ½¹½™¥±…Ë€¼™§"e„Ñ•¡¹¥Á½Ð™¤ÑÉ¥µ¥Í”±„Í•µ¹…É”‘½…È‘ÕÃ…ÁÉ½‰…É•„Ñ•¡¹¥ˆ¤4(€€€™½È¬¥¸­•åÌè4(€€€€€€€¥˜¬¹½Ð¥¸Á½Ìè4(€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°õ˜‰A½é§"m¥”¥¹•á¥ÍÑ•¹Óèí­ôˆ¤4(€€€€€€€Á…ÉÑÌ€ô…Ý…¥Ð=A%L¹Á½Í¥Ñ¥½¹}Á‘˜¡Á½Ím­t°É•Œ°±¥•¹Ð°Í•ÑÑ¥¹Ì°¥¹™½l‰Ñ¥Ñ±•Ì‰t°•Ñ}½‰©•Ð°™½É•}•¹•É…Ñ•õQÉÕ”¤4(€€€€€€€¥˜¹½ÐÁ…ÉÑÌè4(€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°õ˜‰½Õµ•¹ÑÕ°ƒŠyíÁ½Ím­ulÑ¥Ñ±”u÷Št¹ÔÁ½…Ñ”™¤•¹•É…Ðˆ¤4(€€€€€€€Ü€ôA‘™]É¥Ñ•È ¤4(€€€€€€€™½ÈÁ…ÉÐ¥¸Á…ÉÑÌè4(€€€€€€€€€€€™½ÈÁœ¥¸A‘™I•…‘•È¡¥¼¹	åÑ•Í%<¡Á…ÉÐ¤¤¹Á…•Ìè4(€€€€€€€€€€€€€€€Ü¹…‘‘}Á…”¡Áœ¤4(€€€€€€€¼€ô¥¼¹	åÑ•Í%< ¤ìÜ¹ÝÉ¥Ñ”¡¼¤ìÁ‘˜€ô¼¹•ÑÙ…±Õ” ¤4(€€€€€€€¥€ôÍÑÈ¡ÕÕ¥¹ÕÕ¥Ð ¤¤4(€€€€€€€ÍÑ½É•€ôÁÕÑ}½‰©•Ð¡˜‰íAA}95ô½Í¥¸½íÕÍ•Él¥uô½í¥‘ô½½É¥¥¹…°¹Á‘˜ˆ°Á‘˜°€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ¤4(€€€€€€€™½ÈÌ¥¸Í¥¹•ÉÌè4(€€€€€€€€€€€Ð°Ñ °•áÀ€ô¹•Ý}Ñ½­•¸¡‘…åÌ¤4(€€€€€€€€€€€È€ô}¹•Ü¡ÕÍ•È°ì‰É½ÕÁ}¥ˆè¥°€‰‘½ÍÍ¥•É}¥ˆè‘¥°€‰±¥•¹Ñ}¹…µ”ˆè±¥•¹Ð¹•Ð ‰¹…µ”ˆ¤½ÈÉ•Œ¹•Ð ‰±¥•¹Ñ}¹…µ”ˆ¤°€‰Á½Í}­•äˆè¬°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰‘½}Ñ¥Ñ±”ˆèÁ½Ím­ul‰Ñ¥Ñ±”‰t°€‰‘½}Á…Ñ ˆèÍÑ½É•‘l‰Á…Ñ ‰t°€‰‘½}Í¡„ÈÔØˆèÍ¡„¡Á‘˜¤°€‰Í¥¹•É}¹…µ”ˆèÍl‰¹…µ”‰t¹ÍÑÉ¥À ¤°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Í¥¹•É}•µ…¥°ˆèÍl‰•µ…¥°‰t¹ÍÑÉ¥À ¤°€‰Í¥¹•É}Á¡½¹”ˆè€¡Ì¹•Ð ‰Á¡½¹”ˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¤°€‰É½±”ˆè€¡Ì¹•Ð ‰É½±”ˆ¤½È€‰	•¹•™¥¥…Èˆ¤¹ÍÑÉ¥À ¤°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰ÍÑ…ÑÕÌˆè€‰”ÑÉ¥µ¥Ìˆ°€‰Ñ½­•¹}¡…Í ˆèÑ °€‰•áÁ¥É•Í}…Ðˆè•áÀ°€‰½ÑÁ}Í•¹‘Ìˆè€À°€‰½ÑÁ}…ÑÑ•µÁÑÌˆè€À°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Í±‘}¡…Í ˆèÍÑ}Í±‘l‰™¥¹•ÉÁÉ¥¹Ð‰t¥˜¬¥¸€ ‰Í¡•µ„ˆ°€‰™¥Í…}Ñ•¡¹¥„ˆ¤•±Í”9½¹”°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Á¥™}¡…Í ˆè=A%L¹A%=¹™¥¹•ÉÁÉ¥¹Ð¡É•Œ¤¥˜¬€ôô€‰Á¥™}ÁØˆ•±Í”9½¹”°€‰¥Í}Ñ•ÍÐˆè‰½½°¡É•Œ¹•Ð ‰¥Í}Ñ•ÍÐˆ¤¤°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰¡¥ÍÑ½Éäˆèm¡¥ÍÐ ‰•É•É”É•…Óˆ°9½¹”°˜‰‘”íÕÍ•È¹•Ð •µ…¥°œ¥ôì±¥¹¬Ù…±…‰¥°Ã‰»±„í•áÁlèÄÙuôUQˆ¥uô¤4(€€€€€€€€€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹¥¹Í•ÉÑ}½¹”¡‘¥Ð¡È¤¤4(€€€€€€€€€€€½ÕÐ¹…ÁÁ•¹¡ì¨©Í¥¹}ÁÕ‰±¥Œ¡È¤°€‰Ñ½­•¸ˆèÑô¤4(€€€€€€€…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆè‘¥°€‰½Ý¹•ÈˆèÕÍ•Él‰¥‰uô°ìˆ‘Í•Ðˆèí˜‰½Á¥Ì¹í­ô¹ÍÑ…ÑÕÌˆè€‰¹••Í¥ÓÍ•µ»ÑÕË‰õô¤4(€€€…Ý…¥Ð…Õ‘¥Ð¡ÕÍ•È°€‰•É•É”Í•µ¹…É”ˆ°€‰ÁÉ½ÍÕµ…Ñ½Èˆ°‘¥°­•åÌ¤4(€€€É•ÑÕÉ¸½ÕÐ4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½Í¥¸½É•ÅÕ•ÍÑÌˆ¤4)…Íå¹Œ‘•˜Í¥¹}±¥ÍÐ¡‘½ÍÍ¥•É}¥è=ÁÑ¥½¹…±mÍÑÉt€ô9½¹”°±¥•¹Ñ}¹…µ”è=ÁÑ¥½¹…±mÍÑÉt€ô9½¹”°µ½‘Õ±”èÍÑÈ€ô€‰ÁÉ½ÍÕµ…Ñ½Èˆ°ÕÍ•Èè‘¥Ð€ô•Á•¹‘Ì¡•Ñ}ÕÉÉ•¹Ñ}ÕÍ•È¤¤è4(€€€¹••¡ÕÍ•È°€‰Í¥¹}É•µ½Ñ”ˆ¤4(€€€Ä€ôì‰½Ý¹•ÈˆèÕÍ•Él‰¥‰uô4(€€€¥˜¹½Ð¥Í}…‘µ¥¸¡ÕÍ•È¤è4(€€€€€€€Ål‰‘½ÍÍ¥•É}¥‰t€ôìˆ‘¥¸ˆèmál‰¥‰t™½È´¥¸€ ‰ÁÉ½ÍÕµ…Ñ½Èˆ°€‰‘¥Ôˆ¤™½Èà¥¸…Ý…¥Ð‘‰mµt¹™¥¹¡Í½Á•}Ä¡ÕÍ•È°´¤°ì‰¥ˆè€Åô¤¹Ñ½}±¥ÍÐ ÔÀÀÀ¥uô4(€€€¥˜‘½ÍÍ¥•É}¥è4(€€€€€€€¥˜µ½‘Õ±”¹½Ð¥¸€ ‰ÁÉ½ÍÕµ…Ñ½Èˆ°€‰‘¥Ôˆ¤è4(€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰5½‘Õ°¥¹Ù…±¥ˆ¤4(€€€€€€€…Ý…¥Ð¡•­}…•ÍÌ¡ÕÍ•È°µ½‘Õ±”°‘½ÍÍ¥•É}¥¤4(€€€€€€€Ål‰‘½ÍÍ¥•É}¥‰t€ô‘½ÍÍ¥•É}¥4(€€€¥˜±¥•¹Ñ}¹…µ”è4(€€€€€€€Ål‰±¥•¹Ñ}¹…µ”‰t€ô±¥•¹Ñ}¹…µ”4(€€€É•ÑÕÉ¸mÍ¥¹}ÁÕ‰±¥Œ¡È¤™½ÈÈ¥¸…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹™¥¹¡Ä°ì‰}¥ˆè€Áô¤¹Í½ÉÐ ‰É•…Ñ•‘}…Ðˆ°€´Ä¤¹Ñ½}±¥ÍÐ ÔÀÀ¥t4(4)…Íå¹Œ‘•˜Í¥¹}½Ý¸¡ÕÍ•È°É¥¤è4(€€€È€ô…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹™¥¹‘}½¹”¡ì‰¥ˆèÉ¥°€‰½Ý¹•ÈˆèÕÍ•Él‰¥‰uô°ì‰}¥ˆè€Áô¤4(€€€¥˜¹½ÐÈè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰•É•É”¥¹•á¥ÍÑ•¹Óˆ¤4(€€€¥˜¹½Ð¥Í}…‘µ¥¸¡ÕÍ•È¤è4(€€€€€€€¥˜€¡È¹•Ð ‰µ½‘Õ±”ˆ¤½È€‰ÁÉ½ÍÕµ…Ñ½Èˆ¤€ôô€‰½¹ÑÉ…ÑÌˆè4(€€€€€€€€€€€¹••¡ÕÍ•È°€‰½™•ÉÑ”ˆ¤4(€€€€€€€•±Í”è4(€€€€€€€€€€€…Ý…¥Ð¡•­}…•ÍÌ¡ÕÍ•È°È¹•Ð ‰µ½‘Õ±”ˆ¤½È€‰ÁÉ½ÍÕµ…Ñ½Èˆ°Él‰‘½ÍÍ¥•É}¥‰t¤4(€€€É•ÑÕÉ¸È4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½Í¥¸½É•ÅÕ•ÍÑÌ½íÉ¥‘ô½Í•¹Ðˆ¤4)…Íå¹Œ‘•˜Í¥¹}µ…É­}Í•¹Ð¡É¥èÍÑÈ°É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ°ÕÍ•Èè‘¥Ð€ô•Á•¹‘Ì¡•Ñ}ÕÉÉ•¹Ñ}ÕÍ•È¤¤è4(€€€Õ…É ‰ÁÉ½ÍÕµ…Ñ½Èˆ°ÕÍ•È°ÝÉ¥Ñ”õQÉÕ”¤ì¹••¡ÕÍ•È°€‰Í¥¹}É•µ½Ñ”ˆ°QÉÕ”¤4(€€€È€ô…Ý…¥ÐÍ¥¹}½Ý¸¡ÕÍ•È°É¥¤4(€€€ €ô€ ¡…Ý…¥ÐÉ•ÅÕ•ÍÐ¹©Í½¸ ¤¤¹•Ð ‰¡…¹¹•°ˆ¤½È€‰½Á¥…Ðˆ¥lèÌÁt4(€€€ÕÁ€ôìˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰1¥¹¬ÑÉ¥µ¥Ìˆ°9½¹”°˜‰…¹…°èí¡ôì‘”íÕÍ•È¹•Ð •µ…¥°œ¥ôˆ¥õô4(€€€¥˜Í¥¹}ÍÑ…ÑÕÌ¡È¤€ôô€‰”ÑÉ¥µ¥Ìˆè4(€€€€€€€ÕÁ‘lˆ‘Í•Ð‰t€ôì‰ÍÑ…ÑÕÌˆè€‰1¥¹¬ÑÉ¥µ¥Ì‰ô4(€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉ¥‘ô°ÕÁ¤4(€€€É•ÑÕÉ¸ì‰½¬ˆèQÉÕ•ô4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½Í¥¸½É•ÅÕ•ÍÑÌ½íÉ¥‘ô½¹•Üµ±¥¹¬ˆ¤4)…Íå¹Œ‘•˜Í¥¹}¹•Ý}±¥¹¬¡É¥èÍÑÈ°É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ°ÕÍ•Èè‘¥Ð€ô•Á•¹‘Ì¡•Ñ}ÕÉÉ•¹Ñ}ÕÍ•È¤¤è4(€€€Õ…É ‰ÁÉ½ÍÕµ…Ñ½Èˆ°ÕÍ•È°ÝÉ¥Ñ”õQÉÕ”¤ì¹••¡ÕÍ•È°€‰Í¥¹}É•µ½Ñ”ˆ°QÉÕ”¤4(€€€È€ô…Ý…¥ÐÍ¥¹}½Ý¸¡ÕÍ•È°É¥¤4(€€€¥˜Él‰ÍÑ…ÑÕÌ‰t¥¸€ ‰M•µ¹…Ðˆ°€‰I•™Õé…Ðˆ¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰½Õµ•¹ÑÕ°„™½ÍÐ‘•©„Í•µ¹…ÐÍ…ÔÉ•™Õé…ÐƒŠPÉ••…ë¼•É•É”¹½×ˆ¤4(€€€‘…åÌ€ôÁ…ÉÍ•}‘…åÌ ¡…Ý…¥ÐÉ•ÅÕ•ÍÐ¹©Í½¸ ¤¤¹•Ð ‰•áÁ¥É•Í}‘…åÌˆ¤¤4(€€€Ð°Ñ °•áÀ€ô¹•Ý}Ñ½­•¸¡‘…åÌ¤4(€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉ¥‘ô°ìˆ‘Í•Ðˆèì‰Ñ½­•¹}¡…Í ˆèÑ °€‰•áÁ¥É•Í}…Ðˆè•áÀ°€‰ÍÑ…ÑÕÌˆè€‰”ÑÉ¥µ¥Ìˆ°€‰É•Ù½­•ˆè…±Í”°€‰½ÑÁ}¡…Í ˆè9½¹”°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰½ÑÁ}…ÑÑ•µÁÑÌˆè€À°€‰½ÑÁ}Í•¹‘Ìˆè€À°€‰½ÑÁ}±…ÍÐˆè9½¹•ô°€ˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰1¥¹¬¹½Ô•¹•É…Ðˆ°9½¹”°˜‰±¥¹­Õ°…¹Ñ•É¥½È¥¹Ù…±¥‘…ÐìÙ…±…‰¥°Ã‰»±„í•áÁlèÄÙuôUQì‘”íÕÍ•È¹•Ð •µ…¥°œ¥ôˆ¥õô¤4(€€€É•ÑÕÉ¸ì¨©Í¥¹}ÁÕ‰±¥Œ¡ì¨©È°€‰ÍÑ…ÑÕÌˆè€‰”ÑÉ¥µ¥Ìˆ°€‰•áÁ¥É•Í}…Ðˆè•áÁô¤°€‰Ñ½­•¸ˆèÑô4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½Í¥¸½É•ÅÕ•ÍÑÌ½íÉ¥‘ô½É•Ù½­”ˆ¤4)…Íå¹Œ‘•˜Í¥¹}É•Ù½­”¡É¥èÍÑÈ°ÕÍ•Èè‘¥Ð€ô•Á•¹‘Ì¡•Ñ}ÕÉÉ•¹Ñ}ÕÍ•È¤¤è4(€€€Õ…É ‰ÁÉ½ÍÕµ…Ñ½Èˆ°ÕÍ•È°ÝÉ¥Ñ”õQÉÕ”¤ì¹••¡ÕÍ•È°€‰Í¥¹}É•µ½Ñ”ˆ°QÉÕ”¤4(€€€È€ô…Ý…¥ÐÍ¥¹}½Ý¸¡ÕÍ•È°É¥¤4(€€€¥˜Él‰ÍÑ…ÑÕÌ‰t¥¸€ ‰M•µ¹…Ðˆ°€‰I•™Õé…Ðˆ¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰•É•É•„•ÍÑ”‘•©„ƒ¹¹¡¥Ïˆ¤4(€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉ¥‘ô°ìˆ‘Í•Ðˆèì‰ÍÑ…ÑÕÌˆè€‰áÁ¥É…Ðˆ°€‰É•Ù½­•ˆèQÉÕ”°€‰Ñ½­•¹}¡…Í ˆè9½¹•ô°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰1¥¹¬É•Ù½…Ðˆ°9½¹”°˜‰‘”íÕÍ•È¹•Ð •µ…¥°œ¥ôˆ¥õô¤4(€€€É•ÑÕÉ¸ì‰½¬ˆèQÉÕ•ô4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½Í¥¸½É•ÅÕ•ÍÑÌ½íÉ¥‘ô½™¥±”ˆ¤4)…Íå¹Œ‘•˜Í¥¹}™¥±”¡É¥èÍÑÈ°­¥¹èÍÑÈ€ô€‰Í¥¹•ˆ°…ÕÑ¡½É¥é…Ñ¥½¸èÍÑÈ€ô!•…‘•È¡9½¹”¤°…ÕÑ èÍÑÈ€ôEÕ•Éä¡9½¹”¤¤è4(€€€ÕÍ•È€ô…Ý…¥ÐÕÍ•É}™É½µ}Ñ½­•¸¡…ÕÑ¡½É¥é…Ñ¥½¸°…ÕÑ ¤4(€€€È€ô…Ý…¥ÐÍ¥¹}½Ý¸¡ÕÍ•È°É¥¤4(€€€Á…Ñ €ôÈ¹•Ð ‰Í¥¹•‘}™¥±”ˆ°íô¤¹•Ð ‰ÍÑ½É…•}Á…Ñ ˆ¤¥˜­¥¹€ôô€‰Í¥¹•ˆ•±Í”Él‰‘½}Á…Ñ ‰t4(€€€¥˜¹½ÐÁ…Ñ è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰½Õµ•¹ÑÕ°Í•µ¹…Ð¹Ô•á¥ÍÓƒ¹¹ˆ¤4(€€€‘…Ñ„°|€ô•Ñ}½‰©•Ð¡Á…Ñ ¤4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹Ðõ‘…Ñ„°µ•‘¥…}ÑåÁ”ô‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ°¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè‘¥ÍÀ ¥¹±¥¹”œ°˜‰í­¥¹‘õ}íÉlÁ½Í}­•äuô¹Á‘˜ˆ¥ô¤4(4)…Íå¹Œ‘•˜Í¥¹}‰å}Ñ½­•¸¡Ñ½­•¸èÍÑÈ¤€´ø‘¥Ðè4(€€€È€ô…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹™¥¹‘}½¹”¡ì‰Ñ½­•¹}¡…Í ˆèÍ¡„¡Ñ½­•¸¹•¹½‘” ¤¥ô°ì‰}¥ˆè€Áô¤¥˜Ñ½­•¸•±Í”9½¹”4(€€€¥˜¹½ÐÈè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰1¥¹¬¥¹Ù…±¥Í…ÔÉ•Ù½…Ðˆ¤4(€€€É•ÑÕÉ¸È4(4)‘•˜ÁÕ‰±¥}‘½ÍÍ¥•É}µ•ÍÍ…•Ì¡µ•ÍÍ…•Ì¤€´ø±¥ÍÑm‘¥Ñtè4(€€€É•ÑÕÉ¸ÁÕ‰±¥}±¥•¹Ñ}µ•ÍÍ…•Ì¡µ•ÍÍ…•Ì¤4(4)‘•˜ÁÕ‰±¥}±¥•¹Ñ}…•ÍÌ¡Èè‘¥Ð¤€´ø‰½½°è4(€€€É•ÑÕÉ¸€¡È¹•Ð ‰µ½‘Õ±”ˆ¤½È€‰ÁÉ½ÍÕµ…Ñ½Èˆ¤€ôô€‰ÁÉ½ÍÕµ…Ñ½Èˆ…¹€ 4(€€€€€€€Í¥¹}ÍÑ…ÑÕÌ¡È¤¥¸M%9}Q%Y½ÈÍ¥¹•‘}Á½ÉÑ…±}…Ñ¥Ù”¡È¤4(€€€€¤4(4)…Íå¹Œ‘•˜±¥•¹Ñ}Á½ÉÑ…±}Á…å±½…¡Èè‘¥Ð¤€´ø‘¥Ðè4(€€€É•Œ€ô…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹” 4(€€€€€€€ì‰¥ˆèÈ¹•Ð ‰‘½ÍÍ¥•É}¥ˆ¤°€‰½Ý¹•ÈˆèÈ¹•Ð ‰½Ý¹•Èˆ¥ô°4(€€€€€€€ì‰}¥ˆè€À°€‰Ý½É­™±½Ý}ÍÑ…ÑÕÌˆè€Ä°€‰ÍÑ…ÑÕÌˆè€Ä°€‰½Á•É…Ñ½É}ÍÑ…”ˆè€Ä°€‰±¥•¹Ñ}µ•ÍÍ…•Ìˆè€Åô°4(€€€€¤4(€€€ÕÉÉ•¹Ð€ôÍÑÈ ¡É•Œ½Èíô¤¹•Ð ‰Ý½É­™±½Ý}ÍÑ…ÑÕÌˆ¤½È€¡É•Œ½Èíô¤¹•Ð ‰ÍÑ…ÑÕÌˆ¤½È4(€€€€€€€€€€€€€€€€€€¡É•Œ½Èíô¤¹•Ð ‰½Á•É…Ñ½É}ÍÑ…”ˆ¤½È€‰½Í…Èƒ¹¸ÁÉ•ŸÑ¥É”ˆ¤4(€€€É•ÅÕ•ÍÑÌ€ô…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹™¥¹ 4(€€€€€€€ì‰½Ý¹•ÈˆèÈ¹•Ð ‰½Ý¹•Èˆ¤°€‰‘½ÍÍ¥•É}¥ˆèÈ¹•Ð ‰‘½ÍÍ¥•É}¥ˆ¤°€‰Í¥¹•É}•µ…¥°ˆèÈ¹•Ð ‰Í¥¹•É}•µ…¥°ˆ¤°4(€€€€€€€€€‰µ½‘Õ±”ˆèìˆ‘¥¸ˆèl‰ÁÉ½ÍÕµ…Ñ½Èˆ°9½¹•uô°€‰É•Ù½­•ˆèìˆ‘¹”ˆèQÉÕ•õô°4(€€€€€€€ì‰}¥ˆè€À°€‰¥ˆè€Ä°€‰‘½}Ñ¥Ñ±”ˆè€Ä°€‰Á½Í}­•äˆè€Ä°€‰ÍÑ…ÑÕÌˆè€Ä°€‰•áÁ¥É•Í}…Ðˆè€Ä°4(€€€€€€€€€‰Í¥¹•‘}…Ðˆè€Ä°€‰Í¥¹•‘}™¥±”¹ÍÑ½É…•}Á…Ñ ˆè€Åô°4(€€€€¤¹Í½ÉÐ ‰É•…Ñ•‘}…Ðˆ°€Ä¤¹Ñ½}±¥ÍÐ ÄÀÀ¤4(€€€‘½Õµ•¹ÑÌ€ômì4(€€€€€€€€‰¥ˆè¥Ñ•´¹•Ð ‰¥ˆ¤°4(€€€€€€€€‰Ñ¥Ñ±”ˆè¥Ñ•´¹•Ð ‰‘½}Ñ¥Ñ±”ˆ¤½È€‰½Õµ•¹Ð‘”Í•µ¹…Ðˆ°4(€€€€€€€€‰ÍÑ…ÑÕÌˆèÍ¥¹}ÍÑ…ÑÕÌ¡¥Ñ•´¤°4(€€€€€€€€‰Í¥¹•‘}…Ðˆè¥Ñ•´¹•Ð ‰Í¥¹•‘}…Ðˆ¤°4(€€€€€€€€‰‘½Ý¹±½…‘}…Ù…¥±…‰±”ˆè‰½½° ¡¥Ñ•´¹•Ð ‰Í¥¹•‘}™¥±”ˆ¤½Èíô¤¹•Ð ‰ÍÑ½É…•}Á…Ñ ˆ¤¤…¹Í¥¹•‘}Á½ÉÑ…±}…Ñ¥Ù”¡¥Ñ•´¤°4(€€€ô™½È¥Ñ•´¥¸É•ÅÕ•ÍÑÍt4(€€€É•ÑÕÉ¸ì4(€€€€€€€€‰ÍÑ…ÑÕÌˆèÕÉÉ•¹Ð°4(€€€€€€€€‰ÍÑ…•}¥¹‘•àˆè±¥•¹Ñ}Á½ÉÑ…±}ÍÑ…”¡ÕÉÉ•¹Ð¤°4(€€€€€€€€‰ÍÑ…•Ìˆè1%9Q}A=IQ1}MQL°4(€€€€€€€€‰‘½Õµ•¹ÑÌˆè‘½Õµ•¹ÑÌ°4(€€€€€€€€‰Í¥¹•‘}‘½Õµ•¹Ñ}…Ù…¥±…‰±”ˆè‰½½° ¡È¹•Ð ‰Í¥¹•‘}™¥±”ˆ¤½Èíô¤¹•Ð ‰ÍÑ½É…•}Á…Ñ ˆ¤¤°4(€€€€€€€€‰±¥•¹Ñ}µ•ÍÍ…•ÌˆèÁÕ‰±¥}‘½ÍÍ¥•É}µ•ÍÍ…•Ì ¡É•Œ½Èíô¤¹•Ð ‰±¥•¹Ñ}µ•ÍÍ…•Ìˆ¤¤°4(€€€ô4(4)‘•˜±•…¹}µ•ÍÍ…•}…ÑÑ…¡µ•¹ÑÌ¡Ù…±Õ”°½Ý¹•ÈèÍÑÈ¤€´ø±¥ÍÑm‘¥Ñtè4(€€€¥˜Ù…±Õ”¥Ì9½¹”è4(€€€€€€€É•ÑÕÉ¸mt4(€€€¥˜¹½Ð¥Í¥¹ÍÑ…¹”¡Ù…±Õ”°±¥ÍÐ¤½È±•¸¡Ù…±Õ”¤€ø€Ôè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰A¿"m¤…Ñ‡"e„•°µÕ±Ð€Ô™§"e¥•É”±„Õ¸µ•Í…¨ˆ¤4(€€€ÁÉ•™¥à€ô˜‰íAA}95ô½ÕÁ±½…‘Ì½í½Ý¹•Éô¼ˆ4(€€€™¥±•Ì€ômt4(€€€™½È¥Ñ•´¥¸Ù…±Õ”è4(€€€€€€€¥˜¹½Ð¥Í¥¹ÍÑ…¹”¡¥Ñ•´°‘¥Ð¤è4(€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰Ñ‡"e…µ•¹Ð¥¹Ù…±¥ˆ¤4(€€€€€€€Á…Ñ €ôÍÑÈ¡¥Ñ•´¹•Ð ‰ÍÑ½É…•}Á…Ñ ˆ¤½È€ˆˆ¤4(€€€€€€€¥˜¹½ÐÁ…Ñ ¹ÍÑ…ÉÑÍÝ¥Ñ ¡ÁÉ•™¥à¤½È€ˆ¸¸ˆ¥¸Á…Ñ è4(€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÌ°‘•Ñ…¥°ô‰Ñ‡"e…µ•¹ÑÕ°¹Ô…Á…Ë"m¥¹”…•ÍÑÕ¤½¹Ðˆ¤4(€€€€€€€ÑÉäè4(€€€€€€€€€€€Í¥é”€ô¥¹Ð¡¥Ñ•´¹•Ð ‰Í¥é”ˆ¤½È€À¤4(€€€€€€€•á•ÁÐ€¡QåÁ•ÉÉ½È°Y…±Õ•ÉÉ½È¤è4(€€€€€€€€€€€Í¥é”€ô€À4(€€€€€€€™¥±•Ì¹…ÁÁ•¹¡ì‰ÍÑ½É…•}Á…Ñ ˆèÁ…Ñ °€‰½É¥¥¹…±}™¥±•¹…µ”ˆèÍÑÈ¡¥Ñ•´¹•Ð ‰½É¥¥¹…±}™¥±•¹…µ”ˆ¤½È€‰‘½Õµ•¹Ðˆ¥lèÈÔÕt°4(€€€€€€€€€€€€€€€€€€€€€€‰½¹Ñ•¹Ñ}ÑåÁ”ˆèÍÑÈ¡¥Ñ•´¹•Ð ‰½¹Ñ•¹Ñ}ÑåÁ”ˆ¤½È€‰…ÁÁ±¥…Ñ¥½¸½½Ñ•ÐµÍÑÉ•…´ˆ¥lèÄÈÁt°4(€€€€€€€€€€€€€€€€€€€€€€‰Í¥é”ˆèµ…à À°µ¥¸¡Í¥é”°5a}UA1=}	eQL¤¥ô¤4(€€€É•ÑÕÉ¸™¥±•Ì4(4)‘•˜±•…¹}µ•ÍÍ…•}Ñ•áÐ¡Ù…±Õ”¤€´øÍÑÈè4(€€€Ñ•áÐ€ôÍÑÈ¡Ù…±Õ”½È€ˆˆ¤¹ÍÑÉ¥À ¤4(€€€¥˜¹½ÐÑ•áÐ½È±•¸¡Ñ•áÐ¤€ø€ÈÀÀÀè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰5•Í…©Õ°ÑÉ•‰Õ¥”Ï…¥‹ƒ¹¹ÑÉ”€Äƒ"e¤€È¸ÀÀÀ‘”…É…Ñ•É”ˆ¤4(€€€É•ÑÕÉ¸Ñ•áÐ4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½‘½ÍÍ¥•È½í‘¥‘ô½±¥•¹Ðµµ•ÍÍ…•Ìˆ¤4)…Íå¹Œ‘•˜‘½ÍÍ¥•É}±¥•¹Ñ}µ•ÍÍ…•Ì¡‘¥èÍÑÈ°ÕÍ•Èè‘¥Ð€ô•Á•¹‘Ì¡•Ñ}ÕÉÉ•¹Ñ}ÕÍ•È¤¤è4(€€€Õ…É ‰ÁÉ½ÍÕµ…Ñ½Èˆ°ÕÍ•È¤4(€€€É•Œ€ô…Ý…¥Ð¡•­}…•ÍÌ¡ÕÍ•È°€‰ÁÉ½ÍÕµ…Ñ½Èˆ°‘¥¤4(€€€É•ÑÕÉ¸ì‰µ•ÍÍ…•ÌˆèÉ•Œ¹•Ð ‰±¥•¹Ñ}µ•ÍÍ…•Ìˆ¤½Èmuô4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½‘½ÍÍ¥•È½í‘¥‘ô½±¥•¹Ðµµ•ÍÍ…•Ìˆ¤4)…Íå¹Œ‘•˜‘½ÍÍ¥•É}…‘‘}±¥•¹Ñ}µ•ÍÍ…”¡‘¥èÍÑÈ°É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ°ÕÍ•Èè‘¥Ð€ô•Á•¹‘Ì¡•Ñ}ÕÉÉ•¹Ñ}ÕÍ•È¤¤è4(€€€Õ…É ‰ÁÉ½ÍÕµ…Ñ½Èˆ°ÕÍ•È°ÝÉ¥Ñ”õQÉÕ”¤4(€€€É•Œ€ô…Ý…¥Ð¡•­}…•ÍÌ¡ÕÍ•È°€‰ÁÉ½ÍÕµ…Ñ½Èˆ°‘¥¤4(€€€‰½‘ä€ô…Ý…¥ÐÉ•ÅÕ•ÍÐ¹©Í½¸ ¤4(€€€…Õ‘¥•¹”€ô‰½‘ä¹•Ð ‰…Õ‘¥•¹”ˆ¤½È€‰±¥•¹Ðˆ4(€€€¥˜…Õ‘¥•¹”¹½Ð¥¸€ ‰±¥•¹Ðˆ°€‰¥¹Ñ•É¹…°ˆ¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰•ÍÑ¥¹‡"m¥”µ•Í…¨¥¹Ù…±¥“ˆ¤4(€€€…ÑÑ…¡µ•¹ÑÌ€ô±•…¹}µ•ÍÍ…•}…ÑÑ…¡µ•¹ÑÌ¡‰½‘ä¹•Ð ‰…ÑÑ…¡µ•¹ÑÌˆ¤°ÍÑÈ¡ÕÍ•Él‰¥‰t¤¤¥˜…Õ‘¥•¹”€ôô€‰±¥•¹Ðˆ•±Í”mt4(€€€É…Ý}Ñ•áÐ€ôÍÑÈ¡‰½‘ä¹•Ð ‰Ñ•áÐˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¤4(€€€µ•ÍÍ…•}Ñ•áÐ€ô±•…¹}µ•ÍÍ…•}Ñ•áÐ¡É…Ý}Ñ•áÐ¤¥˜É…Ý}Ñ•áÐ•±Í”€ˆˆ4(€€€¥˜¹½Ðµ•ÍÍ…•}Ñ•áÐ…¹¹½Ð…ÑÑ…¡µ•¹ÑÌè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰‘…ÕŸÕ¸µ•Í…¨Í…ÔÕ¸…Ñ‡"e…µ•¹Ðˆ¤4(€€€µ•ÍÍ…”€ôì‰¥ˆèÍÑÈ¡ÕÕ¥¹ÕÕ¥Ð ¤¤°€‰Í•¹‘•Èˆè€‰Ñ•…´ˆ°€‰Í•¹‘•É}¹…µ”ˆèÍÑÈ¡ÕÍ•È¹•Ð ‰¹…µ”ˆ¤½ÈÕÍ•È¹•Ð ‰•µ…¥°ˆ¤½È€‰¡¥Á„9Lˆ¥lèÄÈÁt°4(€€€€€€€€€€€€€€€‰…Õ‘¥•¹”ˆè…Õ‘¥•¹”°€‰Ñ•áÐˆèµ•ÍÍ…•}Ñ•áÐ°€‰…ÑÑ…¡µ•¹ÑÌˆè…ÑÑ…¡µ•¹ÑÌ°€‰É•…Ñ•‘}…Ðˆè¹½Ý}¥Í¼ ¥ô4(€€€…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆè‘¥°€‰½Ý¹•ÈˆèÉ•Œ¹•Ð ‰½Ý¹•Èˆ¥ô°ìˆ‘ÁÕÍ ˆèì‰±¥•¹Ñ}µ•ÍÍ…•Ìˆèìˆ‘•… ˆèmµ•ÍÍ…•t°€ˆ‘Í±¥”ˆè€´ÌÀÁõõô¤4(€€€…Ý…¥Ð…Õ‘¥Ð¡ÕÍ•È°€‰µ•Í…¨ƒ¹¸‘½Í…Èˆ°€‰ÁÉ½ÍÕµ…Ñ½Èˆ°‘¥°l‰±¥•¹Ñ}µ•ÍÍ…•Ì‰t¤4(€€€É•ÑÕÉ¸ì‰µ•ÍÍ…”ˆèµ•ÍÍ…•ô4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½µ•ÍÍ…•Ìˆ¤4)…Íå¹Œ‘•˜ÁÕ‰±¥}Í¥¹}µ•ÍÍ…•Ì¡Ñ½­•¸èÍÑÈ¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜¹½ÐÁÕ‰±¥}±¥•¹Ñ}…•ÍÌ¡È¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰1¥¹­Õ°¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€É•Œ€ô…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹”¡ì‰¥ˆèÈ¹•Ð ‰‘½ÍÍ¥•É}¥ˆ¤°€‰½Ý¹•ÈˆèÈ¹•Ð ‰½Ý¹•Èˆ¥ô°ì‰}¥ˆè€À°€‰±¥•¹Ñ}µ•ÍÍ…•Ìˆè€Åô¤4(€€€É•ÑÕÉ¸ì‰µ•ÍÍ…•ÌˆèÁÕ‰±¥}‘½ÍÍ¥•É}µ•ÍÍ…•Ì ¡É•Œ½Èíô¤¹•Ð ‰±¥•¹Ñ}µ•ÍÍ…•Ìˆ¤¥ô4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½µ•ÍÍ…”µ™¥±•Ì½íµ•ÍÍ…•}¥‘ô½í™¥±•}¥¹‘•áôˆ¤4)…Íå¹Œ‘•˜ÁÕ‰±¥}Í¥¹}µ•ÍÍ…•}™¥±”¡Ñ½­•¸èÍÑÈ°µ•ÍÍ…•}¥èÍÑÈ°™¥±•}¥¹‘•àè¥¹Ð¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜¹½ÐÁÕ‰±¥}±¥•¹Ñ}…•ÍÌ¡È¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰1¥¹­Õ°¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€É•Œ€ô…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹”¡ì‰¥ˆèÈ¹•Ð ‰‘½ÍÍ¥•É}¥ˆ¤°€‰½Ý¹•ÈˆèÈ¹•Ð ‰½Ý¹•Èˆ¥ô°ì‰}¥ˆè€À°€‰±¥•¹Ñ}µ•ÍÍ…•Ìˆè€Åô¤4(€€€µ•ÍÍ…”€ô¹•áÐ ¡¥Ñ•´™½È¥Ñ•´¥¸€¡É•Œ½Èíô¤¹•Ð ‰±¥•¹Ñ}µ•ÍÍ…•Ìˆ°mt¤¥˜¥Í¥¹ÍÑ…¹”¡¥Ñ•´°‘¥Ð¤…¹¥Ñ•´¹•Ð ‰¥ˆ¤€ôôµ•ÍÍ…•}¥…¹¥Ñ•´¹•Ð ‰…Õ‘¥•¹”ˆ¤€ôô€‰±¥•¹Ðˆ¤°9½¹”¤4(€€€™¥±•Ì€ô€¡µ•ÍÍ…”½Èíô¤¹•Ð ‰…ÑÑ…¡µ•¹ÑÌˆ¤½Èmt4(€€€¥˜™¥±•}¥¹‘•à€ð€À½È™¥±•}¥¹‘•à€øô±•¸¡™¥±•Ì¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰Ñ‡"e…µ•¹ÑÕ°¹Ô•á¥ÍÓˆ¤4(€€€¥Ñ•´€ô™¥±•Ím™¥±•}¥¹‘•át4(€€€ÍÑ½É…•}Á…Ñ €ôÍÑÈ¡¥Ñ•´¹•Ð ‰ÍÑ½É…•}Á…Ñ ˆ¤½È€ˆˆ¤4(€€€¥˜¹½Ð¥Í}±¥•¹Ñ}ÕÁ±½…‘}Á…Ñ ¡ÍÑ½É…•}Á…Ñ °AA}95°ÍÑÈ¡È¹•Ð ‰½Ý¹•Èˆ¤½È€ˆˆ¤°ÍÑÈ¡È¹•Ð ‰¥ˆ¤½È€ˆˆ¤¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰Ñ‡"e…µ•¹ÑÕ°¹Ô•á¥ÍÓˆ¤4(€€€‘…Ñ„°½¹Ñ•¹Ñ}ÑåÁ”€ô•Ñ}½‰©•Ð¡ÍÑ½É…•}Á…Ñ ¤4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹Ðõ‘…Ñ„°µ•‘¥…}ÑåÁ”õ½¹Ñ•¹Ñ}ÑåÁ”½È€‰…ÁÁ±¥…Ñ¥½¸½½Ñ•ÐµÍÑÉ•…´ˆ°4(€€€€€€€€€€€€€€€€€€€¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè‘¥ÍÀ ‰…ÑÑ…¡µ•¹Ðˆ°¥Ñ•´¹•Ð ‰½É¥¥¹…±}™¥±•¹…µ”ˆ¤½È€‰‘½Õµ•¹Ðˆ¤°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰…¡”µ½¹ÑÉ½°ˆè€‰ÁÉ¥Ù…Ñ”°¹¼µÍÑ½É”ˆ°€‰`µ½¹Ñ•¹ÐµQåÁ”µ=ÁÑ¥½¹Ìˆè€‰¹½Í¹¥™˜‰ô¤4(4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½µ•ÍÍ…”µÕÁ±½…‘Ìˆ¤4)…Íå¹Œ‘•˜ÁÕ‰±¥}Í¥¹}µ•ÍÍ…•}ÕÁ±½…¡Ñ½­•¸èÍÑÈ°™¥±”èUÁ±½…‘¥±”€ô¥±” ¸¸¸¤¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜¹½ÐÁÕ‰±¥}±¥•¹Ñ}…•ÍÌ¡È¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰1¥¹­Õ°¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€‘…Ñ„€ô…Ý…¥Ð™¥±”¹É•…¡5a}UA1=}	eQL€¬€Ä¤4(€€€¥˜±•¸¡‘…Ñ„¤€ø5a}UA1=}	eQLè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÌ°‘•Ñ…¥°ô‰§"e¥•ÉÕ°‘•Ã"e—"eÑ”±¥µ¥Ñ„‘”€ÈÔ5ˆ¤4(€€€¥˜¹½Ð‘…Ñ„è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰§"e¥•ÉÕ°•ÍÑ”½°ˆ¤4(€€€™¥±•¹…µ”€ôÍÑÈ¡™¥±”¹™¥±•¹…µ”½È€‰‘½Õµ•¹Ð¹Á‘˜ˆ¤4(€€€•áÐ€ô™¥±•¹…µ”¹ÉÍÁ±¥Ð ˆ¸ˆ°€Ä¥l´Åt¹±½Ý•È ¤¥˜€ˆ¸ˆ¥¸™¥±•¹…µ”•±Í”€‰Á‘˜ˆ4(€€€½¹Ñ•¹Ñ}ÑåÁ”€ôÍÑÈ¡™¥±”¹½¹Ñ•¹Ñ}ÑåÁ”½È€ˆˆ¤¹ÍÁ±¥Ð ˆìˆ°€Ä¥lÁt¹ÍÑÉ¥À ¤¹±½Ý•È ¤4(€€€¥˜¹½Ð½¹Ñ•¹Ñ}ÑåÁ”½È½¹Ñ•¹Ñ}ÑåÁ”€ôô€‰…ÁÁ±¥…Ñ¥½¸½½Ñ•ÐµÍÑÉ•…´ˆè4(€€€€€€€½¹Ñ•¹Ñ}ÑåÁ”€ô5%5}QeAL¹•Ð¡•áÐ°€‰…ÁÁ±¥…Ñ¥½¸½½Ñ•ÐµÍÑÉ•…´ˆ¤4(€€€½¹Ñ•¹Ñ}ÑåÁ”€ôÙ…±¥‘…Ñ•}ÕÁ±½…‘}Á…å±½…¡™¥±•¹…µ”°½¹Ñ•¹Ñ}ÑåÁ”°‘…Ñ„¤4(€€€ÅÕ½Ñ„€ô…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹” 4(€€€€€€€ì‰¥ˆèÉl‰¥‰t°€‰Ñ½­•¹}¡…Í ˆèÉl‰Ñ½­•¹}¡…Í ‰t°€ˆ‘½Èˆèl4(€€€€€€€€€€€ì‰±¥•¹Ñ}ÕÁ±½…‘}½Õ¹Ðˆèìˆ‘±Ðˆè€ÄÁõô°ì‰±¥•¹Ñ}ÕÁ±½…‘}½Õ¹Ðˆèìˆ‘•á¥ÍÑÌˆè…±Í•õô°4(€€€€€€€uô°4(€€€€€€€ìˆ‘¥¹Œˆèì‰±¥•¹Ñ}ÕÁ±½…‘}½Õ¹Ðˆè€Åõô°4(€€€€¤4(€€€¥˜¹½ÐÅÕ½Ñ„¹µ½‘¥™¥•‘}½Õ¹Ðè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈä°‘•Ñ…¥°ô‰¤…Ñ¥¹Ì±¥µ¥Ñ„‘”€ÄÀ™§"e¥•É”ƒ¹¹É…Ñ”ÁÉ¥¸…•ÍÐ±¥¹¬ˆ¤4(€€€ÍÑ½É•€ôÁÕÑ}½‰©•Ð¡˜‰íAA}95ô½ÕÁ±½…‘Ì½íÉl½Ý¹•Èuô½Í¥¸½íÉl¥uô½íÕÕ¥¹ÕÕ¥Ð ¥ô¹í•áÑôˆ°‘…Ñ„°½¹Ñ•¹Ñ}ÑåÁ”¤4(€€€½É¥¥¹…°€ô™¥±•¹…µ”¹É•Á±…” ‰qpˆ°€ˆ¼ˆ¤¹ÉÍÁ±¥Ð ˆ¼ˆ°€Ä¥l´ÅulèÈÔÕt½È€‰‘½Õµ•¹Ðˆ4(€€€É•ÑÕÉ¸ì‰™¥±”ˆèì‰ÍÑ½É…•}Á…Ñ ˆèÍÑ½É•‘l‰Á…Ñ ‰t°€‰½É¥¥¹…±}™¥±•¹…µ”ˆè½É¥¥¹…°°4(€€€€€€€€€€€€€€€€€€€€€‰½¹Ñ•¹Ñ}ÑåÁ”ˆè½¹Ñ•¹Ñ}ÑåÁ”°€‰Í¥é”ˆè±•¸¡‘…Ñ„¥õô4(4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½µ•ÍÍ…•Ìˆ¤4)…Íå¹Œ‘•˜ÁÕ‰±¥}Í¥¹}…‘‘}µ•ÍÍ…”¡Ñ½­•¸èÍÑÈ°É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜¹½ÐÁÕ‰±¥}±¥•¹Ñ}…•ÍÌ¡È¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰1¥¹­Õ°¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€‘¥°½Ý¹•È€ôÈ¹•Ð ‰‘½ÍÍ¥•É}¥ˆ¤°È¹•Ð ‰½Ý¹•Èˆ¤4(€€€É•Œ€ô…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹”¡ì‰¥ˆè‘¥°€‰½Ý¹•Èˆè½Ý¹•Éô°ì‰}¥ˆè€À°€‰±¥•¹Ñ}µ•ÍÍ…•Ìˆè€Åô¤4(€€€¥˜¹½ÐÉ•Œè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰½Í…ÉÕ°¹Ôµ…¤•ÍÑ”‘¥ÍÁ½¹¥‰¥°ˆ¤4(€€€µ•ÍÍ…•Ì€ôÉ•Œ¹•Ð ‰±¥•¹Ñ}µ•ÍÍ…•Ìˆ¤½Èmt4(€€€¥˜±•¸¡µ•ÍÍ…•Ì¤€øô€ÌÀÀ½ÈÍÕ´ Ä™½È¥Ñ•´¥¸µ•ÍÍ…•Ì¥˜¥Í¥¹ÍÑ…¹”¡¥Ñ•´°‘¥Ð¤…¹¥Ñ•´¹•Ð ‰Í•¹‘•Èˆ¤€ôô€‰±¥•¹Ðˆ¤€øô€ÄÀÀè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈä°‘•Ñ…¥°ô‰™½ÍÐ…Ñ¥¹Ï±¥µ¥Ñ„‘”µ•Í…©”Á•¹ÑÉÔ…•ÍÐ‘½Í…Èˆ¤4(€€€±…ÍÐ€ô¹•áÐ ¡¥Ñ•´™½È¥Ñ•´¥¸É•Ù•ÉÍ•¡µ•ÍÍ…•Ì¤¥˜¥Í¥¹ÍÑ…¹”¡¥Ñ•´°‘¥Ð¤…¹¥Ñ•´¹•Ð ‰Í•¹‘•Èˆ¤€ôô€‰±¥•¹Ðˆ¤°9½¹”¤4(€€€¥˜±…ÍÐ…¹±…ÍÐ¹•Ð ‰É•…Ñ•‘}…Ðˆ¤è4(€€€€€€€ÑÉäè4(€€€€€€€€€€€±…ÍÑ}…Ð€ô‘…Ñ•Ñ¥µ”¹™É½µ¥Í½™½Éµ…Ð¡±…ÍÑl‰É•…Ñ•‘}…Ð‰t¹É•Á±…” ‰hˆ°€ˆ¬ÀÀèÀÀˆ¤¤4(€€€€€€€€€€€¥˜‘…Ñ•Ñ¥µ”¹¹½Ü¡Ñ¥µ•é½¹”¹ÕÑŒ¤€´±…ÍÑ}…Ð€ðÑ¥µ•‘•±Ñ„¡Í•½¹‘ÌôÄÀ¤è4(€€€€€€€€€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈä°‘•Ñ…¥°ô‰"eÑ•…ÁÓ‰Ñ•Ù„Í•Õ¹‘”ƒ¹¹…¥¹Ñ”‘”„ÑÉ¥µ¥Ñ”…±Ðµ•Í…¨ˆ¤4(€€€€€€€•á•ÁÐY…±Õ•ÉÉ½Èè4(€€€€€€€€€€€Á…ÍÌ4(€€€‰½‘ä€ô…Ý…¥ÐÉ•ÅÕ•ÍÐ¹©Í½¸ ¤4(€€€…ÑÑ…¡µ•¹ÑÌ€ô±•…¹}µ•ÍÍ…•}…ÑÑ…¡µ•¹ÑÌ¡‰½‘ä¹•Ð ‰…ÑÑ…¡µ•¹ÑÌˆ¤°ÍÑÈ¡½Ý¹•È¤¤4(€€€¥˜…¹ä¡¹½Ð¥Í}±¥•¹Ñ}ÕÁ±½…‘}Á…Ñ ¡¥Ñ•µl‰ÍÑ½É…•}Á…Ñ ‰t°AA}95°ÍÑÈ¡½Ý¹•È¤°ÍÑÈ¡Él‰¥‰t¤¤™½È¥Ñ•´¥¸…ÑÑ…¡µ•¹ÑÌ¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÌ°‘•Ñ…¥°ô‰Ñ‡"e…µ•¹ÑÕ°¹Ô„™½ÍÐƒ¹¹É…ÐÁÉ¥¸…•ÍÐ±¥¹¬‘”Í•µ¹…É”ˆ¤4(€€€É…Ý}Ñ•áÐ€ôÍÑÈ¡‰½‘ä¹•Ð ‰Ñ•áÐˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¤4(€€€µ•ÍÍ…•}Ñ•áÐ€ô±•…¹}µ•ÍÍ…•}Ñ•áÐ¡É…Ý}Ñ•áÐ¤¥˜É…Ý}Ñ•áÐ•±Í”€ˆˆ4(€€€¥˜¹½Ðµ•ÍÍ…•}Ñ•áÐ…¹¹½Ð…ÑÑ…¡µ•¹ÑÌè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰‘…ÕŸÕ¸µ•Í…¨Í…Ô•°Á×"m¥¸Õ¸™§"e¥•Èˆ¤4(€€€µ•ÍÍ…”€ôì‰¥ˆèÍÑÈ¡ÕÕ¥¹ÕÕ¥Ð ¤¤°€‰Í•¹‘•Èˆè€‰±¥•¹Ðˆ°€‰Í•¹‘•É}¹…µ”ˆèÍÑÈ¡È¹•Ð ‰Í¥¹•É}¹…µ”ˆ¤½È€‰±¥•¹Ðˆ¥lèÄÈÁt°4(€€€€€€€€€€€€€€€‰…Õ‘¥•¹”ˆè€‰±¥•¹Ðˆ°€‰Ñ•áÐˆèµ•ÍÍ…•}Ñ•áÐ°€‰…ÑÑ…¡µ•¹ÑÌˆè…ÑÑ…¡µ•¹ÑÌ°€‰É•…Ñ•‘}…Ðˆè¹½Ý}¥Í¼ ¥ô4(€€€…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆè‘¥°€‰½Ý¹•Èˆè½Ý¹•Éô°ìˆ‘ÁÕÍ ˆèì‰±¥•¹Ñ}µ•ÍÍ…•Ìˆèìˆ‘•… ˆèmµ•ÍÍ…•t°€ˆ‘Í±¥”ˆè€´ÌÀÁõõô¤4(€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉl‰¥‰uô°ìˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰5•Í…¨‘”±„±¥•¹Ðˆ°±¥•¹Ñ}µ•Ñ„¡É•ÅÕ•ÍÐ¤¥õô¤4(€€€É•ÑÕÉ¸ì‰µ•ÍÍ…”ˆèµ•ÍÍ…•ô4(4)‘•˜µ…Í¬¡”èÍÑÈ¤€´øÍÑÈè4(€€€Ô°|°€ô”¹Á…ÉÑ¥Ñ¥½¸ ‰ ˆ¤4(€€€É•ÑÕÉ¸€¡ÕlèÉt€¬€ˆ¨¨© ˆ€¬¤¥˜•±Í”€ˆ¨¨¨ˆ4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ôˆ¤4)…Íå¹Œ‘•˜ÁÕ‰}Í¥¹}¥¹™¼¡Ñ½­•¸èÍÑÈ°É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€ÍÐ€ôÍ¥¹}ÍÑ…ÑÕÌ¡È¤4(€€€¥˜ÍÐ€ôô€‰áÁ¥É…Ðˆ…¹Él‰ÍÑ…ÑÕÌ‰t€„ô€‰áÁ¥É…Ðˆè4(€€€€€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉl‰¥‰uô°ìˆ‘Í•Ðˆèì‰ÍÑ…ÑÕÌˆè€‰áÁ¥É…Ð‰ô°€ˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰1¥¹¬•áÁ¥É…Ðˆ°±¥•¹Ñ}µ•Ñ„¡É•ÅÕ•ÍÐ¤¥õô¤4(€€€•±¥˜ÍÐ¥¸M%9}Q%Yè4(€€€€€€€ÕÁ€ôìˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰½Õµ•¹Ð‘•Í¡¥Ìˆ°±¥•¹Ñ}µ•Ñ„¡É•ÅÕ•ÍÐ¤¥õô4(€€€€€€€¥˜ÍÐ€„ô€‰•Í¡¥Ìˆè4(€€€€€€€€€€€ÕÁ‘lˆ‘Í•Ð‰t€ôì‰ÍÑ…ÑÕÌˆè€‰•Í¡¥Ìˆ°€‰½Á•¹•‘}…Ðˆè¹½Ý}¥Í¼ ¥ô4(€€€€€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉl‰¥‰uô°ÕÁ¤4(€€€€€€€ÍÐ€ô€‰•Í¡¥Ìˆ4(€€€Ì€ô…Ý…¥Ð‘ˆ¹Í•ÑÑ¥¹Ì¹™¥¹‘}½¹”¡ì‰½Ý¹•ÈˆèÉl‰½Ý¹•È‰uô°ì‰}¥ˆè€À°€‰½µÁ…¹äˆè€Åô¤½Èíô4(€€€Á…•Ì€ô€À4(€€€¥˜ÍÐ¥¸M%9}Q%Yè4(€€€€€€€¥µÁ½ÉÐÁåµÕÁ‘˜4(€€€€€€€‘…Ñ„°|€ô•Ñ}½‰©•Ð¡Él‰‘½}Á…Ñ ‰t¤4(€€€€€€€Á…•Ì€ôÁåµÕÁ‘˜¹½Á•¸¡ÍÑÉ•…´õ‘…Ñ„°™¥±•ÑåÁ”ô‰Á‘˜ˆ¤¹Á…•}½Õ¹Ð4(€€€Á½ÉÑ…°€ô…Ý…¥Ð±¥•¹Ñ}Á½ÉÑ…±}Á…å±½…¡È¤¥˜ÁÕ‰±¥}±¥•¹Ñ}…•ÍÌ¡È¤•±Í”9½¹”4(€€€‘½ÍÍ¥•É}µ•ÍÍ…•Ì€ô€¡Á½ÉÑ…°½Èíô¤¹•Ð ‰±¥•¹Ñ}µ•ÍÍ…•Ìˆ°mt¤4(€€€É•ÑÕÉ¸ì‰ÍÑ…ÑÕÌˆèÍÐ°€‰Á…•ÌˆèÁ…•Ì°€‰‘½}Ñ¥Ñ±”ˆèÉl‰‘½}Ñ¥Ñ±”‰t°€‰Í¥¹•É}¹…µ”ˆèÉl‰Í¥¹•É}¹…µ”‰t°€‰É½±”ˆèÉl‰É½±”‰t°€‰±¥•¹Ñ}¹…µ”ˆèÉl‰±¥•¹Ñ}¹…µ”‰t°4(€€€€€€€€€€€€‰½µÁ…¹äˆèÌ¹•Ð ‰½µÁ…¹äˆ¤½È€‰9L!=MQMLMI0ˆ°€‰•µ…¥±}µ…Í­•ˆèµ…Í¬¡Él‰Í¥¹•É}•µ…¥°‰t¤°€‰•áÁ¥É•Í}…ÐˆèÉl‰•áÁ¥É•Í}…Ð‰t°4(€€€€€€€€€€€€‰‘½}Í¡„ÈÔØˆèÉl‰‘½}Í¡„ÈÔØ‰t°€‰Í¥¹•‘}…ÐˆèÈ¹•Ð ‰Í¥¹•‘}…Ðˆ¤°€‰±¥•¹Ñ}µ•ÍÍ…•Ìˆè‘½ÍÍ¥•É}µ•ÍÍ…•Ì°4(€€€€€€€€€€€€‰Á½ÉÑ…°ˆèÁ½ÉÑ…°¥˜ÍÐ€ôô€‰M•µ¹…Ðˆ…¹Í¥¹•‘}Á½ÉÑ…±}…Ñ¥Ù”¡È¤•±Í”9½¹•ô4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½Í¥¹•µ‘½Õµ•¹Ðˆ¤4)…Íå¹Œ‘•˜ÁÕ‰}Í¥¹•‘}‘½Õµ•¹Ð¡Ñ½­•¸èÍÑÈ¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜¹½ÐÍ¥¹•‘}Á½ÉÑ…±}…Ñ¥Ù”¡È¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰A½ÉÑ…±Õ°±¥•¹ÑÕ±Õ¤¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€Á…Ñ €ô€¡È¹•Ð ‰Í¥¹•‘}™¥±”ˆ¤½Èíô¤¹•Ð ‰ÍÑ½É…•}Á…Ñ ˆ¤4(€€€¥˜¹½ÐÁ…Ñ è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰AµÕ°Í•µ¹…Ð¹Ô•ÍÑ”‘¥ÍÁ½¹¥‰¥°ˆ¤4(€€€‘…Ñ„°½¹Ñ•¹Ñ}ÑåÁ”€ô•Ñ}½‰©•Ð¡Á…Ñ ¤4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹Ðõ‘…Ñ„°µ•‘¥…}ÑåÁ”õ½¹Ñ•¹Ñ}ÑåÁ”½È€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ°4(€€€€€€€€€€€€€€€€€€€¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè€¥¹±¥¹”ì™¥±•¹…µ”ô‰‘½Õµ•¹ÐµÍ•µ¹…Ð¹Á‘˜ˆœ°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰…¡”µ½¹ÑÉ½°ˆè€‰ÁÉ¥Ù…Ñ”°¹¼µÍÑ½É”ˆ°€‰`µ½¹Ñ•¹ÐµQåÁ”µ=ÁÑ¥½¹Ìˆè€‰¹½Í¹¥™˜‰ô¤4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½‘½Õµ•¹ÑÌ½íÉ•ÅÕ•ÍÑ}¥‘ôˆ¤4)…Íå¹Œ‘•˜ÁÕ‰}±¥•¹Ñ}Í¥¹•‘}‘½Õµ•¹Ð¡Ñ½­•¸èÍÑÈ°É•ÅÕ•ÍÑ}¥èÍÑÈ¤è4(€€€Á½ÉÑ…±}É•ÅÕ•ÍÐ€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜¹½ÐÍ¥¹•‘}Á½ÉÑ…±}…Ñ¥Ù”¡Á½ÉÑ…±}É•ÅÕ•ÍÐ¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰A½ÉÑ…±Õ°±¥•¹ÑÕ±Õ¤¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€‘½Õµ•¹Ð€ô…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹™¥¹‘}½¹” 4(€€€€€€€ì‰¥ˆèÉ•ÅÕ•ÍÑ}¥°€‰½Ý¹•ÈˆèÁ½ÉÑ…±}É•ÅÕ•ÍÐ¹•Ð ‰½Ý¹•Èˆ¤°€‰‘½ÍÍ¥•É}¥ˆèÁ½ÉÑ…±}É•ÅÕ•ÍÐ¹•Ð ‰‘½ÍÍ¥•É}¥ˆ¤°4(€€€€€€€€€‰Í¥¹•É}•µ…¥°ˆèÁ½ÉÑ…±}É•ÅÕ•ÍÐ¹•Ð ‰Í¥¹•É}•µ…¥°ˆ¤°€‰µ½‘Õ±”ˆèìˆ‘¥¸ˆèl‰ÁÉ½ÍÕµ…Ñ½Èˆ°9½¹•uô°€‰É•Ù½­•ˆèìˆ‘¹”ˆèQÉÕ•õô°4(€€€€€€€ì‰}¥ˆè€Áô°4(€€€€¤4(€€€¥˜¹½Ð‘½Õµ•¹Ð½È¹½ÐÍ¥¹•‘}Á½ÉÑ…±}…Ñ¥Ù”¡‘½Õµ•¹Ð¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰½Õµ•¹ÐÍ•µ¹…Ð¥¹‘¥ÍÁ½¹¥‰¥°ˆ¤4(€€€Á…Ñ €ô€¡‘½Õµ•¹Ð¹•Ð ‰Í¥¹•‘}™¥±”ˆ¤½Èíô¤¹•Ð ‰ÍÑ½É…•}Á…Ñ ˆ¤4(€€€¥˜¹½ÐÁ…Ñ è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰AµÕ°Í•µ¹…Ð¹Ô•ÍÑ”‘¥ÍÁ½¹¥‰¥°ˆ¤4(€€€‘…Ñ„°½¹Ñ•¹Ñ}ÑåÁ”€ô•Ñ}½‰©•Ð¡Á…Ñ ¤4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹Ðõ‘…Ñ„°µ•‘¥…}ÑåÁ”õ½¹Ñ•¹Ñ}ÑåÁ”½È€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ°4(€€€€€€€€€€€€€€€€€€€¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè€¥¹±¥¹”ì™¥±•¹…µ”ô‰‘½Õµ•¹ÐµÍ•µ¹…Ð¹Á‘˜ˆœ°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰…¡”µ½¹ÑÉ½°ˆè€‰ÁÉ¥Ù…Ñ”°¹¼µÍÑ½É”ˆ°€‰`µ½¹Ñ•¹ÐµQåÁ”µ=ÁÑ¥½¹Ìˆè€‰¹½Í¹¥™˜‰ô¤4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½‘½Õµ•¹Ðˆ¤4)…Íå¹Œ‘•˜ÁÕ‰}Í¥¹}‘½Œ¡Ñ½­•¸èÍÑÈ¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜Í¥¹}ÍÑ…ÑÕÌ¡È¤¹½Ð¥¸M%9}Q%Yè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰1¥¹­Õ°¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€‘…Ñ„°|€ô•Ñ}½‰©•Ð¡Él‰‘½}Á…Ñ ‰t¤4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹Ðõ‘…Ñ„°µ•‘¥…}ÑåÁ”ô‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ°¡•…‘•ÉÌõì‰½¹Ñ•¹Ðµ¥ÍÁ½Í¥Ñ¥½¸ˆè€¥¹±¥¹”ì™¥±•¹…µ”ô‰‘½Õµ•¹Ð¹Á‘˜ˆô¤4(4)…Á¥}É½ÕÑ•È¹•Ð ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½Á…”½í¹ôˆ¤4)…Íå¹Œ‘•˜ÁÕ‰}Í¥¹}Á…”¡Ñ½­•¸èÍÑÈ°¸è¥¹Ð¤è4(€€€¥µÁ½ÉÐÁåµÕÁ‘˜4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜Í¥¹}ÍÑ…ÑÕÌ¡È¤¹½Ð¥¸M%9}Q%Yè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰1¥¹­Õ°¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€‘…Ñ„°|€ô•Ñ}½‰©•Ð¡Él‰‘½}Á…Ñ ‰t¤4(€€€€ôÁåµÕÁ‘˜¹½Á•¸¡ÍÑÉ•…´õ‘…Ñ„°™¥±•ÑåÁ”ô‰Á‘˜ˆ¤4(€€€¥˜¸€ð€À½È¸€øô¹Á…•}½Õ¹Ðè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÐ°‘•Ñ…¥°ô‰A…¥»¥¹•á¥ÍÑ•¹Óˆ¤4(€€€É•ÑÕÉ¸I•ÍÁ½¹Í”¡½¹Ñ•¹Ðõ‘m¹t¹•Ñ}Á¥áµ…À¡‘Á¤ôÄÔÀ¤¹Ñ½‰åÑ•Ì ‰Á¹œˆ¤°µ•‘¥…}ÑåÁ”ô‰¥µ…”½Á¹œˆ¤4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½½ÑÀˆ¤4)…Íå¹Œ‘•˜ÁÕ‰}Í¥¹}½ÑÀ¡Ñ½­•¸èÍÑÈ°É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜Í¥¹}ÍÑ…ÑÕÌ¡È¤¹½Ð¥¸M%9}Q%Yè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰1¥¹­Õ°¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€¥˜È¹•Ð ‰½ÑÁ}Í•¹‘Ìˆ°€À¤€øô€Ôè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈä°‘•Ñ…¥°ô‰¤•ÉÕÐÁÉ•„µÕ±Ñ”½‘ÕÉ¤¸½¹Ñ…Ñ•…ë•µ¥Ñ•¹ÑÕ°‘½Õµ•¹ÑÕ±Õ¤¸ˆ¤4(€€€¥˜È¹•Ð ‰½ÑÁ}±…ÍÐˆ¤…¹Él‰½ÑÁ}±…ÍÐ‰t€ø€¡‘…Ñ•Ñ¥µ”¹¹½Ü¡Ñ¥µ•é½¹”¹ÕÑŒ¤€´Ñ¥µ•‘•±Ñ„¡Í•½¹‘ÌôÐÔ¤¤¹¥Í½™½Éµ…Ð ¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈä°‘•Ñ…¥°ô‰"eÑ•…ÁÓ€ÐÔ‘”Í•Õ¹‘”ƒ¹¹…¥¹Ñ”‘”Õ¸½¹½Ôˆ¤4(€€€½‘”€ô˜‰íÍ•É•ÑÌ¹É…¹‘‰•±½Ü ÄÀÀÀÀÀÀ¤èÀÙ‘ôˆ4(€€€¡Ñµ°€ô€¡˜œñÑ…‰±”É½±”ô‰ÁÉ•Í•¹Ñ…Ñ¥½¸ˆÝ¥‘Ñ ôˆÄÀÀ”ˆøñÑÈøñÑÍÑå±”ô‰Á…‘‘¥¹œèÈÑÁàí™½¹Ðµ™…µ¥±äéÉ¥…°±Í…¹ÌµÍ•É¥˜í½±½ÈèŒÁˆÅ˜Í„ˆøœ4(€€€€€€€€€€€˜œñÀù	Õ»é¥Õ„°í¡•ÍŒ¡Él‰Í¥¹•É}¹…µ”‰t¥ô°ð½ÀøñÀù½‘Õ°Á•¹ÑÉÔÍ•µ¹…É•„‘½Õµ•¹ÑÕ±Õ¤€ñˆùí¡•ÍŒ¡Él‰‘½}Ñ¥Ñ±”‰t¥ôð½ˆø•ÍÑ”èð½Àøœ4(€€€€€€€€€€€˜œñÀÍÑå±”ô‰™½¹ÐµÍ¥é”èÈáÁàí™½¹ÐµÝ•¥¡Ðé‰½±í±•ÑÑ•ÈµÍÁ…¥¹œèÙÁàˆùí½‘•ôð½Àøœ4(€€€€€€€€€€€˜œñÀù½‘Õ°•ÍÑ”Ù…±…‰¥°€ÄÀµ¥¹ÕÑ”¸%¹ÑÉ½‘Ôµ°‘½…ÈÁ”Á…¥¹„‘”Í•µ¹…É”‘•Í¡¥Ï‘¥¸±¥¹­Õ°ÁÉ¥µ¥Ð¸…¹Ô…¤•ÉÕÐ…•ÍÐ½°¥¹½Ëµ•Í…©Õ°¸ð½Àøœ4(€€€€€€€€€€€˜œñÀÍÑå±”ô‰™½¹ÐµÍ¥é”èÄÉÁàí½±½ÈèŒàààˆùQÉ¥µ¥Ì‘”í¡•ÍŒ¡5%1}I=5}95¥ô¸9Ôƒ»"m¤Ù½´•É”¹¥¥½‘…ÓÁ…É½±”Í…Ô‘…Ñ”‘”…ÉÁÉ¥¸”µµ…¥°¸ð½Àøð½Ñøð½ÑÈøð½Ñ…‰±”øœ¤4(€€€¥˜¹½Ð…Ý…¥Ð‘•±¥Ù•È¡Él‰½Ý¹•È‰t°‰½½°¡È¹•Ð ‰¥Í}Ñ•ÍÐˆ¤¤°Él‰Í¥¹•É}•µ…¥°‰t°˜‰½‘”Í•µ¹…É”ƒŠPíÉl‘½}Ñ¥Ñ±”ulèØÁuôˆ°¡Ñµ°¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰½Í…È‘”QMPè¹Ô•ÍÑ”½¹™¥ÕÉ…ÐÕ¸”µµ…¥°‘”Ñ•ÍÐƒ¹¸M•ÓÉ¤‘”‰…ëƒŠP½‘Õ°¹Ô„™½ÍÐÑÉ¥µ¥Ìˆ¤4(€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉl‰¥‰uô°ìˆ‘Í•Ðˆèì‰½ÑÁ}¡…Í ˆèÍ¡„¡˜‰íÉl¥uôéí½‘•ôˆ¹•¹½‘” ¤¤°€‰½ÑÁ}•áÀˆè€¡‘…Ñ•Ñ¥µ”¹¹½Ü¡Ñ¥µ•é½¹”¹ÕÑŒ¤€¬Ñ¥µ•‘•±Ñ„¡µ¥¹ÕÑ•ÌôÄÀ¤¤¹¥Í½™½Éµ…Ð ¤°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰½ÑÁ}±…ÍÐˆè¹½Ý}¥Í¼ ¤°€‰½ÑÁ}…ÑÑ•µÁÑÌˆè€Áô°€ˆ‘¥¹Œˆèì‰½ÑÁ}Í•¹‘Ìˆè€Åô°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰½‘”Ù•É¥™¥…É”ÑÉ¥µ¥Ìˆ°±¥•¹Ñ}µ•Ñ„¡É•ÅÕ•ÍÐ¤°˜‰ÑÉ”íµ…Í¬¡ÉlÍ¥¹•É}•µ…¥°t¥ôˆ¥õô¤4(€€€É•ÑÕÉ¸ì‰½¬ˆèQÉÕ”°€‰•µ…¥±}µ…Í­•ˆèµ…Í¬¡Él‰Í¥¹•É}•µ…¥°‰t¥ô4(4)‘•˜•Ù¥‘•¹•}Á…”¡Èè‘¥Ð°Í¥}Á¹œè‰åÑ•Ì°µ•Ñ„è‘¥Ð°‘•±…É•èÍÑÈ°Í¥¹•‘}…ÐèÍÑÈ°½Ý¹•É}½µÁ…¹äèÍÑÈ¤€´ø‰åÑ•Ìè4(€€€‰Õ˜€ô¥¼¹	åÑ•Í%< ¤4(€€€Œ€ôÉ±Œ¹…¹Ù…Ì¡‰Õ˜°Á…•Í¥é”õIÐ¤4(€€€\° €ôIÐ4(€€€ä€ô €´€ØÀ4(€€€Œ¹Í•Ñ½¹Ð ‰1Mˆ°€ÄÐ¤ìŒ¹‘É…ÝMÑÉ¥¹œ ÔÀ°ä°€‰'"cY%;"kM5;	I%$1QI=9%ˆ€¬€ ˆƒŠPQMPˆ¥˜È¹•Ð ‰¥Í}Ñ•ÍÐˆ¤•±Í”€ˆˆ¤¤4(€€€¥˜È¹•Ð ‰¥Í}Ñ•ÍÐˆ¤è4(€€€€€€€Œ¹Í•Ñ¥±±½±½ÉI À¸Ü°€À¸ÄÔ°€À¸ÄÔ¤ìŒ¹Í•Ñ½¹Ð ‰1Mˆ°€ÄÀ¤ìŒ¹‘É…ÝMÑÉ¥¹œ ÔÀ°ä€´€ÌÈ°€‰M5;	QUKQMPƒŠP‘…Ñ”™¥Ñ¥Ù”¸9T•ÍÑ”¼Í•µ»ÑÕË½™¥¥…³ƒ"e¤¹Ô…É”•™•Ñ”©ÕÉ¥‘¥”¸ˆ¤ìŒ¹Í•Ñ¥±±½±½ÉI À°€À°€À¤ìä€´ô€ÄÐ4(€€€ä€´ô€ÄàìŒ¹Í•Ñ½¹Ð ‰1Lˆ°€ä¤ìŒ¹‘É…ÝMÑÉ¥¹œ ÔÀ°ä°€‰Q¥ÀÍ•µ»ÑÕËèÍ•µ»ÑÕË•±•ÑÉ½¹¥M%5A3€¡I•œ¸U€äÄÀ¼ÈÀÄÐ•%L°…ÉÐ¸€ÌÁÐ¸€ÄÀ¤¸9Ô•ÍÑ”Í•µ»ÑÕË…Ù…¹Í…ÓÍ…Ô…±¥™¥…Ó¸ˆ¤4(€€€É½ÝÌ€ôl ‰½Õµ•¹Ðˆ°Él‰‘½}Ñ¥Ñ±”‰t¤°€ ‰µ¥Ñ•¹Ðˆ°½Ý¹•É}½µÁ…¹ä¤°€ ‰	•¹•™¥¥…È€¼‘½Í…Èˆ°È¹•Ð ‰±¥•¹Ñ}¹…µ”ˆ¤½È€ˆˆ¤°4(€€€€€€€€€€€€ ‰M•µ¹…Ñ…È€¡¥‘•¹Ñ¥Ñ…Ñ”‘•±…É…Ó¤ˆ°‘•±…É•¤°€ ‰I½°ˆ°Él‰É½±”‰t¤°€ ‰µµ…¥°Ù•É¥™¥…ÐÁÉ¥¸½Õ¹¥Œˆ°Él‰Í¥¹•É}•µ…¥°‰t¤°4(€€€€€€€€€€€€ ‰…Ñ„ƒ"e¤½É„Í•µ»É¥¤€¡UQ°Í•ÉÙ•È¤ˆ°Í¥¹•‘}…Ð¤°€ ‰‘É•Ï%@ˆ°µ•Ñ…l‰¥À‰t¤°€ ‰	É½ÝÍ•È€¼‘¥ÍÁ½é¥Ñ¥Øˆ°µ•Ñ…l‰Õ„‰ulèÄÄÁt¤°4(€€€€€€€€€€€€ ‰M!´ÈÔØ‘½Õµ•¹ÐÍ•µ¹…Ð€¡½É¥¥¹…°¤ˆ°Él‰‘½}Í¡„ÈÔØ‰t¤°€ ‰%•É•É”ˆ°Él‰¥‰t¤°4(€€€€€€€€€€€€ ‰•±…É‡"m¥”ˆ°€‰´¥Ñ¥Ð¥¹Ñ•É…°‘½Õµ•¹ÑÕ°ƒ"e¤ƒ¹µ¤•áÁÉ¥´•áÁ±¥¥Ð¥¹Ñ•»"m¥„‘”„µ°Í•µ¹„•±•ÑÉ½¹¥Œ¸ˆ¥t4(€€€ä€´ô€ÈØ4(€€€™½È¬°Ø¥¸É½ÝÌè4(€€€€€€€Œ¹Í•Ñ½¹Ð ‰1Mˆ°€à¸Ô¤ìŒ¹‘É…ÝMÑÉ¥¹œ ÔÀ°ä°¬¤4(€€€€€€€Œ¹Í•Ñ½¹Ð ‰1Lˆ°€à¸Ô¤4(€€€€€€€ÑáÐ€ôÍÑÈ¡Ø¤4(€€€€€€€Ý¡¥±”ÑáÐè4(€€€€€€€€€€€Á…ÉÐ€ôÑáÑlèàÕtìÑáÐ€ôÑáÑlàÔét4(€€€€€€€€€€€Œ¹‘É…ÝMÑÉ¥¹œ ÈÌÀ°ä°Á…ÉÐ¤ìä€´ô€ÄÈ4(€€€€€€€ä€´ô€Ð4(€€€ä€´ô€ÄÀìŒ¹Í•Ñ½¹Ð ‰1Mˆ°€ä¤ìŒ¹‘É…ÝMÑÉ¥¹œ ÔÀ°ä°€‰M•µ»ÑÕÉ„½±½É…›ÑÉ…Í…ÓÁ”•É…¸èˆ¤4(€€€¥µœ€ô%µ…•I•…‘•È¡¥¼¹	åÑ•Í%<¡Í¥}Á¹œ¤¤4(€€€¥Ü°¥ €ô¥µœ¹•ÑM¥é” ¤ìÌ€ôµ¥¸ ÈØÀ€¼¥Ü°€ÄÄÀ€¼¥ ¤4(€€€Œ¹‘É…Ý%µ…”¡¥µœ°€ÔÀ°ä€´€ÄÀ€´¥ €¨Ì°¥Ü€¨Ì°¥ €¨Ì°µ…Í¬ô‰…ÕÑ¼ˆ¤4(€€€Œ¹É•Ð Ðà°ä€´€ÄÈ€´¥ €¨Ì°¥Ü€¨Ì€¬€Ð°¥ €¨Ì€¬€Ð¤4(€€€Œ¹Í•Ñ½¹Ð ‰1Lˆ°€Ü¤ìŒ¹‘É…ÝMÑÉ¥¹œ ÔÀ°€ÐÀ°€‰%ÍÑ½É¥Õ°½µÁ±•Ð…°…"m¥Õ¹¥±½È€¡‘•Í¡¥‘•É¤°½‘ÕÉ¤ÑÉ¥µ¥Í”°Í•µ¹…É”¤•ÍÑ”ÃÍÑÉ…Ðƒ¹¸…Á±¥‡"m¥„•µ¥Ñ•¹ÑÕ±Õ¤¸ˆ¤4(€€€Œ¹Í…Ù” ¤4(€€€É•ÑÕÉ¸‰Õ˜¹•ÑÙ…±Õ” ¤4(4)‘•˜ÍÑ…µÁ}Á…•Ì¡Á‘˜è‰åÑ•Ì°Ñ•áÐèÍÑÈ¤€´ø‰åÑ•Ìè4(€€€Ü€ôA‘™]É¥Ñ•È ¤4(€€€™½ÈÁ…”¥¸A‘™I•…‘•È¡¥¼¹	åÑ•Í%<¡Á‘˜¤¤¹Á…•Ìè4(€€€€€€€ÁÜ°Á €ô™±½…Ð¡Á…”¹µ•‘¥…‰½à¹Ý¥‘Ñ ¤°™±½…Ð¡Á…”¹µ•‘¥…‰½à¹¡•¥¡Ð¤4(€€€€€€€ˆ€ô¥¼¹	åÑ•Í%< ¤ìŒ€ôÉ±Œ¹…¹Ù…Ì¡ˆ°Á…•Í¥é”ô¡ÁÜ°Á ¤¤ìŒ¹Í•Ñ½¹Ð ‰1Lˆ°€Ø¸Ô¤ìŒ¹Í•Ñ¥±±É…ä À¸ÌÔ¤4(€€€€€€€Œ¹‘É…ÝMÑÉ¥¹œ ÈÀ°€ÄÀ°Ñ•áÑlèÄàÁt¤ìŒ¹Í…Ù” ¤4(€€€€€€€Á…”¹µ•É•}Á…”¡A‘™I•…‘•È¡¥¼¹	åÑ•Í%<¡ˆ¹•ÑÙ…±Õ” ¤¤¤¹Á…•ÍlÁt¤ìÜ¹…‘‘}Á…”¡Á…”¤4(€€€¼€ô¥¼¹	åÑ•Í%< ¤ìÜ¹ÝÉ¥Ñ”¡¼¤ìÉ•ÑÕÉ¸¼¹•ÑÙ…±Õ” ¤4(4)…Íå¹Œ‘•˜É•‰Õ¥±‘}É½ÕÀ¡½Ý¹•ÈèÍÑÈ°¥èÍÑÈ¤è4(€€€É•ÅÌ€ô…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹™¥¹¡ì‰½Ý¹•Èˆè½Ý¹•È°€‰É½ÕÁ}¥ˆè¥‘ô°ì‰}¥ˆè€Áô¤¹Í½ÉÐ ‰É•…Ñ•‘}…Ðˆ°€Ä¤¹Ñ½}±¥ÍÐ ÔÀ¤4(€€€Í¥¹•€ômà™½Èà¥¸É•ÅÌ¥˜ál‰ÍÑ…ÑÕÌ‰t€ôô€‰M•µ¹…Ðˆ…¹à¹•Ð ‰•Ù¥‘•¹•}Á…Ñ ˆ¥t4(€€€‰…Í”°|€ô•Ñ}½‰©•Ð¡É•ÅÍlÁul‰‘½}Á…Ñ ‰t¤4(€€€Ü€ôA‘™]É¥Ñ•È ¤4(€€€™½ÈÁœ¥¸A‘™I•…‘•È¡¥¼¹	åÑ•Í%<¡ÍÑ…µÁ}Á…•Ì¡‰…Í”°€ ‰mQMPƒŠP9TMQM5;	QUK=%%3	t€ˆ¥˜É•ÅÍlÁt¹•Ð ‰¥Í}Ñ•ÍÐˆ¤•±Í”€ˆˆ¤€¬€‰M•µ¹…Ð•±•ÑÉ½¹¥Œ€¡Í•µ»ÑÕËÍ¥µÁ³¤‘”è€ˆ€¬€ˆ°€ˆ¹©½¥¸¡˜‰íálÍ¥¹•É}¹…µ”uôíálÍ¥¹•‘}…ÐulèÄÙuôUQˆ™½Èà¥¸Í¥¹•¤€¬˜ˆƒ
+ÜM!´ÈÔØ½É¥¥¹…°íÉ•ÅÍlÁul‘½}Í¡„ÈÔØulèÄÙu÷Š˜ˆ¤¤¤¹Á…•Ìè4(€€€€€€€Ü¹…‘‘}Á…”¡Áœ¤4(€€€™½Èà¥¸Í¥¹•è4(€€€€€€€•Ø°|€ô•Ñ}½‰©•Ð¡ál‰•Ù¥‘•¹•}Á…Ñ ‰t¤4(€€€€€€€™½ÈÁœ¥¸A‘™I•…‘•È¡¥¼¹	åÑ•Í%<¡•Ø¤¤¹Á…•Ìè4(€€€€€€€€€€€Ü¹…‘‘}Á…”¡Áœ¤4(€€€¼€ô¥¼¹	åÑ•Í%< ¤ìÜ¹ÝÉ¥Ñ”¡¼¤ì™¥¹…°€ô¼¹•ÑÙ…±Õ” ¤4(€€€ÍÐ€ôÁÕÑ}½‰©•Ð¡˜‰íAA}95ô½Í¥¸½í½Ý¹•Éô½í¥‘ô½Í¥¹•‘}í±•¸¡Í¥¹•¥ô¹Á‘˜ˆ°™¥¹…°°€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ¤4(€€€˜€ôì‰ÍÑ½É…•}Á…Ñ ˆèÍÑl‰Á…Ñ ‰t°€‰½É¥¥¹…±}™¥±•¹…µ”ˆè˜‰íÉ•ÅÍlÁulÁ½Í}­•äuõ}Í•µ¹…Ð¹Á‘˜ˆ°€‰½¹Ñ•¹Ñ}ÑåÁ”ˆè€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ°€‰Í¥é”ˆè±•¸¡™¥¹…°¥ô4(€€€¥˜É•ÅÍlÁt¹•Ð ‰Í±‘}¡…Í ˆ¤è4(€€€€€€€™l‰Í±‘}¡…Í ‰t€ôÉ•ÅÍlÁul‰Í±‘}¡…Í ‰t4(€€€¥˜É•ÅÍlÁt¹•Ð ‰Á¥™}¡…Í ˆ¤è4(€€€€€€€™l‰Á¥™}¡…Í ‰t€ôÉ•ÅÍlÁul‰Á¥™}¡…Í ‰t4(€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}µ…¹ä¡ì‰½Ý¹•Èˆè½Ý¹•È°€‰É½ÕÁ}¥ˆè¥‘ô°ìˆ‘Í•Ðˆèì‰Í¥¹•‘}™¥±”ˆè˜°€‰Í¥¹•‘}Í¡„ÈÔØˆèÍ¡„¡™¥¹…°¥õô¤4(€€€¥˜±•¸¡Í¥¹•¤€ôô±•¸¡É•ÅÌ¤è4(€€€€€€€‘¥°µ½€ôÉ•ÅÍlÁul‰‘½ÍÍ¥•É}¥‰t°É•ÅÍlÁt¹•Ð ‰µ½‘Õ±”ˆ¤½È€‰ÁÉ½ÍÕµ…Ñ½Èˆ4(€€€€€€€¥˜µ½€ôô€‰‘¥Ôˆè4(€€€€€€€€€€€…Ý…¥Ð‘ˆ¹‘¥Ô¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆè‘¥°€‰½Ý¹•Èˆè½Ý¹•Éô°ìˆ‘Í•Ðˆèí˜‰Í¥¹•¹íÉ•ÅÍlÁulÁ½Í}­•äuôˆèì¨©˜°€‰Í¥¹•‘}…ÐˆèÍ¥¹•‘l´Åul‰Í¥¹•‘}…Ð‰uõõô¤4(€€€€€€€•±¥˜µ½€ôô€‰½¹ÑÉ…ÑÌˆè4(€€€€€€€€€€€…Ý…¥Ð‘ˆ¹½¹ÑÉ…ÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆè‘¥°€‰½Ý¹•Èˆè½Ý¹•Éô°ìˆ‘Í•Ðˆèì‰Í¥¹•ˆèì¨©˜°€‰Í¥¹•‘}…ÐˆèÍ¥¹•‘l´Åul‰Í¥¹•‘}…Ð‰uô°€‰ÍÑ…ÑÕÌˆè€‰M•µ¹…Ð‰ô°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆèì‰…Ðˆè¹½Ý}¥Í¼ ¤°€‰‰äˆè€‰Í•µ»ÑÕË•±•ÑÉ½¹¥±¥•¹Ðˆ°€‰•Ù•¹Ðˆè€‰½¹ÑÉ…ÐÍ•µ¹…Ð‘”‰•¹•™¥¥…È‰õõô¤4(€€€€€€€•±Í”è4(€€€€€€€€€€€…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆè‘¥°€‰½Ý¹•Èˆè½Ý¹•Éô°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ìˆ‘Í•Ðˆèí˜‰½Á¥Ì¹íÉ•ÅÍlÁulÁ½Í}­•äuô¹ÕÁ±½…ˆè˜°˜‰½Á¥Ì¹íÉ•ÅÍlÁulÁ½Í}­•äuô¹ÍÑ…ÑÕÌˆè€‰…Ñ‡"e…Ð‰õô¤4(€€€€€€€ÁÉ•Œ€ô…Ý…¥Ð‘‰mµ½‘t¹™¥¹‘}½¹”¡ì‰¥ˆè‘¥°€‰½Ý¹•Èˆè½Ý¹•Éô°ì‰}¥ˆè€Áô¤½Èíô4(€€€€€€€°€ô…Ý…¥Ð•Ñ}±¥•¹Ð¡½Ý¹•È°ÁÉ•Œ¤4(€€€€€€€…Ý…¥Ð‘ˆ¹‘½Õµ•¹ÑÌ¹¥¹Í•ÉÑ}½¹”¡ì‰¥ˆèÍÑÈ¡ÕÕ¥¹ÕÕ¥Ð ¤¤°€‰½Ý¹•Èˆè½Ý¹•È°€‰É•…Ñ•‘}…Ðˆè¹½Ý}¥Í¼ ¤°€‰ÕÁ‘…Ñ•‘}…Ðˆè¹½Ý}¥Í¼ ¤°€‰±¥•¹Ñ}¥ˆè°¹•Ð ‰¥ˆ¤°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰‘½ÍÍ¥•É}¥ˆèÉ•ÅÍlÁul‰‘½ÍÍ¥•É}¥‰t°€‰±¥•¹Ñ}¹…µ”ˆèÉ•ÅÍlÁt¹•Ð ‰±¥•¹Ñ}¹…µ”ˆ¤°€‰­¥¹ˆè€‰M•µ¹…Ð•±•ÑÉ½¹¥Œˆ°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰‘½}ÑåÁ”ˆè˜‰íÉ•ÅÍlÁul‘½}Ñ¥Ñ±”uôƒŠPÍ•µ¹…Ðˆ°€¨©™ô¤4(€€€€€€€¥˜°¹•Ð ‰¥ˆ¤è4(€€€€€€€€€€€…Ý…¥Ð‘ˆ¹±¥•¹ÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆè±l‰¥‰t°€‰½Ý¹•Èˆè½Ý¹•Éô°ìˆ‘ÁÕÍ ˆèì‰‘½Ì¹Í•µ¹…Ñ”ˆèì¨©˜°€‰½É¥¥¹…±}™¥±•¹…µ”ˆè˜‰íÉ•ÅÍlÁul‘½}Ñ¥Ñ±”uôƒŠPÍ•µ¹…Ð¹Á‘˜ˆ°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰Í¥¹•‘}…ÐˆèÍ¥¹•‘l´Åul‰Í¥¹•‘}…Ð‰uõõô¤4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½Í¥¸ˆ¤4)…Íå¹Œ‘•˜ÁÕ‰}Í¥¸¡Ñ½­•¸èÍÑÈ°É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜Í¥¹}ÍÑ…ÑÕÌ¡È¤¹½Ð¥¸M%9}Q%Yè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰1¥¹­Õ°¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€ˆ€ô…Ý…¥ÐÉ•ÅÕ•ÍÐ¹©Í½¸ ¤4(€€€‘•±…É•€ô€¡ˆ¹•Ð ‰‘•±…É•‘}¹…µ”ˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¤4(€€€¥˜¹½Ðˆ¹•Ð ‰¥¹Ñ•¹Ðˆ¤½È¹½Ð‘•±…É•è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰½¹™¥É·¥¹Ñ•»"m¥„‘”Í•µ¹…É”ƒ"e¤ÍÉ¥”¹Õµ•±”½µÁ±•Ðˆ¤4(€€€¥˜¹½ÐÈ¹•Ð ‰½ÑÁ}¡…Í ˆ¤½È€¡È¹•Ð ‰½ÑÁ}•áÀˆ¤½È€ˆˆ¤€ð¹½Ý}¥Í¼ ¤è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰•É”Õ¸½‘”Ù•É¥™¥…É”Á””µµ…¥°ˆ¤4(€€€¥˜È¹•Ð ‰½ÑÁ}…ÑÑ•µÁÑÌˆ°€À¤€øô€Ôè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÈä°‘•Ñ…¥°ô‰AÉ•„µÕ±Ñ”ƒ¹¹•ÉÉ¤¸•É”Õ¸½¹½Ô¸ˆ¤4(€€€¥˜Í¡„¡˜‰íÉl¥uôéíÍÑÈ¡ˆ¹•Ð ½ÑÀœ¤½È€œœ¤¹ÍÑÉ¥À ¥ôˆ¹•¹½‘” ¤¤€„ôÉl‰½ÑÁ}¡…Í ‰tè4(€€€€€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉl‰¥‰uô°ìˆ‘¥¹Œˆèì‰½ÑÁ}…ÑÑ•µÁÑÌˆè€Åô°€ˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰½É—"e¥Ðˆ°±¥•¹Ñ}µ•Ñ„¡É•ÅÕ•ÍÐ¤¥õô¤4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰½¥¹½É•Ðˆ¤4(€€€´€ôÉ”¹µ…Ñ ¡È‰y‘…Ñ„é¥µ…”½Á¹œí‰…Í”ØÐ° ¸¬¤ˆ°ˆ¹•Ð ‰Í¥¹…ÑÕÉ”ˆ¤½È€ˆˆ¤4(€€€¥˜¹½Ð´è4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰•Í•¹•…ëÍ•µ»ÑÕÉ„ˆ¤4(€€€Á¹œ€ô‰…Í”ØÐ¹ˆØÑ‘•½‘”¡´¹É½ÕÀ Ä¤¤4(€€€¥˜±•¸¡Á¹œ¤€ð€àÀÀ½È±•¸¡Á¹œ¤€ø€É|ÀÀÁ|ÀÀÀè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀÀ°‘•Ñ…¥°ô‰M•µ»ÑÕÉ„¹Ô•ÍÑ”Ù…±¥“ˆ¤4(€€€µ•Ñ„°…Ð€ô±¥•¹Ñ}µ•Ñ„¡É•ÅÕ•ÍÐ¤°¹½Ý}¥Í¼ ¤4(€€€±…¥´€ô…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉl‰¥‰t°€‰Ñ½­•¹}¡…Í ˆèÉl‰Ñ½­•¹}¡…Í ‰t°€‰ÍÑ…ÑÕÌˆèìˆ‘¥¸ˆè±¥ÍÐ¡M%9}Q%Y¥ô°€‰½ÑÁ}¡…Í ˆèÉl‰½ÑÁ}¡…Í ‰uô°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ìˆ‘Í•Ðˆèì‰ÍÑ…ÑÕÌˆè€‰M•µ¹…Ðˆ°€‰Í¥¹•‘}…Ðˆè…Ð°€‰½ÑÁ}¡…Í ˆè9½¹•õô¤4(€€€¥˜±…¥´¹µ½‘¥™¥•‘}½Õ¹Ð€ôô€Àè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÀä°‘•Ñ…¥°ô‰½Õµ•¹ÑÕ°„™½ÍÐ‘•©„Í•µ¹…Ðˆ¤4(€€€Ì€ô…Ý…¥Ð‘ˆ¹Í•ÑÑ¥¹Ì¹™¥¹‘}½¹”¡ì‰½Ý¹•ÈˆèÉl‰½Ý¹•È‰uô°ì‰}¥ˆè€À°€‰½µÁ…¹äˆè€Åô¤½Èíô4(€€€•Ø€ô•Ù¥‘•¹•}Á…”¡È°Á¹œ°µ•Ñ„°‘•±…É•°…Ð°Ì¹•Ð ‰½µÁ…¹äˆ¤½È€‰9L!=MQMLMI0ˆ¤4(€€€•ÙÀ€ôÁÕÑ}½‰©•Ð¡˜‰íAA}95ô½Í¥¸½íÉl½Ý¹•Èuô½íÉlÉ½ÕÁ}¥uô½•Ù¥‘•¹•}íÉl¥uô¹Á‘˜ˆ°•Ø°€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ¤4(€€€Í¥À€ôÁÕÑ}½‰©•Ð¡˜‰íAA}95ô½Í¥¸½íÉl½Ý¹•Èuô½íÉlÉ½ÕÁ}¥uô½Í¥¹…ÑÕÉ•}íÉl¥uô¹Á¹œˆ°Á¹œ°€‰¥µ…”½Á¹œˆ¤4(€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉl‰¥‰uô°ìˆ‘Í•Ðˆèì‰‘•±…É•‘}¹…µ”ˆè‘•±…É•°4(€€€€€€€€‰•Ù¥‘•¹•}Á…Ñ ˆè•ÙÁl‰Á…Ñ ‰t°€‰Í¥¹…ÑÕÉ•}Á…Ñ ˆèÍ¥Ál‰Á…Ñ ‰t°€‰Í¥¹}µ•Ñ„ˆèµ•Ñ„°€‰½ÑÁ}¡…Í ˆè9½¹•ô°4(€€€€€€€€ˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰M•µ¹…Ðˆ°µ•Ñ„°˜‰¥‘•¹Ñ¥Ñ…Ñ”‘•±…É…Óèí‘•±…É•‘ôì½”µµ…¥°Ù•É¥™¥…Ðì¥¹Ñ•»"m¥”½¹™¥Éµ…Óˆ¥õô¤4(€€€…Ý…¥ÐÉ•‰Õ¥±‘}É½ÕÀ¡Él‰½Ý¹•È‰t°Él‰É½ÕÁ}¥‰t¤4(€€€É•ÑÕÉ¸ì‰½¬ˆèQÉÕ”°€‰Í¥¹•‘}…Ðˆè…Ñô4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½ÁÕ‰±¥Œ½Í¥¸½íÑ½­•¹ô½É•™ÕÍ”ˆ¤4)…Íå¹Œ‘•˜ÁÕ‰}É•™ÕÍ”¡Ñ½­•¸èÍÑÈ°É•ÅÕ•ÍÐèI•ÅÕ•ÍÐ¤è4(€€€È€ô…Ý…¥ÐÍ¥¹}‰å}Ñ½­•¸¡Ñ½­•¸¤4(€€€¥˜Í¥¹}ÍÑ…ÑÕÌ¡È¤¹½Ð¥¸M%9}Q%Yè4(€€€€€€€É…¥Í”!QQAá•ÁÑ¥½¸¡ÍÑ…ÑÕÍ}½‘”ôÐÄÀ°‘•Ñ…¥°ô‰1¥¹­Õ°¹Ôµ…¤•ÍÑ”…Ñ¥Øˆ¤4(€€€É•…Í½¸€ô€ ¡…Ý…¥ÐÉ•ÅÕ•ÍÐ¹©Í½¸ ¤¤¹•Ð ‰É•…Í½¸ˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¥lèÔÀÁt4(€€€…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèÉl‰¥‰uô°ìˆ‘Í•Ðˆèì‰ÍÑ…ÑÕÌˆè€‰I•™Õé…Ðˆ°€‰É•™ÕÍ•‘}É•…Í½¸ˆèÉ•…Í½¹ô°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ˆ‘ÁÕÍ ˆèì‰¡¥ÍÑ½Éäˆè¡¥ÍÐ ‰I•™Õé…Ðˆ°±¥•¹Ñ}µ•Ñ„¡É•ÅÕ•ÍÐ¤°É•…Í½¸¥õô¤4(€€€É•ÑÕÉ¸ì‰½¬ˆèQÉÕ•ô4(4(Œ€´´´´´´´´´´´´´´´´½Í…È‘”Ñ•ÍÐ€´´´´´´´´´´´´´´´´4)¥µÁ½ÉÐÑ•ÍÑ}‘…Ñ„…ÌQ4(4)…Á¥}É½ÕÑ•È¹Á½ÍÐ ˆ½Ñ•ÍÐµ‘½ÍÍ¥•Èˆ¤4)…Íå¹Œ‘•˜Ñ•ÍÑ}‘½ÍÍ¥•É}É•…Ñ”¡ÕÍ•Èè‘¥Ð€ô•Á•¹‘Ì¡•Ñ}ÕÉÉ•¹Ñ}ÕÍ•È¤¤è4(€€€É•ÅÕ¥É”¡ÕÍ•È°€‰…‘µ¥¸ˆ¤4(€€€•á¥ÍÑ¥¹œ€ô…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹‘}½¹” 4(€€€€€€€ì‰½Ý¹•ÈˆèÕÍ•Él‰¥‰t°€‰¥Í}Ñ•ÍÐˆèQÉÕ•ô°4(€€€€€€€ì‰}¥ˆè€À°€‰¥ˆè€Ä°€‰¹Õµ‰•Èˆè€Ä°€‰±¥•¹Ñ}¹…µ”ˆè€Åô°4(€€€€¤4(€€€¥˜•á¥ÍÑ¥¹œè4(€€€€€€€É•ÑÕÉ¸ì4(€€€€€€€€€€€€‰ÁÉ½ÍÕµ…Ñ½É}¥ˆè•á¥ÍÑ¥¹l‰¥‰t°4(€€€€€€€€€€€€‰¹Õµ‰•Èˆè•á¥ÍÑ¥¹œ¹•Ð ‰¹Õµ‰•Èˆ¤°4(€€€€€€€€€€€€‰±¥•¹Ðˆè•á¥ÍÑ¥¹œ¹•Ð ‰±¥•¹Ñ}¹…µ”ˆ¤°4(€€€€€€€€€€€€‰…±É•…‘å}•á¥ÍÑÌˆèQÉÕ”°4(€€€€€€€ô4(€€€ÍÐ€ô…Ý…¥Ð‘ˆ¹Í•ÑÑ¥¹Ì¹™¥¹‘}½¹”¡ì‰½Ý¹•ÈˆèÕÍ•Él‰¥‰uô°ì‰}¥ˆè€À°€‰Ñ•ÍÑ}•µ…¥°ˆè€Åô¤½Èíô4(€€€ÍÑ…µÀ€ô‘…Ñ•Ñ¥µ”¹¹½Ü¡Ñ¥µ•é½¹”¹ÕÑŒ¤¹ÍÑÉ™Ñ¥µ” ˆ•´•• •4•Lˆ¤4(€€€™¥±•Ì€ôíô4(€€€™½È¬°Ñ¥Ñ±”¥¸l ‰…ÕÑ ˆ°€‰ÕÑ½É¥é‡"m¥”Á•ÉÍ½¹…°€¡QMP¤ˆ¤°€ ‰•ÉÐˆ°€‰•ÉÑ¥™¥…Ð•Ñ…±½¹…É”…Á…É…Ð€¡QMP¤ˆ¤°€ ‰‘…Ñ…Í¡••Ðˆ°€‰§"gÑ•¡¹¥•¡¥Á…µ•¹Ð€¡QMP¤ˆ¤°4(€€€€€€€€€€€€€€€€€€€€€ ‰½¹™½Éµ¥Ñäˆ°€‰•±…É‡"m¥”‘”½¹™½Éµ¥Ñ…Ñ”•¡¥Á…µ•¹Ð€¡QMP¤ˆ¤°€ ‰±¥•¹Ñ‘½Œˆ°€‰½Õµ•¹Ð±¥•¹Ð€¡QMP¤ˆ¥tè4(€€€€€€€‘…Ñ„€ôQ¹Á±…•¡½±‘•É}Á‘˜¡Ñ¥Ñ±”¤4(€€€€€€€ÍÑ½É•€ôÁÕÑ}½‰©•Ð¡˜‰íAA}95ô½ÕÁ±½…‘Ì½íÕÍ•Él¥uô½Ñ•ÍÑ}íÍÑ…µÁõ}í­ô¹Á‘˜ˆ°‘…Ñ„°€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ¤4(€€€€€€€™¥±•Ím­t€ôì‰ÍÑ½É…•}Á…Ñ ˆèÍÑ½É•‘l‰Á…Ñ ‰t°€‰½É¥¥¹…±}™¥±•¹…µ”ˆè˜‰QMQ}í­ô¹Á‘˜ˆ°€‰½¹Ñ•¹Ñ}ÑåÁ”ˆè€‰…ÁÁ±¥…Ñ¥½¸½Á‘˜ˆ°€‰Í¥é”ˆè±•¸¡‘…Ñ„¥ô4(€€€€ôQ¹‰Õ¥±¡ÍÑ…µÀ°€¡ÍÐ¹•Ð ‰Ñ•ÍÑ}•µ…¥°ˆ¤½È€ˆˆ¤¹ÍÑÉ¥À ¤½È9½¹”°™¥±•Ì¤4(€€€µ¬€ô±…µ‰‘„è}¹•Ü¡ÕÍ•È°ì¨©°€‰¥Í}Ñ•ÍÐˆèQÉÕ•ô¤4(€€€ÍÑ…™˜€ôíô4(€€€™½ÈÀ¥¸l‰ÍÑ…™˜‰tè4(€€€€€€€‘½Œ€ôµ¬¡í¬èØ™½È¬°Ø¥¸À¹¥Ñ•µÌ ¤¥˜¬€„ô€‰­•ä‰ô¤ì…Ý…¥Ð‘ˆ¹ÍÑ…™˜¹¥¹Í•ÉÑ}½¹”¡‘¥Ð¡‘½Œ¤¤ìÍÑ…™™mÁl‰­•ä‰ut€ô‘½l‰¥‰t4(€€€¥¹ÍÐ€ôµ¬¡l‰¥¹ÍÑÉÕµ•¹Ð‰t¤ì…Ý…¥Ð‘ˆ¹¥¹ÍÑÉÕµ•¹ÑÌ¹¥¹Í•ÉÑ}½¹”¡‘¥Ð¡¥¹ÍÐ¤¤4(€€€…Ð€ôíô4(€€€™½ÈŒ¥¸l‰…Ñ…±½œ‰tè4(€€€€€€€‘½Œ€ôµ¬¡Œ¤ì…Ý…¥Ð‘ˆ¹…Ñ…±½œ¹¥¹Í•ÉÑ}½¹”¡‘¥Ð¡‘½Œ¤¤ì…Ñml‰…Ñ•½Éä‰ut€ô‘½l‰¥‰t4(€€€±¥•¹Ñ}‘½Œ€ôµ¬¡l‰±¥•¹Ð‰t¤ì…Ý…¥Ð‘ˆ¹±¥•¹ÑÌ¹¥¹Í•ÉÑ}½¹”¡‘¥Ð¡±¥•¹Ñ}‘½Œ¤¤4(€€€ÁÉ½Ì€ôl‰ÁÉ½ÍÕµ…Ñ½È‰t4(€€€¥¹Ø€ôÁÉ½Íl‰•˜‰ul‰¥¹Ù•ÉÑ•ÉÌ‰ulÁt4(€€€¥¹Ùl‰…Ñ…±½}¥‰t°¥¹Ùl‰Á…¹•±}…Ñ…±½}¥‰t€ô…Ñl‰%¹Ù•ÉÑ½È‰t°…Ñl‰A…¹½Ô‰t4(€€€¥¹Ùl‰‰…ÑÑ•Éä‰ul‰…Ñ…±½}¥‰t€ô…Ñl‰	…Ñ•É¥”‰t4(€€€ÁÉ½Íl‰•˜‰ul‰É¥‰ul‰µ•Ñ•É}…Ñ…±½}¥‰t€ô…Ñl‰Mµ…ÉÐµ•Ñ•È‰t4(€€€ÁÉ½Ì¹ÕÁ‘…Ñ”¡ì‰±¥•¹Ñ}¥ˆè±¥•¹Ñ}‘½l‰¥‰t°€‰¥¹ÍÑÉÕµ•¹Ñ}¥ˆè¥¹ÍÑl‰¥‰t°€‰Í¥¹•ÉÌˆèì‰‘•Í¥¹•ÈˆèÍÑ…™™l‰‘•Í¥¹•È‰t°€‰Ù•É¥™¥•ÈˆèÍÑ…™™l‰Ù•É¥™¥•È‰uõô¤4(€€€ÁÉ½Ì€ô‘•É¥Ù•}•˜¡ÁÉ½Ì¤4(€€€Á‘½Œ€ôµ¬¡ÁÉ½Ì¤ì…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹¥¹Í•ÉÑ}½¹”¡‘¥Ð¡Á‘½Œ¤¤4(€€€‘¥Ô€ôµ¬¡l‰‘¥Ô‰t¤ì…Ý…¥Ð‘ˆ¹‘¥Ô¹¥¹Í•ÉÑ}½¹”¡‘¥Ð¡‘¥Ô¤¤4(€€€…Ý…¥Ð‘ˆ¹ÁÉ…´¹¥¹Í•ÉÑ}½¹”¡‘¥Ð¡µ¬¡ì¨©l‰ÁÉ…´‰t°€‰‘¥Õ}É•˜ˆè‘¥Õl‰¹Õµ‰•È‰uô¤¤¤4(€€€…Ý…¥Ð…Õ‘¥Ð¡ÕÍ•È°€‰É•…É”‘½Í…È‘”Ñ•ÍÐˆ°€‰ÁÉ½ÍÕµ…Ñ½Èˆ°Á‘½l‰¥‰t°mt¤4(€€€É•ÑÕÉ¸ì‰ÁÉ½ÍÕµ…Ñ½É}¥ˆèÁ‘½l‰¥‰t°€‰¹Õµ‰•ÈˆèÁ‘½l‰¹Õµ‰•È‰t°€‰±¥•¹Ðˆè±¥•¹Ñ}‘½l‰¹…µ”‰t°€‰Ñ•ÍÑ}•µ…¥°ˆèÍÐ¹•Ð ‰Ñ•ÍÑ}•µ…¥°ˆ¤½È9½¹•ô4(4)…Á¥}É½ÕÑ•È¹‘•±•Ñ” ˆ½Ñ•ÍÐµ‘½ÍÍ¥•Èˆ¤4)…Íå¹Œ‘•˜Ñ•ÍÑ}‘½ÍÍ¥•É}‘•±•Ñ”¡ÕÍ•Èè‘¥Ð€ô•Á•¹‘Ì¡•Ñ}ÕÉÉ•¹Ñ}ÕÍ•È¤¤è4(€€€É•ÅÕ¥É”¡ÕÍ•È°€‰…‘µ¥¸ˆ¤4(€€€Ä€ôì‰½Ý¹•ÈˆèÕÍ•Él‰¥‰t°€‰¥Í}Ñ•ÍÐˆèQÉÕ•ô4(€€€¥‘Ì€ômál‰¥‰t™½Èà¥¸…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹™¥¹¡Ä°ì‰¥ˆè€Åô¤¹Ñ½}±¥ÍÐ ÄÀÀÀ¥t4(€€€¸€ô€¡…Ý…¥Ð‘ˆ¹Í¥¹}É•ÅÕ•ÍÑÌ¹‘•±•Ñ•}µ…¹ä¡ì‰½Ý¹•ÈˆèÕÍ•Él‰¥‰t°€ˆ‘½Èˆèmì‰¥Í}Ñ•ÍÐˆèQÉÕ•ô°ì‰‘½ÍÍ¥•É}¥ˆèìˆ‘¥¸ˆè¥‘Íõõuô¤¤¹‘•±•Ñ•‘}½Õ¹Ð4(€€€™½ÈŒ¥¸Q¹QMQ}=11Q%=9Lè4(€€€€€€€¸€¬ô€¡…Ý…¥Ð‘‰mt¹‘•±•Ñ•}µ…¹ä¡Ä¤¤¹‘•±•Ñ•‘}½Õ¹Ð4(€€€¸€¬ô€¡…Ý…¥Ð‘ˆ¹‘½Õµ•¹ÑÌ¹‘•±•Ñ•}µ…¹ä¡ì‰½Ý¹•ÈˆèÕÍ•Él‰¥‰t°€‰±¥•¹Ñ}¹…µ”ˆèìˆ‘É••àˆè€‰yQMPƒŠP€‰õô¤¤¹‘•±•Ñ•‘}½Õ¹Ð4(€€€…Ý…¥Ð…Õ‘¥Ð¡ÕÍ•È°€‹"eÑ•É•É”‘…Ñ”‘”Ñ•ÍÐˆ°€‰ÁÉ½ÍÕµ…Ñ½Èˆ°€ˆˆ°mÍÑÈ¡¸¥t¤4(€€€É•ÑÕÉ¸ì‰‘•±•Ñ•ˆè¹ô4(4(Œ€´´´´´´´´´´´´´´´´MÑ…ÉÑÕÀ€´´´´´´´´´´´´´´´´4)…ÁÀ¹½¹}•Ù•¹Ð ‰ÍÑ…ÉÑÕÀˆ¤4)…Íå¹Œ‘•˜ÍÑ…ÉÑÕÀ ¤è4(€€€…Ý…¥Ð‘ˆ¹ÕÍ•ÉÌ¹É•…Ñ•}¥¹‘•à ‰•µ…¥°ˆ°Õ¹¥ÅÕ”õQÉÕ”¤4(€€€€Œ…¥±•µ±½¥¸É•½É‘Ì…É”ÅÕ•É¥•…¹ÕÁÍ•ÉÑ•½¸•Ù•Éä…ÕÑ¡•¹Ñ¥…Ñ¥½¸…ÑÑ•µÁÐ¸4(€€€€ŒU¹¥ÅÕ•¹•ÍÌ…Ù½¥‘Ì‘ÕÁ±¥…Ñ”É½ÝÌ‘ÕÉ¥¹œ½¹ÕÉÉ•¹Ð™…¥±ÕÉ•ÌìQQ0‰½Õ¹‘ÌÍÑ½É…”¸4(€€€…Ý…¥Ð‘ˆ¹±½¥¹}…ÑÑ•µÁÑÌ¹É•…Ñ•}¥¹‘•à ‰¥‘•¹Ñ¥™¥•Èˆ°Õ¹¥ÅÕ”õQÉÕ”°¹…µ”ô‰±½¥¹}…ÑÑ•µÁÑ}¥‘•¹Ñ¥™¥•É}Õ¹¥ÅÕ”ˆ¤4(€€€…Ý…¥Ð‘ˆ¹±½¥¹}…ÑÑ•µÁÑÌ¹É•…Ñ•}¥¹‘•à ‰•áÁ¥É•Í}…Ðˆ°•áÁ¥É•™Ñ•ÉM•½¹‘ÌôÀ°¹…µ”ô‰±½¥¹}…ÑÑ•µÁÑ}•áÁ¥É•Í}…Ñ}ÑÑ°ˆ¤4(€€€…Ý…¥Ð‘ˆ¹Á…ÍÍÝ½É‘}É•Í•ÑÌ¹É•…Ñ•}¥¹‘•à ‰±½½­ÕÁ}¡…Í ˆ°Õ¹¥ÅÕ”õQÉÕ”°¹…µ”ô‰Á…ÍÍÝ½É‘}É•Í•Ñ}±½½­ÕÁ}Õ¹¥ÅÕ”ˆ¤4(€€€…Ý…¥Ð‘ˆ¹Á…ÍÍÝ½É‘}É•Í•ÑÌ¹É•…Ñ•}¥¹‘•à ‰•áÁ¥É•Í}ÑÌˆ°•áÁ¥É•™Ñ•ÉM•½¹‘ÌôÀ°¹…µ”ô‰Á…ÍÍÝ½É‘}É•Í•Ñ}•áÁ¥Éå}ÑÑ°ˆ¤4(€€€…Ý…¥Ð‘ˆ¹Á…ÍÍÝ½É‘}É•Í•Ñ}±¥µ¥ÑÌ¹É•…Ñ•}¥¹‘•à¡l ‰­•äˆ°€Ä¤°€ ‰‰Õ­•Ðˆ°€Ä¥t°Õ¹¥ÅÕ”õQÉÕ”°¹…µ”ô‰Á…ÍÍÝ½É‘}É•Í•Ñ}±¥µ¥Ñ}‰Õ­•Ñ}Õ¹¥ÅÕ”ˆ¤4(€€€…Ý…¥Ð‘ˆ¹Á…ÍÍÝ½É‘}É•Í•Ñ}±¥µ¥ÑÌ¹É•…Ñ•}¥¹‘•à ‰•áÁ¥É•Í}…Ðˆ°•áÁ¥É•™Ñ•ÉM•½¹‘ÌôÀ°¹…µ”ô‰Á…ÍÍÝ½É‘}É•Í•Ñ}±¥µ¥Ñ}•áÁ¥Éå}ÑÑ°ˆ¤4(€€€™½È´¥¸5=U1Lè4(€€€€€€€…Ý…¥Ð‘‰mµt¹É•…Ñ•}¥¹‘•à ‰½Ý¹•Èˆ¤4(€€€€€€€€Œ-••ÀÑ•¹…¹ÐµÍ½Á•±¥ÍÐ…¹ÅÕ¥¬µÍ•…É Í½ÉÑÌ•™™¥¥•¹Ð…Ì½±±•Ñ¥½¹ÌÉ½Ü¸4(€€€€€€€…Ý…¥Ð‘‰mµt¹É•…Ñ•}¥¹‘•à¡l ‰½Ý¹•Èˆ°€Ä¤°€ ‰É•…Ñ•‘}…Ðˆ°€´Ä¥t°¹…µ”ô‰½Ý¹•É}É•…Ñ•‘}…Ðˆ¤4(€€€€€€€…Ý…¥Ð‘‰mµt¹É•…Ñ•}¥¹‘•à¡l ‰½Ý¹•Èˆ°€Ä¤°€ ‰ÕÁ‘…Ñ•‘}…Ðˆ°€´Ä¥t°¹…µ”ô‰½Ý¹•É}ÕÁ‘…Ñ•‘}…Ðˆ¤4(€€€™½È™¥•±¥¸9U5I%}1%9Q}MI!}%1Lè4(€€€€€€€…Ý…¥Ð‘ˆ¹±¥•¹ÑÌ¹É•…Ñ•}¥¹‘•à¡l ‰½Ý¹•Èˆ°€Ä¤°€¡™¥•±°€Ä¥t°¹…µ”õ˜‰½Ý¹•É}í™¥•±‘ôˆ¤4(€€€…Ý…¥Ð‘ˆ¹ÁÉ½ÍÕµ…Ñ½È¹É•…Ñ•}¥¹‘•à¡l ‰½Ý¹•Èˆ°€Ä¤°€ ‰±¥•¹Ñ}¥ˆ°€Ä¤°€ ‰ÕÁ‘…Ñ•‘}…Ðˆ°€´Ä¥t°¹…µ”ô‰½Ý¹•É}±¥•¹Ñ}¥‘}ÕÁ‘…Ñ•‘}…Ðˆ¤4(€€€…‘µ¥¹}•µ…¥°€ô½Ì¹•¹Ù¥É½¸¹•Ð ‰5%9}5%0ˆ°€ˆˆ¤¹ÍÑÉ¥À ¤¹±½Ý•È ¤4(€€€…‘µ¥¹}Á…ÍÍÝ½É€ô½Ì¹•¹Ù¥É½¸¹•Ð ‰5%9}AMM]=Iˆ°€ˆˆ¤4(€€€©ÝÑ}Í•É•Ð€ô½Ì¹•¹Ù¥É½¸¹•Ð ‰)]Q}MIPˆ°€ˆˆ¤4(€€€¥˜AI%YQ}5=è4(€€€€€€€€Œ9•Ù•È‰½½Ð„ÁÉ¥Ù…Ñ”ÍÑ…¥¹œÍ•ÉÙ¥”Ý¥Ñ ™…±±‰…¬½‘•™…Õ±ÐÉ•‘•¹Ñ¥…±Ì¸4(€€€€€€€¥˜¹½Ð…‘µ¥¹}•µ…¥°½È¹½Ð…‘µ¥¹}Á…ÍÍÝ½Éè4(€€€€€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰AÉ¥Ù…Ñ”µ½‘”É•ÅÕ¥É•Ì5%9}5%0…¹5%9}AMM]=I•¹Ù¥É½¹µ•¹ÐÍ•É•ÑÌˆ¤4(€€€€€€€¥˜±•¸¡…‘µ¥¹}Á…ÍÍÝ½É¤€ð€ÄØè4(€€€€€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰AÉ¥Ù…Ñ”µ½‘”É•ÅÕ¥É•Ì5%9}AMM]=IÝ¥Ñ …Ð±•…ÍÐ€ÄØ¡…É…Ñ•ÉÌˆ¤4(€€€€€€€¥˜±•¸¡©ÝÑ}Í•É•Ð¤€ð€ÌÈè4(€€€€€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰AÉ¥Ù…Ñ”µ½‘”É•ÅÕ¥É•Ì)]Q}MIPÝ¥Ñ …Ð±•…ÍÐ€ÌÈ¡…É…Ñ•ÉÌˆ¤4(€€€•±Í”è4(€€€€€€€€Œ1½…°‘•Ù•±½Áµ•¹ÐÍÑ¥±°¹••‘Ì•áÁ±¥¥ÐÉ•‘•¹Ñ¥…±Ìì‘¼¹½ÐÍ¥±•¹Ñ±äÉ•…Ñ”…‘µ¥¸ÄÈÌ¸4(€€€€€€€¥˜¹½Ð…‘µ¥¹}•µ…¥°½È¹½Ð…‘µ¥¹}Á…ÍÍÝ½É½È¹½Ð©ÝÑ}Í•É•Ðè4(€€€€€€€€€€€É…¥Í”IÕ¹Ñ¥µ•ÉÉ½È ‰M•Ð5%9}5%0°5%9}AMM]=I…¹)]Q}MIP¥¸‰…­•¹¼¹•¹Ø‰•™½É”ÍÑ…ÉÑÕÀˆ¤4(€€€•á¥ÍÑ¥¹œ€ô…Ý…¥Ð‘ˆ¹ÕÍ•ÉÌ¹™¥¹‘}½¹”¡ì‰•µ…¥°ˆè…‘µ¥¹}•µ…¥±ô¤4(€€€¥˜¹½Ð•á¥ÍÑ¥¹œè4(€€€€€€€…Ý…¥Ð‘ˆ¹ÕÍ•ÉÌ¹¥¹Í•ÉÑ}½¹”¡ì‰¥ˆèÍÑÈ¡ÕÕ¥¹ÕÕ¥Ð ¤¤°€‰•µ…¥°ˆè…‘µ¥¹}•µ…¥°°4(€€€€€€€€€€€€‰Á…ÍÍÝ½É‘}¡…Í ˆè¡…Í¡}Á…ÍÍÝ½É¡…‘µ¥¹}Á…ÍÍÝ½É¤°€‰¹…µ”ˆè€‰‘µ¥¹¥ÍÑÉ…Ñ½Èˆ°4(€€€€€€€€€€€€‰É½±”ˆè€‰…‘µ¥¸ˆ°€‰É•…Ñ•‘}…Ðˆè‘…Ñ•Ñ¥µ”¹¹½Ü¡Ñ¥µ•é½¹”¹ÕÑŒ¤¹¥Í½™½Éµ…Ð ¥ô¤4(€€€€€€€±½•È¹¥¹™¼ ‰‘µ¥¸Í••‘•ˆ¤4(€€€€€€€•á¥ÍÑ¥¹œ€ô…Ý…¥Ð‘ˆ¹ÕÍ•ÉÌ¹™¥¹‘}½¹”¡ì‰•µ…¥°ˆè…‘µ¥¹}•µ…¥±ô¤4(€€€É•½Ù•Éå}¹½¹”€ô½Ì¹•¹Ù¥É½¸¹•Ð ‰5%9}AMM]=I}IMQ}9=9ˆ°€ˆˆ¤¹ÍÑÉ¥À ¤4(€€€¥˜•á¥ÍÑ¥¹œ…¹É•½Ù•Éå}¹½¹”è4(€€€€€€€¹½¹•}¡…Í €ô…‘µ¥¹}É•Í•Ñ}¹½¹•}¡…Í ¡É•½Ù•Éå}¹½¹”¤4(€€€€€€€É•½Ù•Éä€ô…Ý…¥Ð‘ˆ¹…‘µ¥¹}Á…ÍÍÝ½É‘}É•½Ù•Éä¹™¥¹‘}½¹”¡ì‰}¥ˆè€‰ÁÉ¥µ…Éäµ…‘µ¥¸‰ô°ì‰}¥ˆè€À°€‰¹½¹•}¡…Í ˆè€Åô¤4(€€€€€€€¥˜¹½ÐÉ•½Ù•Éä½ÈÉ•½Ù•Éä¹•Ð ‰¹½¹•}¡…Í ˆ¤€„ô¹½¹•}¡…Í è4(€€€€€€€€€€€É•Í•Ñ}…Ð€ô‘…Ñ•Ñ¥µ”¹¹½Ü¡Ñ¥µ•é½¹”¹ÕÑŒ¤¹¥Í½™½Éµ…Ð ¤4(€€€€€€€€€€€…Ý…¥Ð‘ˆ¹ÕÍ•ÉÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆè•á¥ÍÑ¥¹l‰¥‰t°€‰•µ…¥°ˆè…‘µ¥¹}•µ…¥±ô°ìˆ‘Í•Ðˆèì4(€€€€€€€€€€€€€€€€‰Á…ÍÍÝ½É‘}¡…Í ˆè¡…Í¡}Á…ÍÍÝ½É¡…‘µ¥¹}Á…ÍÍÝ½É¤°€‰Á…ÍÍÝ½É‘}¡…¹•‘}…ÐˆèÉ•Í•Ñ}…Ð°4(€€€€€€€€€€€ô°€ˆ‘¥¹Œˆèì‰Ñ½­•¹}Ù•ÉÍ¥½¸ˆè€Åõô¤4(€€€€€€€€€€€…Ý…¥Ð‘ˆ¹±½¥¹}…ÑÑ•µÁÑÌ¹‘•±•Ñ•}µ…¹ä¡ì‰¥‘•¹Ñ¥™¥•Èˆè˜‰±½¥¸éí…‘µ¥¹}•µ…¥±ô‰ô¤4(€€€€€€€€€€€…Ý…¥Ð‘ˆ¹…‘µ¥¹}Á…ÍÍÝ½É‘}É•½Ù•Éä¹ÕÁ‘…Ñ•}½¹”¡ì‰}¥ˆè€‰ÁÉ¥µ…Éäµ…‘µ¥¸‰ô°ìˆ‘Í•Ðˆèì4(€€€€€€€€€€€€€€€€‰¹½¹•}¡…Í ˆè¹½¹•}¡…Í °€‰…ÁÁ±¥•‘}…ÐˆèÉ•Í•Ñ}…Ð°4(€€€€€€€€€€€õô°ÕÁÍ•ÉÐõQÉÕ”¤4(€€€€€€€€€€€•á¥ÍÑ¥¹œ€ô…Ý…¥Ð‘ˆ¹ÕÍ•ÉÌ¹™¥¹‘}½¹”¡ì‰•µ…¥°ˆè…‘µ¥¹}•µ…¥±ô¤4(€€€€€€€€€€€±½•È¹Ý…É¹¥¹œ ‰AÉ¥µ…Éä…‘µ¥¸Á…ÍÍÝ½ÉÉ•Í•ÐÕÍ¥¹œ½¹”µÑ¥µ”•¹Ù¥É½¹µ•¹ÐÉ•½Ù•Éäˆ¤4(€€€¥˜•á¥ÍÑ¥¹œ…¹¹½Ð•á¥ÍÑ¥¹œ¹•Ð ‰Á…ÍÍÝ½É‘}¡…Í ˆ¤è4(€€€€€€€€ŒM••„µ¥ÍÍ¥¹œÉ•‘•¹Ñ¥…°½¹”ì‘¼¹½Ð½Ù•ÉÝÉ¥Ñ”…¸•á¥ÍÑ¥¹œÁ…ÍÍÝ½É½¸•Ù•Éä‘•Á±½ä¸4(€€€€€€€…Ý…¥Ð‘ˆ¹ÕÍ•ÉÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰•µ…¥°ˆè…‘µ¥¹}•µ…¥±ô°ìˆ‘Í•Ðˆèì‰Á…ÍÍÝ½É‘}¡…Í ˆè¡…Í¡}Á…ÍÍÝ½É¡…‘µ¥¹}Á…ÍÍÝ½É¥õô¤4(€€€A1Q=I5l‰¥‰t€ô€¡…Ý…¥Ð‘ˆ¹ÕÍ•ÉÌ¹™¥¹‘}½¹”¡ì‰•µ…¥°ˆè…‘µ¥¹}•µ…¥±ô¤¥l‰¥‰t4(€€€…Ý…¥Ð‘ˆ¹ÕÍ•ÉÌ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆèA1Q=I5l‰¥‰uô°ìˆ‘Í•Ðˆèì‰É½±”ˆè€‰…‘µ¥¸ˆ°€‰ÍÑ…ÑÕÌˆè€‰…Ñ¥Ù”ˆ°€‰Ñ•¹…¹Ðˆè9½¹•õô¤4(€€€™½ÈÁ°¥¸U1Q}A19Lè4(€€€€€€€…Ý…¥Ð‘ˆ¹Á±…¹Ì¹ÕÁ‘…Ñ•}½¹”¡ì‰½‘”ˆèÁ±l‰½‘”‰uô°ìˆ‘Í•Ñ=¹%¹Í•ÉÐˆèÁ±ô°ÕÁÍ•ÉÐõQÉÕ”¤4(€€€…Ý…¥Ð‘ˆ¹‰¥±±¥¹}½¹™¥œ¹ÕÁ‘…Ñ•}½¹”¡ì‰¥ˆè€‰µ…¥¸‰ô°ìˆ‘Í•Ñ=¹%¹Í•ÉÐˆèì‰¥ˆè€‰µ…¥¸ˆ°€‰Ù…Ñ}É…Ñ”ˆè€ÈÄ¸À°€‰•áÁ¥É•‘}Á½±¥äˆè€‰É•…‘}½¹±äˆ°€‰ÕÉÉ•¹äˆè€‰I=8‰õô°ÕÁÍ•ÉÐõQÉÕ”¤4(€€€‘½•¸¹%5}1=H€ô±…µ‰‘„Àè•Ñ}½‰©•Ð¡À¥lÁt4(€€€…Ý…¥Ð™½ÉµÍ}É½ÕÑ•Ì¹Í•• ¤4(€€€€Œ…¥°™…ÍÐè‘¼¹½ÐÉ•Á½ÉÐ„¡•…±Ñ¡äA$Ý¡•¸ÁÉ¥Ù…Ñ”™¥±”ÍÑ½É…”¥ÌÕ¹…Ù…¥±…‰±”¸4(€€€¥¹¥Ñ}ÍÑ½É…” ¤4(€€€±½•È¹¥¹™¼ ‰5½¹½É¥‘L½‰©•ÐÍÑ½É…”¥¹¥Ñ¥…±¥é•ˆ¤4(4)…ÁÀ¹½¹}•Ù•¹Ð ‰Í¡ÕÑ‘½Ý¸ˆ¤4)…Íå¹Œ‘•˜Í¡ÕÑ‘½Ý¸ ¤è4(€€€±¥•¹Ð¹±½Í” ¤4(4)¥µÁ½ÉÐ‰¥±±¥¹}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐ™½ÉµÍ}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐ…ÑÉ}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐÍ±‘}•‘¥Ñ}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐµ½‘Õ±•Í}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐ…¥}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐ‘¥Õ}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐ½™™•ÉÍ}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐ½Á•É…Ñ½É}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐ…¹É•}É½ÕÑ•Ì€€Œ¹½Å„èÐÀÈ4)¥µÁ½ÉÐ…¹É•}Ñ•µÁ±…Ñ•Ì€€Œ¹½Å„èÐÀÈ4)…ÁÀ¹¥¹±Õ‘•}É½ÕÑ•È¡…Á¥}É½ÕÑ•È¤4(ŒI•ÍÑÉ¥Ð‰É½ÝÍ•È…•ÍÌÑ¼•áÁ±¥¥Ñ±ä½¹™¥ÕÉ•™É½¹Ñ•¹½É¥¥¹Ì¸4(ŒAÉ•Í•ÉÙ”‘•Á±½åµ•¹ÐµÍÁ•¥™¥Œ½É¥¥¹Ì…¹…±Ý…åÌ…±±½ÜÑ¡”½¹™¥ÕÉ•ÍÑ…¥¹œ…¹9L¹•ÉäÝ•ˆ½É¥¥¹Ì¸4)}½ÉÍ}É…Ü€ô½Ì¹•¹Ù¥É½¸¹•Ð ‰=IM}=I%%9Lˆ°€‰¡ÑÑÀè¼½±½…±¡½ÍÐèÌÀÀÀ±¡ÑÑÀè¼½±½…±¡½ÍÐèÔÄÜÌˆ¤4)}½ÉÍ}½É¥¥¹Ì€ôm½É¥¥¸¹ÍÑÉ¥À ¤¹ÉÍÑÉ¥À ˆ¼ˆ¤™½È½É¥¥¸¥¸}½ÉÍ}É…Ü¹ÍÁ±¥Ð ˆ°ˆ¤¥˜½É¥¥¸¹ÍÑÉ¥À ¥t4)™½È}É•ÅÕ¥É•‘}½É¥¥¸¥¸€ 4(€€€€‰¡ÑÑÁÌè¼½‘¹Ìµ•¹•ÉäµÝ•ˆ¹½¹É•¹‘•È¹½´ˆ°4(€€€€‰¡ÑÑÁÌè¼½‘¹Ìµ•¹•Éä¹É¼ˆ°4(€€€€‰¡ÑÑÁÌè¼½ÝÝÜ¹‘¹Ìµ•¹•Éä¹É¼ˆ°4(¤è4(€€€¥˜}É•ÅÕ¥É•‘}½É¥¥¸¹½Ð¥¸}½ÉÍ}½É¥¥¹Ìè4(€€€€€€€}½ÉÍ}½É¥¥¹Ì¹…ÁÁ•¹¡}É•ÅÕ¥É•‘}½É¥¥¸¤4)…ÁÀ¹…‘‘}µ¥‘‘±•Ý…É” 4(€€€=IM5¥‘‘±•Ý…É”°4(€€€…±±½Ý}É•‘•¹Ñ¥…±Ìõ…±Í”°4(€€€…±±½Ý}½É¥¥¹Ìõ}½ÉÍ}½É¥¥¹Ì°4(€€€…±±½Ý}µ•Ñ¡½‘Ìõl‰Pˆ°€‰A=MPˆ°€‰AUPˆ°€‰AQ ˆ°€‰1Qˆ°€‰=AQ%=9L‰t°4(€€€…±±½Ý}¡•…‘•ÉÌõl‰ÕÑ¡½É¥é…Ñ¥½¸ˆ°€‰½¹Ñ•¹ÐµQåÁ”ˆ°€‰•ÁÐˆ°€‰`µI•ÅÕ•ÍÑ•µ]¥Ñ ‰t°4(¤4(4(4(4(4
