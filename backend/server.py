@@ -3477,6 +3477,8 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
     rec, client, settings, info = await dossier_ctx(user, item_id)
     p = next((x for x in info["positions"] if x["key"] == key), None)
     if key == "opis":
+        if not info.get("complete"):
+            raise HTTPException(status_code=409, detail=f"Dosarul are {info.get('missing_total', 0)} elemente de completat sau verificat înainte de descărcarea OPIS-ului final.")
         p = {"source": "generat", "docs": ["declaratie_autenticitate"], "key": "opis"}
     if not p:
         raise HTTPException(status_code=404, detail="Poziție inexistentă")
@@ -3515,8 +3517,11 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
 async def dossier_export(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
     rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
-    pdf = await OPIS.export_bundle(info, rec, client, settings, get_object, logger)
-    name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
+    try:
+        pdf = await OPIS.export_bundle(info, rec, client, settings, get_object, logger, require_complete=True)
+    except OPIS.SubmissionPackageIncomplete as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
 
 SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "pif_pv", "schema", "fisa_tehnica")
@@ -3532,11 +3537,13 @@ async def dossier_package(item_id: str, authorization: str = Header(None), auth:
         file_count = max(1, min(4, int(selected_parts or settings.get("dossier_package_parts", 4))))
     except (TypeError, ValueError):
         file_count = 4
-    package = await OPIS.export_package_zip(info, rec, client, settings, get_object, logger, file_count)
+    try:
+        package = await OPIS.export_package_zip(info, rec, client, settings, get_object, logger, file_count, require_complete=True)
+    except OPIS.SubmissionPackageIncomplete as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     label = (client.get("name") or rec.get("client_name") or "prosumator").replace(" ", "_")
-    suffix = "_CIORNA" if not info.get("complete") or info.get("export_has_unavailable_items") else ""
     return Response(content=package, media_type="application/zip",
-                    headers={"Content-Disposition": disp('attachment', f"DOSAR_{label}{suffix}.zip")})
+                    headers={"Content-Disposition": disp('attachment', f"DOSAR_{label}.zip")})
 
 @api_router.get("/dossier/{item_id}/simple")
 async def dossier_simple(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
@@ -3544,9 +3551,13 @@ async def dossier_simple(item_id: str, authorization: str = Header(None), auth: 
     rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
     pos = [p for p in info["positions"] if p["key"] in SIMPLE_KEYS or p.get("source") == "catalog"]
     sub = {**info, "positions": pos, "titles": [p["title"] for p in pos],
+           "missing_total": sum(len(p.get("missing") or []) for p in pos),
            "complete": not any(p.get("missing") for p in pos) and not any(p.get("status") == "de completat" for p in pos)}
-    pdf = await OPIS.export_bundle(sub, rec, client, settings, get_object, logger)
-    name = f"DOSAR_PROSUMATOR_SIMPLU_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not sub['complete'] else ''}.pdf"
+    try:
+        pdf = await OPIS.export_bundle(sub, rec, client, settings, get_object, logger, require_complete=True)
+    except OPIS.SubmissionPackageIncomplete as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    name = f"DOSAR_PROSUMATOR_SIMPLU_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}.pdf"
     return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
 
 import power_doc as PWR
