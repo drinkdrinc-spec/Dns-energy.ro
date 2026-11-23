@@ -11,6 +11,7 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame, NextPageTemplate, Paragraph, Spacer, Table,
                                 TableStyle, PageBreak, KeepTogether, Image)
 from reportlab.pdfbase import pdfmetrics
@@ -957,16 +958,51 @@ def _test_watermark(c, doc):
     c.restoreState()
 
 
+def _dns_footer(c, doc, settings, logo_data):
+    """Brand generated DNS Energy pages without altering attached official PDFs."""
+    c.saveState()
+    page_w, page_h = c._pagesize
+    landscape_page = page_w > page_h
+    margin = (12 if landscape_page else 18) * mm
+    line_y = (8.5 if landscape_page else 11.5) * mm
+    logo_y = (1.5 if landscape_page else 3.0) * mm
+    c.setStrokeColor(colors.HexColor("#d8dee7"))
+    c.setLineWidth(0.45)
+    c.line(margin, line_y, page_w - margin, line_y)
+
+    label_x = margin
+    if logo_data:
+        try:
+            logo = ImageReader(io.BytesIO(logo_data))
+            image_w, image_h = logo.getSize()
+            scale = min((18 * mm) / image_w, (5 * mm) / image_h)
+            rendered_w, rendered_h = image_w * scale, image_h * scale
+            c.drawImage(logo, margin, logo_y, rendered_w, rendered_h, mask="auto")
+            label_x += rendered_w + 2 * mm
+        except Exception:
+            pass
+    c.setFont("LS", 6.5)
+    c.setFillColor(colors.HexColor("#667085"))
+    c.drawString(label_x, logo_y + (1.3 if landscape_page else 1.5) * mm,
+                 "DNS Energy · dns-energy.ro")
+    c.restoreState()
+
+
 def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
     test_mode = bool((rec or {}).get("is_test"))
     ctx = Ctx(CEF.flatten(rec), settings, client, opis_titles)
     buf = io.BytesIO()
     pw, ph = A4
-    on = _test_watermark if test_mode else (_draft if draft else (lambda c, d: None))
-    port = PageTemplate("port", [Frame(18 * mm, 14 * mm, pw - 36 * mm, ph - 28 * mm, id="fp")], pagesize=A4, onPage=on)
-    land = PageTemplate("land", [Frame(12 * mm, 10 * mm, ph - 24 * mm, pw - 20 * mm, id="fl")], pagesize=landscape(A4), onPage=on)
+    watermark = _test_watermark if test_mode else (_draft if draft else None)
+    logo_data = company_logo_bytes(settings)
+    def on_page(c, doc):
+        if watermark:
+            watermark(c, doc)
+        _dns_footer(c, doc, settings, logo_data)
+    port = PageTemplate("port", [Frame(18 * mm, 14 * mm, pw - 36 * mm, ph - 28 * mm, id="fp")], pagesize=A4, onPage=on_page)
+    land = PageTemplate("land", [Frame(12 * mm, 10 * mm, ph - 24 * mm, pw - 20 * mm, id="fl")], pagesize=landscape(A4), onPage=on_page)
     first_land = bool(doc_keys) and doc_keys[0] in ("schema_cef", "schema")
-    pdf = BaseDocTemplate(buf, pageTemplates=[land, port] if first_land else [port, land], title=f"D-ENERGY — {ctx.raw('name') or ''}")
+    pdf = BaseDocTemplate(buf, pageTemplates=[land, port] if first_land else [port, land], title=f"DNS Energy — {ctx.raw('name') or ''}")
     story = []
     keys = list(doc_keys)
     for i, k in enumerate(keys):
