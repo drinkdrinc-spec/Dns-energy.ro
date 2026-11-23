@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { BrandMark } from "@/components/BrandMark";
-import { CheckCircle2, Download, FileText, Paperclip, RefreshCw, X } from "lucide-react";
+import { Download, FileText, Paperclip, RefreshCw, X } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api/public/sign`;
 
@@ -49,24 +49,42 @@ function ClientAttachments({ files, setFiles }) {
 function ClientPortal({ info, token, messages, reply, setReply, files, setFiles, onReply, busy, notice, onRefresh, refreshing }) {
   const portal = info.portal;
   const activeIndex = Number.isInteger(portal.stage_index) ? portal.stage_index : -1;
+  const progress = activeIndex < 0 ? 0 : ((activeIndex + 1) / Math.max(portal.stages.length, 1)) * 100;
   return <>
-    <header className="mb-5 rounded-2xl bg-white p-5 shadow-sm" data-testid="client-portal-header">
-      <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "#2878f0" }}>{info.company} · portal client</div>
-      <h1 className="mt-1 text-2xl font-extrabold">Dosarul tău</h1>
-      <p className="mt-1 text-sm" style={{ color: "#5a6b85" }}>{info.client_name}{info.signed_at ? ` · semnat la ${new Date(info.signed_at).toLocaleString("ro-RO")}` : ""}</p>
+    <header className="mb-4 rounded-2xl border bg-white p-5 text-center shadow-sm" style={{ borderColor: "#e4e8ee" }} data-testid="client-portal-header">
+      <div className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: "#8792a2" }}>Dosar prosumator</div>
+      <h1 className="mt-3 text-xl font-extrabold">{info.client_name}</h1>
+      <p className="mt-1 text-xs" style={{ color: "#657286" }}>{info.company}</p>
+      {info.signed_at && <p className="mt-2 text-[11px]" style={{ color: "#8792a2" }}>Documente semnate</p>}
     </header>
-    <section className="mb-4 rounded-2xl border bg-white p-4" style={{ borderColor: "#dbe3ee" }} data-testid="client-portal-status">
+    <section className="mb-4 rounded-2xl border bg-white p-4 sm:p-5" style={{ borderColor: "#e4e8ee" }} data-testid="client-portal-status">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div><p className="text-xs font-semibold" style={{ color: "#5a6b85" }}>Stadiul curent</p><h2 className="text-lg font-extrabold">{portal.status}</h2></div>
-        <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-xs font-bold disabled:opacity-60" style={{ borderColor: "#dbe3ee", color: "#2878f0" }} data-testid="client-portal-refresh"><RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />Actualizează</button>
+        <div><p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#8792a2" }}>Stadiu curent</p><h2 className="mt-1 text-base font-extrabold">{portal.status}</h2>{activeIndex >= 0 && <p className="mt-1 text-[11px]" style={{ color: "#8792a2" }}>Etapa {activeIndex + 1} din {portal.stages.length}{portal.stage_updated_at ? ` · ${new Date(portal.stage_updated_at).toLocaleDateString("ro-RO")}` : ""}</p>}</div>
+        <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold disabled:opacity-60" style={{ borderColor: "#e4e8ee", color: "#218163" }} data-testid="client-portal-refresh"><RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />Actualizează</button>
       </div>
-      {activeIndex >= 0 && <ol className="mt-4 grid gap-2 sm:grid-cols-2" aria-label="Etapele dosarului">
-        {portal.stages.map((stage, index) => <li key={stage} className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: index === activeIndex ? "#eaf1ff" : "#f8fafd", color: index <= activeIndex ? "#173968" : "#76859a", fontWeight: index === activeIndex ? 700 : 500 }} aria-current={index === activeIndex ? "step" : undefined}>
-          <CheckCircle2 size={15} style={{ color: index <= activeIndex ? "#2878f0" : "#aab5c4", flex: "none" }} />{stage}
-        </li>)}
-      </ol>}
-      {portal.signed_document_available && <a href={`${API}/${token}/signed-document`} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold text-white sm:w-auto" style={{ background: "#2878f0" }} data-testid="client-portal-signed-download"><Download size={16} />Descarcă documentul semnat</a>}
-      <p className="mt-3 text-[11px]" style={{ color: "#6b7789" }}>Linkul portalului este valabil 180 de zile de la semnare. Păstrează-l privat.</p>
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full" style={{ background: "#edf0f3" }} aria-label="Progres dosar"><div className="h-full rounded-full transition-[width]" style={{ width: `${progress}%`, background: "#218163" }} /></div>
+      <ol className="mt-4 space-y-0" aria-label="Etapele dosarului">
+        {portal.stages.map((stage, index) => {
+          const complete = activeIndex >= 0 && index < activeIndex;
+          const current = index === activeIndex;
+          const passed = complete || current;
+          return <li key={stage} className="relative flex min-h-8 items-start gap-3 text-xs" aria-current={current ? "step" : undefined}>
+            <span className="relative flex w-3 shrink-0 justify-center self-stretch"><span className="z-10 mt-1 h-2.5 w-2.5 rounded-full border-2" style={{ borderColor: passed ? "#218163" : "#d5dbe2", background: complete ? "#218163" : "#fff" }} />{index < portal.stages.length - 1 && <span className="absolute bottom-0 top-3 w-px" style={{ background: complete ? "#218163" : "#e4e8ee" }} />}</span>
+            <span className="pb-3" style={{ color: passed ? "#27364a" : "#8792a2", fontWeight: current ? 750 : 500 }}>{stage}{current && portal.stage_updated_at && <span className="mt-1 block text-[10px] font-normal" style={{ color: "#8792a2" }}>{new Date(portal.stage_updated_at).toLocaleDateString("ro-RO")}</span>}</span>
+          </li>;
+        })}
+      </ol>
+      <p className="mt-1 text-[10px]" style={{ color: "#8792a2" }}>Păstrează privat acest link. Este valabil 180 de zile de la semnare.</p>
+    </section>
+    <section className="mb-4 rounded-2xl border bg-white p-4 sm:p-5" style={{ borderColor: "#e4e8ee" }} data-testid="client-portal-documents">
+      <h2 className="text-sm font-bold">Documentele dumneavoastră</h2>
+      <div className="mt-3 divide-y" style={{ borderColor: "#edf0f3" }}>
+        {(portal.documents || []).map((document) => <div key={document.id} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0" data-testid={`client-portal-document-${document.id}`}>
+          <div className="flex min-w-0 items-start gap-2"><FileText size={16} className="mt-0.5 shrink-0" style={{ color: document.status === "Semnat" ? "#218163" : "#9aa4b1" }} /><div className="min-w-0"><p className="text-xs font-semibold">{document.title}</p><p className="mt-1 text-[10px]" style={{ color: "#8792a2" }}>{document.status === "Semnat" ? `Semnat${document.signed_at ? ` · ${new Date(document.signed_at).toLocaleString("ro-RO")}` : ""}` : document.status === "Expirat" ? "Link expirat — contactează echipa DNS" : "În așteptarea semnării"}</p></div></div>
+          {document.download_available && <a href={`${API}/${token}/documents/${encodeURIComponent(document.id)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold" style={{ borderColor: "#dce8e1", color: "#218163" }} data-testid={`client-portal-document-download-${document.id}`}><Download size={13} />Descarcă</a>}
+        </div>)}
+        {!portal.documents?.length && <p className="py-2 text-xs" style={{ color: "#8792a2" }}>Documentele trimise spre semnare vor apărea aici.</p>}
+      </div>
     </section>
     <section className="rounded-2xl border bg-white p-4" style={{ borderColor: "#dbe3ee" }} data-testid="sign-client-messages">
       <h2 className="text-sm font-bold">Mesaje despre dosar</h2>

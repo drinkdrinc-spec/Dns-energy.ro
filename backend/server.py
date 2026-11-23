@@ -4457,14 +4457,35 @@ def public_client_access(r: dict) -> bool:
 async def client_portal_payload(r: dict) -> dict:
     rec = await db.prosumator.find_one(
         {"id": r.get("dossier_id"), "owner": r.get("owner")},
-        {"_id": 0, "workflow_status": 1, "status": 1, "operator_stage": 1, "client_messages": 1},
+        {"_id": 0, "workflow_status": 1, "status": 1, "operator_stage": 1, "workflow_history": 1, "client_messages": 1},
     )
     current = str((rec or {}).get("workflow_status") or (rec or {}).get("status") or
                   (rec or {}).get("operator_stage") or "Dosar în pregătire")
+    current_stage = client_portal_stage(current)
+    stage_updated_at = None
+    for event in reversed((rec or {}).get("workflow_history") or []):
+        if isinstance(event, dict) and client_portal_stage(event.get("to")) == current_stage and current_stage is not None:
+            stage_updated_at = event.get("at")
+            break
+    requests = await db.sign_requests.find(
+        {"owner": r.get("owner"), "dossier_id": r.get("dossier_id"), "signer_email": r.get("signer_email"),
+         "module": {"$in": ["prosumator", None]}, "revoked": {"$ne": True}},
+        {"_id": 0, "id": 1, "doc_title": 1, "pos_key": 1, "status": 1, "expires_at": 1,
+         "signed_at": 1, "signed_file.storage_path": 1},
+    ).sort("created_at", 1).to_list(100)
+    documents = [{
+        "id": item.get("id"),
+        "title": item.get("doc_title") or "Document de semnat",
+        "status": sign_status(item),
+        "signed_at": item.get("signed_at"),
+        "download_available": bool((item.get("signed_file") or {}).get("storage_path")) and signed_portal_active(item),
+    } for item in requests]
     return {
         "status": current,
-        "stage_index": client_portal_stage(current),
+        "stage_index": current_stage,
+        "stage_updated_at": stage_updated_at,
         "stages": CLIENT_PORTAL_STAGES,
+        "documents": documents,
         "signed_document_available": bool((r.get("signed_file") or {}).get("storage_path")),
         "client_messages": public_dossier_messages((rec or {}).get("client_messages")),
     }
@@ -4649,6 +4670,26 @@ async def pub_signed_document(token: str):
     if not signed_portal_active(r):
         raise HTTPException(status_code=410, detail="Portalul clientului nu mai este activ")
     path = (r.get("signed_file") or {}).get("storage_path")
+    if not path:
+        raise HTTPException(status_code=404, detail="PDF-ul semnat nu este disponibil")
+    data, content_type = get_object(path)
+    return Response(content=data, media_type=content_type or "application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="document-semnat.pdf"',
+                             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+
+@api_router.get("/public/sign/{token}/documents/{request_id}")
+async def pub_client_signed_document(token: str, request_id: str):
+    portal_request = await sign_by_token(token)
+    if not signed_portal_active(portal_request):
+        raise HTTPException(status_code=410, detail="Portalul clientului nu mai este activ")
+    document = await db.sign_requests.find_one(
+        {"id": request_id, "owner": portal_request.get("owner"), "dossier_id": portal_request.get("dossier_id"),
+         "signer_email": portal_request.get("signer_email"), "module": {"$in": ["prosumator", None]}, "revoked": {"$ne": True}},
+        {"_id": 0},
+    )
+    if not document or not signed_portal_active(document):
+        raise HTTPException(status_code=404, detail="Document semnat indisponibil")
+    path = (document.get("signed_file") or {}).get("storage_path")
     if not path:
         raise HTTPException(status_code=404, detail="PDF-ul semnat nu este disponibil")
     data, content_type = get_object(path)
