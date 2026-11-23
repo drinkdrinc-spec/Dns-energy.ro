@@ -94,6 +94,33 @@ export function DossierExtras({ form, setVal, compact = false, part = "all", onS
         {onSave && <div className="mt-4 flex justify-end"><button type="button" className="rounded-lg px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60" style={{ background: "var(--green)" }} onClick={onSave} disabled={saving} data-testid="save-pram-card">{saving ? "Se salvează…" : "Salvează"}</button></div>}
       </div>}
       {!compact && (part === "all" || part === "commissioning") && <div className="rounded-xl border p-4 bg-white" style={{ borderColor: "var(--line)" }}>
+        <div className="mb-4 rounded-xl border p-3" style={{ borderColor: "var(--line)", background: "#fff" }} data-testid="pv-test-commissioning-details">
+          <div className="mb-3"><h4 className="font-bold text-sm">PV Teste — probe / punere sub tensiune</h4><p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Completează după efectuarea probelor. Rezultatele și tensiunile nu se preiau automat.</p></div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="den-field"><span>Nr. proces-verbal</span><input className="den-input" value={form.pif_no || ""} onChange={(e) => setVal("pif_no", e.target.value)} placeholder="ex. 185" data-testid="pv-test-number" /></label>
+            <label className="den-field"><span>Data procesului-verbal</span><input className="den-input" type="date" value={form.pif_date || ""} onChange={(e) => setVal("pif_date", e.target.value)} data-testid="pv-test-date" /></label>
+            <label className="den-field"><span>Serie contor producere</span><input className="den-input" value={form.production_meter_serial || ""} onChange={(e) => setVal("production_meter_serial", e.target.value)} data-testid="pv-test-production-meter-serial" /></label>
+            <label className="den-field"><span>Data punerii sub tensiune</span><input className="den-input" type="date" value={form.energize_date || ""} onChange={(e) => setVal("energize_date", e.target.value)} data-testid="pv-test-energize-date" /></label>
+            <label className="den-field"><span>Reprezentant OD prezent</span><input className="den-input" value={form.pif_representative || ""} onChange={(e) => setVal("pif_representative", e.target.value)} placeholder="Inginer / reprezentant distribuitor" data-testid="pv-test-od-representative" /></label>
+            <label className="den-field"><span>Început probe</span><input className="den-input" type="date" value={form.pif_test_start || ""} onChange={(e) => setVal("pif_test_start", e.target.value)} data-testid="pv-test-start" /></label>
+            <label className="den-field"><span>Sfârșit probe</span><input className="den-input" type="date" value={form.pif_test_end || ""} onChange={(e) => setVal("pif_test_end", e.target.value)} data-testid="pv-test-end" /></label>
+            <label className="den-field"><span>Tensiune măsurată (V)</span><input className="den-input" type="number" step="any" value={form.pif_voltage_v ?? ""} onChange={(e) => setVal("pif_voltage_v", e.target.value)} data-testid="pv-test-voltage" /><small>La punctul de delimitare, la punerea sub tensiune.</small></label>
+            <label className="den-field"><span>Inginer semnatar</span><select className="den-input" value={form.pif_engineer || ""} onChange={(e) => setVal("pif_engineer", e.target.value)} data-testid="pv-test-engineer"><option value="">Alege inginerul semnatar</option>{staff.map((person) => <option key={person.id} value={person.name || ""}>{person.name || "Persoană fără nume"}</option>)}</select></label>
+          </div>
+          <fieldset className="mt-4 rounded-lg border p-3" style={{ borderColor: "var(--line)", background: "#faf8f2" }}>
+            <legend className="px-1 text-xs font-semibold">Verificări funcționale</legend>
+            <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2 text-xs">
+              {[["protection_settings", "Reglaje protecții (buletin reglaj)"], ["serials_confirmed", "Serii = echipamente montate"], ["anti_islanding", "Test anti-insularizare"], ["pram_ok", "Priză de pământ (PRAM ≤ 4 Ω)"]].map(([name, label]) => <label key={name} className="flex items-center gap-2"><input type="checkbox" checked={form.pif_checks?.[name] === true} onChange={(e) => setVal("pif_checks", { ...(form.pif_checks || {}), [name]: e.target.checked })} data-testid={`pv-test-check-${name}`} />{label}</label>)}
+            </div>
+          </fieldset>
+          <div className="mt-4">
+            <span className="den-field-label text-xs font-semibold">Verdict recepție probe</span>
+            <div className="mt-1 grid grid-cols-3 gap-1 rounded-lg p-1" style={{ background: "#f7f4ed" }} role="group" aria-label="Verdict recepție probe">
+              {["Admis", "Admis cu condiții", "Respins"].map((verdict) => <button key={verdict} type="button" aria-pressed={ts.verdict === verdict} onClick={() => setVal("tests", { ...ts, verdict })} className="min-h-9 rounded-md px-2 py-1 text-[11px] font-semibold" style={{ background: ts.verdict === verdict ? "#fff" : "transparent", color: ts.verdict === verdict ? "var(--green)" : "var(--muted)", boxShadow: ts.verdict === verdict ? "0 1px 4px #0001" : "none" }} data-testid={`pv-test-verdict-${verdict.toLowerCase().replaceAll(" ", "-")}`}>{verdict}</button>)}
+            </div>
+          </div>
+          <label className="den-field mt-3 block"><span>Observații</span><textarea className="den-input" rows={3} maxLength={2000} value={ts.od_observations || ""} onChange={(e) => setVal("tests", { ...ts, od_observations: e.target.value })} data-testid="pv-test-observations" /></label>
+        </div>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2"><h4 className="font-bold text-sm">Reglaje invertor</h4>
           <button className="text-[11px] font-bold text-left" style={{ color: "var(--blue)" }} onClick={() => setVal("reglaj", Object.fromEntries(REGLAJ.map(([k]) => [k, { val: TYPICAL[k][0], t: TYPICAL[k][1] }])))} data-testid="reglaj-typical">Completează valori orientative (verifică în invertor)</button></div>
         <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Valorile orientative nu confirmă reglarea efectivă a invertorului.</p>
@@ -123,20 +150,7 @@ export function DossierExtras({ form, setVal, compact = false, part = "all", onS
               <input className="den-input py-1" placeholder="observații / valori" value={ts[k]?.obs || ""} onChange={(e) => setT(k, "obs", e.target.value)} data-testid={`test-${k}-obs`} /></div>
           ))}
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(160px,220px)_minmax(160px,220px)_1fr]">
-          <label className="den-field"><span>Nr. proces-verbal teste</span>
-            <input className="den-input" type="text" maxLength={100} value={form.pif_no || ""} onChange={(e) => setVal("pif_no", e.target.value)} data-testid="tests-pv-number" />
-          </label>
-          <label className="den-field"><span>Verdict operator</span>
-            <select className="den-input" value={ts.verdict || ""} onChange={(e) => setVal("tests", { ...ts, verdict: e.target.value })} data-testid="tests-verdict">
-              <option value="">— necompletat —</option><option value="Admis">Admis</option><option value="Respins">Respins</option>
-            </select>
-          </label>
-          <label className="den-field"><span>Observații operator</span>
-            <textarea className="den-input" rows={2} maxLength={1000} value={ts.od_observations || ""} onChange={(e) => setVal("tests", { ...ts, od_observations: e.target.value })} data-testid="tests-od-observations" />
-          </label>
-        </div>
-        <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Verdictul și observațiile se completează numai după comunicarea operatorului; nu sunt completate automat.</p>
+        <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>Verdictul și observațiile recepției se completează în fișa PV Teste de mai sus; rezultatele tehnice se notează numai după efectuarea probelor.</p>
       </div>}
       {!compact && part === "commissioning" && onSave && <div className="lg:col-span-2 flex justify-end">
         <button type="button" className="rounded-lg px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60" style={{ background: "var(--green)" }} onClick={onSave} disabled={saving} data-testid="save-commissioning-card">

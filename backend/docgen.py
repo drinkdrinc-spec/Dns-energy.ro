@@ -613,17 +613,38 @@ def doc_pv_teste(ctx):
     invs = inverters(ctx)
     st = storage(ctx)
     t = ctx.r.get("tests") or {}
+    pif_checks = ctx.r.get("pif_checks") or {}
     verdict = str(t.get("verdict") or "").strip()
     od_observations = str(t.get("od_observations") or "").strip()
+    pif_fields = [
+        ["Data procesului-verbal", ro_date(ctx.raw("pif_date")) or M],
+        ["Serie contor producere", ctx.v("production_meter_serial")],
+        ["Reprezentant OD prezent", ctx.v("pif_representative")],
+        ["Început probe", ro_date(ctx.raw("pif_test_start")) or M],
+        ["Sfârșit probe", ro_date(ctx.raw("pif_test_end")) or M],
+        ["Data punerii sub tensiune", ro_date(ctx.raw("energize_date")) or M],
+        ["Tensiune măsurată la punctul de delimitare (V)", ctx.v("pif_voltage_v")],
+        ["Inginer semnatar", ctx.v("pif_engineer")],
+    ]
+    functional_checks = [
+        ("Reglaje protecții (buletin reglaj)", "protection_settings"),
+        ("Seriile corespund echipamentelor montate", "serials_confirmed"),
+        ("Test anti-insularizare", "anti_islanding"),
+        ("Priză de pământ (PRAM ≤ 4 Ω)", "pram_ok"),
+    ]
     out = [B("p", f"Nr. proces-verbal: <b>{ctx.v('pif_no')}</b><br/>POD <b>{ctx.v('pod')}</b>"),
            B("title", "PROCES-VERBAL — TESTE ȘI VERIFICĂRI PIF"),
            B("sub", f"aferente instalației de utilizare și producere situată în {ctx.loc}"),
-           B("small", "Fișă de lucru precompletată cu datele dosarului. Numărul se completează de operator; data de începere nu se precompletează. Nu sunt generate rezultate sau măsurători. Completați DA/NU și observațiile numai pe baza probelor efectuate."),
+           B("small", "Fișă de lucru pentru completarea datelor și consemnarea probelor efectuate. Datele de recepție, tensiunile și verificările se introduc de personalul responsabil; nu sunt deduse sau completate automat."),
            B("b", "Date tehnice ale instalației de producere"),
            B("p", f"CEF {ctx.cef_kw} · POD {ctx.v('pod')}<br/>Serii invertor: {'; '.join(escape(i.get('serial')) for i in invs if i.get('serial')) or M}<br/>"
                   f"Modele invertor: {'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}<br/>"
                   f"Sistem de stocare declarat: {'DA' if st else 'NU / nespecificat'}"),
            B("p", "Rezultatul probelor și verificărilor tehnice se consemnează mai jos numai după efectuarea lor efectivă."),
+           B("b", "Date PV Teste și punere sub tensiune"),
+           B("table", [["Câmp", "Valoare"]] + [[escape(label), value] for label, value in pif_fields], [60, 110], True),
+           B("b", "Verificări funcționale consemnate"),
+           B("table", [["Verificare", "Stare"]] + [[escape(label), "Confirmată" if pif_checks.get(key) is True else "Necompletată"] for label, key in functional_checks], [125, 45], True),
            B("pagebreak")] + hdr() + [
            B("title", "Teste și verificări — rezultate"),
            B("sub", "Ordin ANRE nr. 228/2018, cu modificările și completările aplicabile. Completați valorile obținute acolo unde se efectuează măsurători."),
@@ -637,8 +658,8 @@ def doc_pv_teste(ctx):
              + [[x, escape(str((t.get(f"c{i}") or {}).get("ok") or "")), escape(str((t.get(f"c{i}") or {}).get("obs") or ""))]
                 for i, x in enumerate(CHECKS)], [90, 30, 54], True),
            B("small", "Nu se bifează automat «DA» și nu se inventează valori. Dacă rezultatul sau observația lipsesc, câmpul rămâne necompletat."),
-           B("table", [["Verdict operator", escape(verdict) if verdict else "— necompletat —"],
-                       ["Observații operator", escape(od_observations) if od_observations else "—"]], [42, 132], True),
+           B("table", [["Verdict recepție probe", escape(verdict) if verdict else "— necompletat —"],
+                       ["Observații", escape(od_observations) if od_observations else "—"]], [42, 132], True),
            B("p", "Concluzia și declarația reprezentantului executantului se completează și se semnează numai după confirmarea rezultatelor de mai sus."),
            sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
     return out
