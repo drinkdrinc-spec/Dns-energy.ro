@@ -12,9 +12,9 @@ from ai_provider import LlmChat, UserMessage, FileContentWithMimeType, ImageCont
 OPERATORS = ["DEER — Transilvania Nord", "DEER — Transilvania Sud", "DEER — Muntenia Nord", "Delgaz Grid",
              "Distribuție Energie Oltenia", "Rețele Electrice România", "Alt operator"]
 
-AI_EXTRACTION_TIMEOUT_SECONDS = 22
-LOCAL_OCR_TIMEOUT_SECONDS = 60
-LOCAL_OCR_QUEUE_TIMEOUT_SECONDS = 12
+AI_EXTRACTION_TIMEOUT_SECONDS = 15
+LOCAL_OCR_TIMEOUT_SECONDS = 24
+LOCAL_OCR_QUEUE_TIMEOUT_SECONDS = 5
 OCR_MAX_PAGES = 6
 OCR_DPI = 110
 _LOCAL_OCR_LOCK = asyncio.Lock()
