@@ -131,13 +131,13 @@ export function PowerDossier({ id, form, setVal }) {
   );
 }
 
-export function SimpleDossierBtn({ id }) {
+export function SimpleDossierBtn({ id, complete = false }) {
   const url = `/dossier/${id}/simple`;
   return (
     <div className="sm:col-span-2 den-panel mt-3 flex flex-wrap items-center gap-3" data-testid="simple-dossier">
       <div className="flex-1 min-w-[240px]"><b className="text-sm">Dosar de prosumator simplu — PDF unic</b>
-        <div className="text-xs" style={{ color: "var(--muted)" }}>Opis + Anexa 2, declarații, împuternicire, buletin PRAM (priză de pământ), schema monofilară, fișa tehnică și fișele echipamentelor. Rămâne CIORNĂ până la completarea datelor și aprobarea schemei.</div></div>
-      <Btn type="button" onClick={() => { toast.info("Se generează PDF-ul…"); openAuthenticatedFile(url); }} data-testid="simple-dossier-pdf">Generează dosarul simplu</Btn>
+        <div className="text-xs" style={{ color: "var(--muted)" }}>Opis, formularul operatorului, schema, declarațiile, PRAM/PIF și fișele echipamentelor, ordonate pentru depunere.</div></div>
+      <Btn type="button" disabled={!complete} title={!complete ? "Completează documentele și verificările din dosar înainte de export." : undefined} onClick={() => { if (!complete) return; toast.info("Se generează PDF-ul…"); openAuthenticatedFile(url); }} data-testid="simple-dossier-pdf">Descarcă dosarul pentru depunere</Btn>
     </div>
   );
 }
