@@ -410,3 +410,4 @@ def test_battery_only_hybrid_has_zero_export_and_is_identified_in_sheet():
     assert checked["inverters"][1]["kwp"] == 0
     assert any(row[2] == "Dyness 16.07 kWh" for row in equipment)
     assert any("putere evacuată 0 kW" in value for value in capture.values)
+

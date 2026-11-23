@@ -469,3 +469,4 @@ async def power_ensure_diu(item_id: str, user: dict = Depends(get_current_user))
     return {"id": rec["id"], "diu_id": rec["id"], "created": created, "number": rec.get("number") or "", "status": rec.get("status") or "Documente de completat"}
 
 
+

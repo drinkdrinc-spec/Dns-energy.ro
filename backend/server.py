@@ -979,7 +979,6 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Înregistrare inexistentă")
     await audit(user, "modificare", module, item_id, list(data.keys()))
-    post_save_warnings = []
     if module == "prosumator":
         try:
             await request_approval(user, item_id, request.headers.get("origin") or "", True)
@@ -988,6 +987,7 @@ async def update_item(module: str, item_id: str, request: Request, user: dict = 
         except Exception as e:
             logger.error(f"auto approval request: {e}")
     doc = await db[module].find_one({"id": item_id, "owner": user["id"]})
+    post_save_warnings = []
     if module == "prosumator":
         try:
             await sync_catalog_files_to_documents(user, doc)
@@ -2308,6 +2308,14 @@ async def seed_catalog(owner: str):
             seed_managed_deye_url = deye_model and current_deye_datasheet_url in ("", old_deye_datasheet_url, item.get("datasheet_url"))
             if deye_model and current_deye_datasheet_url in ("", old_deye_datasheet_url):
                 source_updates["datasheet_url"] = item["datasheet_url"]
+                # Persist the seed-managed Deye correction. This code runs after
+                # the general backfill write above, so without this update an old
+                # URL remained visible in the equipment card indefinitely.
+                await db.catalog.update_one(
+                    {"id": row["id"], "owner": owner, "datasheet_url": row.get("datasheet_url")},
+                    {"$set": {"datasheet_url": item["datasheet_url"]}},
+                )
+                row["datasheet_url"] = item["datasheet_url"]
             if seed_managed_deye_url and (not deye_datasheet.get("storage_path") or deye_datasheet.get("source_url") == old_deye_datasheet_url):
                 try:
                     await catalog_import_document(
@@ -4976,6 +4984,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
+
 
 
 

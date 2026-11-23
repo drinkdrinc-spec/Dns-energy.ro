@@ -12,7 +12,8 @@ import docgen  # registers LS / LSB fonts
 from cef import n, battery_cable_proposal
 
 # SLD geometry is expressed in millimetres after ``canvas.scale(mm, mm)``.
-# Keep label sizes within the compact spacing of the existing A3 drawing.
+# ReportLab font sizes are points. Keep labels at a readable intermediate size
+# that fits the existing electrical clearances and label boxes.
 PT = 0.5
 INK = colors.HexColor("#111111")
 RED = colors.HexColor("#c0392b")
@@ -1212,4 +1213,5 @@ def snapshot(rec, res):
     for code, name, val, loc in protections(rec, res):
         v[f"Protecție {code} {name}"] = str(val or "—")
     return v
+
 
