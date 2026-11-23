@@ -333,7 +333,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
   ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
 
   return <>
-    <Btn variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Începe dosarul din documente</Btn>
+    <Btn type="button" variant="secondary" onClick={() => setOpen(true)} data-testid="dossier-start-documents"><Plus size={15} /> Începe dosarul din documente</Btn>
     <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setStep(0); }}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dossier-document-start-dialog">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles size={18} style={{ color: "var(--blue)" }} /> Dosar nou din documente</DialogTitle></DialogHeader>
@@ -466,8 +466,8 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           <div className="mt-3 rounded-lg p-3 text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>Documentele încărcate rămân atașate dosarului și apar în opis. Verifică datele extrase; formularele exacte depind de operator și se verifică înainte de depunere.</div>
         </section>}
         {notes.altele?.length > 0 && <div className="rounded-lg bg-slate-50 p-3 text-xs"><b>Documente suplimentare:</b><ul className="list-disc pl-5">{notes.altele.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
-        <div className="flex justify-between gap-2 pt-2"><div>{step > 0 && <Btn variant="secondary" onClick={() => setStep((current) => current - 1)} disabled={!!busy}>Înapoi</Btn>}</div><div className="flex gap-2"><Btn variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
-          {step < 2 ? <Btn onClick={() => setStep((current) => current + 1)} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn onClick={create} disabled={!!busy} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…" : "Creează dosarul"}</Btn>}</div></div>
+        <div className="flex justify-between gap-2 pt-2"><div>{step > 0 && <Btn type="button" variant="secondary" onClick={() => setStep((current) => current - 1)} disabled={!!busy}>Înapoi</Btn>}</div><div className="flex gap-2"><Btn type="button" variant="secondary" onClick={() => setOpen(false)}>Închide</Btn>
+          {step < 2 ? <Btn type="button" onClick={() => setStep((current) => current + 1)} disabled={!!busy} data-testid="dossier-start-next">Continuă</Btn> : <Btn type="button" onClick={create} disabled={!!busy} data-testid="dossier-start-create">{busy === "create" ? "Creez dosarul…" : "Creează dosarul"}</Btn>}</div></div>
       </DialogContent>
     </Dialog>
   </>;
