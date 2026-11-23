@@ -2071,6 +2071,19 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
     rec = CEF.from_legacy(rec)
     await auto_fill_cef_from_catalog(user["id"], rec)
 
+    _, _, _, dossier_info = await dossier_ctx(user, item_id, verify_files=True)
+    if doc_type == "all" and not dossier_info.get("complete"):
+        raise HTTPException(status_code=409, detail=f"Dosarul are {dossier_info.get('missing_total', 0)} elemente de completat sau verificat înainte de generarea PDF-ului final.")
+    if doc_type != "all":
+        matching_positions = [p for p in dossier_info.get("positions", [])
+                              if doc_type in (p.get("docs") or []) or doc_type == p.get("key")]
+        incomplete_positions = [p for p in matching_positions if p.get("missing") or p.get("_official_form_unavailable")]
+        if incomplete_positions:
+            position = incomplete_positions[0]
+            missing = ", ".join(position.get("missing") or [])
+            detail = f"Completează {missing} înainte de generarea documentului {position.get('title') or doc_type}." if missing else f"Formularul oficial pentru {position.get('title') or doc_type} nu este disponibil. Atașează formularul curent al operatorului."
+            raise HTTPException(status_code=409, detail=detail)
+
     is_power_increase = str(rec.get("request_type") or "").strip() == "Spor de putere + prosumator"
     client = await get_client(user["id"], rec)
     annex1 = None
