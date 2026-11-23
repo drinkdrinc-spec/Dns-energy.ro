@@ -118,15 +118,24 @@ function EquipmentPreview() {
 
 export default function PublicHome() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [servicesMenuOpen, setServicesMenuOpen] = useState(false);
   const [activeEquipment, setActiveEquipment] = useState(equipmentCategories[0].id);
   const [activeService, setActiveService] = useState(0);
   const closeMenu = () => setMenuOpen(false);
+  const closeServicesMenu = () => setServicesMenuOpen(false);
   const selectedEquipment = equipmentCategories.find((item) => item.id === activeEquipment) ?? equipmentCategories[0];
   const selectedService = services[activeService] ?? services[0];
 
   return (
     <main className="dns-public">
       <a className="dns-whatsapp-float" href="https://wa.me/40741540265" target="_blank" rel="noreferrer" aria-label="Contactați DNS Energy pe WhatsApp"><MessageCircle size={22} /><span>WhatsApp</span></a>
+      <button className={`dns-services-tab${servicesMenuOpen ? " is-open" : ""}`} type="button" onClick={() => setServicesMenuOpen(!servicesMenuOpen)} aria-expanded={servicesMenuOpen} aria-controls="dns-services-drawer"><Menu size={17} /><span>Ce facem</span></button>
+      <div className={`dns-services-scrim${servicesMenuOpen ? " is-open" : ""}`} onClick={closeServicesMenu} aria-hidden="true" />
+      <aside className={`dns-services-drawer${servicesMenuOpen ? " is-open" : ""}`} id="dns-services-drawer" aria-label="Meniu Ce facem" aria-hidden={!servicesMenuOpen}>
+        <div className="dns-services-drawer-head"><div><span>DNS ENERGY</span><strong>Ce facem</strong></div><button type="button" onClick={closeServicesMenu} aria-label="Închide meniul"><X size={19} /></button></div>
+        <nav aria-label="Serviciile DNS Energy">{services.map((item, index) => <button key={item.title} type="button" className={`dns-services-category${activeService === index ? " is-active" : ""}`} onClick={() => { setActiveService(index); closeServicesMenu(); document.getElementById("servicii")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}><span>{item.menuTitle}</span><ChevronRight size={16} /></button>)}</nav>
+        <a href="#contact" onClick={closeServicesMenu}>Solicitați o ofertă <ArrowRight size={15} /></a>
+      </aside>
       <header className="dns-site-header">
         <div className="dns-site-header-inner">
           <Link to="/" className="dns-brand-link" aria-label="DNS Energy, pagina principală"><Brand /></Link>
@@ -161,10 +170,6 @@ export default function PublicHome() {
         <div className="dns-section-label">CE FACEM</div>
         <div className="dns-services-heading"><h2>Servicii pentru proiecte<br /><em>energetice și electrice.</em></h2><p>Suntem o firmă atestată ANRE. De la proiectare și documentație până la execuție, abordăm fiecare lucrare cu atenție la cerințele tehnice și la specificul obiectivului.</p></div>
         <div className="dns-services-browser">
-          <nav className="dns-services-sidebar" aria-label="Servicii DNS Energy">
-            <span className="dns-services-sidebar-title">SERVICII</span>
-            {services.map((item, index) => <button key={item.title} type="button" className={`dns-services-category${activeService === index ? " is-active" : ""}`} onClick={() => setActiveService(index)} aria-current={activeService === index ? "true" : undefined}><span>{item.menuTitle}</span><ChevronRight size={16} /></button>)}
-          </nav>
           <article className="dns-service-detail" aria-live="polite">
             <span className="dns-service-icon"><selectedService.icon size={22} /></span>
             <span className="dns-service-detail-kicker">SERVICII DNS ENERGY</span>
