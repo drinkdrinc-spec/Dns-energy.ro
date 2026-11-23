@@ -2301,6 +2301,14 @@ async def seed_catalog(owner: str):
             seed_managed_deye_url = deye_model and current_deye_datasheet_url in ("", old_deye_datasheet_url, item.get("datasheet_url"))
             if deye_model and current_deye_datasheet_url in ("", old_deye_datasheet_url):
                 source_updates["datasheet_url"] = item["datasheet_url"]
+                # Persist the seed-managed Deye correction. This code runs after
+                # the general backfill write above, so without this update an old
+                # URL remained visible in the equipment card indefinitely.
+                await db.catalog.update_one(
+                    {"id": row["id"], "owner": owner, "datasheet_url": row.get("datasheet_url")},
+                    {"$set": {"datasheet_url": item["datasheet_url"]}},
+                )
+                row["datasheet_url"] = item["datasheet_url"]
             if seed_managed_deye_url and (not deye_datasheet.get("storage_path") or deye_datasheet.get("source_url") == old_deye_datasheet_url):
                 try:
                     await catalog_import_document(
