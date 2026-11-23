@@ -155,7 +155,12 @@ export function CefEditor({ value, onChange, onSave, saving = false }) {
     return () => clearTimeout(t);
   }, [JSON.stringify(cef)]); // eslint-disable-line
 
-  const invErrs = new Set((res?.inverters || []).flatMap((i) => [...i.errors, ...i.warnings]));
+  // Older and partially configured dossiers may not have per-inverter
+  // diagnostics yet. Keep the editor usable while the check endpoint settles.
+  const invErrs = new Set((res?.inverters || []).flatMap((i) => [
+    ...(Array.isArray(i?.errors) ? i.errors : []),
+    ...(Array.isArray(i?.warnings) ? i.warnings : []),
+  ]));
   return (
     <div className="mt-6 space-y-4" data-testid="cef-editor">
       <section className="rounded-xl border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="cef-supplier-lookup">

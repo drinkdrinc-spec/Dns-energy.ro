@@ -12,10 +12,12 @@ export function Issues({ errors = [], warnings = [], testid }) {
 
 export function Totals({ res, inverters = [], sharedBatteries = [] }) {
   if (!res) return null;
-  const t = res.totals;
+  const t = res.totals || {};
+  const errors = Array.isArray(res.errors) ? res.errors : [];
+  const warnings = Array.isArray(res.warnings) ? res.warnings : [];
   const items = [["Panouri", `${t.kwp} kWp`, "tot-kwp"], ["Invertoare", `${t.inverters_kw} kW`, "tot-kw"], ["Evacuat", `${t.export_kw} kW`, "tot-export"],
     ["Stocare", `${t.storage_kwh} kWh`, "tot-kwh"], ["Nr. panouri", t.panels, "tot-panels"], ["Invertoare", `${t.inverters} buc.`, "tot-inv"]];
-  const ok = !res.errors.length && !res.warnings.length;
+  const ok = !errors.length && !warnings.length;
   return (
     <div className="rounded-xl p-4 text-white" style={{ background: "var(--navy)" }} data-testid="cef-totals">
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
@@ -25,7 +27,7 @@ export function Totals({ res, inverters = [], sharedBatteries = [] }) {
       </div>
       <div className="mt-3 text-xs flex items-center gap-2" data-testid="cef-status">
         {ok ? <><CheckCircle2 size={14} color="#4ade80" /> Configurație fără incompatibilități detectate</> :
-          <><AlertTriangle size={14} color="#fbbf24" /> {res.errors.length} erori · {res.warnings.length} avertizări</>}
+          <><AlertTriangle size={14} color="#fbbf24" /> {errors.length} erori · {warnings.length} avertizări</>}
         {res.grid.anti && <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "#7f1d1d" }}>Tablou antiinsularizare inclus</span>}
       </div>
       {res.inverters?.length > 0 && <div className="mt-3 rounded-lg border border-white/15 bg-white/5 p-3" data-testid="cef-auto-sizing">
@@ -59,3 +61,4 @@ export function Totals({ res, inverters = [], sharedBatteries = [] }) {
     </div>
   );
 }
+
