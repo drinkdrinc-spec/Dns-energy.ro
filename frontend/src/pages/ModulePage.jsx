@@ -623,7 +623,8 @@ export default function ModulePage({ moduleKey }) {
       setForm((current) => ({ ...current, ...data }));
       setItems((current) => current.map((item) => item.id === editId ? { ...item, ...data } : item));
       setSavedAt(Date.now());
-      toast.success(`${label} salvată.`);
+      if (data?.intake_warnings?.length) toast.warning(`${label} salvată. ${data.intake_warnings.join(" ")}`);
+      else toast.success(`${label} salvată.`);
     } catch (error) {
       toast.error(error.response?.data?.detail || `Nu am putut salva ${label.toLowerCase()}.`);
     } finally { setSectionSaving(false); }
@@ -636,8 +637,16 @@ export default function ModulePage({ moduleKey }) {
     if (cfg.checklist) payload.checklist = checks;
     try {
       let savedId = editId;
-      if (editId) await api.put("/data/" + key + "/" + editId, payload);
-      else if (key === "prosumator") await api.post("/import/prosumator", payload);
+      let saveWarnings = [];
+      if (editId) {
+        const { data } = await api.put("/data/" + key + "/" + editId, payload);
+        saveWarnings = data?.intake_warnings || [];
+      }
+      else if (key === "prosumator") {
+        const { data } = await api.post("/import/prosumator", payload);
+        savedId = data?.id || null;
+        saveWarnings = data?.intake_warnings || [];
+      }
       else {
         const { data } = await api.post("/data/" + key, payload);
         savedId = data?.id || null;
@@ -655,7 +664,8 @@ export default function ModulePage({ moduleKey }) {
           ensuredDiu = data;
         } catch { ensureDiuFailed = true; }
       }
-      if (importFailed) toast.warning("DI-U creat; nu s-au putut prelua automat toate datele din dosarul prosumator.");
+      if (saveWarnings.length) toast.warning(saveWarnings.join(" "));
+      else if (importFailed) toast.warning("DI-U creat; nu s-au putut prelua automat toate datele din dosarul prosumator.");
       else if (ensureDiuFailed) toast.warning("Cererea de spor a fost salvată, dar DI-U nu s-a putut asocia automat. Verifică accesul la modulul DI-U.");
       else if (ensuredDiu) toast.success(`Spor salvat · DI-U ${ensuredDiu.created ? "creat" : "actualizat"} și asociat`);
       else toast.success("Salvat cu succes");
