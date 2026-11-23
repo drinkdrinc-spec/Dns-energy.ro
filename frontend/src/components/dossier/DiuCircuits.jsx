@@ -6,9 +6,20 @@ const MEAS = [["r_pe", "R PE măsurat (Ω)"], ["r_pe_limit", "Limită din proiec
 const PRAM = [["date", "Data măsurătorilor", "date"], ["instrument", "Aparat de măsură (tip, serie, certificat)"], ["verifier", "Verificator PRAM"],
   ["earth_ohm", "Rezistență dispersie măsurată (Ω)"], ["earth_limit", "Valoare admisă (Ω)"], ["soil", "Starea solului"], ["test_v", "Tensiune încercare izolație (V)"]];
 
-export function DiuCircuits({ form, setVal }) {
+export function DiuCircuits({ form, setVal, instruments = [] }) {
   const cs = form.circuits || [];
   const pm = form.pram_m || {};
+  const selectedInstrument = instruments.find((instrument) => instrument.id === form.instrument_id);
+  const today = new Date().toISOString().slice(0, 10);
+  const instrumentState = !selectedInstrument
+    ? "Alege aparatul din Setări pentru a include certificatul metrologic în pachet."
+    : !selectedInstrument.file?.storage_path
+      ? "Certificatul aparatului lipsește din Setări → Aparate de măsură."
+      : !selectedInstrument.expires
+        ? "Completează valabilitatea certificatului în Setări → Aparate de măsură."
+        : selectedInstrument.expires < today
+          ? "Certificatul aparatului este expirat. Încarcă unul valabil înainte de depunere."
+          : `Certificat disponibil · valabil până la ${selectedInstrument.expires}.`;
   const upd = (i, k, v) => setVal("circuits", cs.map((c, j) => (j === i ? { ...c, [k]: v } : c)));
   return (
     <div className="mt-4 space-y-4">
@@ -31,8 +42,16 @@ export function DiuCircuits({ form, setVal }) {
         {PRAM.map(([k, l, t]) => (
           <div key={k} className="den-field"><label>{l}</label>
             <input className="den-input" type={t || "text"} value={pm[k] ?? ""} onChange={(e) => setVal("pram_m", { ...pm, [k]: e.target.value })} data-testid={`diu-pram-${k}`} /></div>))}
+        <div className="den-field sm:col-span-2"><label htmlFor="diu-pram-instrument">Aparat PRAM și certificat metrologic</label>
+          <select id="diu-pram-instrument" className="den-input" value={form.instrument_id || ""} onChange={(e) => setVal("instrument_id", e.target.value)} data-testid="diu-pram-instrument">
+            <option value="">Alege din Setări → Aparate de măsură</option>
+            {instruments.map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.maker_model || instrument.name || instrument.model || "Aparat"}{instrument.serial ? ` · seria ${instrument.serial}` : ""}{instrument.expires ? ` · până la ${instrument.expires}` : ""}</option>)}
+          </select>
+          <p className="mt-1 text-[11px]" style={{ color: selectedInstrument?.file?.storage_path && selectedInstrument.expires >= today ? "#287347" : "#8a5a00" }}>{instrumentState}</p>
+        </div>
       </div>
     </div>
   );
 }
+
 
