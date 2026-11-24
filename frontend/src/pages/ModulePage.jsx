@@ -972,7 +972,14 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                   const borderColor = done ? "#b9d9c5" : next ? "#198754" : "var(--line)";
                   const color = done ? "#198754" : next ? "#fff" : "var(--muted)";
                   const background = done ? "#fff" : next ? "#198754" : "var(--panel)";
-                  return <a key={id} href={`#${id}`} onClick={() => openProsumerStep(id)} className="shrink-0 rounded-full border px-3 py-2 text-[11px] font-semibold" style={{ borderColor, color, background }} data-testid={`guided-step-${index + 1}`} aria-current={next ? "step" : undefined} aria-label={`${label}: ${done ? "completat" : next ? "pa{key === "prosumator" && editId && <details className="relative mb-5" style={{ zIndex: 20 }} data-testid="prosumer-quick-actions">
+                  return <a key={id} href={`#${id}`} onClick={() => openProsumerStep(id)} className="shrink-0 rounded-full border px-3 py-2 text-[11px] font-semibold" style={{ borderColor, color, background }} data-testid={`guided-step-${index + 1}`} aria-current={next ? "step" : undefined} aria-label={`${label}: ${done ? "completat" : next ? "pasul următor" : "de completat"}`}>
+                    {done ? "✓ " : ""}{label}
+                  </a>;
+                })}
+              </nav>
+            </section>}
+
+          {key === "prosumator" && editId && <details className="relative mb-5" style={{ zIndex: 20 }} data-testid="prosumer-quick-actions">
             <summary className="ml-auto flex min-h-10 w-fit cursor-pointer list-none items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold shadow-sm" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid="guided-other-documents-trigger">
               <span aria-hidden="true">···</span> Alte documente
             </summary>
