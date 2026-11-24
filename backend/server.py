@@ -3495,9 +3495,9 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         p = {"source": "generat", "docs": ["declaratie_autenticitate"], "key": "opis"}
     if not p:
         raise HTTPException(status_code=404, detail="Poziție inexistentă")
-    if p.get("source") == "generat" and p.get("missing"):
+    if p.get("missing"):
         missing = ", ".join(p.get("missing") or [])
-        raise HTTPException(status_code=409, detail=f"Completează {missing} înainte de generarea documentului {p.get('title') or key}.")
+        raise HTTPException(status_code=409, detail=f"Verifică {missing} înainte de descărcarea documentului {p.get('title') or key}.")
     if p.get("_official_form_unavailable"):
         raise HTTPException(status_code=409, detail=f"Formularul oficial pentru {p.get('title') or key} nu este disponibil. Atașează formularul curent al operatorului.")
     name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
