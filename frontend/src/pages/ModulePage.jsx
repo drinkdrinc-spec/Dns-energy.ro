@@ -277,7 +277,7 @@ function Field({ f, value, onChange, refOptions, ai }) {
   );
 }
 
-export default function ModulePage({ moduleKey, intakeOnly = false }) {
+export default function ModulePage({ moduleKey, intakeOnly = false, createOnly = false }) {
   const params = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -292,7 +292,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
   const [linkedProjects, setLinkedProjects] = useState([]);
   const [showTestRecords, setShowTestRecords] = useState(() => new URLSearchParams(window.location.search).get("showTests") === "1");
   const [creatingTestDossier, setCreatingTestDossier] = useState(false);
-  const [form, setForm] = useState(null); // null=hidden, {} = open
+  const [form, setForm] = useState(() => createOnly ? {} : null); // null=hidden, {} = open
   const [editId, setEditId] = useState(null);
   const [checks, setChecks] = useState({});
   const [refOptions, setRefOptions] = useState({});
@@ -369,8 +369,8 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
   }, [q, key]);
 
   useEffect(() => {
-    setForm(null); setEditId(null); setChecks({}); setQ("");
-    load();
+    setForm(createOnly ? {} : null); setEditId(null); setChecks({}); setQ("");
+    if (!createOnly) load();
     const refs = [...new Set((cfg.fields || []).filter((f) => f.type === "ref").map((f) => f.ref))];
     refs.forEach((ref) => {
       api.get(`/data/${ref}`).then((r) => {
@@ -492,7 +492,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
       }
     }
     // eslint-disable-next-line
-  }, [key, location.search]);
+  }, [key, location.search, createOnly]);
 
   const openNew = () => { setForm(key === "atr" ? { date: new Date().toISOString().slice(0, 10), submission_mode: "Solicitantul depune direct" } : {}); setEditId(null); setChecks({}); };
   const openEdit = (item) => { setForm({ ...item }); setEditId(item.id); setChecks(item.checklist || {}); };
@@ -686,6 +686,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
       else if (ensureDiuFailed) toast.warning("Cererea de spor a fost salvată, dar DI-U nu s-a putut asocia automat. Verifică accesul la modulul DI-U.");
       else if (ensuredDiu) toast.success(`Spor salvat · DI-U ${ensuredDiu.created ? "creat" : "actualizat"} și asociat`);
       else toast.success("Salvat cu succes");
+      if (createOnly) { navigate(`/${key}`, { replace: true }); return; }
       if (key === "diu" && editId) { setSavedAt(Date.now()); load(); return; }
       setForm(null); setEditId(null); setChecks({}); load();
     } catch (e) { toast.error(e.response?.data?.detail || "Eroare la salvare"); throw e; }
@@ -900,10 +901,10 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
 
   return (
     <div>
-      <PageHeader eyebrow={cfg.eyebrow} title={key === "prosumator" ? (editId ? `Dosar #${form?.number || String(editId).slice(0, 6)} · ${form?.client_name || "Prosumator"}` : form ? "Dosar nou" : "Dosare") : cfg.title}
-        sub={key === "prosumator" ? (editId ? [form?.request_type, form?.pod, form?.operator].filter(Boolean).join(" · ") : undefined) : cfg.sub}
+      <PageHeader eyebrow={cfg.eyebrow} title={createOnly ? cfg.addLabel : key === "prosumator" ? (editId ? `Dosar #${form?.number || String(editId).slice(0, 6)} · ${form?.client_name || "Prosumator"}` : form ? "Dosar nou" : "Dosare") : cfg.title}
+        sub={key === "prosumator" ? (editId ? [form?.request_type, form?.pod, form?.operator].filter(Boolean).join(" · ") : undefined) : createOnly ? undefined : cfg.sub}
         action={<div className="flex gap-2 flex-wrap">
-          {form ? <Btn data-testid="add-btn" onClick={() => setForm(null)}><X size={15} /> Închide</Btn> : key === "atr"
+          {createOnly ? <Btn data-testid="add-btn" variant="secondary" onClick={() => navigate(`/${key}`)}><X size={15} /> Renunță</Btn> : form ? <Btn data-testid="add-btn" onClick={() => setForm(null)}><X size={15} /> Închide</Btn> : key === "atr"
             ? <a data-testid="add-btn" href="/cerere-atr?new=atr" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> {cfg.addLabel}</a>
             : key === "prosumator" ? <a data-testid="add-btn" href="/dosare/nou" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> Dosar nou</a>
             : <Btn data-testid="add-btn" onClick={openNew}><Plus size={15} /> {cfg.addLabel}</Btn>}
@@ -978,7 +979,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                         const associatedProjects = linkedProjects.filter((item) => item.dossier_id === editId);
                         return <>
                           {availableDius.map((diu) => <a key={diu.id} role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/diu?edit=${encodeURIComponent(diu.id)}`} data-testid={`quick-prosumer-diu-${diu.id}`}>{availableDius.length === 1 ? "DIU din dosar" : `DIU · ${diu.number || diu.client_name || diu.address || "Deschide dosarul"}`}</a>)}
-                          {canCreateDiu && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">Creează DIU asociat</a>}
+                          {canCreateDiu && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/diu/nou?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">Creează DIU asociat</a>}
                           {associatedProjects.map((project) => <a key={project.id} role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/simulare?edit=${encodeURIComponent(project.id)}`} data-testid={`quick-prosumer-project-${project.id}`}>{associatedProjects.length === 1 ? "Proiectul asociat" : `Proiect · ${project.name || project.number || "Deschide proiectul"}`}</a>)}
                           {!associatedProjects.length && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/simulare?new=project&dossierId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-project">Creează proiect asociat</a>}
                         </>;
@@ -1111,12 +1112,12 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
           <div className="flex gap-2 mt-6 den-noprint">
             <Btn onClick={save} disabled={key === "prosumator" && catalogImportsBusy} data-testid="save-btn">{catalogImportsBusy ? "Se preiau documentele…" : "Salvează"}</Btn>
             <Btn variant="secondary" onClick={() => window.print()} data-testid="pdf-btn">Tipărește / PDF</Btn>
-            <Btn variant="secondary" onClick={() => setForm(null)}>Anulează</Btn>
+            <Btn variant="secondary" onClick={() => createOnly ? navigate(`/${key}`) : setForm(null)}>Anulează</Btn>
           </div>
         </div>
       )}
 
-      <div className="den-panel" data-testid="saved-records">
+      {!createOnly && <div className="den-panel" data-testid="saved-records">
         {key === "prosumator" && <section className="mb-5 rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: "var(--line)" }} aria-label="Inbox de azi" data-testid="prosumer-action-inbox">
           <div className="flex items-center justify-between gap-2">
             <div><h2 className="text-sm font-bold">Inbox de azi</h2><p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Acțiunile și termenele introduse în fiecare dosar apar aici.</p></div>
@@ -1299,7 +1300,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base}>Cerere ATR</a>
                   <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={base + "&case=" + encodeURIComponent("power-increase")}>Spor de putere</a>
-                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={"/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (pros ? "&prosId=" + encodeURIComponent(pros.id) : "") + ((showTestRecords || isTestRecord(it) || (pros && isTestRecord(pros))) ? "&showTests=1" : "")}>Creează DI-U</a>
+                  <a className={actionClass} style={{ color: "var(--blue)", borderColor: "var(--line)" }} href={"/diu/nou?new=diu&clientId=" + encodeURIComponent(it.id) + (pros ? "&prosId=" + encodeURIComponent(pros.id) : "") + ((showTestRecords || isTestRecord(it) || (pros && isTestRecord(pros))) ? "&showTests=1" : "")}>Creează DI-U</a>
                 </div>
                 {(pros || diu) && <details className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
                   <summary className="cursor-pointer text-xs font-semibold" style={{ color: "var(--blue)" }}>Descarcă documentele disponibile</summary>
@@ -1347,7 +1348,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                   <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/pv_pif/${it.id}`, `pif_${it.id.slice(0, 8)}.pdf`)}>Proces verbal PIF</button>
                   {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}`}>Cerere ATR</a>}
                   {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}&case=${encodeURIComponent("power-increase")}`}>Spor de putere</a>}
-                  {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu?new=diu&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}${(showTestRecords || isTestRecord(it)) ? "&showTests=1" : ""}`}>Creează DI-U</a>}
+                  {it.client_id && <a className={actionClass} style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu/nou?new=diu&clientId=${encodeURIComponent(it.client_id)}&prosId=${encodeURIComponent(it.id)}${(showTestRecords || isTestRecord(it)) ? "&showTests=1" : ""}`}>Creează DI-U</a>}
                   {diu && <button type="button" className={actionClass} style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/diu/${diu.id}/pdf?doc=pram_priza`, `pram_priza_diu_${diu.id.slice(0, 8)}.pdf`)}>PRAM DI-U</button>}
                 </div>
               </article>;
@@ -1493,7 +1494,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                         const clientDiuDossiers = linkedDiu.filter((d) => (d.client_id ? d.client_id === it.id : normalize(d.client_name) === normalize(it.name)) || (d.pros_id && d.pros_id === dossier?.id));
                         const diu = clientDiuDossiers.length === 1 ? clientDiuDossiers[0] : null;
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
-                        const diuUrl = "/diu?new=diu&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "") + ((showTestRecords || isTestRecord(it) || (dossier && isTestRecord(dossier))) ? "&showTests=1" : "");
+                        const diuUrl = "/diu/nou?new=diu&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "") + ((showTestRecords || isTestRecord(it) || (dossier && isTestRecord(dossier))) ? "&showTests=1" : "");
                         return <span className="inline-flex max-w-[204px] items-center flex-wrap gap-1">
                           <button type="button" className={linkClass} onClick={() => { window.location.href = diuUrl; }}>Creează DI-U</button>
                           <a className={linkClass} href={"/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.id) + (dossier ? "&prosId=" + encodeURIComponent(dossier.id) : "")}>Cerere ATR</a>
@@ -1525,7 +1526,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                         const linkClass = "inline-flex rounded border px-2 py-1 text-[11px] font-semibold mr-1";
                         const atrUrl = "/cerere-atr?new=atr&clientId=" + encodeURIComponent(it.client_id || "")
                           + "&prosId=" + encodeURIComponent(it.id);
-                        const diuUrl = it.client_id ? "/diu?new=diu&clientId=" + encodeURIComponent(it.client_id) + "&prosId=" + encodeURIComponent(it.id) + ((showTestRecords || isTestRecord(it)) ? "&showTests=1" : "") : "";
+                        const diuUrl = it.client_id ? "/diu/nou?new=diu&clientId=" + encodeURIComponent(it.client_id) + "&prosId=" + encodeURIComponent(it.id) + ((showTestRecords || isTestRecord(it)) ? "&showTests=1" : "") : "";
                         return <span className="inline-flex items-center flex-wrap gap-y-1">
                           {diuUrl && <a className={linkClass} href={diuUrl}>Creează DI-U</a>}
                           {it.client_id && <a className={linkClass} href={atrUrl}>Cerere ATR</a>}
@@ -1553,7 +1554,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
           </div>
           </>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
