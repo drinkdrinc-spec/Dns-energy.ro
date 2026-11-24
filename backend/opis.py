@@ -698,7 +698,7 @@ def _incomplete_report(positions_info, unavailable):
                             topMargin=20 * mm, bottomMargin=18 * mm, title="Verificare dosar DNS Energy")
     story = [
         Paragraph("LISTĂ DE VERIFICARE — ELEMENTE DE COMPLETAT", docgen.S["h"]),
-        Paragraph("Lista de mai jos arată ce lipsește sau ce nu a putut fi inclus. Marcajul CIORNĂ apare numai pe documentele generate care au date incomplete; documentele complete și fișierele atașate rămân nemodificate. Dosarul se finalizează după completarea și verificarea elementelor de mai jos.", docgen.S["p"]),
+        Paragraph("Lista de mai jos arată ce date și documente mai trebuie completate sau verificate. Documentele disponibile sunt incluse în pachet; valorile măsurate, semnăturile și formularele oficiale nu sunt inventate. Completează elementele indicate înainte de depunerea la operator.", docgen.S["p"]),
         Spacer(1, 5 * mm),
     ]
     for title, items in rows:
@@ -723,8 +723,7 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
         _require_complete_submission(positions_info)
     titles = positions_info["titles"]
     w = PdfWriter()
-    authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
-                                      draft=not positions_info["complete"])
+    authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles)
     main_parts = []
     technical_parts = []
     pram_parts = None
@@ -735,8 +734,6 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
             position_parts = await position_pdf(p, rec, client, settings, titles, get_object)
             if p.get("_official_form_unavailable"):
                 unavailable.append(f"{p.get('title') or p.get('key') or 'Formular oficial'} — formularul oficial nu a putut fi descărcat; fișa din pachet este doar de lucru")
-            if p.get("source") == "generat" and p.get("missing") and p.get("key") not in ("schema", "fisa_tehnica"):
-                position_parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in position_parts]
             # Match the reference submission layout: the authenticity
             # declaration closes the administrative forms, then the single-line
             # diagram and manufacturer evidence follow as a technical appendix.
@@ -750,8 +747,6 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
         except Exception as e:
             logger.error(f"bundle skip {p['key']}: {e}")
             unavailable.append(p.get("title") or p.get("key") or "Document atașat")
-    if unavailable and positions_info["complete"]:
-        authenticity_page = mark_draft(authenticity_page, "CIORNĂ — FIȘIER LIPSĂ")
     positions_info["export_has_unavailable_items"] = bool(unavailable)
     if unavailable:
         positions_info["complete"] = False

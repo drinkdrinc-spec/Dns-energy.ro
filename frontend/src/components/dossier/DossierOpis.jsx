@@ -133,13 +133,13 @@ export function DossierOpis({ id, mode = "all", onChecklist }) {
         {mode !== "attachments" && <div className="flex gap-2 flex-wrap">
           <Btn variant="secondary" onClick={lock} data-testid="opis-finalize">{d.finalized ? <><Unlock size={14} /> Redeschide</> : <><Lock size={14} /> Finalizează dosarul</>}</Btn>
           <Btn variant="secondary" disabled={!d.complete} title={!d.complete ? "Disponibil după completarea tuturor documentelor" : undefined} onClick={() => downloadAuthenticatedFile(`/dossier/${id}/file/opis?download=1`, "Opis_declaratie_autenticitate.pdf")} data-testid="opis-declaration"><FileDown size={14} /> Opis dosar</Btn>
-          <Btn disabled={exporting || !d.complete} title={!d.complete ? "Completează documentele și valorile marcate în raport pentru exportul final." : undefined} aria-busy={exporting} onClick={async () => {
-            if (exportLock.current || !d.complete) return;
+          <Btn disabled={exporting} aria-busy={exporting} onClick={async () => {
+            if (exportLock.current) return;
             exportLock.current = true;
             setExporting(true);
             try { await downloadAuthenticatedFile(`/dossier/${id}/export`, "Dosar_prosumator.pdf"); }
             finally { exportLock.current = false; setExporting(false); }
-          }} data-testid="opis-export"><FileDown size={15} /> {exporting ? "Se pregătește PDF-ul… păstrează pagina deschisă" : d.complete ? "Descarcă dosarul complet PDF" : "PDF final după completarea dosarului"}</Btn>
+          }} data-testid="opis-export"><FileDown size={15} /> {exporting ? "Se pregătește PDF-ul… păstrează pagina deschisă" : "Generează dosarul PDF"}</Btn>
           <Btn variant="secondary" disabled={packageExporting || !d.complete} title={!d.complete ? "Pachetul de depunere devine disponibil după completarea dosarului." : undefined} aria-busy={packageExporting} onClick={async () => {
             if (!d.complete) return;
             setPackageExporting(true);
