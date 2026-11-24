@@ -5,9 +5,11 @@ if not (_dns_test_os.environ.get("DNS_ENERGY_TEST_EMAIL") and _dns_test_os.envir
 
 # Tests: prosumator import, document generation (PDF), sizing, settings, AI extract, regression CRUD
 import os
+import io
 import time
 import pytest
 import requests
+from reportlab.pdfgen import canvas
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
@@ -48,12 +50,25 @@ def cleanup(request):
 
 
 def _import(s, **kw):
+    # Upload a real test PDF first. The import endpoint now rejects fabricated
+    # storage paths and only accepts files owned by the authenticated user.
+    pdf_buffer = io.BytesIO()
+    pdf = canvas.Canvas(pdf_buffer)
+    pdf.drawString(60, 760, "DOCUMENT DE TEST — TEST_PROS")
+    pdf.drawString(60, 730, "Fișier fictiv folosit exclusiv pentru testarea importului.")
+    pdf.save()
+    uploaded = s.post(
+        f"{API}/upload",
+        files={"file": ("TEST_PROS.pdf", pdf_buffer.getvalue(), "application/pdf")},
+        timeout=30,
+    )
+    if uploaded.status_code != 200:
+        return uploaded
     payload = {"client_name": "TEST_PROS Ion Popescu", "cnp": "1800101123456", "pod": "RO005E123",
                "address": "Str. Test 1, Oradea", "power": 10, "inverter": "Huawei SUN2000-10KTL",
                "inverter_kw": 10, "panels": "Jinko 450W", "panel_count": 22, "panel_w": 450,
                "battery": "Huawei LUNA 10kWh", "battery_kwh": 10, "supply": "Trifazat", "bransament_kw": 15,
-               "files": [{"storage_path": "d-energy/uploads/x/test.pdf", "original_filename": "TEST_PROS.pdf",
-                          "content_type": "application/pdf", "size": 10}]}
+               "files": [{**uploaded.json(), "kind": "factura", "doc_type": "Factură de energie (TEST)"}]}
     payload.update(kw)
     r = s.post(f"{API}/import/prosumator", json=payload, timeout=60)
     if r.status_code == 200:

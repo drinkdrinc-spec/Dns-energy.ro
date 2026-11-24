@@ -4,14 +4,20 @@ import hmac
 import uuid
 import secrets
 import logging
+import io
+import zipfile
+import httpx
+from urllib.parse import urlparse
 from datetime import datetime, timezone, timedelta, date
 from html import escape as hesc
 from typing import Optional
 
-from fastapi import HTTPException, Request, Depends, BackgroundTasks, Response
+from fastapi import HTTPException, Request, Depends, BackgroundTasks, Response, Query
+from pypdf import PdfReader, PdfWriter
 
 import server as S
 import atr_doc as ATR
+from atr_equipment import from_request as atr_equipment_from_request
 from mailer import send_email
 
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
@@ -20,6 +26,46 @@ OP_DOMAINS = {"deer": ("distributie-energie.ro",), "delgaz": ("delgaz-grid.ro", 
               "oltenia": ("distributieoltenia.ro", "evryo.ro")}
 DEFAULT_TERMS = {"check_days": 10, "issue_days": 30, "remind_days": 3}
 LINK_DAYS = 30
+DEER_GDPR_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf"
+DEER_AUTHENTICITY_URL = "https://www.distributie-energie.ro/wp-content/uploads/2024/02/Declaratie-autenticitate-date-racordare.doc"
+DEER_FORMS_URL = "https://www.distributie-energie.ro/racordare-la-retea-2/"
+DEER_IMPUTERNICIRE_URL = "https://www.distributie-energie.ro/wp-content/uploads/2026/07/Model-de-imputernicire.pdf"
+
+# Current official Retele Electrice (RER) forms. The operator page is the
+# source of truth; direct PDF URLs are used only when the registry is empty.
+RER_FORMS_URL = "https://www.reteleelectrice.ro/cereri-documente/"
+RER_STORAGE_FORM_URL = "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-aferenta-instalatiilor-de-stocare.pdf"
+
+DELGaz_FORMS_URL = "https://delgaz.ro/energie-electrica/prosumatori"
+DELGaz_GDPR_URLS = {
+    "Nota de informare privind prelucrarea datelor personale": "https://delgaz.ro/getattachment/d30fba83-32ae-405a-b5fe-c36bfe4ad767/Nota-de-informare-cu-privire-la-prelucrarea-datelor-cu-caracter-personal.pdf",
+    "Nota de informare DEGR supliment": "https://delgaz.ro/getattachment/9928a34a-405a-4061-9ffd-7204ed908dd3/Nota-de-infromare-DEGR-supliment.pdf",
+}
+DELGaz_FORM_PDFS = {
+    1: "https://delgaz.ro/getattachment/91755a0d-890c-4357-917a-ac5128ec735a/Cerere_de_racordare_prosumator-Anexa-1.pdf",
+    2: "https://delgaz.ro/getattachment/90cf84fa-708e-46a7-b60b-266364c50098/Notificare_racordare_prosumator-Anexa-2.pdf",
+    3: "https://delgaz.ro/getattachment/e2021264-a5fa-43f4-95d6-3975d8960202/Notificare_certificare_calitate_prosumator-Anexa-3.pdf",
+    4: "https://delgaz.ro/getattachment/d1de9dd7-849d-458f-aed2-3f3fc1694eaf/Cerere_de_racordare_prosumator_programe-Anexa-4.pdf",
+    5: "https://delgaz.ro/getattachment/f0d42548-d9fe-4275-b694-6bfc075842f3/Notificare_racordare_10-8kW-Anexa-5.pdf",
+}
+
+OLTENIA_FORMS_URL = "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html"
+OLTENIA_FORM_PDFS = {
+    1: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2024%2F26.01.2024%2F&fileName=01-03-01_P03-F16_Cerere+racordare+prosumatori_LC+noi+sau+spor+putere_anexa+1_rev06.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files",
+    2: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FProsumatori%2Finformatii%20prosumatori%20racordati%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F18_Notificare%20racordare%20prosumator%20LC%20existent%20_anexa%202_rev06.pdf",
+    3: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FFormulare%20racordare%2F2023%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F17_Notificare%20certificarea%20calitatii%20de%20prosumator%20LC%20producator%20existent_anexa%203_rev05.doc.pdf",
+    4: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FProsumatori%2F2023%2F11.09.2023%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F15_CerereDeRacordProsuMPtLcExistCareAccesProgDeFinan%C8%9BPrivInstlDeCE-PtProdDeEnElDin%20SursRegen_Anexa%204_rev05.pdf",
+    5: "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&lang=en&type=Files&currentFolder=%2FDO%2FINFORMATII%20UTILE%2FProsumatori%2F2023%2F08.06.2023%2F&hash=24460cc7b9aefcd5&fileName=01-03-01_P03-F28_NotifRacordLC_LC%26proddin%20surse%20renerabileProsumPutereSub%2010%2C8kw_rev_01.pdf",
+}
+
+RER_FORM_PDFS = {
+    1: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-1-cerere-racordare.pdf",
+    2: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-2-cerere-racordare.pdf",
+    3: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-3-cerere-racordare.pdf",
+    4: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-4-cerere-racordare.pdf",
+    5: "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-5-cerere-racordare.pdf",
+}
+
 
 
 def now() -> str:
@@ -177,6 +223,8 @@ async def contacts_set(op: str, request: Request, user: dict = Depends(get_curre
 @api.get("/forms/alerts")
 async def form_alerts(operator: str = "", scope: str = "atr", user: dict = Depends(get_current_user)):
     op = ATR.op_key(operator)
+    if not op:
+        return []
     want = ("atr",) if scope == "atr" else ("spor", "prosumator")
     out = []
     for f in await db.official_forms.find({"status": {"$in": ["versiune nouă detectată", "link invalid"]}}, {"_id": 0, "history": 0}).to_list(200):
@@ -185,20 +233,720 @@ async def form_alerts(operator: str = "", scope: str = "atr", user: dict = Depen
     return out
 
 
+# ---------------- official operator forms ----------------
+@api.get("/forms/operator-links")
+async def operator_form_links(operator: str = "", scope: str = "atr", user: dict = Depends(get_current_user)):
+    """Return registered official-form links for the selected distributor, not only changed/broken forms."""
+    if not operator.strip():
+        return []
+    op = ATR.op_key(operator)
+    want = ("atr",) if scope == "atr" else ("spor", "prosumator")
+    rows = await db.official_forms.find({}, {"_id": 0, "history": 0}).to_list(500)
+    out = []
+    for f in rows:
+        kind = str(f.get("kind") or "").lower()
+        url = str(f.get("url") or "").strip()
+        if ATR.op_key(f.get("operator")) != op or not any(w in kind for w in want) or not url.startswith("https://"):
+            continue
+        out.append({k: f.get(k) for k in ("id", "operator", "title", "url", "status", "version")} |
+                   {"checked": (f.get("last_check") or {}).get("at")})
+    if op == "rer" and scope == "atr":
+        existing_titles = {str(row.get("title") or "").casefold() for row in out}
+        for annex_no, url in RER_FORM_PDFS.items():
+            title = f"Retele Electrice — Anexa {annex_no} prosumatori"
+            if title.casefold() not in existing_titles:
+                out.append({"id": f"builtin-rer-annex-{annex_no}", "operator": "Retele Electrice",
+                            "title": title, "url": url, "status": "sursă oficială", "version": "formular curent",
+                            "source_url": RER_FORMS_URL})
+    if op == "delgaz" and scope == "atr":
+        existing_titles = {str(row.get("title") or "").casefold() for row in out}
+        for annex_no, url in DELGaz_FORM_PDFS.items():
+            title = f"Delgaz Grid — Anexa {annex_no} prosumatori"
+            if title.casefold() not in existing_titles:
+                out.append({"id": f"builtin-delgaz-annex-{annex_no}", "operator": "Delgaz Grid",
+                            "title": title, "url": url, "status": "sursă oficială", "version": "formular curent",
+                            "source_url": DELGaz_FORMS_URL})
+    if op == "oltenia" and scope == "atr":
+        existing_titles = {str(row.get("title") or "").casefold() for row in out}
+        for annex_no, url in OLTENIA_FORM_PDFS.items():
+            title = {1: "Distribuție Oltenia — Anexa 1 prosumatori rev. 06", 2: "Distribuție Oltenia — Anexa 2 prosumatori rev. 06", 3: "Distribuție Oltenia — Anexa 3 prosumatori rev. 05", 4: "Distribuție Oltenia — Anexa 4 prosumatori rev. 05", 5: "Distribuție Oltenia — Anexa 5 prosumatori rev. 01"}[annex_no]
+            if title.casefold() not in existing_titles:
+                out.append({"id": f"builtin-oltenia-annex-{annex_no}", "operator": "Distribuție Oltenia",
+                            "title": title, "url": url, "status": "sursă oficială", "version": "formular curent",
+                            "source_url": OLTENIA_FORMS_URL})
+    return sorted(out, key=lambda f: (f.get("status") in ("link invalid", "versiune nouă detectată"), str(f.get("title") or "")))
+
+
+
+# ---------------- official operator form retrieval ----------------
+def _form_is_usable(form: dict) -> bool:
+    """Reject entries explicitly marked withdrawn or unusable before packaging them."""
+    status = str((form or {}).get("status") or "").strip().casefold()
+    unavailable = ("link invalid", "formular retras", "retras", "expirat", "withdrawn", "superseded", "replaced")
+    return not any(marker in status for marker in unavailable)
+
+async def _registry_annex1(operator_key: str) -> dict | None:
+    """Select an official prosumer Annex 1 from the operator registry, never an arbitrary user URL."""
+    if operator_key not in OP_DOMAINS:
+        return None
+    rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
+    matches = []
+    for form in rows:
+        kind = str(form.get("kind") or "").casefold()
+        title = str(form.get("title") or "").casefold()
+        if ATR.op_key(form.get("operator")) != operator_key:
+            continue
+        if "prosumator" not in kind or "anexa 1" not in title:
+            continue
+        if not _form_is_usable(form):
+            continue
+        parsed = urlparse(str(form.get("url") or ""))
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if parsed.scheme != "https" or not any(host == domain or host.endswith("." + domain) for domain in OP_DOMAINS[operator_key]):
+            continue
+        matches.append(form)
+    if not matches:
+        return None
+    # Prefer a version confirmed in the official forms register.
+    return max(matches, key=lambda row: (bool(row.get("confirmed_at")), row.get("status") == "valid", str(row.get("title") or "")))
+
+
+async def _fetch_registry_annex(form: dict, operator_key: str) -> tuple[bytes, str]:
+    """Fetch a bounded public form only from the configured operator's official domains."""
+    async with httpx.AsyncClient(
+        headers={"User-Agent": "DNS-Energy/1.0 (official form package)"},
+        follow_redirects=True,
+        timeout=httpx.Timeout(25.0, connect=7.0),
+    ) as client:
+        async with client.stream("GET", form["url"]) as response:
+            host = (urlparse(str(response.url)).hostname or "").lower().rstrip(".")
+            if not any(host == domain or host.endswith("." + domain) for domain in OP_DOMAINS[operator_key]):
+                raise ValueError("Redirecționarea formularului a părăsit domeniul oficial al operatorului.")
+            if response.status_code != 200:
+                raise ValueError(f"Formularul oficial a răspuns cu HTTP {response.status_code}.")
+            chunks, size = [], 0
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > 20 * 1024 * 1024:
+                    raise ValueError("Formularul oficial depășește limita de 20 MB.")
+                chunks.append(chunk)
+            data = b"".join(chunks)
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", str(form.get("title") or "Anexa_1")).strip("_")[:100] or "Anexa_1"
+    if data.startswith(b"%PDF"):
+        return data, f"{safe}.pdf"
+    if data.startswith(b"PK"):
+        return data, f"{safe}.docx"
+    if data.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):
+        return data, f"{safe}.doc"
+    raise ValueError("Linkul din registru nu a returnat un PDF, DOCX sau DOC oficial.")
+
+def _annex_for_request(operator_key: str, rec: dict, pros: dict | None = None) -> int | None:
+    """Resolve one official annex from the selected request and verified case details."""
+    if operator_key not in OP_DOMAINS:
+        return None
+    case = " ".join(str(rec.get(k) or "") for k in ("deer_case", "request_type")).casefold().replace("ț", "t").replace("ș", "s")
+    request_type = ATR.rtype(rec)
+    funding_markers = ("finant", "afm", "casa verde", "fonduri proprii", "surse proprii", "program")
+    funding_case = any(mark in case for mark in funding_markers)
+
+    # A confirmed power increase / technical change uses Annex 1 even if an
+    # unrelated funding note is present on the record.
+    if request_type in ("spor", "mod_dep", "temp"):
+        return 1
+    if request_type == "admin":
+        return 3
+
+    # Existing-place financing routes have separate official forms. RER uses
+    # Annex 2 for AFM / own funds and Annex 4 for other programs; Delgaz and
+    # Oltenia use Annex 4 for financing cases.
+    if funding_case:
+        if operator_key == "rer" and any(mark in case for mark in ("afm", "casa verde", "fonduri proprii", "surse proprii")):
+            return 2
+        return 4
+
+    if request_type == "nou":
+        return 1
+    if any(mark in case for mark in ("≤10,8", "<=10,8", "<=10.8", "≤ 10,8")):
+        return 5
+    if request_type == "mod_fara":
+        pros = pros or {}
+        cef = pros.get("cef") or {}
+        panel_kwp = ATR.installed_pv_kwp_for_record(rec, pros) or 0
+        raw_kwp = panel_kwp or pros.get("_kwp") or pros.get("panel_kwp") or cef.get("total_kwp")
+        try:
+            kwp = float(str(raw_kwp).replace(",", ".")) if raw_kwp not in (None, "") else None
+        except (TypeError, ValueError):
+            kwp = None
+        supply = str(rec.get("supply") or pros.get("supply") or (cef.get("grid") or {}).get("supply") or "").casefold()
+        three_phase = any(mark in supply for mark in ("trifaz", "400", "three-phase", "3 phase"))
+        single_phase = any(mark in supply for mark in ("monofaz", "230", "single-phase", "1 phase", "1 faz"))
+        if three_phase:
+            return 2
+        if not single_phase or kwp is None:
+            # Do not silently treat an unknown connection or missing installed
+            # PV capacity as the default annex; the applicant must supply data.
+            return None
+        return 5 if kwp <= 10.8 else 2
+    return None
+
+
+async def _registry_forms_for_request(operator_key: str, rec: dict, pros: dict | None = None) -> tuple[int | None, list[dict]]:
+    """Choose only official forms whose annex matches the selected ATR case."""
+    annex_no = _annex_for_request(operator_key, rec, pros)
+    if annex_no is None:
+        return None, []
+    # Prefer the curated direct operator PDFs; the optional registry can contain
+    # stale versions even when a newer official form is published.
+    if operator_key == "rer" and annex_no in RER_FORM_PDFS:
+        return annex_no, [{
+            "operator": "Retele Electrice",
+            "kind": "prosumator atr",
+            "title": f"Anexa {annex_no} — formular prosumator Retele Electrice",
+            "url": RER_FORM_PDFS[annex_no],
+            "source_url": RER_FORMS_URL,
+            "status": "sursă oficială",
+            "version": "formular curent",
+        }]
+    if operator_key == "delgaz" and annex_no in DELGaz_FORM_PDFS:
+        return annex_no, [{
+            "operator": "Delgaz Grid",
+            "kind": "prosumator atr",
+            "title": f"Anexa {annex_no} — formular prosumator Delgaz Grid",
+            "url": DELGaz_FORM_PDFS[annex_no],
+            "source_url": DELGaz_FORMS_URL,
+            "status": "sursă oficială",
+            "version": "formular curent",
+        }]
+    if operator_key == "oltenia" and annex_no in OLTENIA_FORM_PDFS:
+        return annex_no, [{
+            "operator": "Distribuție Oltenia",
+            "kind": "prosumator atr",
+            "title": {1: "Anexa 1 prosumator Distribuție Oltenia rev. 06", 2: "Anexa 2 prosumator Distribuție Oltenia rev. 06", 3: "Anexa 3 prosumator Distribuție Oltenia rev. 05", 4: "Anexa 4 prosumator Distribuție Oltenia rev. 05", 5: "Anexa 5 prosumator Distribuție Oltenia rev. 01"}[annex_no],
+            "url": OLTENIA_FORM_PDFS[annex_no],
+            "source_url": OLTENIA_FORMS_URL,
+            "status": "sursă oficială",
+            "version": "formular curent",
+        }]
+    rows = await db.official_forms.find({}, {"_id": 0}).to_list(500)
+    matches = []
+    annex_pattern = re.compile(rf"anexa\s*(?:nr\.?\s*)?{annex_no}\b", re.I)
+    for form in rows:
+        kind = str(form.get("kind") or "").casefold()
+        title = str(form.get("title") or "").casefold()
+        if ATR.op_key(form.get("operator")) != operator_key:
+            continue
+        if "prosumator" not in kind and "prosumator" not in title:
+            continue
+        if not annex_pattern.search(title) and not annex_pattern.search(kind):
+            continue
+        if not _form_is_usable(form):
+            continue
+        parsed = urlparse(str(form.get("url") or ""))
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if parsed.scheme != "https" or not any(host == domain or host.endswith("." + domain) for domain in OP_DOMAINS[operator_key]):
+            continue
+        matches.append(form)
+    # A request maps to one annex. Including multiple versions of that same official
+    # form makes the package ambiguous; keep only the highest-priority registered source.
+    matches.sort(key=lambda row: (bool(row.get("confirmed_at")), row.get("status") == "valid", str(row.get("title") or "")), reverse=True)
+    if matches:
+        return annex_no, matches[:1]
+    return annex_no, []
+
+
+def _first_present(*values):
+    return next((value for value in values if value not in (None, "")), None)
+
+
+def _prefill_official_pdf(pdf_bytes: bytes, rec: dict, client: dict, pros: dict) -> tuple[bytes, int]:
+    """Fill only semantically named text fields in official PDF forms; never infer values."""
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes), strict=False)
+        fields = reader.get_fields() or {}
+    except Exception:
+        return pdf_bytes, 0
+    if not fields:
+        return pdf_bytes, 0
+
+    def norm(value):
+        import unicodedata
+        return re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode("ascii").lower())
+
+    c, r, p = client or {}, rec or {}, pros or {}
+    applicant_type = str(r.get("applicant_type") or "").casefold()
+    is_company = "jurid" in applicant_type or applicant_type == "pj"
+    applicant_address = (c.get("hq_address") or c.get("address")) if is_company else (c.get("address") or c.get("hq_address"))
+    cef = p.get("cef") or {}
+    inverters = cef.get("inverters") or []
+    computed_export_kw = None
+    if inverters:
+        try:
+            computed_export_kw = ATR.CEF.check(cef).get("totals", {}).get("export_kw")
+        except Exception:
+            computed_export_kw = None
+    batteries = ATR.storage_details(p, r)
+    panel_models = ", ".join(dict.fromkeys(
+        str(model) for inv in inverters
+        if not (inv.get("battery_only") or inv.get("no_panels"))
+        for model in ([inv.get("panel_model")] + [st.get("panel_model") for st in (inv.get("strings") or [])])
+        if model
+    ))
+    inverter_models = ", ".join(dict.fromkeys(str(x.get("brand_model")) for x in inverters if x.get("brand_model")))
+    battery_models = ", ".join(dict.fromkeys(str(x.get("model")) for x in batteries if x.get("model")))
+
+    def number(value):
+        try:
+            return float(str(value or 0).replace(",", "."))
+        except (TypeError, ValueError):
+            return 0.0
+
+    panel_count = sum(
+        sum(int(number(st.get("panels"))) for st in (inv.get("strings") or []))
+        * max(1, int(number(inv.get("count")) or 1))
+        for inv in inverters
+        if not (inv.get("battery_only") or inv.get("no_panels"))
+    )
+    battery_kwh = sum(number(b.get("kwh")) * max(1, int(number(b.get("modules")) or 1)) for b in batteries)
+    battery_ah = ", ".join(str(b.get("ah")) for b in batteries if b.get("ah") not in (None, ""))
+    battery_voltage = ", ".join(str(b.get("voltage")) for b in batteries if b.get("voltage") not in (None, ""))
+    battery_modules = sum(max(1, int(number(b.get("modules")) or 1)) for b in batteries)
+    battery_i_max = ", ".join(str(b.get("i_max")) for b in batteries if b.get("i_max") not in (None, ""))
+    battery_coupling = ", ".join(dict.fromkeys(str(b.get("coupling")) for b in batteries if b.get("coupling")))
+    values = [
+        (("numecomplet", "utilizator", "beneficiar", "solicitant", "denumireclient"), c.get("name")),
+        (("prenume",), c.get("first_name")),
+        (("cnp",), c.get("idcode") if not is_company else None),
+        (("cui", "codfiscal", "codinregistrarefiscala"), c.get("cui") or (c.get("idcode") if is_company else None)),
+        (("email",), c.get("email")),
+        (("telefon", "telefonmobil", "phone"), c.get("phone")),
+        (("judet", "county"), r.get("county") or c.get("county")),
+        (("localitate", "locality", "oras", "municipiu"), r.get("locality") or c.get("locality")),
+        (("pod", "codpunctconsum"), r.get("pod") or c.get("pod")),
+        (("numarcf", "nrcf", "cartefunciara"), r.get("cf_nr") or c.get("cf_nr")),
+        (("numarcadastral", "cadastral"), r.get("cadastral_nr") or c.get("cadastral_nr")),
+        (("adresalocconsum", "adresapunctconsum", "locconsum", "stradalocconsum"), r.get("address")),
+        (("adresadomiciliu", "adresasolicitant", "domiciliu", "clientaddress", "applicantaddress", "strada"), applicant_address),
+        (("pabsorbita", "putereabsorbita", "pabs", "pmaxabsorbita"), r.get("p_abs_kw")),
+        (("putereinstalatapv", "putereinstalataproducere", "putereinstalatafotovoltaica", "puterepanouri", "kwpinstalat"), ATR.installed_pv_kwp_for_record(r, p)),
+        (("putereevacuatakva", "pevackva", "pmaxevacuatakva"), r.get("p_evac_kva")),
+        (("putereevacuatakw", "pevackw", "pmaxevacuatakw", "putereevacuata", "pevacuare", "pmaxevacuata"), computed_export_kw if computed_export_kw is not None else _first_present(r.get("p_evac_kw"), p.get("power"))),
+        (("altemodificarisolicitate", "altamodificaresolicitata", "altecererisauobservatii", "observatiiadditional"), r.get("other_changes") or r.get("other_requested_changes")),
+        (("modelpanou", "modelulinpanou", "tipmodelpanou", "tippanou", "tipulpanoului", "modulefotovoltaic"), panel_models or None),
+        (("numarpanouri", "numardepanouri", "nrpanouri", "nrdetotalpanouri"), panel_count or None),
+        (("modelinvertor", "modelulinvertorului", "tipmodelinvertor", "tipulinvertor", "tipulinvertoarelor", "marcainvertor", "producatorinvertor"), inverter_models or None),
+        (("modelbaterie", "modelulbateriei", "tipmodelbaterie", "tipbaterie", "tipulbateriei", "modelacumulator", "marcabaterie"), battery_models or None),
+        (("capacitatebateriekwh", "capacitatekwh", "energieutilizabilakwh"), battery_kwh or None),
+        (("numarmodulebaterie", "modulebaterie", "numarbaterii"), battery_modules or None),
+        (("amperoribaterie", "baterieah", "capacitateah"), battery_ah or None),
+        (("tensiunebateriev", "bateriev", "tensiunesistemstocare"), battery_voltage or None),
+        (("cuplarebaterie", "modcuplare", "acdcoupling"), battery_coupling or None),
+        (("curentmaxbaterie", "curentdescarcarebaterie", "amperajbaterie", "baterieimax"), battery_i_max or None),
+    ]
+    def value_for(field_name):
+        key = norm(field_name)
+        if not key:
+            return None
+        if "reprezentant" in key or "imputernicit" in key:
+            if "cnp" in key:
+                value = c.get("rep_idcode") or r.get("rep_idcode")
+            elif any(token in key for token in ("calitate", "functie", "rol")):
+                value = c.get("rep_role") or r.get("rep_role")
+            elif "email" in key:
+                value = c.get("rep_email") or r.get("rep_email")
+            elif "telefon" in key or "phone" in key:
+                value = c.get("rep_phone") or r.get("rep_phone")
+            elif any(token in key for token in ("adresa", "domiciliu", "strada")):
+                value = c.get("rep_address") or r.get("rep_address")
+            elif any(token in key for token in ("nume", "name")):
+                value = c.get("rep_name") or r.get("rep_name")
+            else:
+                value = None
+            return str(value) if value not in (None, "") else None
+        if "codpostal" in key or "postalcode" in key:
+            value = r.get("postal_code") or c.get("postal_code")
+            return str(value) if value not in (None, "") else None
+        if "registrulcomertului" in key or "registrationnumber" in key or "numarregcom" in key:
+            value = c.get("registration_no") or r.get("registration_no")
+            return str(value) if value not in (None, "") else None
+        if "iban" in key or "contbancar" in key:
+            value = c.get("iban") or r.get("iban")
+            return str(value) if value not in (None, "") else None
+        if "banca" in key or "bank" in key:
+            value = c.get("bank") or r.get("bank")
+            return str(value) if value not in (None, "") else None
+        for aliases, value in values:
+            if value in (None, ""):
+                continue
+            if any(norm(alias) in key for alias in aliases):
+                return str(value)
+        return None
+
+    page_updates = []
+    filled = 0
+    for page_index, page in enumerate(reader.pages):
+        update = {}
+        for field_name, field in fields.items():
+            if field.get("/FT") != "/Tx":
+                continue
+            value = value_for(field_name)
+            if value is not None:
+                update[field_name] = value
+        if update:
+            page_updates.append((page_index, update))
+            filled += len(update)
+    if not filled:
+        return pdf_bytes, 0
+    writer = PdfWriter()
+    writer.clone_document_from_reader(reader)
+    for page_index, update in page_updates:
+        try:
+            writer.update_page_form_field_values(writer.pages[page_index], update, auto_regenerate=False)
+        except Exception:
+            return pdf_bytes, 0
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue(), filled
+
+
+# ---------------- standalone prefilled DEER annex ----------------
+@api.get("/atr/{item_id}/official-docx")
+async def atr_official_docx(item_id: str, user: dict = Depends(get_current_user)):
+    """Download the selected DEER official annex prefilled with saved dossier data."""
+    rec = await get_rec(user, item_id, write=False)
+    client = await S.get_client(user["id"], rec) or {}
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros = {}
+    linked_pros = await S.resolve_atr_prosumer(user, rec, client)
+    if linked_pros:
+        pros, pros_client, settings, _ = await S.dossier_ctx(user, linked_pros["id"])
+        client = {**(pros_client or {}), **(client or {})}
+        rec = {**rec, "pros_id": linked_pros["id"]}
+        if "producere" not in str(rec.get("kind") or "").casefold():
+            rec["kind"] = "loc de consum și de producere"
+    else:
+        pros = atr_equipment_from_request(rec)
+
+    if ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator")) != "deer":
+        raise HTTPException(status_code=400, detail="Precompletarea anexei oficiale este disponibilă pentru cererile DEER.")
+    annex_info = ATR.deer_annex_info(rec)
+    if annex_info and annex_info[0] == "Procedură dedicată":
+        content = ATR.render_operator_annex_prep(
+            rec, client, pros or {}, "deer", annex_info[0], annex_info[1]
+        )
+        return Response(content=content, media_type="application/pdf",
+                        headers={"Content-Disposition": S.disp("attachment", "Fisa_precompletare_DEER_peste_400_kW.pdf"),
+                                 "Cache-Control": "no-store"})
+    try:
+        content = ATR.render_deer_official_docx(rec, client, settings, pros or {})
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    label = re.sub(r"[^A-Za-z0-9_-]+", "_", (annex_info or ("Anexa_DEER",))[0]).strip("_")
+    filename = f"{label}_completata.docx"
+    return Response(content=content,
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": S.disp("attachment", filename), "Cache-Control": "no-store"})
+
+
+# ---------------- complete downloadable package ----------------
+@api.get("/atr/{item_id}/package.zip")
+async def atr_package(item_id: str, user: dict = Depends(get_current_user)):
+    """Bundle the ATR PDF and the official operator form; DEER templates are prefilled when available."""
+    rec = await get_rec(user, item_id, write=False)
+    client = await S.get_client(user["id"], rec) or {}
+    settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0}) or {}
+    pros = {}
+    linked_pros = await S.resolve_atr_prosumer(user, rec, client)
+    if linked_pros:
+        pros, pros_client, settings, _ = await S.dossier_ctx(user, linked_pros["id"])
+        client = {**(pros_client or {}), **(client or {})}
+        rec = {**rec, "pros_id": linked_pros["id"]}
+        if "producere" not in str(rec.get("kind") or "").casefold():
+            rec["kind"] = "loc de consum și de producere"
+    else:
+        pros = atr_equipment_from_request(rec)
+
+    pdf, pdf_name = await S.atr_pack(user, rec, 1)
+    bundle = io.BytesIO()
+    with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(pdf_name, pdf)
+        site_plan_pdf = ATR.render_atr_site_plan(rec, client, S.atr_site_plan_background(user["id"], rec))
+        if site_plan_pdf:
+            archive.writestr("Plan de situatie/Schiță_amplasament_ATR_ilustrativă.pdf", site_plan_pdf)
+        op_key = ATR.op_key(rec.get("operator"), (pros or {}).get("operator"), client.get("operator"))
+        if op_key == "deer":
+            annex_info = ATR.deer_annex_info(rec)
+            if annex_info and annex_info[0] == "Procedură dedicată":
+                worksheet = ATR.render_operator_annex_prep(
+                    rec, client, pros or {}, op_key, annex_info[0], annex_info[1]
+                )
+                archive.writestr("Anexe oficiale/Fisa_precompletare_DEER_peste_400_kW.pdf", worksheet)
+                deer_notes = [
+                    "Pachet DEER pentru procedura dedicată instalațiilor de peste 400 kW.",
+                    "Fișa PDF este un document de lucru precompletat din datele salvate; nu este formularul oficial și nu înlocuiește documentele operatorului.",
+                    "Formularul oficial este publicat de DEER în format DOC la sursa indicată mai jos; completați-l, verificați datele și semnați înainte de depunere.",
+                    f"Formular oficial DEER: {annex_info[2]}",
+                    f"Sursa oficială cu formularele aplicabile: {DEER_FORMS_URL}",
+                ]
+                try:
+                    source_form, source_name = await _fetch_registry_annex(
+                        {"title": annex_info[1], "url": annex_info[2]}, "deer")
+                    archive.writestr(f"Anexe oficiale/Formular oficial original/{source_name}", source_form)
+                    deer_notes.append("Formularul oficial original DEER a fost inclus în pachet.")
+                except (httpx.HTTPError, ValueError) as exc:
+                    deer_notes.append(f"Formularul oficial original nu a putut fi preluat acum; descărcați-l de la sursa DEER de mai sus. ({exc})")
+            else:
+                try:
+                    annex = ATR.render_deer_official_docx(rec, client, settings, pros or {})
+                except (ValueError, RuntimeError) as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
+                label = re.sub(r"[^A-Za-z0-9_-]+", "_", (annex_info or ("Anexa_DEER",))[0]).strip("_")
+                archive.writestr(f"Anexe oficiale/{label}_completata.docx", annex)
+
+                deer_notes = [
+                    "Pachet DEER — formularul completat este o copie de lucru precompletată din datele salvate.",
+                    "Verificați versiunea curentă, completați câmpurile rămase goale și semnați înainte de depunere.",
+                    f"Sursa oficială cu formularele aplicabile: {DEER_FORMS_URL}",
+                ]
+            try:
+                authenticity, authenticity_name = await _fetch_registry_annex(
+                    {"title": "Declarația oficială DEER de autenticitate a datelor", "url": DEER_AUTHENTICITY_URL}, "deer")
+                archive.writestr(f"Anexe oficiale/{authenticity_name}", authenticity)
+                deer_notes.append("Declarația oficială DEER privind autenticitatea datelor (obligatorie pentru toate cererile) a fost inclusă necompletată.")
+            except (httpx.HTTPError, ValueError) as exc:
+                deer_notes.append(f"Declarația oficială DEER de autenticitate nu a putut fi preluată acum; descărcați-o de aici: {DEER_AUTHENTICITY_URL} ({exc})")
+            if annex_info and annex_info[2]:
+                try:
+                    source, source_name = await _fetch_registry_annex(
+                        {"title": annex_info[1], "url": annex_info[2]}, "deer")
+                    archive.writestr(f"Anexe oficiale/Formular oficial necompletat/{source_name}", source)
+                    deer_notes.append(f"Formularul oficial {annex_info[0]} a fost inclus ca fișier original necompletat.")
+                except (httpx.HTTPError, ValueError) as exc:
+                    deer_notes.append(f"Formularul oficial nu a putut fi preluat acum: {exc}")
+            else:
+                deer_notes.append("Nu a fost identificată anexa oficială pentru selecția curentă; verificați pagina DEER.")
+
+            try:
+                gdpr, gdpr_name = await _fetch_registry_annex(
+                    {"title": "Nota DEER de informare GDPR v1/2026", "url": DEER_GDPR_URL}, "deer")
+                archive.writestr(f"Anexe oficiale/{gdpr_name}", gdpr)
+                deer_notes.append("Nota oficială DEER privind prelucrarea datelor personale (v1/2026) a fost inclusă.")
+            except (httpx.HTTPError, ValueError) as exc:
+                deer_notes.append(f"Nota GDPR oficială nu a putut fi preluată acum; descărcați-o de aici: {DEER_GDPR_URL} ({exc})")
+            if str(rec.get("submission_mode") or "").strip().casefold() == "prin împuternicit".casefold():
+                try:
+                    mandate, mandate_name = await _fetch_registry_annex(
+                        {"title": "Model împuternicire DEER — iulie 2026", "url": DEER_IMPUTERNICIRE_URL}, "deer")
+                    archive.writestr(f"Anexe oficiale/Împuternicire/{mandate_name}", mandate)
+                    deer_notes.append("Modelul oficial DEER de împuternicire (iulie 2026) a fost inclus necompletat pentru semnare.")
+                except (httpx.HTTPError, ValueError) as exc:
+                    deer_notes.append(f"Modelul oficial de împuternicire nu a putut fi preluat acum; descărcați-l de aici: {DEER_IMPUTERNICIRE_URL} ({exc})")
+
+            archive.writestr("Anexe oficiale/INFO_DEER.txt", "\n".join(deer_notes))
+        else:
+            annex_no, forms = await _registry_forms_for_request(op_key, rec, pros)
+            if annex_no:
+                worksheet = ATR.render_operator_annex_prep(rec, client, pros, op_key, annex_no, forms[0].get("title", "") if forms else "")
+                archive.writestr(f"Anexe oficiale/Fisa_precompletare_Anexa_{annex_no}.pdf", worksheet)
+            note = [
+                "Pachet ATR — formular oficial pentru operator",
+                f"Operator selectat: {rec.get('operator') or (pros or {}).get('operator') or client.get('operator') or 'neselectat'}",
+                f"Tip solicitare: {ATR.rtype(rec) or 'neselectat'}",
+                f"Anexă oficială selectată pentru tipul cererii: {annex_no or 'nedeterminată'}",
+                "",
+                "Fișa de precompletare din arhivă este inclusă și în PDF-ul principal; ambele sunt generate din aceleași date salvate.",
+                "Formularele oficiale atașate rămân originale și necompletate. Verificați versiunea, eligibilitatea și semnați formularul oficial înainte de depunere.",
+                "Verificați versiunea și eligibilitatea în portalul operatorului înainte de depunere. Valorile lipsă nu sunt inventate.",
+            ]
+            if annex_no is None and ATR.rtype(rec) == "mod_fara":
+                cef = (pros or {}).get("cef") or {}
+                supply = str(rec.get("supply") or (pros or {}).get("supply") or (cef.get("grid") or {}).get("supply") or "").casefold()
+                phase_known = any(mark in supply for mark in ("trifaz", "400", "three-phase", "3 phase", "monofaz", "230", "single-phase", "1 phase", "1 faz"))
+                missing = []
+                if not phase_known:
+                    missing.append("tipul branșamentului")
+                single_phase = any(mark in supply for mark in ("monofaz", "230", "single-phase", "1 phase", "1 faz"))
+                if single_phase and ATR.installed_pv_kwp_for_record(rec, pros) is None:
+                    missing.append("puterea instalată fotovoltaică (Pi) confirmată")
+                if missing:
+                    note.append("Anexa nu a fost aleasă automat; lipsesc date dovedite: " + ", ".join(missing) + ". Completați dosarul și generați din nou pachetul.")
+            if forms:
+                for form in forms:
+                    note.extend(["", f"Sursă oficială: {form.get('source_url') or form.get('url')}", f"Formular: {form.get('title')}", f"Stare link: {form.get('status') or 'neverificat'}"])
+                    try:
+                        annex, official_name = await _fetch_registry_annex(form, op_key)
+                        archive.writestr(f"Anexe oficiale/Formulare originale/{official_name}", annex)
+                        completed, filled_fields = _prefill_official_pdf(annex, rec, client, pros)
+                        if filled_fields:
+                            stem = re.sub(r"[^A-Za-z0-9_-]+", "_", official_name.rsplit(".", 1)[0]).strip("_")
+                            archive.writestr(f"Anexe oficiale/{stem}_completata.pdf", completed)
+                            note.append(f"Formular PDF oficial completat automat în {filled_fields} câmpuri etichetate; copia originală a fost păstrată.")
+                        else:
+                            note.append("Formular oficial descărcat; nu are câmpuri text etichetate compatibile pentru completare automată. Rămâne disponibil originalul și fișa de precompletare.")
+                    except (httpx.HTTPError, ValueError) as exc:
+                        note.append(f"Formularul nu a putut fi atașat la generare: {exc}")
+                if op_key == "rer" and ATR.storage_details(pros, rec):
+                    storage_form = {
+                        "title": "Anexa oficială Rețele Electrice pentru instalațiile de stocare (referință normativă)",
+                        "url": RER_STORAGE_FORM_URL,
+                    }
+                    try:
+                        storage_pdf, storage_name = await _fetch_registry_annex(storage_form, op_key)
+                        storage_folder = "Documente informative/Referință normativă pentru stocare"
+                        archive.writestr(f"{storage_folder}/{storage_name}", storage_pdf)
+                        completed_storage, storage_fields = _prefill_official_pdf(storage_pdf, rec, client, pros)
+                        if storage_fields:
+                            storage_stem = re.sub(r"[^A-Za-z0-9_-]+", "_", storage_name.rsplit(".", 1)[0]).strip("_")
+                            archive.writestr(f"{storage_folder}/{storage_stem}_completata.pdf", completed_storage)
+                            note.append(f"Anexa normativă oficială pentru stocare a fost inclusă ca referință, cu {storage_fields} câmpuri etichetate precompletate; originalul este păstrat.")
+                        else:
+                            note.append("Anexa normativă oficială pentru stocare a fost inclusă separat și necompletată ca referință. Nu confirmă că este obligatorie pentru categoria instalației sau solicitarea selectată; verificați aplicabilitatea la operator.")
+                    except (httpx.HTTPError, ValueError) as exc:
+                        note.append(f"Anexa oficială de stocare nu a putut fi preluată acum; verificați aplicabilitatea și descărcați-o de aici: {RER_STORAGE_FORM_URL} ({exc})")
+            elif annex_no:
+                note.append(f"Nu există în registru un formular oficial Anexa {annex_no} verificabil pentru operatorul și tipul cererii selectate.")
+                official_pages = {
+                    "delgaz": DELGaz_FORMS_URL,
+                    "oltenia": OLTENIA_FORMS_URL,
+                    "rer": RER_FORMS_URL,
+                }
+                if op_key in official_pages:
+                    note.append(f"Pagina oficială cu formulare și reguli: {official_pages[op_key]}")
+            else:
+                note.append("Tipul cererii curente nu are încă o mapare automată la o anexă oficială în registrul aplicației.")
+            if op_key == "delgaz":
+                for title, url in DELGaz_GDPR_URLS.items():
+                    try:
+                        privacy_doc, privacy_name = await _fetch_registry_annex({"title": title, "url": url}, op_key)
+                        archive.writestr(f"Anexe oficiale/{privacy_name}", privacy_doc)
+                        note.append(f"Document oficial atașat: {title}.")
+                    except (httpx.HTTPError, ValueError) as exc:
+                        note.append(f"{title} nu a putut fi atașat la generare: {exc}")
+            archive.writestr("Anexe oficiale/INFO_completare.txt", "\n".join(note))
+        
+        # Include the original client-profile documents in the submission package.
+        # These are copied only from the authenticated user's upload namespace.
+        client_documents, client_document_issues = S.atr_client_documents(user, client)
+        client_doc_notes = ["Documente încărcate la fișa clientului; copiile originale sunt păstrate aici."]
+        for index, document in enumerate(client_documents, 1):
+            filename = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(document.get("name") or "document.pdf").replace("/", "_").replace("\\", "_")).strip("._") or "document.pdf"
+            slot = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(document.get("slot") or "document"))
+            archive.writestr(f"Documente client/{slot}/{index:02d}_{filename}", document["data"])
+            client_doc_notes.append(f"Inclus: {document.get('label') or slot} — {filename}.")
+        client_doc_notes.extend(client_document_issues)
+        if not client_documents:
+            client_doc_notes.append("Fișa clientului nu are documente încărcate în pozițiile standard.")
+        archive.writestr("Documente client/INFO_documente.txt", "\n".join(client_doc_notes))
+
+        # Carry the selected prosumer equipment evidence into the ATR submission
+        # package. The catalogue documents are copied as stored; no missing
+        # datasheet or conformity declaration is fabricated.
+        equipment_notes = ["Documentele de mai jos provin din catalogul echipamentelor asociat dosarului prosumator."]
+        if pros:
+            catalog_docs = await S.catalog_files(user["id"], pros)
+            cef = pros.get("cef") or {}
+            expected = []
+            for inverter in cef.get("inverters") or []:
+                inv_model = str(inverter.get("brand_model") or "").strip()
+                if inv_model:
+                    expected.append((inv_model, "invertor"))
+                panel_models = [inverter.get("panel_model")] + [st.get("panel_model") for st in (inverter.get("strings") or [])]
+                if not (inverter.get("battery_only") or inverter.get("no_panels")):
+                    expected.extend((str(model).strip(), "panou") for model in panel_models if str(model or "").strip())
+                rsd = inverter.get("rsd") or {}
+                rsd_model = str(rsd.get("brand_model") or "").strip() if rsd.get("enabled") else ""
+                if rsd_model:
+                    expected.append((rsd_model, "RSD"))
+                battery_model = str((inverter.get("battery") or {}).get("model") or "").strip()
+                if battery_model:
+                    expected.append((battery_model, "baterie"))
+            for battery in cef.get("shared_batteries") or []:
+                battery_model = str(battery.get("model") or "").strip()
+                if battery_model:
+                    expected.append((battery_model, "baterie"))
+            present = {
+                (str(item.get("model") or "").strip().casefold(), str(item.get("kind") or "").strip().casefold())
+                for item in catalog_docs
+            }
+            for model, equipment_kind in dict.fromkeys(expected):
+                missing_kinds = [
+                    label for label in ("Fișă tehnică", "Declarație de conformitate")
+                    if (model.casefold(), label.casefold()) not in present
+                ]
+                if missing_kinds:
+                    equipment_notes.append(
+                        f"Lipsă în catalog pentru {equipment_kind} {model}: {', '.join(missing_kinds)}."
+                    )
+            included = 0
+            for index, item in enumerate(catalog_docs, 1):
+                storage_path = item.get("storage_path")
+                original_name = str(item.get("original_filename") or "document.pdf")
+                model = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(item.get("model") or "model_neprecizat")).strip("._") or "model_neprecizat"
+                kind = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(item.get("kind") or "document")).strip("._") or "document"
+                filename = re.sub(r"[^A-Za-z0-9_.-]+", "_", original_name.replace("/", "_").replace("\\", "_")).strip("._") or "document.pdf"
+                if not storage_path:
+                    continue
+                try:
+                    data, _ = S.get_object(storage_path)
+                    if len(data) > 25 * 1024 * 1024:
+                        equipment_notes.append(f"Omise (peste 25 MB): {kind} — {model} ({filename}).")
+                        continue
+                    archive.writestr(f"Documentație tehnică echipamente/{model}/{index:02d}_{kind}_{filename}", data)
+                    included += 1
+                    equipment_notes.append(f"Inclus: {kind} — {model} ({filename}).")
+                except Exception as exc:
+                    logger.warning("ATR catalog document could not be bundled (%s): %s", storage_path, exc)
+                    equipment_notes.append(f"Indisponibil la generare: {kind} — {model} ({filename}).")
+            if included == 0:
+                equipment_notes.append("Catalogul nu conține fișiere tehnice disponibile pentru echipamentele selectate.")
+        else:
+            equipment_notes.append("Cererea ATR nu are legat un dosar prosumator; atașați manual fișele tehnice și declarațiile necesare.")
+        equipment_notes.append("Verificați modelul exact, revizia și aplicabilitatea documentelor înainte de depunere.")
+        archive.writestr("Documentație tehnică echipamente/INFO_documente.txt", "\n".join(equipment_notes))
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", pdf_name.rsplit(".", 1)[0]) + "_pachet.zip"
+    return Response(content=bundle.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": S.disp("attachment", name), "Cache-Control": "no-store"})
+
+
+@api.get("/atr/{item_id}/site-plan.pdf")
+async def atr_site_plan_pdf(item_id: str, user: dict = Depends(get_current_user)):
+    rec = await get_rec(user, item_id, write=False)
+    client = await S.get_client(user["id"], rec) or {}
+    content = ATR.render_atr_site_plan(rec, client, S.atr_site_plan_background(user["id"], rec))
+    if not content:
+        raise HTTPException(status_code=404, detail="Adaugă cel puțin un simbol sau un traseu în schița ATR înainte de descărcare.")
+    return Response(content=content, media_type="application/pdf",
+                    headers={"Content-Disposition": S.disp("attachment", "Schita_amplasament_ATR.pdf"), "Cache-Control": "no-store"})
+
+
+@api.get("/atr/{item_id}/site-plan-background")
+async def atr_site_plan_background_preview(item_id: str, path: str = Query(..., min_length=1, max_length=1024),
+                                           user: dict = Depends(get_current_user)):
+    rec = await get_rec(user, item_id, write=False)
+    plan = rec.get("site_plan") if isinstance(rec.get("site_plan"), dict) else {}
+    preview_rec = {**rec, "site_plan": {**plan, "background_path": path}}
+    image = S.atr_site_plan_background(user["id"], preview_rec)
+    if not image:
+        raise HTTPException(status_code=404, detail="Selectează un plan imagine sau PDF atașat la această cerere ATR.")
+    return Response(content=image[0], media_type=image[1],
+                    headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+
+
 # ---------------- submission ----------------
 @api.post("/atr/{item_id}/submit")
 async def atr_submit(item_id: str, request: Request, user: dict = Depends(get_current_user)):
     rec = await get_rec(user, item_id)
     b = await request.json()
     op = ATR.op_key(rec.get("operator"))
+    if not op:
+        raise HTTPException(status_code=400, detail="Selectați operatorul de distribuție înainte de trimiterea cererii ATR.")
     to = (b.get("to") or "").strip().lower()
     if not valid_operator_email(op, to):
-        raise HTTPException(status_code=400, detail=f"Destinatarul trebuie să fie o adresă oficială {ATR.OP_NAMES[op]} ({', '.join(OP_DOMAINS[op])})")
+        raise HTTPException(status_code=400, detail=f"Destinatarul trebuie să fie o adresă oficială {ATR.OP_NAMES.get(op, 'operatorului selectat')} ({', '.join(OP_DOMAINS.get(op, ()))})")
     att = rec.get("attachments") or {}
     pdf, name = await S.atr_pack(user, rec, 1)
     if "_INCOMPLET" in name:
-        miss = [t for k, t, _ in ATR.DOCS if k in ATR.required(rec) and not att.get(k)]
-        raise HTTPException(status_code=400, detail="Dosarul este incomplet — atașați înainte de trimitere: " + "; ".join(miss[:6]))
+        raise HTTPException(status_code=400, detail="Dosarul ATR este incomplet sau conține fișiere indisponibile. Verifică pagina «Listă de verificare» din PDF, completează lipsurile și încearcă din nou.")
     origin = (request.headers.get("origin") or "").rstrip("/")
     host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
     if not origin.startswith("https://") or (host and origin[8:] != host):
@@ -336,3 +1084,4 @@ async def cron_atr(request: Request, background: BackgroundTasks):
     await db.cron_runs.insert_one({"id": run_id, "at": now(), "name": "atr-deadlines"})
     background.add_task(run_deadlines, run_id)
     return {"status": "accepted"}
+

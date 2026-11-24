@@ -1,44 +1,409 @@
 import { useEffect, useState } from "react";
-import { api, API } from "@/lib/api";
+import { api, API, downloadAuthenticatedFile, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Slot } from "@/components/dossier/PowerDossier";
 import { Plus, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { FormAlert } from "@/components/dossier/FormAlert";
 import { AtrTracking } from "@/components/dossier/AtrTracking";
+import { CefEditor } from "@/components/cef/CefEditor";
+import { AtrSitePlan } from "@/components/dossier/AtrSitePlan";
+
+function installedPanelKwp(pros) {
+  if (!pros) return "";
+  const number = (value) => {
+    const parsed = Number(String(value ?? "").replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const inverters = pros.cef?.inverters || [];
+  const calculated = inverters.reduce((total, inverter) => {
+    if (inverter.battery_only || inverter.no_panels) return total;
+    const count = Math.max(1, number(inverter.count || inverter.quantity) || 1);
+    const strings = inverter.strings || [];
+    if (strings.length) {
+      return total + strings.reduce((sum, string) =>
+        sum + number(string.panels) * (number(string.panel_w) || number(inverter.panel_w)) * count / 1000, 0);
+    }
+    return total + number(inverter.panel_count) * number(inverter.panel_w) * count / 1000;
+  }, 0);
+  if (calculated > 0) return Number(calculated.toFixed(3));
+  const legacyPanels = number(pros.panel_count);
+  const legacyW = number(pros.panel_w);
+  if (legacyPanels > 0 && legacyW > 0) return Number((legacyPanels * legacyW / 1000).toFixed(3));
+  return pros.cef?.total_kwp || pros.panel_kwp || pros._kwp || "";
+}
+
+function normalizeClientName(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO").replace(/\s+/g, " ");
+}
+
+function normalizeLocation(value) {
+  return normalizeClientName(value).replace(/[^a-z0-9]/g, "");
+}
+
+function requestsAbove1Mw(form) {
+  return [form?.p_abs_kw, form?.p_evac_kw].some((value) => {
+    const normalized = String(value ?? "").replace(",", ".").trim();
+    const kw = Number(normalized);
+    return normalized !== "" && Number.isFinite(kw) && kw > 1000;
+  });
+}
+
+function belongsToClient(item, clientId, clientName) {
+  if (item?.client_id && clientId) return item.client_id === clientId;
+  return Boolean(normalizeClientName(item?.client_name) && normalizeClientName(item.client_name) === normalizeClientName(clientName));
+}
 
 const DOCS = [["plan", "Plan de situație la scară (viza emitentului CU) / schiță de amplasament", "req"], ["cf", "Extras de carte funciară (CF / nr. cadastral)", "req"],
   ["prop", "Act de proprietate / drept de folosință", "req"], ["id", "Act de identitate / CUI / acte de funcționare", "req"], ["cu", "Certificat de urbanism", "new"],
   ["ac", "Autorizație de construire", ""], ["puz", "PUZ / PUD (dacă e cerut prin CU)", ""], ["acord", "Acord notarial proprietar (dacă nu e proprietar)", ""],
-  ["imp", "Împuternicire reprezentant / proiectant", ""], ["memoriu", "Memoriu tehnic — date tehnice și energetice", ""],
-  ["schema", "Schemă monofilară instalație de producere + racordare", "prod"], ["fise", "Fișe tehnice / certificate invertoare", "prod"], ["atr_prev", "ATR / certificat de racordare anterior", "spor"]];
+  ["imp", "Împuternicire reprezentant / proiectant", ""], ["gdpr", "Notă DEER privind prelucrarea datelor personale (persoane fizice, după caz)", ""],
+  ["authenticity", "Declarație DEER privind autenticitatea datelor (obligatorie pentru toate cererile)", "deer"], ["memoriu", "Memoriu tehnic — date tehnice și energetice", ""],
+  ["schema", "Schemă monofilară instalație de producere + racordare", "prod"], ["fise", "Fișe tehnice / certificate invertoare", "prod"], ["pram", "Buletin de încercare a prizei de pământ", "spor"], ["receptie", "Proces-verbal de recepție a instalației de producere", "spor"], ["constatator", "Certificat constatator ONRC (persoană juridică prosumator)", "pj"], ["atr_prev", "ATR / certificat de racordare anterior", "existing"]];
+const OFFICIAL_SOURCES = [
+  { id: "deer", match: /deer|distribuție energie electrică|distributie energie electrica/i, name: "DEER — formulare și documente de racordare", docs: "https://www.distributie-energie.ro/racordare-la-retea-2/", portal: "https://avize.distributie-energie.ro/" },
+  { id: "delgaz", match: /delgaz/i, name: "Delgaz Grid — documente pentru prosumatori", docs: "https://delgaz.ro/energie-electrica/prosumatori", portal: "https://delgaz.ro/" },
+  { id: "oltenia", match: /oltenia|deo connect|distribuție oltenia|distributie oltenia/i, name: "Distribuție Oltenia — formulare pentru prosumatori", docs: "https://www.distributieoltenia.ro/ro/informatii-utile/prosumatori/formularele-necesare-pentru-a-deveni-prosumator.html", portal: "https://portal.distributieoltenia.ro/" },
+  { id: "rer", match: /rețele electrice|retele electrice|e-distribu/i, name: "Rețele Electrice România — cereri și documente", docs: "https://www.reteleelectrice.ro/cereri-documente/", portal: "https://www.reteleelectrice.ro/" },
+];
+const DEER_FORMS = [
+  { value: "Loc nou de consum și producere — Anexa 1", title: "Cerere loc de consum și producere nou — Anexa 1", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/1.-Loc-consum-si-producere-nou-_Anexa-nr-1.docx", key: "new" },
+  { value: "Loc existent — notificare — Anexa 2", title: "Notificare loc de consum existent — Anexa 2", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx", key: "existing" },
+  { value: "Loc existent prosumator — actualizare CRR — Anexa 3", title: "Notificare loc consum și producere existent, actualizare CRR — Anexa 3", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/3.-Loc-de-consum-si-producere-existent-actualizare-CRR_Anexa-nr-3.docx", key: "existing" },
+  { value: "Loc existent — spor de putere — Anexa 1", title: "Cerere loc existent cu spor de putere — Anexa 1", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/4.-Loc-consum-si_sau-producere-existent-Spor-Putere_Anexa-nr-1.docx", key: "spor" },
+  { value: "Prosumator prin program de finanțare — Anexa 4", title: "Cerere de racordare prosumator prin programe de finanțare — Anexa 4", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Cerere-de-racordare-prosumator-%E2%80%93-prin-programe-de-finantare-Anexa-4.docx", key: "new" },
+  { value: "Loc existent ≤10,8 kW — notificare simplificată — Anexa 5", title: "Notificare prosumator / proiect demonstrativ ≤10,8 kW — Anexa 5", url: "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Loc-consum-si_sau-producere-existent-prevazut_cu_instalatii_de_producere_Anexa-nr-5.docx", key: "existing" },
+  { value: "Producere >400 kW — procedură dedicată", title: "Cerere pentru instalații de producere >400 kW — procedură dedicată", url: "https://www.distributie-energie.ro/wp-content/uploads/2024/04/Persoane-fizice-si-juridice-care-au-puterea-instalata-pe-producere-mai-mare-de-400kW.doc", key: "large" },
+];
+const AUTH_DECLARATION_URL = "https://www.distributie-energie.ro/wp-content/uploads/2024/02/Declaratie-autenticitate-date-racordare.doc";
 const AUTO = { schema: "schemă aprobată", fise: "fișe catalog" };
-const pdf = (id, full) => `${API}/atr/${id}/pdf?full=${full}&auth=${localStorage.getItem("den_token")}`;
+const pdf = (id, full) => `/atr/${id}/pdf?full=${full}`
 
-export function AtrDossier({ id, form, setVal }) {
+export function AtrDossier({ id, form, setVal, clients = [] }) {
   const [pros, setPros] = useState([]);
+  const [officialForms, setOfficialForms] = useState([]);
+  const [catalogFiles, setCatalogFiles] = useState([]);
+  const [catalogItems, setCatalogItems] = useState([]);
   useEffect(() => { api.get("/data/prosumator").then((r) => setPros(r.data)).catch(() => {}); }, []);
+  useEffect(() => { api.get("/data/catalog").then((r) => setCatalogItems(Array.isArray(r.data) ? r.data : [])).catch(() => setCatalogItems([])); }, []);
+  useEffect(() => {
+    if (!form.client_name || !pros.length) return;
+    const current = pros.find((p) => p.id === form.pros_id);
+    const matchesClient = (item) => belongsToClient(item, form.client_id, form.client_name);
+    if (current && belongsToClient(current, form.client_id, form.client_name)) return;
+    const candidates = pros.filter(matchesClient);
+    const locationValue = form.pod || form.address;
+    const locationKey = normalizeLocation(locationValue);
+    const matches = locationKey ? candidates.filter((item) => normalizeLocation(form.pod ? item.pod : item.address) === locationKey) : candidates;
+    if (matches.length === 1) selectPros(matches[0].id);
+    else if (current && !belongsToClient(current)) setVal("pros_id", "");
+  }, [form.client_id, form.client_name, form.pod, form.address, form.pros_id, pros.length]);
+  useEffect(() => {
+    if (!form.operator) { setOfficialForms([]); return; }
+    api.get(`/forms/operator-links?operator=${encodeURIComponent(form.operator)}&scope=atr`)
+      .then((r) => setOfficialForms(r.data || []))
+      .catch(() => setOfficialForms([]));
+  }, [form.operator]);
+  const operatorSource = OFFICIAL_SOURCES.find((source) => source.match.test(String(form.operator || ""))); 
+  const selectedDeerForm = DEER_FORMS.find((f) => f.value === form.deer_case) || null;
+  const selectedClient = (form.client_id
+    ? clients.find((item) => item.id === form.client_id)
+    : (() => {
+      const matches = clients.filter((item) => normalizeClientName(item.name) === normalizeClientName(form.client_name));
+      return matches.length === 1 ? matches[0] : null;
+    })()) || null;
+  const clientDocs = selectedClient?.docs || {};
+  const clientAuto = {
+    id: (clientDocs.ci || []).length > 0,
+    cf: (clientDocs.cf || []).length > 0,
+    constatator: (clientDocs.constatator || []).length > 0,
+  };
+  const selectedRecord = pros.find((p) => p.id === form.pros_id) || null;
+  const selectedPros = selectedRecord && belongsToClient(selectedRecord, form.client_id, form.client_name) ? selectedRecord : null;
+  const deerAnnexIssues = (() => {
+    if (operatorSource?.id !== "deer" || !selectedDeerForm) return [];
+    const issues = [];
+    const kind = String(form.request_type || "").toLocaleLowerCase("ro-RO");
+    if (selectedDeerForm.key === "new" && selectedDeerForm.value.includes("loc nou") && !kind.includes("utilizator nou")) issues.push("Anexa 1 pentru loc nou cere tipul de solicitare «utilizator nou definitiv».");
+    if (selectedDeerForm.key === "spor" && !kind.includes("spor de putere")) issues.push("Anexa 1 selectată pentru spor trebuie să corespundă tipului solicitării «spor de putere».");
+    if (selectedDeerForm.key === "existing" && selectedDeerForm.value.includes("actualizare CRR") && !kind.includes("administrativ")) issues.push("Anexa 3 pentru actualizare CRR cere tipul solicitării administrative.");
+    if (selectedDeerForm.value.includes("≤10,8")) {
+      const invs = selectedPros?.cef?.inverters || [];
+      const stringsPower = invs.reduce((sum, inv) => sum + (inv.strings || []).reduce((n, st) => n + (Number(st.panels) || 0) * (Number(st.panel_w) || Number(inv.panel_w) || 0) / 1000 * (Number(inv.count || inv.quantity) || 1), 0), 0);
+      const power = installedPanelKwp(selectedPros || { cef: form.atr_cef }) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp) || stringsPower;
+      if (!power) issues.push("Completează puterea instalată de producere pentru verificarea Anexei 5.");
+      else if (power > 10.8) issues.push("Anexa 5 este pentru putere instalată de maximum 10,8 kW.");
+      const supply = String(form.supply || selectedPros?.supply || selectedPros?.cef?.grid?.supply || "").toLowerCase();
+      if (!supply) issues.push("Selectează tipul branșamentului pentru verificarea Anexei 5.");
+      else if (supply.includes("trifaz") || supply.includes("400")) issues.push("Anexa 5 selectată cere conexiune diferită de trifazic.");
+    }
+    if (selectedDeerForm.key === "large") {
+      const power = installedPanelKwp(selectedPros || { cef: form.atr_cef }) || Number(form.pv_kw) || Number(selectedPros?.cef?.total_kwp) || Number(selectedPros?.panel_kwp);
+      if (!power) issues.push("Completează puterea instalată de producere pentru procedura dedicată.");
+      else if (power <= 400) issues.push("Procedura dedicată DEER selectată este pentru putere instalată mai mare de 400 kW.");
+    }
+    return issues;
+  })();
+  const normClientName = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("ro-RO");
+  const clientPros = form.client_id
+    ? pros.filter((p) => p.client_id === form.client_id)
+    : (form.client_name ? pros.filter((p) => normClientName(p.client_name) === normClientName(form.client_name)) : []);
+  useEffect(() => {
+    if (!form.pros_id) { setCatalogFiles([]); return; }
+    let active = true;
+    api.get(`/prosumator/${encodeURIComponent(form.pros_id)}/catalog-files`)
+      .then((r) => { if (active) setCatalogFiles(Array.isArray(r.data) ? r.data : []); })
+      .catch(() => { if (active) setCatalogFiles([]); });
+    return () => { active = false; };
+  }, [form.pros_id]);
+  const selectedCef = selectedPros?.cef || form.atr_cef || {};
+  const catalogRequirements = (() => {
+    const cef = selectedCef;
+    const requirements = [];
+    const add = (kind, model, catalogId) => {
+      const name = String(model || "").trim();
+      const identity = catalogId || name.toLocaleLowerCase("ro-RO");
+      if (identity) requirements.push({ kind, model: name, catalogId: catalogId || "", identity });
+    };
+    for (const inv of cef.inverters || []) {
+      add("invertor", inv.brand_model, inv.catalog_id);
+      const strings = (inv.strings || []).filter((string) => Number(string.panels) > 0);
+      if (!(inv.battery_only || inv.no_panels)) {
+        if (strings.length) {
+          for (const string of strings) {
+            add("panou", string.panel_model || inv.panel_model, string.panel_catalog_id || inv.panel_catalog_id);
+          }
+        } else {
+          add("panou", inv.panel_model, inv.panel_catalog_id);
+        }
+      }
+      if (inv.battery_mode === "own") add("baterie", inv.battery?.model, inv.battery?.catalog_id);
+    }
+    for (const battery of cef.shared_batteries || []) add("baterie", battery.model, battery.catalog_id);
+    const seen = new Set();
+    return requirements.filter((item) => {
+      const key = `${item.kind}:${item.identity}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
+  const directCatalogFiles = catalogItems.flatMap((item) => [
+    ["datasheet", "Fișă tehnică"], ["conformity", "Declarație de conformitate"],
+  ].flatMap(([key, kind]) => {
+    const document = item[key];
+    return document?.storage_path && document.available !== false
+      ? [{ catalog_id: item.id, model: item.brand_model, kind }]
+      : [];
+  }));
+  const catalogEvidence = selectedPros ? catalogFiles : directCatalogFiles;
+  const catalogEvidenceMissing = catalogRequirements.flatMap((item) =>
+    ["Fișă tehnică", "Declarație de conformitate"].filter((documentKind) =>
+      !catalogEvidence.some((file) => file.kind === documentKind && (
+        item.catalogId ? file.catalog_id === item.catalogId
+          : String(file.model || "").trim().toLocaleLowerCase("ro-RO") === item.model.toLocaleLowerCase("ro-RO")
+      ))
+    ).map((documentKind) => `${documentKind} — ${item.model || item.kind}`)
+  );
+  const catalogEquipmentComplete = Boolean(catalogRequirements.length > 0 && catalogEvidenceMissing.length === 0);
+  const equipmentSummary = (() => {
+    const cef = selectedCef;
+    const items = [];
+    const inverters = cef.inverters || [];
+    const addBattery = (key, battery, multiplier = 1) => {
+      const modules = Math.max(1, Number(battery?.modules) || 1) * Math.max(1, Number(multiplier) || 1);
+      const capacity = Number(battery?.kwh) || 0;
+      const details = [battery?.model || "model necompletat", `${modules} module`];
+      if (capacity > 0) details.push(`${capacity * modules} kWh total`, `${capacity} kWh/modul`);
+      if (Number(battery?.voltage) > 0) details.push(`${battery.voltage} V DC`);
+      if (Number(battery?.ah) > 0) details.push(`${battery.ah} Ah`);
+      if (Number(battery?.i_max) > 0) details.push(`I max ${battery.i_max} A`);
+      if (battery?.coupling) details.push(`cuplare ${battery.coupling}`);
+      items.push({ key, label: `Baterie: ${details.join(" · ")}` });
+    };
+    for (const [index, inv] of inverters.entries()) {
+      const quantity = inv.count || inv.quantity || 1;
+      const strings = (inv.strings || []).filter((string) => Number(string.panels) > 0);
+      const panelCount = strings.reduce((sum, string) => sum + (Number(string.panels) || 0), 0);
+      items.push({ key: `inv-${index}`, label: `Invertor: ${inv.brand_model || "model necompletat"} · ${quantity} buc. · ${inv.p_nom_kw || "—"} kW` });
+      if (!(inv.battery_only || inv.no_panels)) {
+        if (strings.length) {
+          const groups = new Map();
+          for (const string of strings) {
+            const model = string.panel_model || inv.panel_model || "model necompletat";
+            const catalogId = string.panel_catalog_id || inv.panel_catalog_id || "";
+            const key = catalogId || model.trim().toLocaleLowerCase("ro-RO");
+            const watts = Number(string.panel_w) || Number(inv.panel_w) || 0;
+            const group = groups.get(key) || { model, panels: 0, watts: 0 };
+            group.panels += (Number(string.panels) || 0) * (Number(inv.count || inv.quantity) || 1);
+            if (!group.watts) group.watts = watts;
+            groups.set(key, group);
+          }
+          for (const [panelIndex, group] of [...groups.values()].entries()) {
+            const capacity = group.watts > 0 ? ` · ${(group.panels * group.watts / 1000).toFixed(2)} kWp` : "";
+            items.push({ key: `panel-${index}-${panelIndex}`, label: `Panouri: ${group.model} · ${group.panels} buc. · ${group.watts || "—"} Wp${capacity}` });
+          }
+        } else {
+          const declaredPanelCount = inverters.length === 1 ? Math.max(0, Number(selectedPros?.panel_count) || 0) : 0;
+          if (inv.panel_model || declaredPanelCount) {
+            items.push({ key: `panel-${index}`, label: `Panouri: ${inv.panel_model || "model necompletat"} · ${declaredPanelCount || "—"} buc. · ${inv.panel_w || "—"} Wp` });
+          }
+        }
+      }
+      if (inv.battery_mode === "own" && inv.battery?.model) addBattery(`battery-own-${index}`, inv.battery, quantity);
+    }
+    for (const [index, battery] of (cef.shared_batteries || []).entries()) {
+      addBattery(`battery-${index}`, battery);
+    }
+    return items;
+  })();
+  const selectPros = (id) => {
+    setVal("pros_id", id);
+    const item = pros.find((p) => p.id === id);
+    if (!item || !belongsToClient(item, form.client_id, form.client_name)) {
+      setVal("pros_id", "");
+      return;
+    }
+    const values = { pod: item.pod, operator: item.operator, address: item.address, supply: item.supply,
+      p_abs_kw: item.bransament_kw, pv_kw: installedPanelKwp(item), p_evac_kw: item.power || item.cef?.total_export_kw };
+    Object.entries(values).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== "") setVal(key, value); });
+  };
   const att = form.attachments || {};
   const recs = form.receptors || [];
   const prod = String(form.kind || "").includes("producere");
-  const isNew = !form.request_type || String(form.request_type).startsWith("utilizator nou");
-  const need = DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && !isNew)).map(([k]) => k);
-  const has = (k) => (att[k] || []).length > 0 || (!!form.pros_id && prod && AUTO[k]);
+  const caseKey = selectedDeerForm?.key || (String(form.request_type || "").toLowerCase().includes("spor") ? "spor" : String(form.request_type || "").startsWith("utilizator nou") ? "new" : "existing");
+  const isNew = caseKey === "new";
+  const need = operatorSource?.id === "deer"
+    ? [...new Set(["authenticity", ...(form.applicant_type === "Persoană fizică" ? ["gdpr"] : []), ...(form.submission_mode === "Prin împuternicit" ? ["imp"] : []),
+        ...(["new", "spor", "existing", "large"].includes(caseKey) ? ["id", "cf", "prop"] : []),
+        ...(caseKey === "new" ? ["plan"] : []), ...(caseKey === "spor" ? ["plan", "atr_prev", ...(prod ? ["pram", "receptie", "schema", "fise"] : [])] : []),
+        ...(caseKey === "existing" && prod ? ["schema", "fise"] : []), ...(caseKey === "large" ? ["memoriu", "schema", "fise"] : []),
+        ...(form.applicant_type === "Persoană juridică" && prod ? ["constatator"] : [])])]
+    : DOCS.filter(([, , r]) => r === "req" || (r === "prod" && prod) || (r === "new" && isNew) || (r === "spor" && caseKey === "spor")).map(([k]) => k);
+  const autoAvailable = (k) => Boolean(clientAuto[k]) || (Boolean(form.pros_id || form.atr_cef) && prod && (k === "schema"
+    ? Boolean(selectedCef.inverters?.length)
+    : k === "fise" ? catalogEquipmentComplete : false));
+  const autoLabel = (k) => clientAuto[k]
+    ? `preluat automat din fișa clientului (${(clientDocs[k === "id" ? "ci" : k] || []).length} fișier/e)`
+    : AUTO[k];
+  const has = (k) => k === "fise"
+    ? catalogEquipmentComplete
+    : (att[k] || []).length > 0 || autoAvailable(k);
   const missing = need.filter((k) => !has(k));
   const setR = (i, k, v) => setVal("receptors", recs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   return (
     <div className="sm:col-span-2 den-panel mt-3" data-testid="atr-dossier">
+      <section className="mb-4 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="atr-workflow-order">
+        <div className="mb-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)" }}>Fluxul dosarului ATR</div>
+          <h3 className="mt-1 text-sm font-bold">Completează în această ordine</h3>
+        </div>
+        <ol className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+          {[
+            ["1", "Client", Boolean(form.client_name)],
+            ["2", "POD și adresă", Boolean(form.pod && form.address)],
+            ["3", "Operator și cerere", Boolean(form.operator && form.request_type)],
+            ["4", "Echipamente", Boolean(selectedPros)],
+            ["5", "Anexe și verificare", missing.length === 0],
+          ].map(([number, title, complete]) => (
+            <li key={number} className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs" style={{ borderColor: "var(--line)" }}>
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold" style={{ background: complete ? "#dcfce7" : "#eef2f7", color: complete ? "#166534" : "var(--muted)" }}>{complete ? "✓" : number}</span>
+              <span className="font-semibold">{title}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-3 text-xs" style={{ color: "var(--muted)" }}>Alege clientul o singură dată. POD-ul, datele locului și echipamentele se preiau din dosarul asociat; secțiunile tehnice și documentele justificative rămân pentru confirmare și completarea lipsurilor.</p>
+      </section>
       <FormAlert operator={form.operator} scope="atr" />
-      <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (> 27 kW)" : "loc de consum"}</h3>
+      {operatorSource?.id === "deer" && <section className="mb-4 rounded-xl border p-4 sm:p-5" style={{ borderColor: "var(--line)", background: "linear-gradient(135deg, #f2f7ff 0%, #fff 72%)" }} data-testid="atr-next-actions">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--blue)" }}>Pachet de depunere · DEER</div>
+            <h3 className="mt-1 text-base font-bold">{selectedDeerForm ? selectedDeerForm.title : "Selectează procedura DEER aplicabilă"}</h3>
+            <p className="mt-1 text-xs leading-5" style={{ color: "var(--muted)" }}>
+              {selectedPros
+                ? `Datele POD, puterea și echipamentele sunt legate de dosarul ${selectedPros.number || selectedPros.client_name || "prosumator"}.`
+                : "Alege clientul și dosarul de prosumator pentru preluarea automată a datelor tehnice."}
+              {" "}Formularul este precompletat din dosar; valorile lipsă rămân goale. Verifică datele și semnează înainte de depunere.
+            </p>
+          </div>
+          {selectedDeerForm && <div className="flex flex-wrap gap-2"><Btn type="button" onClick={() => id && downloadAuthenticatedFile(`/atr/${encodeURIComponent(id)}/official-docx`, "Anexa_DEER_completata.docx")} disabled={!id} data-testid="atr-download-prefilled-deer">Descarcă anexa precompletată (DOCX)</Btn><a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold" style={{ borderColor: "var(--line)" }} data-testid="atr-download-official-annex">Model necompletat ↗</a></div>}
+        </div>
+        {deerAnnexIssues.length > 0 && <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="alert" data-testid="atr-deer-annex-eligibility"><strong>Verifică încadrarea procedurii înainte de descărcare:</strong><ul className="mt-1 list-disc pl-4">{deerAnnexIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
+        {selectedPros && <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border bg-white px-3 py-1">POD: {selectedPros.pod || "de completat"}</span>
+          <span className="rounded-full border bg-white px-3 py-1">Invertor: {selectedPros.inverter_kw || selectedPros.cef?.total_kw || "—"} kW</span>
+          <span className="rounded-full border bg-white px-3 py-1">Evacuare: {selectedPros.power || selectedPros.cef?.total_export_kw || "—"} kW</span>
+          <span className="rounded-full border bg-white px-3 py-1">Echipamente: {catalogRequirements.length}</span>
+        </div>}
+        {(selectedPros || form.atr_cef?.inverters?.length) && <div className="mt-3 rounded-lg border bg-white px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-equipment-summary">
+          <div className="text-xs font-bold">Echipamente preluate în cerere și anexe</div>
+          {equipmentSummary.length ? <ul className="mt-1 grid gap-1 text-xs sm:grid-cols-2">{equipmentSummary.map((item) => <li key={item.key}>{item.label}</li>)}</ul> : <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>Echipamentele ATR configurate direct vor fi verificate la generare.</p>}
+          {selectedCef.inverters?.some((inv) => inv.battery_mode === "own" && inv.battery && !inv.battery.model) && <p className="mt-1 text-xs text-amber-700">Completați modelul bateriei pentru a-l include în anexă.</p>}
+        </div>}
+        {!selectedDeerForm && <a href={operatorSource.docs} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex text-sm font-semibold underline">Alege formularul pe pagina oficială DEER ↗</a>}
+      </section>}
+      <details className="mb-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-official-details">
+        <summary className="cursor-pointer text-sm font-semibold">Formulare oficiale, GDPR și anexă</summary>
+        <div className="mt-3">
+      {operatorSource?.id === "deer" && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-deer-gdpr">
+        <div className="font-bold mb-1">Document GDPR — DEER</div>
+        <p className="mb-2" style={{ color: "var(--muted)" }}>Pentru persoane fizice, include în dosar nota de informare privind prelucrarea datelor personale, conform listei curente DEER. Este o notă de informare oficială, nu un formular de consimțământ creat de DNS Energy.</p>
+        <a href="https://www.distributie-energie.ro/wp-content/uploads/2026/10/Informare-generala-site-v2-2026.pdf" target="_blank" rel="noopener noreferrer" className="underline font-semibold">Deschide nota oficială DEER (PDF, versiunea octombrie 2026) ↗</a>
+      </div>}
+      {form.operator && operatorSource && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-official-source-links">
+        <div className="font-bold mb-2">Surse oficiale pentru formulare și documente — {form.operator}</div>
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          <a href={operatorSource.docs} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Deschide formularele și lista documentelor <span aria-hidden="true">↗</span></a>
+          <a href={operatorSource.portal} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Deschide portalul operatorului <span aria-hidden="true">↗</span></a>
+        </div>
+        <div className="mt-2" style={{ color: "var(--muted)" }}>Linkuri către surse oficiale. Formularul aplicabil se alege în funcție de locul nou/existent, spor de putere și situația prosumatorului.</div>
+      </div>}
+      {form.operator && <div className="rounded-xl border px-4 py-3 mb-3 text-xs" style={{ borderColor: "var(--line)" }} data-testid="atr-official-forms">
+        <div className="font-bold mb-1">Formulare oficiale înregistrate pentru distribuitor</div>
+        {officialForms.length ? officialForms.map((f) => <div key={f.id} className="mt-1">
+          <a href={f.url} target="_blank" rel="noopener noreferrer" className="underline font-semibold">{f.title || "Formular oficial ATR"}</a>
+          {f.version ? ` · versiunea ${f.version}` : ""}
+          {f.status ? ` · ${f.status}` : ""}
+        </div>) : <div style={{ color: "var(--muted)" }}>Nu există încă un link ATR înregistrat pentru acest operator. Verificați formularul pe site-ul oficial înainte de depunere.</div>}
+        <div className="mt-2" style={{ color: "var(--muted)" }}>PDF-ul generat de DNS Energy este un model completat pentru lucru și verificare; nu este garantat ca reproducere identică a formularului oficial curent.</div>
+      </div>}
+      {operatorSource?.id === "deer" && selectedDeerForm && <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--line)" }} data-testid="atr-deer-form-selected">
+        <div className="font-bold mb-1">Formular DEER selectat</div>
+        <div className="text-sm">{selectedDeerForm.title}</div>
+        <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Verifică dacă acest caz corespunde situației locului de consum, puterii și lucrărilor cerute de operator. Documentul oficial se descarcă din DEER.</div>
+        <a href={selectedDeerForm.url} target="_blank" rel="noopener noreferrer" className="inline-flex underline font-semibold text-sm mt-2">Deschide formularul oficial selectat ↗</a>
+      </div>}
+        </div>
+      </details>
+      <details className="mb-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-technical-questionnaire">
+        <summary className="cursor-pointer text-sm font-semibold">Chestionar tehnic ATR și lista receptoarelor</summary>
+        <div className="mt-3">
+      <h3 className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--blue)" }}>Cerere și chestionar ATR — {prod ? "loc de consum și de producere (prosumator)" : "loc de consum"}</h3>
       <div className="grid sm:grid-cols-2 gap-3">
         {prod && <>
-          <div className="den-field"><label>Dosar de prosumator / CEF asociat (date PV, schemă, fișe)</label><select className="den-input" value={form.pros_id || ""} onChange={(e) => setVal("pros_id", e.target.value)} data-testid="atr-pros">
-            <option value="">— fără —</option>{pros.map((p) => <option key={p.id} value={p.id}>{p.number} · {p.client_name}</option>)}</select></div>
+          <div className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="atr-pros">
+            {(clientPros.length > 1 || (clientPros.length === 1 && !form.pros_id))
+              ? <label className="den-field"><span>Alege locul de consum pentru acest client</span><select className="den-input" value={form.pros_id || ""} onChange={(e) => selectPros(e.target.value)}><option value="">Alege dosarul prosumator...</option>{clientPros.map((p) => <option key={p.id} value={p.id}>{p.number} · POD {p.pod || "necompletat"} · {p.address || p.client_name}</option>)}</select></label>
+              : selectedPros
+                ? <>Dosar prosumator asociat automat după client: <strong style={{ color: "var(--ink)" }}>{selectedPros.number} · {selectedPros.client_name}</strong></>
+                : <>Nu există dosar de prosumator asociat. Poți configura echipamentele direct în această cerere sau poți asocia un dosar existent.</>}
+          </div>
+          {selectedPros && <div className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }} data-testid="atr-linked-equipment">
+            <strong className="text-sm" style={{ color: "var(--ink)" }}>Date tehnice preluate din dosarul prosumator</strong>
+            <div className="mt-1">POD {selectedPros.pod || "—"} · {selectedPros.operator || "operator necompletat"} · Putere invertor {selectedPros.inverter_kw || selectedPros.cef?.total_kw || "—"} kW · Evacuare {selectedPros.power || selectedPros.cef?.total_export_kw || "—"} kW</div>
+            {(selectedPros.cef?.inverters || []).length > 0 && <ul className="mt-1 list-disc pl-4">{selectedPros.cef.inverters.map((inv, i) => <li key={inv.id || i}>{inv.brand_model || `Invertor ${i + 1}`} — {inv.p_nom_kw || "putere nespecificată"} kW; panou {inv.panel_model || "nespecificat"}{inv.strings?.length ? `; stringuri ${inv.strings.map((s) => s.panels).filter(Boolean).join(" + ")}` : ""}{(inv.battery?.model || inv.battery?.brand_model) ? `; baterie ${inv.battery.model || inv.battery.brand_model}` : ""}</li>)}</ul>}
+          </div>}
           <div className="den-field"><label>Putere instalată centrală (kW)</label><input className="den-input" value={form.pv_kw || ""} onChange={(e) => setVal("pv_kw", e.target.value)} data-testid="atr-pv-kw" /></div>
           <div className="den-field"><label>Putere max. evacuată (kW)</label><input className="den-input" value={form.p_evac_kw || ""} onChange={(e) => setVal("p_evac_kw", e.target.value)} data-testid="atr-evac-kw" /></div>
           <div className="den-field"><label>Data PIF centrală</label><input type="date" className="den-input" value={form.pif_date || ""} onChange={(e) => setVal("pif_date", e.target.value)} /></div>
         </>}
         <div className="den-field"><label>Factor de putere mediu (cos φ)</label><input className="den-input" value={form.cos_phi || ""} onChange={(e) => setVal("cos_phi", e.target.value)} /></div>
         <div className="den-field"><label>Cel mai mare motor (kW)</label><input className="den-input" value={form.motor_kw || ""} onChange={(e) => setVal("motor_kw", e.target.value)} /></div>
+        {requestsAbove1Mw(form) && <div className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-950" role="status" data-testid="atr-1mw-guarantee-check">
+          <strong>Verificare suplimentară pentru putere solicitată peste 1 MW.</strong>
+          <p className="mt-1">Ordinul ANRE nr. 15/2026 a modificat regulile de racordare: în condițiile prevăzute la art. 31 din Regulamentul aprobat prin Ordinul nr. 59/2013, garanția financiară este de 20% din tariful de racordare fără TVA. Confirmă aplicabilitatea și suma în ATR / contractul transmis de operator; DNS nu estimează valoarea fără tariful real.</p>
+          <a className="mt-1 inline-flex font-semibold underline" href="https://www.distributie-energie.ro/racordare-la-retea-2/" target="_blank" rel="noopener noreferrer">Sursa oficială DEER și Ordinul ANRE 15/2026 ↗</a>
+        </div>}
       </div>
       <div className="mt-4 text-xs font-bold">Lista receptoarelor</div>
       {recs.map((r, i) => <div key={i} className="grid grid-cols-[1fr_90px_1fr_24px] gap-2 mt-1" data-testid={`atr-rec-${i}`}>
@@ -47,17 +412,34 @@ export function AtrDossier({ id, form, setVal }) {
         <input className="den-input" placeholder="Observații / regim" value={r.notes || ""} onChange={(e) => setR(i, "notes", e.target.value)} />
         <button type="button" onClick={() => setVal("receptors", recs.filter((_, j) => j !== i))}><Trash2 size={13} style={{ color: "#b33333" }} /></button></div>)}
       <button type="button" className="text-xs font-bold mt-2 inline-flex items-center gap-1" style={{ color: "var(--blue)" }} onClick={() => setVal("receptors", [...recs, {}])} data-testid="atr-add-rec"><Plus size={12} />Adaugă receptor</button>
+        </div>
+        {prod && !selectedPros && <details className="mt-4 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-equipment-config">
+          <summary className="cursor-pointer text-sm font-semibold">Echipamente pentru această cerere ATR</summary>
+          <p className="mt-2 text-xs" style={{ color: "var(--muted)" }}>Selectează din catalog invertorul, panourile și bateria. Datele modelului se preiau din fișele salvate în catalog și se păstrează în cererea ATR.</p>
+          <CefEditor value={form.atr_cef || { grid: { supply: form.supply || "" }, inverters: [], shared_batteries: [] }} onChange={(value) => setVal("atr_cef", value)} />
+        </details>}
+      </details>
+      <AtrSitePlan id={id} value={form.site_plan} files={att.plan || []} onChange={(value) => setVal("site_plan", value)} />
       <div className="mt-4 flex items-center gap-2 text-xs font-bold" data-testid="atr-checklist-status">
         {missing.length ? <><AlertTriangle size={14} style={{ color: "#8a5a00" }} />Lipsesc {missing.length} documente obligatorii</> : <><CheckCircle2 size={14} style={{ color: "#166534" }} />Toate documentele obligatorii sunt atașate</>}</div>
-      {DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={!!form.pros_id && prod && AUTO[k]} autoLabel={AUTO[k]} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}
+      <details className="mt-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-documents-details">
+        <summary className="cursor-pointer text-sm font-semibold">Documente anexate · {missing.length} obligatorii lipsă</summary>
+        {operatorSource?.id === "deer" && <p className="text-xs mb-2"><a href={AUTH_DECLARATION_URL} target="_blank" rel="noopener noreferrer" className="underline font-semibold">Descarcă declarația oficială de autenticitate DEER ↗</a></p>}
+        {Object.values(clientAuto).some(Boolean) && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }} data-testid="atr-client-docs-autofill">Actele încărcate în fișa clientului (CI, CF și constatator) se includ automat în PDF și ZIP. Factura și celelalte documente ale clientului se păstrează în ZIP.</p>}
+        {need.includes("fise") && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Fișele tehnice sunt marcate automat complete numai când fiecare echipament selectat are în catalog atât fișa tehnică, cât și declarația de conformitate. Fișierele adăugate manual rămân incluse în PDF, dar trebuie verificate pentru fiecare model.</p>}
+        {need.includes("fise") && !selectedPros && <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Pentru echipamentele selectate direct în ATR, aplicația preia documentele din catalog la generare și marchează dosarul incomplet dacă lipsește fișa sau declarația de conformitate.</p>}
+        {need.includes("fise") && catalogEvidenceMissing.length > 0 && <ul className="mb-2 list-disc pl-5 text-xs text-amber-800" data-testid="atr-catalog-evidence-missing">{catalogEvidenceMissing.map((item) => <li key={item}>{item}</li>)}</ul>}
+        <div className="mt-3">{DOCS.map(([k, l, r]) => <Slot key={k} k={k} testPrefix="atr" label={`${l}${need.includes(k) ? " *" : r ? " (nu e cazul)" : ""}`} files={att[k] || []} auto={autoAvailable(k)} autoLabel={autoLabel(k)} onChange={(v) => setVal("attachments", { ...att, [k]: v })} />)}</div>
+      </details>
       <div className="flex flex-wrap gap-2 mt-4">
         {id ? <>
-          <a href={pdf(id, 0)} target="_blank" rel="noopener noreferrer" data-testid="atr-cerere-pdf"><Btn type="button" variant="secondary">Cererea ATR completată (PDF)</Btn></a>
-          <a href={pdf(id, 1)} target="_blank" rel="noopener noreferrer" data-testid="atr-full-pdf"><Btn type="button">Dosar ATR — PDF unic</Btn></a>
+          <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(pdf(id, 0))} data-testid="atr-cerere-pdf">Precompletare ATR (PDF)</Btn>
+          <Btn type="button" onClick={() => downloadAuthenticatedFile(`/atr/${encodeURIComponent(id)}/package.zip`, "Pachet_ATR_anexe.zip")} data-testid="atr-package-zip" title="Cererea ATR și anexele disponibile pentru procedura și operatorul selectat">Cerere + anexe (ZIP)</Btn>
+          <Btn type="button" onClick={() => openAuthenticatedFile(pdf(id, 1))} data-testid="atr-full-pdf">Dosar ATR — PDF unic</Btn>
           <span className="text-[11px] self-center" style={{ color: "var(--muted)" }}>Salvați modificările înainte de generare.</span>
         </> : <span className="text-xs" style={{ color: "var(--muted)" }}>Salvați cererea pentru a genera documentele.</span>}
       </div>
-      {id && <AtrTracking id={id} operator={form.operator} />}
+      {id && <details className="mt-3 rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }} data-testid="atr-tracking-details"><summary className="cursor-pointer text-sm font-semibold">Stadiu și termene de urmărire</summary><div className="mt-3"><AtrTracking id={id} operator={form.operator} /></div></details>}
     </div>
   );
 }

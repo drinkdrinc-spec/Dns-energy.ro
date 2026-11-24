@@ -1,14 +1,17 @@
+import base64
 import io
 import os
 import re
 import math
-from html import escape
+from html import escape, unescape
+import unicodedata
 from datetime import datetime, timedelta
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame, NextPageTemplate, Paragraph, Spacer, Table,
                                 TableStyle, PageBreak, KeepTogether, Image)
 from reportlab.pdfbase import pdfmetrics
@@ -95,7 +98,7 @@ def sizing(r):
             "bat_kwh": num(r.get("battery_kwh"))}
 
 
-ALIASES = {"idcode": ["cnp"], "name": ["client_name"]}
+ALIASES = {"idcode": ["cnp", "cui"], "ci_series": ["id_series"], "name": ["client_name"]}
 
 
 CLIENT_KEYS = {"name", "idcode", "kind", "regcom", "ci_series", "rep_name", "rep_role", "hq_address", "phone", "email", "iban", "bank",
@@ -103,7 +106,7 @@ CLIENT_KEYS = {"name", "idcode", "kind", "regcom", "ci_series", "rep_name", "rep
 
 
 class Ctx:
-    """Dossier data resolved from client sheet (client fields) / dossier record -> executant settings. Missing = None."""
+    """Resolve the saved dossier snapshot first, with the client sheet as fallback; settings hold executant data."""
 
     def __init__(self, rec, settings, client, opis_titles=None):
         self.r, self.s, self.c = rec, settings or {}, client or {}
@@ -112,12 +115,14 @@ class Ctx:
 
     def raw(self, k):
         self.used.add(k)
-        order = (self.c, self.r) if (k in CLIENT_KEYS and self.c) else (self.r, self.c)
+        # The dossier form is editable after client selection. Generated documents must
+        # reflect the values the operator reviewed and saved on this dossier, while the
+        # master client record remains a fallback for fields not copied into the dossier.
+        order = (self.r, self.c)
         for src in order:
             if src.get(k) not in (None, ""):
                 return src.get(k)
-        for a in ALIASES.get(k, []):
-            for src in order:
+            for a in ALIASES.get(k, []):
                 if src.get(a) not in (None, ""):
                     return src.get(a)
         return None
@@ -159,6 +164,13 @@ class Ctx:
     def cef_kw(self):
         p = self.raw("power")
         return f"{fmt(num(p))} kW" if p else M
+    @property
+    def power_increase(self):
+        return str(self.raw("request_type") or "").strip() == "Spor de putere + prosumator"
+
+    @property
+    def request_scope(self):
+        return "spor de putere și racordare a centralei electrice fotovoltaice în regim de prosumator" if self.power_increase else "racordare a centralei electrice fotovoltaice în regim de prosumator"
 
 
 # ---------- blocks ----------
@@ -166,6 +178,7 @@ def B(kind, *a):
     return (kind, *a)
 
 
+# Compatibility helpers used by the DI-U document renderer.
 def hdr():
     return [B("hdr")]
 
@@ -174,14 +187,15 @@ def sign(left, right):
     return B("sign", left, right)
 
 
-def ex_sig(ctx, label="Executant,"):
-    return [label, f"<b>{ctx.company}</b>", ctx.rep, "semnătura și ștampila"]
+def ex_sig(ctx, label="Instalator/Executant"):
+    return [label, ctx.company, f"Reprezentant: {ctx.rep}", "semnătura și ștampila"]
 
 
-def ben_sig(ctx, label="Beneficiar,"):
-    return [label, f"<b>{ctx.name}</b>", "semnătura"]
+def ben_sig(ctx):
+    return ["Beneficiar", ctx.name, "semnătura"]
 
 
+# ---------- PDF renderer ----------
 def inverters(ctx):
     cef = ctx.r.get("cef") or {}
     if cef.get("inverters"):
@@ -196,9 +210,20 @@ def inverters(ctx):
 def panel_rows(ctx):
     rows = []
     for inv in inverters(ctx):
-        n = sum(int(num(s.get("panels"))) for s in inv.get("strings") or [])
-        w = num(inv.get("panel_w"))
-        rows.append({"n": n, "model": inv.get("panel_model") or "", "w": w, "kw": n * w / 1000})
+        if inv.get("battery_only") or inv.get("no_panels"):
+            continue
+        count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
+        groups = {}
+        for string in inv.get("strings") or []:
+            panels = int(num(string.get("panels")))
+            if panels <= 0:
+                continue
+            model = string.get("panel_model") or inv.get("panel_model") or ""
+            watts = num(string.get("panel_w") if string.get("panel_w") not in (None, "") else inv.get("panel_w"))
+            key = (model, watts)
+            groups[key] = groups.get(key, 0) + panels
+        for (model, watts), panel_count in groups.items():
+            rows.append({"n": panel_count, "count": count, "model": model, "w": watts, "kw": panel_count * watts / 1000})
     return rows
 
 
@@ -241,21 +266,32 @@ def doc_notificare(ctx):
     rows = [["Nr. crt.", "Nr. panouri", "Tip panou", "Pi panou (c.c.) (kW)", "Pi total panouri (c.c.) (kW)", "Pmax debitat de panouri (c.c.) (kW)",
              "Pi total panouri pe 1 invertor (c.c.) (kW)", "Observaţii"]]
     for i, p in enumerate(pr):
-        rows.append([str(i + 1), str(p["n"] or ""), escape(p["model"]), f"{p['w'] / 1000:.3f}" if p["w"] else "", f"{p['kw']:.2f}" if p["kw"] else "",
-                     f"{p['kw']:.2f}" if p["kw"] else "", f"{p['kw']:.2f}" if p["kw"] else "", ""])
-    tk = sum(p["kw"] for p in pr)
-    rows.append(["TOTAL:", "", "", "", f"{tk:.2f}" if tk else "", f"{tk:.2f}" if tk else "", "", ""])
+        total_panels = p["n"] * p["count"]
+        total_kw = p["kw"] * p["count"]
+        rows.append([str(i + 1), str(total_panels or ""), escape(p["model"]), f"{p['w'] / 1000:.3f}" if p["w"] else "",
+                     f"{total_kw:.2f}" if total_kw else "", f"{total_kw:.2f}" if total_kw else "",
+                     f"{p['kw']:.2f}" if p["kw"] else "", ""])
+    tk = sum(p["kw"] * p["count"] for p in pr)
+    total_panels = sum(p["n"] * p["count"] for p in pr)
+    rows.append(["TOTAL:", str(total_panels) if total_panels else "", "", "", f"{tk:.2f}" if tk else "", f"{tk:.2f}" if tk else "", "", ""])
     out.append(B("table", rows, [12, 16, 30, 20, 24, 26, 28, 18], True))
     out.append(B("b", "Invertoare:"))
     rows = [["Nr. crt.", "Nr. invertoare", "Tipul invertoarelor", "Un invertor (c.a.) (V)", "Pi invertor (c.a.) (kW)", "Pmax invertor evacuată în reţea (c.a.) (kW)",
              "Pmax centrală formată din module generatoare (c.a.) (kW)", "Observaţii"]]
     tpi = tpm = 0
+    total_inverters = 0
     for i, inv in enumerate(invs):
-        pi, pm = num(inv.get("p_nom_kw")), num(inv.get("p_limit_kw")) or num(inv.get("p_max_kw")) or num(inv.get("p_nom_kw"))
-        tpi += pi; tpm += pm
+        count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
+        pi = num(inv.get("p_nom_kw"))
+        pm = 0 if inv.get("battery_only") or inv.get("no_panels") else (num(inv.get("p_limit_kw")) or num(inv.get("p_max_kw")) or pi)
+        tpi += pi * count
+        tpm += pm * count
+        total_inverters += count
         un = "400" if "mono" not in str(inv.get("phases") or ("Trifazat" if tri else "Monofazat")).lower() else "230"
-        rows.append([str(i + 1), "1", escape(inv.get("brand_model") or ""), un, f"{pi:.2f}" if pi else "", f"{pm:.2f}" if pm else "", "", ""])
-    rows.append(["TOTAL:", str(len(invs)) if invs else "", "", "", f"{tpi:.2f}" if tpi else "", f"{tpm:.2f}" if tpm else "", f"{tk:.2f}" if tk else "", ""])
+        observation = "Invertor hibrid doar cu baterie; putere evacuată 0 kW" if inv.get("battery_only") or inv.get("no_panels") else ""
+        rows.append([str(i + 1), str(count), escape(inv.get("brand_model") or ""), un, f"{pi:.2f}" if pi else "",
+                     f"{pm:.2f}" if pm is not None else "", f"{pm * count:.2f}" if pm is not None else "", observation])
+    rows.append(["TOTAL:", str(total_inverters) if total_inverters else "", "", "", f"{tpi:.2f}" if tpi else "", f"{tpm:.2f}" if tpm else "", f"{tpm:.2f}" if tpm else "", ""])
     out += [B("table", rows, [12, 16, 34, 20, 20, 26, 30, 16], True),
             B("small", "NOTĂ:<br/>U.G. = unitate generatoare; panou = panou fotovoltaic; As - asincron; S - sincron; T - termo; H - hidro; E - eolian; "
                        "Qn - putere reactivă nominală; Qmax = putere reactivă maximă; Qmin = putere reactivă minimă; c.c. = curent continuu; c.a. = curent alternativ; "
@@ -273,6 +309,18 @@ def doc_notificare(ctx):
             B("p", "În sprijinul solicitării mele, transmit următoarele informaţii privind:"),
             B("p", "a) deţinerea de sisteme de stocare a energiei electrice produse din surse regenerabile:"),
             B("p", "[  ] NU DEŢIN.     [ X ] DEŢIN" if st else "[ X ] NU DEŢIN.     [  ] DEŢIN"),
+            B("b", "Detalii sistem de stocare (datele se preiau din modelul selectat / fișa tehnică):"),
+            B("table",
+              [["Producător / model", "Nr. unități", "Capacitate kWh/unitate", "Tensiune V", "Capacitate Ah/unitate", "Imax A", "Schema / cuplare"]]
+              + [[escape(str(b.get("model") or M)), escape(str(b.get("modules") if b.get("modules") is not None else M)),
+                  escape(str(b.get("kwh") if b.get("kwh") is not None else M)),
+                  escape(str(b.get("voltage") if b.get("voltage") is not None else M)),
+                  escape(str(b.get("ah") if b.get("ah") is not None else M)),
+                  escape(str(b.get("i_max") if b.get("i_max") is not None else M)),
+                  escape(str(b.get("coupling") or M))]
+                 for b in st]
+              if st else [["Nu este selectat", M, M, M, M, M, M]],
+              [30, 12, 23, 15, 20, 14, 25], True),
             B("p", "b) echipamentele de măsurare a energiei electrice montate în instalaţiile de utilizare, altele decât cele aparţinând operatorilor de distribuţie, "
                    "şi caracteristicile acestora, respectiv: serie contor, tip contor, date tehnice:"),
             B("p", "[  ] NU     [ X ] DA" if sl else "[ X ] NU     [  ] DA")]
@@ -280,7 +328,7 @@ def doc_notificare(ctx):
         out.append(B("table", [["Nr. crt.", "Serie contor", "Tip contor", "Date tehnice"],
                                ["1", ctx.v("smart_meter_serial"), ctx.v("smart_meter_type"), ctx.v("smart_meter_data")]], [14, 40, 70, 50], True))
     out += [B("p", "Declar pe propria răspundere că datele şi informaţiile cuprinse în prezenta notificare sunt autentice şi că documentele anexate, în copie, sunt conforme cu originalul."),
-            sign(["Data", f"<b>{ctx.date}</b>"], ["Solicitant/Împuternicit,", f"<b>{ctx.name}</b>", "numele, prenumele şi semnătura"])]
+            sign(["Data", f"<b>{ctx.date}</b>"], ["Reprezentantul firmei instalatoare,", f"<b>{ctx.rep}</b>", f"<b>{ctx.company}</b>", "semnătura și ștampila"])]
     return out
 
 
@@ -306,6 +354,37 @@ def doc_imputernicire(ctx):
         sign(["Semnătură reprezentat,", f"<b>{ctx.name}</b>", "semnătura", "(ștampilă societate)"],
              ["Semnătură reprezentant (împuternicit),", f"<b>{ctx.company}</b>", ctx.rep, "semnătura", "(ștampilă societate)"]),
         B("small", "(*) câmp obligatoriu de completat; în cazul necompletării fără documente justificative atașate, cererea va fi considerată neconformă.")]
+
+
+def doc_storage(ctx):
+    """Fișă separată pentru instalația de stocare, după structura dosarului ReEnergy."""
+    bats = storage(ctx)
+    rows = [["Nr.", "Producător / model", "Capacitate totală (kWh)", "kWh / modul", "Tensiune (V)",
+             "Capacitate (Ah)", "Clasă (LV/HV)", "Cuplare", "Nr. module", "Serie"]]
+    for i, b in enumerate(bats, 1):
+        kwh_per_module = num(b.get("kwh"), None)
+        modules = num(b.get("modules"), None)
+        total_kwh = kwh_per_module * modules if kwh_per_module is not None and modules is not None else None
+        rows.append([
+            str(i), escape(str(b.get("model") or M)),
+            fmt(total_kwh) if total_kwh is not None else M,
+            fmt(kwh_per_module) if kwh_per_module is not None else M,
+            escape(str(b.get("voltage") if b.get("voltage") is not None else M)),
+            escape(str(b.get("ah") if b.get("ah") is not None else M)),
+            escape(str(b.get("tech") or M)),
+            escape(str(b.get("coupling") or M)),
+            escape(str(b.get("modules") if b.get("modules") is not None else M)),
+            escape(str(b.get("serial") or M)),
+        ])
+    if not bats:
+        rows.append(["—", "Nu este declarat un sistem de stocare în datele dosarului", M, M, M, M, M, M, M, M])
+    return hdr() + [
+        B("title", "DATE DESPRE INSTALAȚIA DE STOCARE"),
+        B("p", f"<b>Beneficiar:</b> {ctx.name}<br/><b>Loc de consum:</b> {ctx.loc}<br/><b>POD:</b> {ctx.v('pod')}"),
+        B("table", rows, [5, 26, 15, 11, 12, 10, 10, 9, 9, 14], True),
+        B("small", "Capacitatea totală este calculată din kWh pe modul și numărul de module. Datele provin din configurația dosarului; valorile lipsă trebuie verificate pe eticheta și fișa tehnică a echipamentului. Seria se completează la punerea în funcțiune."),
+        sign(ex_sig(ctx), ben_sig(ctx)),
+    ]
 
 
 def doc_afm(ctx):
@@ -368,9 +447,14 @@ def doc_decl_conformitate(ctx):
 def equipment_lines(ctx):
     rows = [["Echipament", "Cantitate", "Model / detalii"]]
     for inv in inverters(ctx):
-        rows.append(["Invertor", "1 buc", escape(inv.get("brand_model") or M)])
+        count = max(1, int(num(inv.get("count") or inv.get("quantity"), 1)))
+        rows.append(["Invertor", f"{count} buc", escape(inv.get("brand_model") or M)])
+        rsd = inv.get("rsd") or {}
+        if rsd.get("enabled"):
+            rows.append(["Oprire rapidă stringuri fotovoltaice (RSD)", "1 buc", escape(rsd.get("brand_model") or M)])
     for p in panel_rows(ctx):
-        rows.append(["Panouri fotovoltaice", f"{p['n']} buc" if p["n"] else M, escape(p["model"] or M)])
+        total_panels = int(num(p["n"]) * num(p.get("count"), 1))
+        rows.append(["Panouri fotovoltaice", f"{total_panels} buc" if total_panels else M, escape(p["model"] or M)])
     for b in storage(ctx):
         rows.append(["Sistem de stocare", f"{b.get('modules') or 1} buc", escape(f"{b.get('model')} · {b.get('kwh') or ''} kWh")])
     if ctx.raw("smart_meter_type"):
@@ -409,72 +493,108 @@ def doc_pv_receptie(ctx):
 
 def doc_serii(ctx):
     rows = [["Echipament", "Serie"]]
+    cef = ctx.r.get("cef") or {}
+    serials = (ctx.r.get("pif") or {}).get("serials") or {}
+    inverter_serials = serials.get("inverters") or {}
+    for i, inv in enumerate(inverters(ctx)):
+        count = max(1, min(100, int(num(inv.get("count") or inv.get("quantity"), 1) or 1)))
+        for unit in range(count):
+            key = f"{i}.{unit}"
+            label = f"Invertor {i + 1}" + (f" — unitatea {unit + 1}" if count > 1 else "")
+            value = inverter_serials.get(key) or (inv.get("serial") if count == 1 else "")
+            rows.append([f"{label} {escape(inv.get('brand_model') or '')}", escape(str(value or ""))])
+    panel_serials = serials.get("panels")
+    if isinstance(panel_serials, str):
+        panel_serials = panel_serials.splitlines()
+    # Keep empty slots between serial numbers: a missing serial must not shift
+    # every following serial onto the wrong physical panel/model.
+    panel_serials = [str(value).strip() for value in (panel_serials or [])]
+    if not any(panel_serials) and ctx.raw("panel_serials"):
+        legacy = str(ctx.raw("panel_serials"))
+        panel_serials = [value.strip() for value in legacy.splitlines()]
+    while panel_serials and not panel_serials[-1]:
+        panel_serials.pop()
+
+    panel_models_by_serial = []
     for inv in inverters(ctx):
-        rows.append([f"Invertor {escape(inv.get('brand_model') or '')}", escape(inv.get("serial") or "")])
-    for p in panel_rows(ctx):
-        rows.append([f"{p['n']}× panou {escape(p['model'])}", escape(ctx.raw("panel_serials") or "")])
-    for b in storage(ctx):
-        rows.append([f"Baterie {escape(b.get('model'))}", escape(b.get("serial") or "")])
+        if inv.get("battery_only") or inv.get("no_panels"):
+            continue
+        quantity = max(1, min(100, int(num(inv.get("count") or inv.get("quantity"), 1) or 1)))
+        for string in inv.get("strings") or []:
+            panels = max(0, int(num(string.get("panels")))) * quantity
+            model = string.get("panel_model") or inv.get("panel_model") or ""
+            panel_models_by_serial.extend([model] * panels)
+
+    # Match the Reenergy PIF layout: one line per configured panel, even when
+    # its serial has not yet been recorded. Never invent a serial or a model.
+    for i, model in enumerate(panel_models_by_serial):
+        value = panel_serials[i] if i < len(panel_serials) else ""
+        rows.append([f"Panou {i + 1} {escape(model)}".strip(), escape(value)])
+    for i in range(len(panel_models_by_serial), len(panel_serials)):
+        value = panel_serials[i]
+        if value:
+            rows.append([f"Panou suplimentar {i + 1 - len(panel_models_by_serial)} — model neidentificat", escape(value)])
+    battery_serials = serials.get("batteries") or {}
+    battery_items = []
+    for i, inv in enumerate(cef.get("inverters") or []):
+        battery = inv.get("battery") or {}
+        if inv.get("battery_mode") == "own" and battery.get("model"):
+            count = max(1, min(100, int(num(battery.get("modules") or battery.get("count"), 1) or 1)))
+            battery_items.extend((f"inv-{i}-{unit}", f"Baterie invertor {i + 1}" + (f" — modulul {unit + 1}" if count > 1 else ""), battery.get("model"), battery.get("serial") if count == 1 else "") for unit in range(count))
+    for i, battery in enumerate(cef.get("shared_batteries") or []):
+        count = max(1, min(100, int(num(battery.get("modules") or battery.get("count"), 1) or 1)))
+        battery_items.extend((f"shared-{i}-{unit}", f"Baterie {i + 1}" + (f" — modulul {unit + 1}" if count > 1 else ""), battery.get("model"), battery.get("serial") if count == 1 else "") for unit in range(count))
+    if not battery_items:
+        battery_items = [(f"legacy-{i}", "Baterie", b.get("model"), b.get("serial")) for i, b in enumerate(storage(ctx))]
+    rows.extend([[f"{label} {escape(model or '')}", escape(str(battery_serials.get(key) or legacy_serial or ""))] for key, label, model, legacy_serial in battery_items])
     return hdr() + [B("title", "ANEXĂ — SERII ECHIPAMENTE"), B("table", rows, [90, 84], True),
                     sign(["Am predat — Executant,", f"<b>{ctx.company}</b>", ctx.rep, "semnătura și ștampila"], ["Am primit — Beneficiar,", f"<b>{ctx.name}</b>", "semnătura"])]
-
-
 def doc_pv_pif(ctx):
     st = storage(ctx)
     invs = inverters(ctx)
+    tests = ctx.r.get("tests") or {}
     dec = ctx.raw("pif_decision")
     pd = ro_date(ctx.raw("pif_date")) or M
     anti = ctx.raw("anti_relay_present")
+    result_rows = [["Verificare", "Rezultat DA/NU", "Valori măsurate / observații"]]
+    for i, label in enumerate(TESTS_A):
+        item = tests.get(f"a{i}") or {}
+        result_rows.append([label, escape(str(item.get("ok") or "")), escape(str(item.get("obs") or ""))])
+    for i, (freq, duration) in enumerate(FREQ):
+        item = tests.get(f"f{i}") or {}
+        result_rows.append([f"Frecvență {freq} · {duration}", escape(str(item.get("ok") or "")), escape(str(item.get("obs") or ""))])
+    for i, label in enumerate(CHECKS):
+        item = tests.get(f"c{i}") or {}
+        result_rows.append([label, escape(str(item.get("ok") or "")), escape(str(item.get("obs") or ""))])
+    has_results = any((tests.get(f"{prefix}{i}") or {}).get("ok") or (tests.get(f"{prefix}{i}") or {}).get("obs")
+                      for prefix, count in (("a", len(TESTS_A)), ("f", len(FREQ)), ("c", len(CHECKS)))
+                      for i in range(count))
     return hdr() + [
-        B("title", "PROCES-VERBAL DE PUNERE ÎN FUNCȚIUNE FINALĂ"),
+        B("title", "PROCES-VERBAL DE PUNERE ÎN FUNCȚIUNE — FIȘĂ DE LUCRU"),
         B("sub", f"a sistemului de producere a energiei electrice — Centrala electrică fotovoltaică CEF {ctx.cef_kw}"),
+        B("small", "Document precompletat cu datele salvate. Generarea nu confirmă efectuarea probelor, măsurători, conformitatea sau admiterea instalației. Completați constatările și decizia numai după verificarea efectivă; nu semnați o concluzie neconfirmată."),
         B("table", [["Denumire beneficiar", f"<b>{ctx.name}</b>"], ["Loc de consum", ctx.loc], ["POD", ctx.v("pod")],
-                    ["Tip cerere AFM", (escape(str(ctx.raw('afm'))).upper() if ctx.raw("afm") else M)]], [50, 124], False),
+                    ["Data introdusă pentru PIF", pd], ["Tip cerere AFM", (escape(str(ctx.raw('afm'))).upper() if ctx.raw("afm") else M)]], [50, 124], False),
         B("b", "Echipamente centrală fotovoltaică"),
-        B("bullets", [f"Model invertor utilizat (acreditat de Operatorul de Distribuție): <b>{'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}</b>",
-                      f"Număr + model panouri fotovoltaice: <b>{'; '.join(f'{p[chr(110)]} × {escape(p[chr(109)+chr(111)+chr(100)+chr(101)+chr(108)])} × {fmt(p[chr(119)], 0)} W' for p in panel_rows(ctx)) or M}</b>",
-                      f"Sistem stocare: <b>{'; '.join(escape(b.get('model')) for b in st) if st else 'NU'}</b>",
-                      f"Existența blocului de măsură și utilizare sigilabil, dimensionat conform puterii instalate în centrala fotovoltaică, între invertor și tabloul "
-                      f"electric al clientului: <b>{ctx.v('bmp_desc')}</b>",
-                      "Existența protecției suplimentare privind montarea releului de antiinsularizare la CEF cu P>30 kWp (cf. ORD. ANRE 132/2020 art. 1 pct. 6, art. 2a): "
-                      f"<b>{escape(str(anti)).upper() if anti else M}</b>"]),
-        B("b", "I. Date generale"),
-        B("p", f"Denumire instalator: {ctx.company}, {ctx.e('cui')}, {ctx.e('regcom')}, email: {ctx.e('email')}, telefon: {ctx.e('phone')}, contact: {ctx.rep}, ANRE: {ctx.e('anre_attest')}"),
-        B("p", f"Comisia de recepție convocată la data de {pd}."),
-        B("b", "II. Constatări"),
-        B("p", "În calitate de instalator autorizat ANRE, atestăm că această lucrare corespunde din punct de vedere tehnic și electric, cu respectarea cerințelor din "
-               "Ordinele ANRE 59/2013, 228/2018, 132/2020, 15/2022, 19/2022, 133/2022, 4/2023, a condițiilor tehnice în vigoare care permit punerea sub tensiune, inclusiv "
-               "a celor de protecție a muncii și PSI, normelor, prescripțiilor și normativelor în vigoare, respectiv a normativului I7, în vigoare cu actualizările aferente, "
-               "punându-se astfel sub tensiune în perioada de probă finală."),
-        B("p", "a) În urma examinării documentației prezentate, a rezultatelor probelor tehnologice și a cercetării pe teren a lucrărilor executate s-a constatat: "
-               "respectarea ORD ANRE 15/2022, ORD ANRE 19/2022, ORD ANRE 133/2022, ORD ANRE 132/2020. <b>INSTALAȚIA FOTOVOLTAICĂ POATE FI PUSĂ SUB TENSIUNE</b> de către "
-               "Operatorul de Distribuție / instalatorul sistemului fotovoltaic și respectă normativul I7."),
-        B("p", "b) Au fost efectuate probele și s-au verificat condițiile tehnice de racordare la rețelele electrice de interes public pentru prosumatorul cu injecție de "
-               "putere activă în rețea, în conformitate cu Ordinul ANRE nr. 228/2018 cu modificările și completările ulterioare, și s-au constatat următoarele:"),
-        B("bullets", [f"reconectarea instalațiilor de producere la rețeaua electrică s-a realizat după un interval de {ctx.v('reconnect_min')} minute de la reapariția tensiunii în rețea;",
-                      "s-a verificat nefuncționarea centralei în regim insularizat, prin dotarea cu protecții care întrerup injecția puterii active în rețea la apariția unui asemenea regim;",
-                      "s-a realizat protecția instalației de producere, a invertoarelor componente și a instalațiilor auxiliare, împotriva defectelor din instalațiile proprii sau împotriva impactului rețelei electrice asupra acestora;",
-                      "prosumatorul asigură în punctul de racordare/delimitare calitatea energiei electrice în conformitate cu standardele în vigoare;",
-                      "se respectă Standardul de Performanță privind evacuarea surplusului de energie electrică în rețeaua electrică de JT/MT aferentă Operatorului de Distribuție;",
-                      "se respectă ORD. ANRE 15/2022, actualizat prin ORD. ANRE 19/2022, privind montarea unui bloc de măsură și protecție sigilabil în instalația de utilizare, dimensionat conform puterii instalate, racordat între invertorul fotovoltaic și tabloul electric general al beneficiarului;",
-                      "se respectă ORD. ANRE 132/2020 privind implementarea reglajelor de interfață asupra invertorului, astfel încât la debitarea surplusului nivelul tensiunii în punctul de delimitare se încadrează în Standardul de Performanță."], False),
-        B("p", "În conformitate cu cele menționate anterior, declarăm pe propria răspundere faptul că Operatorul de Distribuție poate instala în cadrul blocului de măsură "
-               "și protecție montat în instalația de utilizare contorul de energie electrică ce va înregistra cantitatea de energie electrică produsă de centrala fotovoltaică "
-               "(cf. art. 45 alin. 1 lit. a1 din Legea nr. 123/2012)."),
-        B("p", "c) Alte constatări: prosumatorul are obligația să exploateze și să întrețină instalațiile proprii în conformitate cu prescripțiile în vigoare, fiind răspunzător "
-               "de orice modificare neautorizată ulterioară adusă instalației de producere fără înștiințarea Operatorului de Distribuție Regional."),
-        B("b", "III. Concluzii"),
-        B("p", f"1. Pe baza constatărilor și concluziilor consemnate mai sus, comisia de recepție hotărăște: <b>{escape(str(dec)) if dec else M}</b>."),
-        B("p", "2. Modificarea sistemului fotovoltaic, a protecțiilor și reglajelor de interfață, în mod diferit față de ORD. ANRE 132/2020, înainte, în cadrul perioadei de "
-               "probă sau după punerea în funcțiune finală, îi permite Operatorului de Distribuție deconectarea sistemului fotovoltaic de la rețea până la remedierea neconformităților."),
-        B("p", "3. Beneficiarul se angajează să informeze Operatorul de Distribuție pentru orice modificare survenită în instalația de utilizare a grupului generator, după "
-               "punerea în funcțiune a acestuia în perioada de probă / după emiterea Certificatului de Racordare tip Prosumator."),
-        B("p", f"4. Prezentul proces-verbal a fost încheiat azi {pd}, în două exemplare originale."),
-        B("p", "5. Cunoscând prevederile art. 326 din Codul Penal cu privire la falsul în declarații, declarăm (atât beneficiarul, cât și instalatorul sistemului fotovoltaic) "
-               "pe propria răspundere faptul că documentele depuse la Dosarul de Prosumator corespund realității, iar cele prezentate în format electronic sunt conforme cu originalul."),
-        B("small", "NOTĂ: după emiterea Certificatului de Racordare tip Prosumator, beneficiarul se angajează să informeze furnizorul de energie electrică în vederea întocmirii Contractului de Furnizare tip Prosumator."),
-        sign(ex_sig(ctx, "Instalator/Executant,"), ben_sig(ctx)),
-        B("p", "Observații OD: ________________________________________________________________")]
+        B("bullets", [f"Model invertor selectat: <b>{'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}</b>",
+                      f"Număr + model panouri: <b>{'; '.join(f'{p[chr(110)]} × {escape(p[chr(109)+chr(111)+chr(100)+chr(101)+chr(108)])} × {fmt(p[chr(119)], 0)} W' for p in panel_rows(ctx)) or M}</b>",
+                      f"Sistem stocare selectat: <b>{'; '.join(escape(b.get('model')) for b in st) if st else 'NU este declarat în dosar'}</b>",
+                      f"Bloc de măsură și utilizare: <b>{ctx.v('bmp_desc')}</b>",
+                      f"Protecție antiinsularizare: <b>{escape(str(anti)).upper() if anti else 'NECONFIRMATĂ'}</b>"]),
+        B("b", "I. Date executant"),
+        B("p", f"Denumire instalator: {ctx.company}, {ctx.e('cui')}, {ctx.e('regcom')}, email: {ctx.e('email')}, telefon: {ctx.e('phone')}, reprezentant: {ctx.rep}, ANRE: {ctx.e('anre_attest')}"),
+        B("b", "II. Verificări și constatări"),
+        B("p", "Verificați instalația și consemnați rezultatul real pentru fiecare probă. Valorile și observațiile nu se deduc din modelul echipamentului."),
+        B("table", result_rows, [78, 28, 68], True),
+        B("b", "III. Concluzie"),
+        B("p", f"Decizie introdusă în dosar: <b>{escape(str(dec)) if dec else 'NECOMPLETATĂ — se selectează după verificări'}</b>."),
+        B("p", "Punerea sub tensiune se aprobă numai după completarea și verificarea rezultatelor, a protecțiilor și a documentelor aplicabile."),
+        B("p", f"Nr. proces-verbal: {ctx.v('pif_no')} · Data PIF introdusă: {pd}"),
+        B("small", "Acest model nu înlocuiește măsurătorile, probele la fața locului sau verificarea și semnarea de către persoanele competente."),
+        sign(ex_sig(ctx, "Reprezentantul firmei executante,"), ben_sig(ctx)),
+    ]
+
+
 
 
 TESTS_A = ["Răspunsul la variațiile de frecvență — f > 50,2 Hz (RFA-CR)", "Răspunsul la variațiile de frecvență — f < 49,8 Hz (RFA-SC)",
@@ -494,64 +614,82 @@ def doc_pv_teste(ctx):
     invs = inverters(ctx)
     st = storage(ctx)
     t = ctx.r.get("tests") or {}
-    pd = ro_date(ctx.raw("pif_date")) or M
-    period = f"{ro_date(ctx.raw('test_from')) or M} — {ro_date(ctx.raw('test_to')) or M}"
-    out = [B("p", f"Nr. înregistrare OD …………………………………/…………………………………<br/>aferent cererii de punere sub tensiune nr. …………………………………<br/>POD <b>{ctx.v('pod')}</b>"),
-           B("title", "PROCES VERBAL"), B("sub", f"de efectuare a testelor și verificărilor de punere în funcțiune a instalației de utilizare și producere<br/>situată în {ctx.loc}"),
-           B("p", f"încheiat azi {pd} cu ocazia efectuării testelor și verificărilor de punere în funcțiune a instalației de utilizare/producere {ctx.cef_kw}"),
-           B("b", "Datele tehnice ale instalației de producere:"),
-           B("p", f"1. Seria invertorului: {'; '.join(escape(i.get('serial')) for i in invs if i.get('serial')) or M}<br/>tipul invertorului: "
-                  f"<b>{'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}</b>"),
-           B("p", f"2. Montajul CEF {ctx.cef_kw} este în conformitate cu ATR {ctx.v('atr')}"),
-           B("p", f"3. Tipul / seria contorului montat de prosumator pe partea de producere este {ctx.v('production_meter')}"),
-           B("p", f"4. Sistemul [ {'Da' if st else 'Nu'} ] are sistem de stocare"),
-           B("p", f"În perioada {period} au fost efectuate testele și s-au verificat condițiile tehnice de racordare la RED pentru prosumatorul cu injecție de "
-                  "putere activă în rețea, în conformitate cu Ord. ANRE 228/2018 cu modificările și completările ulterioare."),
-           B("p", "S-au constatat următoarele:"),
-           B("bullets", [f"1. Reconectarea instalațiilor de producere a energiei electrice aparținând prosumatorului, la rețeaua electrică s-a realizat după {ctx.v('reconnect_min')} minute de la reapariția tensiunii în rețea;",
-                         "2. S-a verificat nefuncționarea centralei în regim insularizat, aceasta realizându-se prin dotarea cu protecții/protecții integrate a echipamentului care să întrerupă injecția puterii active în rețea a prosumatorului la apariția unui asemenea regim;",
-                         "3. S-a realizat protecția instalației de producere a energiei electrice, a invertorului/invertoarelor componente și a instalațiilor auxiliare, (după caz a sistemului de stocare a energiei) și a instalației electrice aferente locului de consum împotriva defectelor din instalațiile proprii și împotriva impactului rețelei electrice asupra acestora, la acționarea protecțiilor de declanșare a prosumatorului ori la incidente în rețea (supratensiuni tranzitorii, acționări ale protecțiilor în rețea, scurtcircuite cu și fără punere la pământ), cât și în cazul apariției unor condiții tehnice excepționale/anormale de funcționare;",
-                         "4. Prosumatorul cu injecție de putere activă în rețea asigură în punctul de racordare/delimitare (după caz), calitatea energiei electrice în conformitate cu standardele în vigoare."], False),
-           B("p", f"Subsemnatul {ctx.rep}, reprezentant al firmei executante {ctx.company} (atestat ANRE {ctx.e('anre_attest')}, cu valabilitate până la "
-                  f"{ro_date(ctx.s.get('anre_valid')) or M}), declar că instalația de producere a fost realizată cu respectarea normativelor, reglementărilor, prescripțiilor și legislației în vigoare și se poate pune în funcțiune."),
-           B("p", "<b>Atât Executantul cât și Prosumatorul au obligația ca, până la încheierea contractului de vânzare-cumpărare între Prosumator și Furnizorul de energie "
-                  "electrică, SĂ NU INJECTEZE ENERGIE ELECTRICĂ în rețeaua operatorului de distribuție.</b> De asemenea, Prosumatorul și Executantul (cu drepturi de "
-                  "parametrizare a invertorului) își asumă responsabilitatea pentru menținerea în funcțiune a tuturor protecțiilor, respectiv menținerea parametrilor testați aferenți unității de producție (inclusiv a invertorului)."),
-           sign(["Prosumator,", f"<b>{ctx.name}</b>", "semnătura"], ["Reprezentant firmă executantă<br/>care a verificat și efectuat testele,", ctx.rep, "semnătura și ștampila"]),
-           B("b", "Observații OD privind instalația de utilizare de la locul de consum și producere"),
-           B("p", "OD a sigilat: [  ] contorul pe partea de producere, din instalația prosumatorului<br/>[  ] contorul pe sistemul de stocare<br/>[  ] contorul în punctul de delimitare"),
-           B("p", "Observații (dacă este cazul)<br/>………………………………………………………………………………………………………<br/>………………………………………………………………………………………………………"),
-           B("p", "Data …………………………………<br/>Reprezentant OD,<br/>…………………………………"),
+    pif_checks = ctx.r.get("pif_checks") or {}
+    verdict = str(t.get("verdict") or "").strip()
+    od_observations = str(t.get("od_observations") or "").strip()
+    pif_fields = [
+        ["Data procesului-verbal", ro_date(ctx.raw("pif_date")) or M],
+        ["Serie contor producere", ctx.v("production_meter_serial")],
+        ["Reprezentant OD prezent", ctx.v("pif_representative")],
+        ["Început probe", ro_date(ctx.raw("pif_test_start")) or M],
+        ["Sfârșit probe", ro_date(ctx.raw("pif_test_end")) or M],
+        ["Data punerii sub tensiune", ro_date(ctx.raw("energize_date")) or M],
+        ["Tensiune măsurată la punctul de delimitare (V)", ctx.v("pif_voltage_v")],
+        ["Inginer semnatar", ctx.v("pif_engineer")],
+    ]
+    functional_checks = [
+        ("Reglaje protecții (buletin reglaj)", "protection_settings"),
+        ("Seriile corespund echipamentelor montate", "serials_confirmed"),
+        ("Test anti-insularizare", "anti_islanding"),
+        ("Priză de pământ (PRAM ≤ 4 Ω)", "pram_ok"),
+    ]
+    out = [B("p", f"Nr. proces-verbal: <b>{ctx.v('pif_no')}</b><br/>POD <b>{ctx.v('pod')}</b>"),
+           B("title", "PROCES-VERBAL — TESTE ȘI VERIFICĂRI PIF"),
+           B("sub", f"aferente instalației de utilizare și producere situată în {ctx.loc}"),
+           B("small", "Fișă de lucru pentru completarea datelor și consemnarea probelor efectuate. Datele de recepție, tensiunile și verificările se introduc de personalul responsabil; nu sunt deduse sau completate automat."),
+           B("b", "Date tehnice ale instalației de producere"),
+           B("p", f"CEF {ctx.cef_kw} · POD {ctx.v('pod')}<br/>Serii invertor: {'; '.join(escape(i.get('serial')) for i in invs if i.get('serial')) or M}<br/>"
+                  f"Modele invertor: {'; '.join(escape(i.get('brand_model') or '') for i in invs) or M}<br/>"
+                  f"Sistem de stocare declarat: {'DA' if st else 'NU / nespecificat'}"),
+           B("p", "Rezultatul probelor și verificărilor tehnice se consemnează mai jos numai după efectuarea lor efectivă."),
+           B("b", "Date PV Teste și punere sub tensiune"),
+           B("table", [["Câmp", "Valoare"]] + [[escape(label), value] for label, value in pif_fields], [60, 110], True),
+           B("b", "Verificări funcționale consemnate"),
+           B("table", [["Verificare", "Stare"]] + [[escape(label), "Confirmată" if pif_checks.get(key) is True else "Necompletată"] for label, key in functional_checks], [125, 45], True),
            B("pagebreak")] + hdr() + [
-           B("title", "Teste și Verificări"),
-           B("sub", "aferente Normei Tehnice „Condiții tehnice de racordare la rețelele electrice de interes public pentru prosumatorii cu injecție de putere activă în rețea” — "
-                    "Ordin ANRE nr. 228/2018 cu modificările și completările ulterioare —<br/>anexă la procesul verbal de efectuare a probelor de punere în funcțiune a instalației de utilizare și producere — de categorie A — (PGM)"),
-           B("table", [["Tip Test", "Categoria A", "Corespunde DA/NU", "Observații*"]] +
-             [[x, TESTS_A_CAT[i], escape(str((t.get(f"a{i}") or {}).get("ok") or "")), escape(str((t.get(f"a{i}") or {}).get("obs") or ""))] for i, x in enumerate(TESTS_A)],
-             [55, 70, 22, 27], True),
-           B("small", "* Acolo unde se fac teste se vor trece valorile obținute.<br/>Certificatul de echipament conține: domeniul de frecvență — durate, valoare frecvență; se verifică și protecțiile."),
-           B("table", [["Domeniul de frecvență", "Durata de funcționare", "Există (DA/NU)", "Observații"]] +
-             [[f, d, escape(str((t.get(f"f{i}") or {}).get("ok") or "")), escape(str((t.get(f"f{i}") or {}).get("obs") or ""))] for i, (f, d) in enumerate(FREQ)],
-             [45, 55, 30, 44], True),
-           B("table", [["", "Există (DA/NU)", "Observații"]] +
-             [[x, escape(str((t.get(f"c{i}") or {}).get("ok") or "")), escape(str((t.get(f"c{i}") or {}).get("obs") or ""))] for i, x in enumerate(CHECKS)],
-             [110, 30, 34], True),
-           B("b", "Notă"),
-           B("p", f"Prezenta se anexează la Procesul Verbal nr. {ctx.v('pif_no', '—')} din data de {pd} de efectuare a probelor de punere în funcțiune a instalației de utilizare și producere situată în {ctx.loc}."),
-           B("p", "Acolo unde verificarea conformității se bazează pe certificatele de echipamente ale unității generatoare, se vor anexa și acestea."),
-           sign(["Prosumator,", f"<b>{ctx.name}</b>", "semnătura"], ["Reprezentant firmă executantă<br/>care a verificat și efectuat testele,", ctx.rep, "semnătura și ștampila"])]
+           B("title", "Teste și verificări — rezultate"),
+           B("sub", "Ordin ANRE nr. 228/2018, cu modificările și completările aplicabile. Completați valorile obținute acolo unde se efectuează măsurători."),
+           B("table", [["Tip test", "Referință / cerință", "Corespunde DA/NU", "Valori măsurate / observații"]]
+             + [[x, TESTS_A_CAT[i], escape(str((t.get(f"a{i}") or {}).get("ok") or "")), escape(str((t.get(f"a{i}") or {}).get("obs") or ""))]
+                for i, x in enumerate(TESTS_A)], [48, 62, 22, 42], True),
+           B("table", [["Domeniul de frecvență", "Durata de funcționare", "Există DA/NU", "Observații"]]
+             + [[f, d, escape(str((t.get(f"f{i}") or {}).get("ok") or "")), escape(str((t.get(f"f{i}") or {}).get("obs") or ""))]
+                for i, (f, d) in enumerate(FREQ)], [42, 48, 30, 54], True),
+           B("table", [["Verificare", "Există DA/NU", "Valori / observații"]]
+             + [[x, escape(str((t.get(f"c{i}") or {}).get("ok") or "")), escape(str((t.get(f"c{i}") or {}).get("obs") or ""))]
+                for i, x in enumerate(CHECKS)], [90, 30, 54], True),
+           B("small", "Nu se bifează automat «DA» și nu se inventează valori. Dacă rezultatul sau observația lipsesc, câmpul rămâne necompletat."),
+           B("table", [["Verdict recepție probe", escape(verdict) if verdict else "— necompletat —"],
+                       ["Observații", escape(od_observations) if od_observations else "—"]], [42, 132], True),
+           B("p", "Concluzia și declarația reprezentantului executantului se completează și se semnează numai după confirmarea rezultatelor de mai sus."),
+           sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
     return out
+
+
 
 
 def doc_buletin_priza(ctx):
     meas, psi = num(ctx.raw("grounding_ohm"), None), num(ctx.raw("soil_psi"), None)
     lim = num(ctx.raw("grounding_limit"), None)
     calc = meas * psi if meas is not None and psi is not None else None
-    ok = ("DA" if calc <= lim else "NU") if calc is not None and lim is not None else M
     md = ctx.raw("measure_date")
-    valid = (datetime.fromisoformat(str(md)[:10]) + timedelta(days=365)).strftime("%d.%m.%Y") if md else M
+    meter_device = str(ctx.raw("meter_device") or "").strip()
+    meter_serial = str(ctx.raw("meter_serial") or "").strip()
+    meter_valid = str(ctx.raw("meter_valid") or "").strip()
+    measured = (all(value is not None for value in (meas, psi, lim)) and bool(md)
+                and bool(meter_device) and bool(meter_serial) and bool(meter_valid))
+    ok = ("DA" if calc <= lim else "NU") if measured else "NECOMPLETAT"
+    valid = M
+    if measured:
+        try:
+            valid = (datetime.fromisoformat(str(md)[:10]) + timedelta(days=365)).strftime("%d.%m.%Y")
+        except ValueError:
+            measured = False
+            ok = "NECOMPLETAT"
     return hdr() + [
-        B("title", "BULETIN DE VERIFICARE ȘI MĂSURARE INSTALAȚII DE LEGARE LA PĂMÂNT"), B("sub", f"NR. {ctx.v('bulletin_no')} din {ro_date(md) or M}"),
+        B("title", ("BULETIN DE VERIFICARE ȘI MĂSURARE INSTALAȚII DE LEGARE LA PĂMÂNT" if measured else "FIȘĂ DE LUCRU — BULETIN PRAM NEFINALIZAT")),
+        B("small", "Măsurătorile, datele aparatului și concluzia se completează numai după verificarea efectivă la fața locului; valorile lipsă nu sunt estimate." if not measured else "Document completat cu măsurătorile înregistrate și aparatul cu certificat metrologic valabil selectat în dosar."),
+        B("sub", f"NR. {ctx.v('bulletin_no')} din {ro_date(md) or M}"),
         B("p", f"<b>Client:</b> {ctx.name} · <b>Adresa:</b> {ctx.loc}"),
         B("p", f"<b>Obiectivul:</b> {ctx.v('measure_object')} · <b>Data verificărilor/măsurătorilor:</b> {ro_date(md) or M}"),
         B("table", [["Verificarea/măsurarea instalațiilor de legare la pământ", "p.p. nr. 1"], ["Starea solului", ctx.v("soil")],
@@ -559,9 +697,10 @@ def doc_buletin_priza(ctx):
                     ["Valoarea rezistenței de dispersie măsurată (Ω)", f"{meas:.2f}" if meas is not None else M],
                     ["Valoarea rezistenței de dispersie calculată în funcție de starea solului (Ω)", f"<b>{calc:.2f}</b>" if calc is not None else M],
                     [f"Concluzii — corespunde (da/nu){f' · valoare admisă ≤ {fmt(lim)} Ω' if lim is not None else ''}", f"<b>{ok}</b>"]], [140, 34], True),
-        B("p", f"<b>Aparat de măsură folosit:</b> {ctx.e('meter_device')} · seria {ctx.e('meter_serial')} · buletin metrologic valabil până la {ro_date(ctx.s.get('meter_valid')) or M}"),
-        B("small", f"Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la <b>{valid}</b>."),
-        sign(["Verificat,", f"<b>{ctx.company}</b>", ctx.rep, "semnătura și ștampila"], ben_sig(ctx))]
+        B("p", f"<b>Aparat de măsură folosit:</b> {ctx.v('meter_device')} · <b>Seria:</b> {ctx.v('meter_serial')} · <b>Certificat metrologic valabil până la:</b> {ro_date(meter_valid) or M}"),
+
+        B("small", f"Prezentul buletin de verificări este valabil 1 an de la data efectuării măsurătorii. Valabil până la <b>{valid}</b>." if measured else "Buletinul rămâne fișă de lucru până la înregistrarea măsurătorilor și selectarea aparatului cu metrologie valabilă."),
+        sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])]
 
 
 REGLAJ = [("u1", "Funcția protecție tensiune maximală treapta I"), ("u2", "Funcția protecție tensiune minimală treapta II"),
@@ -573,18 +712,37 @@ REGLAJ = [("u1", "Funcția protecție tensiune maximală treapta I"), ("u2", "Fu
 def doc_buletin_reglaj(ctx):
     rg = ctx.r.get("reglaj") or {}
     invs = inverters(ctx)
-    return hdr() + [
-        B("title", "BULETIN REGLAJ"),
+    values_complete = all(
+        str((rg.get(key) or {}).get("val") or "").strip()
+        and str((rg.get(key) or {}).get("t") or "").strip()
+        for key, _ in REGLAJ
+    )
+    verified = rg.get("verified_by_installer") is True and values_complete
+    title = "BULETIN REGLAJ" if verified else "FIȘĂ DE LUCRU — REGLAJE INVERTOR"
+    intro = (
+        "a fost programat conform valorilor de protecție prezentate mai jos, verificate efectiv pe invertor, "
+        "cu funcțiile de protecție active, conform Ordinului ANRE nr. 132/2020."
+        if verified else
+        "Document de lucru generat din datele dosarului. Valorile de mai jos nu confirmă programarea sau testarea invertorului. "
+        "Completați după măsurare/verificare efectivă, apoi marcați confirmarea instalatorului."
+    )
+    rows = [[lbl, escape(str((rg.get(key) or {}).get("val") or "")), escape(str((rg.get(key) or {}).get("t") or ""))] for key, lbl in REGLAJ]
+    story = [
+        B("title", title),
         B("p", f"<b>Denumire beneficiar:</b> {ctx.name}<br/><b>Loc de consum centrală fotovoltaică:</b> {ctx.loc}<br/><b>CEF:</b> {ctx.cef_kw} · <b>POD:</b> {ctx.v('pod')}"),
-        B("p", f"Noi, firma <b>{ctx.company}</b>, cu sediul în {ctx.e('address')}, declarăm că invertorul:"),
-        B("p", "<br/>".join(f"Model invertor utilizat: <b>{escape(i.get('brand_model') or M)}</b> · Putere: <b>{fmt(num(i.get('p_nom_kw')))} kW</b>" for i in invs) or M),
-        B("p", "a fost programat conform valorilor de protecție prezentate mai jos în tabelul reglajelor, cu funcțiile de protecție active și implementate în unitatea de "
-               "producție fotovoltaică executată la adresa mai sus menționată, conform Ordinului ANRE nr. 132/2020."),
-        B("table", [["PROTECȚIE", "Valoare setată", "Timp (sec)"]] +
-          [[lbl, escape(str((rg.get(k) or {}).get("val") or "")), escape(str((rg.get(k) or {}).get("t") or ""))] for k, lbl in REGLAJ], [110, 34, 30], True),
-        B("p", f"Subsemnatul <b>{ctx.name}</b>, în calitate de beneficiar, mă oblig să nu modific setările de protecție mai sus menționate și să nu permit accesul "
-               "persoanelor neautorizate în instalația CEF executată, în scopul modificării parametrilor de funcționare implementați în invertor la punerea în funcțiune."),
-        sign(ex_sig(ctx, "Instalator,"), ben_sig(ctx)), B("p", f"Data: {ctx.date}")]
+        B("p", f"<b>Firmă:</b> {ctx.company} · {ctx.e('address')}"),
+        B("p", "<br/>".join(f"Model invertor: <b>{escape(i.get('brand_model') or M)}</b> · Putere: <b>{fmt(num(i.get('p_nom_kw')))} kW</b>" for i in invs) or M),
+        B("p", intro),
+        B("table", [["PROTECȚIE", "Valoare declarată", "Timp (sec)"]] + rows, [110, 34, 30], True),
+    ]
+    if verified:
+        story += [
+            B("p", f"Subsemnatul <b>{ctx.name}</b>, în calitate de beneficiar, mă oblig să nu modific setările de protecție verificate mai sus."),
+            sign(ex_sig(ctx, "Instalator,"), ben_sig(ctx)),
+            B("p", f"Data: {ctx.date}"),
+        ]
+    return hdr() + story
+
 
 
 def doc_autenticitate(ctx):
@@ -609,6 +767,7 @@ def doc_schema(ctx):
 
 DOCS = {
     "notificare": ("Anexa 2 — Notificare (Ord. ANRE 19/2022)", doc_notificare),
+    "date_stocare": ("Date despre instalația de stocare", doc_storage),
     "schema_cef": ("Schemă monofilară", doc_schema),
     "declaratie_afm": ("Declarație accesare fonduri (AFM)", doc_afm),
     "buletin_reglaj": ("Buletin reglaj", doc_buletin_reglaj),
@@ -627,9 +786,14 @@ DOCS = {
 
 
 # ---------- PDF renderer ----------
+
 def pdf_header(ctx):
     left = Paragraph(f"<b><font size=10>{ctx.company}</font></b><br/>{ctx.e('cui', '')} · {ctx.e('regcom', '')}<br/>Atestat ANRE {ctx.e('anre_attest', '')}", S["hdrl"])
     right = Paragraph(f"{ctx.e('phone', '')}<br/>{ctx.e('email', '')}<br/>{ctx.e('address', '')}", S["hdrr"])
+    logo = _company_logo(ctx.s, 22 * mm, 13 * mm)
+    if logo:
+        left = Table([[logo, left]], colWidths=[24 * mm, 63 * mm])
+        left.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 3)]))
     t = Table([[left, right]], colWidths=[87 * mm, 87 * mm])
     t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, 0), 0.6, GRID), ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
     return [t, Spacer(1, 10)]
@@ -658,6 +822,7 @@ def split_sig(lines):
 
 IMG_LOADER = None
 _IMG_CACHE = {}
+DEFAULT_COMPANY_LOGO_B64 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "brand-assets", "dns-energy-official.png.b64")
 
 
 def _img(path, w, h):
@@ -668,25 +833,69 @@ def _img(path, w, h):
     except Exception:
         return None
 
+def company_logo_bytes(settings):
+    logo_file = (settings or {}).get("header_logo") or {}
+    path = logo_file.get("storage_path") if isinstance(logo_file, dict) else None
+    if path and IMG_LOADER:
+        try:
+            data = IMG_LOADER(path)
+            if data:
+                return data
+        except Exception:
+            pass
+    try:
+        with open(DEFAULT_COMPANY_LOGO_B64, "rt", encoding="ascii") as logo:
+            return base64.b64decode(logo.read().strip(), validate=True)
+    except OSError:
+        return None
+
+
+def _company_logo(settings, w, h):
+    logo_file = (settings or {}).get("header_logo") or {}
+    path = logo_file.get("storage_path") if isinstance(logo_file, dict) else None
+    logo = _img(path, w, h) if path else None
+    if logo:
+        return logo
+    data = company_logo_bytes(settings)
+    if data:
+        try:
+            return Image(io.BytesIO(data), width=w, height=h, kind="proportional")
+        except Exception:
+            pass
+    return None
+
+
+def _signature_paths(lines, s):
+    # Names in the document may be HTML-escaped or differ only by case/diacritics.
+    def norm(value):
+        value = unescape(str(value or ""))
+        value = unicodedata.normalize("NFKD", value)
+        return re.sub(r"\s+", " ", "".join(ch for ch in value if not unicodedata.combining(ch))).casefold().strip()
+
+    txt = norm(" ".join(str(line) for line in lines))
+    paths = []
+    for name, path in (s.get("_sigs") or {}).items():
+        normalized_name = norm(name)
+        if normalized_name and normalized_name in txt and path:
+            paths.append(("signature", path))
+            break
+    company = norm(s.get("company"))
+    has_company_sign_block = company and company in txt and ("semnatura" in txt or "stampila" in txt)
+    if s.get("_stamp_path") and has_company_sign_block:
+        paths.append(("stamp", s["_stamp_path"]))
+    return paths
+
 
 def sig_images(lines, s):
-    txt = " ".join(lines)
-    imgs = []
     if not IMG_LOADER:
-        return imgs
-    for nm, p in (s.get("_sigs") or {}).items():
-        if nm and escape(nm) in txt:
-            i = _img(p, 34 * mm, 14 * mm)
-            if i:
-                imgs.append(i)
-            break
-    company = escape(str(s.get("company") or ""))
-    if s.get("_stamp_path") and "ștampil" in txt and company and company in txt:
-        i = _img(s["_stamp_path"], 24 * mm, 24 * mm)
-        if i:
-            imgs.append(i)
-    return imgs
-
+        return []
+    images = []
+    for kind, path in _signature_paths(lines, s):
+        width, height = (34, 14) if kind == "signature" else (24, 24)
+        image = _img(path, width * mm, height * mm)
+        if image:
+            images.append(image)
+    return images
 
 def pdf_sign(left, right, s=None):
     def col(lines):
@@ -700,8 +909,12 @@ def pdf_sign(left, right, s=None):
         row = Table([imgs], colWidths=[37 * mm] * len(imgs))
         row.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
         return [Paragraph("<br/>".join(top), S["sig"]), row, Paragraph(foot, S["sig"])]
-    t = Table([[col(left), col(right)]], colWidths=[87 * mm, 87 * mm])
-    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    if not right:
+        t = Table([[col(left)]], colWidths=[174 * mm])
+        t.setStyle(TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    else:
+        t = Table([[col(left), col(right)]], colWidths=[87 * mm, 87 * mm])
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     return KeepTogether([Spacer(1, 14), t, Spacer(1, 8)])
 
 
@@ -734,17 +947,65 @@ def _draft(c, doc):
     c.restoreState()
 
 
+def _test_watermark(c, doc):
+    c.saveState()
+    c.setFont("LSB", 25)
+    c.setFillColor(colors.Color(0.72, 0.08, 0.08, alpha=0.24))
+    w, h = c._pagesize
+    c.translate(w / 2, h / 2)
+    c.rotate(35)
+    c.drawCentredString(0, 0, "TEST - DATE SINTETICE")
+    c.restoreState()
+
+
+def _dns_footer(c, doc, settings, logo_data):
+    """Brand generated DNS Energy pages without altering attached official PDFs."""
+    c.saveState()
+    page_w, page_h = c._pagesize
+    landscape_page = page_w > page_h
+    margin = (12 if landscape_page else 18) * mm
+    line_y = (8.5 if landscape_page else 11.5) * mm
+    logo_y = (1.5 if landscape_page else 3.0) * mm
+    c.setStrokeColor(colors.HexColor("#d8dee7"))
+    c.setLineWidth(0.45)
+    c.line(margin, line_y, page_w - margin, line_y)
+
+    label_x = margin
+    if logo_data:
+        try:
+            logo = ImageReader(io.BytesIO(logo_data))
+            image_w, image_h = logo.getSize()
+            scale = min((18 * mm) / image_w, (5 * mm) / image_h)
+            rendered_w, rendered_h = image_w * scale, image_h * scale
+            c.drawImage(logo, margin, logo_y, rendered_w, rendered_h, mask="auto")
+            label_x += rendered_w + 2 * mm
+        except Exception:
+            pass
+    c.setFont("LS", 6.5)
+    c.setFillColor(colors.HexColor("#667085"))
+    c.drawString(label_x, logo_y + (1.3 if landscape_page else 1.5) * mm,
+                 "DNS Energy · dns-energy.ro")
+    c.restoreState()
+
+
 def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
+    test_mode = bool((rec or {}).get("is_test"))
     ctx = Ctx(CEF.flatten(rec), settings, client, opis_titles)
     buf = io.BytesIO()
     pw, ph = A4
-    on = _draft if draft else (lambda c, d: None)
-    port = PageTemplate("port", [Frame(18 * mm, 14 * mm, pw - 36 * mm, ph - 28 * mm, id="fp")], pagesize=A4, onPage=on)
-    land = PageTemplate("land", [Frame(12 * mm, 10 * mm, ph - 24 * mm, pw - 20 * mm, id="fl")], pagesize=landscape(A4), onPage=on)
+    watermark = _test_watermark if test_mode else (_draft if draft else None)
+    logo_data = company_logo_bytes(settings)
+    def on_page(c, doc):
+        if watermark:
+            watermark(c, doc)
+        _dns_footer(c, doc, settings, logo_data)
+    port = PageTemplate("port", [Frame(18 * mm, 14 * mm, pw - 36 * mm, ph - 28 * mm, id="fp")], pagesize=A4, onPage=on_page)
+    land = PageTemplate("land", [Frame(12 * mm, 10 * mm, ph - 24 * mm, pw - 20 * mm, id="fl")], pagesize=landscape(A4), onPage=on_page)
     first_land = bool(doc_keys) and doc_keys[0] in ("schema_cef", "schema")
-    pdf = BaseDocTemplate(buf, pageTemplates=[land, port] if first_land else [port, land], title=f"D-ENERGY — {ctx.raw('name') or ''}")
+    pdf = BaseDocTemplate(buf, pageTemplates=[land, port] if first_land else [port, land], title=f"DNS Energy — {ctx.raw('name') or ''}")
     story = []
-    for i, k in enumerate(doc_keys):
+    keys = list(doc_keys)
+    for i, k in enumerate(keys):
         if k in ("schema_cef", "schema"):
             draw, tbl = schema_cef.story(ctx, lambda t, st="p": Paragraph(t, S[st]), lambda rows, w, head=True: pdf_table(rows, [x / mm for x in w], head, None, 273), S)
             if i:
@@ -753,7 +1014,20 @@ def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
             continue
         if i:
             story.append(PageBreak())
-        story += to_flow(DOCS[k][1](ctx), ctx)
+        blocks = DOCS[k][1](ctx)
+        if k == "pv_receptie":
+            seen_sign = False
+            unique_blocks = []
+            for block in blocks:
+                if block[0] == "sign":
+                    if seen_sign:
+                        continue
+                    seen_sign = True
+                unique_blocks.append(block)
+            blocks = unique_blocks
+        if not any(isinstance(b, (list, tuple)) and b and b[0] == "sign" for b in blocks):
+            blocks = blocks + [sign(ex_sig(ctx), ben_sig(ctx))]
+        story += to_flow(blocks, ctx)
     pdf.build(story)
     return buf.getvalue()
 
@@ -806,10 +1080,25 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, c
     else:
         if blocks is None:
             blocks = []
-            for i, k in enumerate(keys or [doc_key]):
+            doc_keys = list(keys or [doc_key])
+            # Official OD privacy notices are separate OPIS attachments, not generated DOCX templates.
+            for i, k in enumerate(doc_keys):
                 if i:
                     blocks.append(B("pagebreak"))
-                blocks += DOCS[k][1](ctx)
+                doc_blocks = DOCS[k][1](ctx)
+                if k == "pv_receptie":
+                    seen_sign = False
+                    unique_blocks = []
+                    for block in doc_blocks:
+                        if block[0] == "sign":
+                            if seen_sign:
+                                continue
+                            seen_sign = True
+                        unique_blocks.append(block)
+                    doc_blocks = unique_blocks
+                if not any(isinstance(b, (list, tuple)) and b and b[0] == "sign" for b in doc_blocks):
+                    doc_blocks = doc_blocks + [sign(ex_sig(ctx), ben_sig(ctx))]
+                blocks += doc_blocks
         for b in blocks:
             k = b[0]
             if k == "hdr":
@@ -849,10 +1138,23 @@ def render_docx(doc_key, rec, settings, client, opis_titles=None, blocks=None, c
                     if lines:
                         p = t.cell(0, j).paragraphs[0]; p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                         top, bot = split_sig(lines)
-                        runs(p, "\n".join(top) + "\n\n\n________________________\n" + "\n".join(bot), 9)
+                        runs(p, "\\n".join(top), 9)
+                        if IMG_LOADER:
+                            for kind, path in _signature_paths(lines, ctx.s):
+                                try:
+                                    raw_image = IMG_LOADER(path)
+                                    if raw_image:
+                                        width = Mm(34 if kind == "signature" else 24)
+                                        p.add_run().add_picture(io.BytesIO(raw_image), width=width)
+                                        p.add_run(" ")
+                                except Exception:
+                                    continue
+                        runs(p, "\\n\\n________________________\\n" + "\\n".join(bot), 9)
                 d.add_paragraph()
             elif k == "pagebreak":
                 d.add_page_break()
     out = io.BytesIO()
     d.save(out)
     return out.getvalue()
+
+

@@ -85,9 +85,32 @@ import pif_doc as PIFDOC  # noqa: E402
 @api.get("/dossier/{item_id}/pif")
 async def pif_get(item_id: str, user: dict = Depends(get_current_user)):
     rec = CEF.from_legacy(await S.check_access(user, "prosumator", item_id))
+    cef = rec.get("cef") or {}
+    inverter_units = []
+    for i, inverter in enumerate(cef.get("inverters") or []):
+        count = max(1, min(100, int(CEF.n(inverter.get("count") or inverter.get("quantity"), 1) or 1)))
+        for unit in range(count):
+            inverter_units.append({"key": f"{i}.{unit}", "label": f"Invertor {i + 1}" + (f" — unitatea {unit + 1}" if count > 1 else ""),
+                                   "model": inverter.get("brand_model") or ""})
+    battery_units = []
+    for i, inverter in enumerate(cef.get("inverters") or []):
+        battery = inverter.get("battery") or {}
+        if inverter.get("battery_mode") != "own" or not battery.get("model"):
+            continue
+        count = max(1, min(100, int(CEF.n(battery.get("modules") or battery.get("count"), 1) or 1)))
+        for unit in range(count):
+            battery_units.append({"key": f"inv-{i}-{unit}", "label": f"Baterie invertor {i + 1}" + (f" — modulul {unit + 1}" if count > 1 else ""),
+                                  "model": battery.get("model") or ""})
+    for i, battery in enumerate(cef.get("shared_batteries") or []):
+        count = max(1, min(100, int(CEF.n(battery.get("modules") or battery.get("count"), 1) or 1)))
+        for unit in range(count):
+            battery_units.append({"key": f"shared-{i}-{unit}", "label": f"Baterie {i + 1}" + (f" — modulul {unit + 1}" if count > 1 else ""),
+                                  "model": battery.get("model") or ""})
+    panel_count = max(0, min(1000, int(CEF.check(cef).get("totals", {}).get("panels") or rec.get("panel_count") or 0)))
     return {"pif": rec.get("pif") or {}, "strings": pif_rows(rec), "checks": CHECKS, "results": RES,
-            "inverters": [{"n": i + 1, "model": v.get("brand_model")} for i, v in enumerate((rec.get("cef") or {}).get("inverters") or [])],
-            "grounding_ohm": (rec.get("cef") or {}).get("grid", {}).get("grounding_ohm") or rec.get("grounding_ohm")}
+            "inverters": [{"n": i + 1, "model": v.get("brand_model")} for i, v in enumerate(cef.get("inverters") or [])],
+            "inverter_units": inverter_units, "battery_units": battery_units, "panel_count": panel_count,
+            "grounding_ohm": cef.get("grid", {}).get("grounding_ohm") or rec.get("grounding_ohm")}
 
 
 @api.put("/dossier/{item_id}/pif")
@@ -95,13 +118,27 @@ async def pif_save(item_id: str, request: Request, user: dict = Depends(get_curr
     S.guard("prosumator", user, write=True)
     await S.check_access(user, "prosumator", item_id)
     b = await request.json()
-    if not isinstance(b, dict) or any(not isinstance(b.get(k) or {}, dict) for k in ("strings", "inv", "checks")):
+    if not isinstance(b, dict) or any(not isinstance(b.get(k) or {}, dict) for k in ("strings", "inv", "checks", "serials")):
         raise HTTPException(status_code=400, detail="Format invalid")
     clean = lambda v: str(v)[:120] if v not in (None,) else ""
+    serials = b.get("serials") or {}
+    if any(not isinstance(serials.get(k) or {}, dict) for k in ("inverters", "batteries")):
+        raise HTTPException(status_code=400, detail="Format seriale invalid")
+    serial_lists = serials.get("panels") or []
+    if isinstance(serial_lists, str):
+        serial_lists = serial_lists.splitlines()
+    if not isinstance(serial_lists, list):
+        raise HTTPException(status_code=400, detail="Format serii panouri invalid")
+    serial_data = {
+        "inverters": {str(k)[:30]: clean(v) for k, v in (serials.get("inverters") or {}).items() if clean(v)},
+        "panels": [clean(v) for v in serial_lists[:1000]],
+        "batteries": {str(k)[:30]: clean(v) for k, v in (serials.get("batteries") or {}).items() if clean(v)},
+    }
     pif = {"date": clean(b.get("date")), "operator": clean(b.get("operator")), "instruments": clean(b.get("instruments")), "notes": str(b.get("notes") or "")[:1000],
            "strings": {k: {f: clean(v.get(f)) for f in ("voc", "isc", "riso_p", "riso_n", "polarity")} for k, v in (b.get("strings") or {}).items() if isinstance(v, dict)},
            "inv": {k: {f: clean(v.get(f)) for f in ("u_ac", "f_hz", "p_kw", "anti_s", "rcd_ms", "rcd_ma")} for k, v in (b.get("inv") or {}).items() if isinstance(v, dict)},
            "checks": {str(k): v for k, v in (b.get("checks") or {}).items() if v in RES}, "grounding_measured": clean(b.get("grounding_measured")),
+           "serials": serial_data,
            "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("email")}
     await db.prosumator.update_one({"id": item_id}, {"$set": {"pif": pif}})
     await S.audit(user, "update", "prosumator", item_id, ["proces-verbal PIF"])

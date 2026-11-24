@@ -4,9 +4,7 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+    .App-logo { animation: App-logo-spin infinite 20s linear; }
 }
 
 .App-header {
@@ -20,15 +18,227 @@
     color: white;
 }
 
-.App-link {
-    color: #61dafb;
-}
+.App-link { color: #61dafb; }
 
 @keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* DNS Energy: mobile-first document dashboard inspired by the supplied reference. */
+@media (max-width: 767px) {
+    .mobile-app-header {
+        background: #111214;
+        border-color: #303136 !important;
+        color: #f7f7f8;
+        min-height: 58px;
     }
-    to {
-        transform: rotate(360deg);
+    .mobile-app-header button {
+        color: #f59e0b;
+        padding: 7px;
+        border-radius: 10px;
+        touch-action: manipulation;
     }
+    .dns-dashboard {
+        margin: -1rem -1rem 0;
+        padding: 1rem;
+        min-height: calc(100vh - 58px);
+        background: #111214;
+        color: #f7f7f8;
+        border-radius: 0 0 18px 18px;
+    }
+    .dns-dashboard h1,
+    .dns-dashboard h2,
+    .dns-dashboard b { color: #f7f7f8 !important; }
+    .dns-dashboard .den-panel,
+    .dns-dashboard .mobile-dashboard-stat {
+        background: #1b1c1f;
+        color: #f7f7f8;
+        border: 1px solid #303136;
+        border-radius: 18px;
+        box-shadow: none;
+    }
+    .dns-dashboard .mobile-dashboard-stat {
+        padding: 14px 12px;
+        min-width: 0;
+    }
+    .dns-dashboard .mobile-dashboard-stat .text-4xl {
+        font-size: clamp(1.5rem, 7vw, 2rem);
+        line-height: 1.1;
+        overflow-wrap: anywhere;
+    }
+    .dns-dashboard .mobile-module-card {
+        background: #202125;
+        border-color: #35363b !important;
+        border-radius: 15px;
+        min-height: 92px;
+        padding: 13px;
+        color: #f7f7f8;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .dns-dashboard .mobile-module-card:active {
+        background: #292a2f;
+        transform: scale(.99);
+    }
+    .dns-dashboard .mobile-module-icon {
+        background: #38270f !important;
+        border-radius: 13px;
+    }
+    .dns-dashboard .mobile-module-chevron {
+        color: #f59e0b;
+        flex: 0 0 auto;
+    }
+    .dns-dashboard .mobile-dashboard-recent [style*="background: var(--bg)"] {
+        background: #242529 !important;
+    }
+    .dns-dashboard .mobile-dashboard-recent .rounded-full { white-space: nowrap; }
+    .dns-dashboard a, .dns-dashboard button { touch-action: manipulation; }
+}
+/* Interactive work map, styled independently from the Leaflet controls. */
+.dns-work-map {
+  width: 100%;
+  height: min(68vh, 760px);
+  min-height: 430px;
+  background: #e7eef2;
+  z-index: 0;
+}
+.dns-work-map .leaflet-control-zoom a {
+  color: #182238;
+}
+.dns-map-marker-wrap {
+  background: transparent;
+  border: 0;
+}
+.dns-map-marker {
+  display: flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--marker-color, #64748b);
+  box-shadow: 0 1px 5px #17203380;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+.dns-map-marker--cluster {
+  width: 36px;
+  height: 36px;
+}
+.dns-map-popup-list {
+  display: grid;
+  gap: 9px;
+  max-height: 230px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 0 0 0 17px;
+}
+.dns-map-popup-list li { padding-left: 2px; }
+.dns-map-popup-list span { color: #536174; font-size: 11px; }
+.dns-map-popup-list a { color: #2467c9; font-weight: 700; }
+@media (max-width: 640px) {
+  .dns-work-map { height: 58vh; min-height: 360px; }
+}
+
+
+/* Prosumer dossier: warm ReEnergy-style mobile cards and navigation. */
+.den-reenergy-dossier {
+  --bg: #faf7f1; --ink: #282b29; --muted: #96938d; --line: #e9e2d7;
+  --green: #18894f; --blue: #18894f; --navy: #faf7f1;
+  background: #faf7f1 !important;
+}
+.den-reenergy-dossier .mobile-app-header { display: none; }
+.den-reenergy-dossier main { padding-top: 12px; }
+.den-reenergy-dossier [data-testid="module-form"] {
+  margin: 0 auto 24px; max-width: 900px; padding: 0; overflow: visible;
+  border: 0; background: transparent; box-shadow: none;
+}
+.den-reenergy-dossier [data-testid="module-form"] > h2 { display: none; }
+.den-reenergy-dossier [data-testid="prosumer-dossier-summary"] > div {
+  border-color: #e9e2d7 !important; border-radius: 13px; background: #fff; padding: 12px;
+}
+.den-reenergy-dossier [data-testid="guided-dossier-steps"],
+.den-reenergy-dossier [data-testid="prosumer-quick-actions"],
+.den-reenergy-dossier [data-testid="prosumer-installation-card"],
+.den-reenergy-dossier [data-testid="prosumer-acts-card"],
+.den-reenergy-dossier [data-testid="prosumer-documents-card"],
+.den-reenergy-dossier [data-testid="prosumer-operator-progress"],
+.den-reenergy-dossier [data-testid="prosumer-commissioning-card"] {
+  border-color: #e9e2d7 !important; border-radius: 17px; background: #fff !important;
+  box-shadow: 0 1px 3px #3b2c1710;
+}
+.den-reenergy-dossier [data-testid="guided-dossier-steps"] { background: #fbf8f2 !important; }
+.den-reenergy-dossier [data-testid="guided-dossier-steps"] a { border-color: #dcd5ca !important; background: #fff !important; }
+.den-reenergy-dossier [data-testid="prosumer-installation-card"],
+.den-reenergy-dossier [data-testid="prosumer-acts-card"],
+.den-reenergy-dossier [data-testid="prosumer-documents-card"],
+.den-reenergy-dossier [data-testid="prosumer-operator-progress"],
+.den-reenergy-dossier [data-testid="prosumer-commissioning-card"] { padding: 0 !important; }
+.den-reenergy-dossier [data-testid="prosumer-installation-card"] > :first-child,
+.den-reenergy-dossier [data-testid="prosumer-acts-card"] > :first-child,
+.den-reenergy-dossier [data-testid="prosumer-documents-card"] > :first-child,
+.den-reenergy-dossier [data-testid="prosumer-commissioning-card"] > :first-child {
+  padding: 15px 17px 13px; margin: 0 0 14px; border-bottom-color: #e9e2d7 !important;
+}
+.den-reenergy-dossier [data-testid="prosumer-installation-card"] > :not(:first-child),
+.den-reenergy-dossier [data-testid="prosumer-acts-card"] > :not(:first-child),
+.den-reenergy-dossier [data-testid="prosumer-documents-card"] > :not(:first-child),
+.den-reenergy-dossier [data-testid="prosumer-commissioning-card"] > :not(:first-child) { margin-left: 17px; margin-right: 17px; }
+.den-reenergy-dossier .den-input,
+.den-reenergy-dossier input:not([type="checkbox"]),
+.den-reenergy-dossier select,
+.den-reenergy-dossier textarea {
+  border-color: #e8e1d7 !important; border-radius: 11px !important; background-color: #fff;
+  color: #30322f; min-height: 44px;
+}
+.den-reenergy-dossier button[style*="var(--blue)"],
+.den-reenergy-dossier a[style*="var(--blue)"],
+.den-reenergy-dossier button[style*="var(--green)"] { --blue: #18894f; --green: #18894f; }
+.den-reenergy-dossier [data-testid="prosumer-guided-sections"] { gap: 18px; }
+.den-reenergy-dossier .mobile-bottom-nav {
+  min-height: 68px; border-color: #e9e2d7; padding-top: 8px; box-shadow: 0 -3px 14px #4b39200d;
+}
+@media (max-width: 767px) {
+  .den-reenergy-dossier main { padding-left: 14px; padding-right: 14px; padding-bottom: 104px; }
+  .den-reenergy-dossier [data-testid="prosumer-dossier-summary"] { gap: 7px; }
+  .den-reenergy-dossier [data-testid="prosumer-dossier-summary"] > div { padding: 9px; }
+}
+
+/* ReEnergy-style workflow details and compact client/equipment cards. */
+.den-reenergy-dossier details > summary { list-style: none; }
+.den-reenergy-dossier details > summary::-webkit-details-marker { display: none; }
+.den-reenergy-dossier details > summary::after {
+  content: "⌄"; margin-left: auto; color: #7d7b75; font-size: 17px; line-height: 1;
+}
+.den-reenergy-dossier details[open] > summary::after { content: "⌃"; }
+.den-reenergy-dossier [data-testid="prosumer-client-step"],
+.den-reenergy-dossier [data-testid="prosumer-quick-actions"] { padding: 0 !important; }
+.den-reenergy-dossier [data-testid="prosumer-client-step"] > :not(summary),
+.den-reenergy-dossier [data-testid="prosumer-quick-actions"] > :not(summary) {
+  margin-left: 17px; margin-right: 17px;
+}
+.den-reenergy-dossier [data-testid="prosumer-client-step"] > :last-child,
+.den-reenergy-dossier [data-testid="prosumer-quick-actions"] > :last-child { margin-bottom: 16px; }
+.den-reenergy-dossier [data-testid="prosumer-client-step"] > summary,
+.den-reenergy-dossier [data-testid="prosumer-quick-actions"] > summary {
+  min-height: 64px; border-bottom: 1px solid #e9e2d7; border-radius: 17px 17px 0 0;
+}
+.den-reenergy-dossier [data-testid="prosumer-legacy-equipment-card"] { display: none !important; }
+.den-reenergy-dossier [data-testid="prosumer-installation-card"],
+.den-reenergy-dossier [data-testid="prosumer-acts-card"],
+.den-reenergy-dossier [data-testid="prosumer-documents-card"],
+.den-reenergy-dossier [data-testid="prosumer-operator-progress"],
+.den-reenergy-dossier [data-testid="prosumer-commissioning-card"] { padding-bottom: 16px !important; }
+
+/* Keep the equipment summary and inner step cards compact on narrow screens. */
+.den-reenergy-dossier [data-testid="prosumer-dossier-summary"] {
+  display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+}
+.den-reenergy-dossier [data-testid="prosumer-dossier-summary"]::-webkit-scrollbar { display: none; }
+.den-reenergy-dossier [data-testid="prosumer-dossier-summary"] > div { flex: 0 0 auto; min-width: 120px; }
+.den-reenergy-dossier [data-testid="prosumer-acts-card"] > .space-y-4,
+.den-reenergy-dossier [data-testid="prosumer-operator-progress"] > .space-y-4 {
+  margin-left: 0; margin-right: 0;
 }

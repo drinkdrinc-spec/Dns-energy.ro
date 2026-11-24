@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, fileUrl } from "@/lib/api";
+import { useLocation, useNavigate } from "react-router-dom";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { MODULES } from "@/config/modules";
 import { PageHeader, Btn } from "@/components/Layout";
 import { Upload, FileText, Trash2, Download } from "lucide-react";
@@ -11,12 +12,16 @@ const DOC_TYPES = {
 };
 
 export default function Documents() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [clients, setClients] = useState([]);
   const [docs, setDocs] = useState([]);
   const [clientId, setClientId] = useState("");
   const [kind, setKind] = useState("PF");
   const [docType, setDocType] = useState("");
   const [uploading, setUploading] = useState(false);
+  const selectedDocId = new URLSearchParams(location.search).get("docId");
+  const visibleDocs = selectedDocId ? docs.filter((doc) => doc.id === selectedDocId) : docs;
   const fileRef = useRef();
 
   const load = () => {
@@ -85,19 +90,22 @@ export default function Documents() {
       </div>
 
       <div className="den-panel">
-        <h2 className="text-lg font-bold mb-4">Documente încărcate ({docs.length})</h2>
-        {docs.length === 0 ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-bold">{selectedDocId ? "Document găsit" : `Documente încărcate (${docs.length})`}</h2>
+          {selectedDocId && <button type="button" onClick={() => navigate("/documente")} className="text-xs font-semibold underline" style={{ color: "var(--blue)" }}>Arată toate documentele</button>}
+        </div>
+        {visibleDocs.length === 0 ? (
           <div className="text-sm py-8 text-center rounded-lg" style={{ color: "var(--muted)", background: "var(--bg)" }}>Nu sunt documente încărcate.</div>
         ) : (
           <div className="divide-y" style={{ borderColor: "var(--line)" }}>
-            {docs.map((d) => (
-              <div key={d.id} className="flex items-center gap-3 py-3">
+            {visibleDocs.map((d) => (
+              <div key={d.id} className={`flex items-center gap-3 rounded-lg py-3 ${selectedDocId === d.id ? "bg-blue-50 px-2" : ""}`}>
                 <div className="h-9 w-9 rounded-lg grid place-items-center" style={{ background: "#eef4ff" }}><FileText size={18} style={{ color: "var(--blue)" }} /></div>
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-sm truncate">{d.original_filename}</div>
                   <div className="text-[12px]" style={{ color: "var(--muted)" }}>{d.client_name} · {d.kind} · {d.doc_type}</div>
                 </div>
-                <a href={fileUrl(d.storage_path)} target="_blank" rel="noopener noreferrer" className="p-2 rounded hover:bg-[#eef4ff]" data-testid={`download-${d.id}`}><Download size={16} style={{ color: "var(--blue)" }} /></a>
+                <button type="button" onClick={() => openAuthenticatedFile("/files/" + d.storage_path)} aria-label="Deschide documentul" className="p-2 rounded hover:bg-[#eef4ff]" data-testid={`download-${d.id}`}><Download size={16} style={{ color: "var(--blue)" }} /></button>
                 <button onClick={() => remove(d.id)} className="p-2 rounded hover:bg-[#fff0f0]" data-testid={`del-doc-${d.id}`}><Trash2 size={16} style={{ color: "#b33333" }} /></button>
               </div>
             ))}

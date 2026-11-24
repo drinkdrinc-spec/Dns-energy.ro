@@ -1,19 +1,71 @@
 import axios from "axios";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const configuredBackend = (process.env.REACT_APP_BACKEND_URL || "").trim().replace(/\/$/, "");
+const isLocalHost = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+// Render hosts the SPA and API as separate services. Keep a production fallback
+// so a missing static-site build variable cannot silently send API calls to the SPA.
+const backendOrigin = configuredBackend || (isLocalHost ? "" : "https://dns-energy-api.onrender.com");
+const API = `${backendOrigin}/api`;
 
 export const api = axios.create({ baseURL: API });
 
-api.interceptors.request.use((config) => {
+let backendReadyAt = 0;
+let backendWarmup = null;
+const WARMUP_TTL_MS = 10 * 60 * 1000;
+
+async function warmBackend() {
+  if (isLocalHost || !backendOrigin || Date.now() - backendReadyAt < WARMUP_TTL_MS) return;
+  if (backendWarmup) return backendWarmup;
+  backendWarmup = api.get(`${backendOrigin}/readyz`, {
+    timeout: 120000,
+    dnsWarmup: true,
+    dnsSkipAuth: true,
+    dnsRetrySafe: true,
+  }).then(() => {
+    backendReadyAt = Date.now();
+  }).finally(() => {
+    backendWarmup = null;
+  });
+  return backendWarmup;
+}
+
+api.interceptors.request.use(async (config) => {
+  if (!config.dnsWarmup) await warmBackend();
   const token = localStorage.getItem("den_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && !config.dnsSkipAuth) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-export function fileUrl(storagePath) {
-  const token = localStorage.getItem("den_token");
-  return `${API}/files/${storagePath}?auth=${token}`;
-}
+const TRANSIENT_API_STATUSES = new Set([502, 503, 504]);
+const SAFE_API_RETRIES = 7;
+// Render may need several seconds to wake the API and reconnect to MongoDB.
+// Intake creation carries a stable request ID, while document extraction is
+// read-only, so the explicitly marked requests can safely wait and retry.
+const API_RETRY_DELAYS_MS = [2500, 5000, 8000, 10000, 10000, 10000, 10000];
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error.config;
+    if (!config) return Promise.reject(error);
+    const method = String(config.method || "get").toLowerCase();
+    const safePlatformWakeRetry = config.dnsRetry503 === true && error.response?.status === 503;
+    const safeRequest = ["get", "head"].includes(method) || config.dnsRetrySafe === true || safePlatformWakeRetry;
+    const transientResponse = TRANSIENT_API_STATUSES.has(error.response?.status);
+    const temporaryNetworkFailure = !error.response
+      && !(typeof navigator !== "undefined" && navigator.onLine === false);
+    const attempts = Number(config.__dnsRetryCount || 0);
+    const maxAttempts = SAFE_API_RETRIES;
+    if (!safeRequest || (!transientResponse && !temporaryNetworkFailure) || attempts >= maxAttempts) {
+      return Promise.reject(error);
+    }
+
+    config.__dnsRetryCount = attempts + 1;
+    const wait = API_RETRY_DELAYS_MS[Math.min(attempts, API_RETRY_DELAYS_MS.length - 1)];
+    await new Promise((resolve) => window.setTimeout(resolve, wait));
+    return api.request(config);
+  },
+);
 
 export function formatApiErrorDetail(detail) {
   if (detail == null) return "A apărut o eroare. Încearcă din nou.";
@@ -25,3 +77,180 @@ export function formatApiErrorDetail(detail) {
 }
 
 export { API };
+
+async function apiErrorMessage(error) {
+  let data = error.response?.data;
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    try { data = JSON.parse(await data.text()); } catch { data = null; }
+  }
+  return typeof data?.detail === "string" ? data.detail : "Nu am putut genera documentul. Verifică datele și încearcă din nou.";
+}
+
+const activeFileOperations = new Map();
+
+function runFileOperationOnce(key, operation) {
+  const active = activeFileOperations.get(key);
+  if (active) return active;
+  const request = Promise.resolve().then(operation).finally(() => {
+    if (activeFileOperations.get(key) === request) activeFileOperations.delete(key);
+  });
+  activeFileOperations.set(key, request);
+  return request;
+}
+
+export function downloadAuthenticatedFile(path, fallbackName = "document") {
+  return runFileOperationOnce(`download:${path}:${fallbackName}`, async () => {
+  try {
+    const response = await api.get(path, { responseType: "blob" });
+    const disposition = response.headers["content-disposition"] || "";
+    const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+    let filename = fallbackName;
+    try { filename = encoded ? decodeURIComponent(encoded) : (plain || fallbackName); } catch { filename = plain || fallbackName; }
+    const blob = response.data.type ? response.data : new Blob([response.data], { type: response.headers["content-type"] || "application/octet-stream" });
+    if (/\.pdf$/i.test(filename)) {
+      if (!blob.size) throw new Error("Fișierul PDF primit este gol. Reîncarcă dosarul și încearcă din nou.");
+      const signature = await blob.slice(0, 1024).text();
+      if (!signature.includes("%PDF-")) throw new Error("Serverul nu a returnat un PDF valid. Reîncarcă dosarul și încearcă din nou.");
+      // iOS browsers often ignore `download` on a Blob URL. Open the verified
+      // PDF in the current tab so their native viewer exposes Save/Share.
+      const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
+        || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      if (isAppleMobile) {
+        openBlobInCurrentTab(blob);
+        return;
+      }
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch (error) {
+    window.alert(error.response ? await apiErrorMessage(error) : (error.message || "Nu am putut genera documentul. Verifică datele și încearcă din nou."));
+  }
+  });
+}
+
+function openBlobInCurrentTab(blob) {
+  // Mobile browsers can render a PDF in a top-level tab but show a blank page
+  // for the same blob URL inside an iframe or a newly opened about:blank tab.
+  const objectUrl = URL.createObjectURL(blob);
+  window.location.assign(objectUrl);
+}
+
+function downloadBlob(blob, filename) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename || "document";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+}
+
+export function openAuthenticatedFile(path, fallbackName = "document") {
+  return runFileOperationOnce(`open:${path}:${fallbackName}`, async () => {
+  try {
+    const response = await api.get(path, { responseType: "blob" });
+    const disposition = response.headers["content-disposition"] || "";
+    const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+    let filename = fallbackName && fallbackName !== "document" ? fallbackName : (plain || "document");
+    try { if (encoded && (!fallbackName || fallbackName === "document")) filename = decodeURIComponent(encoded); } catch { /* keep fallback */ }
+    const headerType = (response.headers["content-type"] || response.data.type || "").split(";")[0].toLowerCase();
+    const extensionType = /\.pdf$/i.test(filename) ? "application/pdf"
+      : /\.(png|jpe?g|gif|webp)$/i.test(filename) ? (/\.png$/i.test(filename) ? "image/png" : /\.gif$/i.test(filename) ? "image/gif" : /\.webp$/i.test(filename) ? "image/webp" : "image/jpeg")
+      : "";
+    const blob = response.data.type && response.data.type !== "application/octet-stream"
+      ? response.data
+      : new Blob([response.data], { type: extensionType || headerType || "application/pdf" });
+    const contentType = blob.type || extensionType || headerType;
+    if (contentType === "application/pdf" || /\.pdf$/i.test(filename)) {
+      if (!blob.size) throw new Error("Fișierul PDF primit este gol. Reîncarcă dosarul și încearcă din nou.");
+      const header = await blob.slice(0, 1024).text();
+      if (!header.includes("%PDF-")) throw new Error("Serverul nu a returnat un PDF valid. Încearcă din nou; dacă se repetă, anunță administratorul.");
+      openBlobInCurrentTab(blob);
+    } else if (contentType.startsWith("image/")) {
+      openBlobInCurrentTab(blob);
+    } else {
+      downloadBlob(blob, filename);
+    }
+  } catch (error) {
+    window.alert(error.response ? await apiErrorMessage(error) : (error.message || "Documentul nu s-a putut deschide. Încearcă din nou."));
+  }
+  });
+}
+
+/*
+ * Legacy anchors carry an access token in ?auth= so browsers can navigate to API
+ * documents. Intercept them and make the same request through Axios instead:
+ * its request interceptor supplies Authorization: Bearer, keeping credentials out
+ * of the address bar, browser history, and referrer URLs.
+ */
+if (typeof document !== "undefined" && typeof window !== "undefined" && !window.__denAuthLinkInterceptor) {
+  window.__denAuthLinkInterceptor = true;
+  document.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!target || event.defaultPrevented || event.button !== 0) return;
+
+    let linkUrl;
+    let apiUrl;
+    try {
+      linkUrl = new URL(target.href, window.location.href);
+      apiUrl = new URL(API, window.location.origin);
+    } catch { return; }
+
+    if (!linkUrl.searchParams.has("auth")) return;
+    const apiPath = apiUrl.pathname.replace(/\/$/, "");
+    if (linkUrl.origin !== apiUrl.origin || !(linkUrl.pathname === apiPath || linkUrl.pathname.startsWith(apiPath + "/"))) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    linkUrl.searchParams.delete("auth");
+    const requestPath = linkUrl.pathname.slice(apiPath.length) + linkUrl.search;
+    const requestedDownload = target.hasAttribute("download");
+
+    try {
+      const response = await api.get(requestPath, { responseType: "blob" });
+      const blob = response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data], { type: response.headers["content-type"] || "application/octet-stream" });
+      const disposition = response.headers["content-disposition"] || "";
+      const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      const plainName = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+      let filename = target.getAttribute("download") || plainName || "document";
+      try { if (encodedName) filename = decodeURIComponent(encodedName); } catch { /* keep fallback */ }
+
+      const inferredType = /\.pdf$/i.test(filename) ? "application/pdf"
+        : /\.png$/i.test(filename) ? "image/png" : /\.(jpe?g)$/i.test(filename) ? "image/jpeg" : "";
+      const contentType = (response.headers["content-type"] || blob.type || inferredType || "").split(";")[0].toLowerCase();
+      const canDisplay = contentType === "application/pdf" || contentType.startsWith("image/");
+      const isDownload = requestedDownload || /attachment/i.test(disposition) || !canDisplay;
+      if (isDownload) {
+        const objectUrl = URL.createObjectURL(blob);
+        const downloadLink = document.createElement("a");
+        downloadLink.href = objectUrl;
+        downloadLink.download = filename;
+        downloadLink.style.display = "none";
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        downloadLink.remove();
+      } else {
+        const viewBlob = blob.type && blob.type !== "application/octet-stream"
+          ? blob
+          : new Blob([blob], { type: inferredType || contentType || "application/pdf" });
+        openBlobInCurrentTab(viewBlob);
+      }
+    } catch (error) {
+      window.alert(await apiErrorMessage(error));
+    }
+  }, true);
+}
+

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api, fileUrl, formatApiErrorDetail } from "@/lib/api";
+import { api, openAuthenticatedFile, formatApiErrorDetail } from "@/lib/api";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { Btn } from "@/components/Layout";
 import { Send, CalendarClock, Upload } from "lucide-react";
@@ -79,7 +79,7 @@ export function AtrTracking({ id, operator }) {
         <input ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={uploadAviz} data-testid="atr-aviz-file" />
         <Btn type="button" onClick={() => (f.atr_no ? fileRef.current.click() : toast.error("Introduceți întâi numărul avizului"))} disabled={busy} data-testid="atr-aviz-upload-btn"><Upload size={14} />Încarcă avizul primit (marchează „aviz emis”)</Btn>
         <button type="button" className="text-xs font-bold" style={{ color: "var(--muted)" }} onClick={() => act({ action: "issued", date: f.atr_date, atr_no: f.atr_no }, "Aviz înregistrat")} data-testid="atr-issued-btn">doar marchează emis, fără document</button>
-        {aviz && <a href={fileUrl(aviz.storage_path)} target="_blank" rel="noopener noreferrer" className="text-xs font-bold underline w-full" style={{ color: "#166534" }} data-testid="atr-aviz-link">Aviz încărcat: {aviz.original_filename}</a>}
+        {aviz && <button type="button" onClick={() => openAuthenticatedFile(`/files/${aviz.storage_path}`)} className="text-xs font-bold underline w-full text-left" style={{ color: "#166534" }} data-testid="atr-aviz-link">Aviz încărcat: {aviz.original_filename}</button>}
       </div>
       <details className="mt-3 text-xs"><summary className="cursor-pointer font-bold" data-testid="atr-terms-toggle">Termene standard: verificare {terms.check_days} zile lucrătoare · aviz {terms.issue_days} zile · reamintire cu {terms.remind_days} zile înainte</summary>
         <TermsEditor key={`${t.check_due}-${t.issue_due}-${terms.check_days}-${terms.issue_days}-${terms.remind_days}`} terms={terms} t={t} act={act} /></details>

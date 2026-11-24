@@ -1,10 +1,10 @@
-import { API } from "@/lib/api";
+import { openAuthenticatedFile } from "@/lib/api";
 import { lei } from "@/lib/plan";
 
 const ST = { "plătită": ["#ecfdf3", "#166534"], "în așteptarea plății": ["#fff8e6", "#8a5a00"], "eșuată": ["#fff0f0", "#9b2c2c"],
   "anulată": ["#f3f4f6", "#6b7280"], "rambursată": ["#eef4ff", "#1e40af"], "expirată": ["#f3f4f6", "#6b7280"] };
 
-export const pdfUrl = (id) => `${API}/billing/invoices/${id}/pdf?auth=${localStorage.getItem("den_token")}`;
+export const pdfUrl = (id) => `/billing/invoices/${id}/pdf`;
 
 export function StatusPill({ s, testid }) {
   const c = ST[s] || ST["anulată"];
@@ -27,8 +27,8 @@ export function InvoiceList({ items, actions }) {
               {i.fiscal && <div className="text-[10px]" style={{ color: i.fiscal.status === "emisă" ? "#166534" : "#8a5a00" }} data-testid={`invoice-fiscal-status-${i.number}`} title={i.fiscal.error || i.fiscal.efactura || ""}>
                 Factură fiscală: {i.fiscal.status}{i.fiscal.number ? ` ${i.fiscal.series} ${i.fiscal.number}` : ""}</div>}</td>
             <td className="text-xs whitespace-nowrap space-x-2">
-              <a href={pdfUrl(i.id)} target="_blank" rel="noopener noreferrer" className="font-bold" style={{ color: "var(--blue)" }} data-testid={`invoice-pdf-${i.number}`}>Proformă PDF</a>
-              {i.fiscal?.status === "emisă" && <a href={`${API}/billing/invoices/${i.id}/fiscal-pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" className="font-bold" style={{ color: "#166534" }} data-testid={`invoice-fiscal-pdf-${i.number}`}>Factură PDF</a>}
+              <button type="button" onClick={() => openAuthenticatedFile(pdfUrl(i.id))} className="font-bold" style={{ color: "var(--blue)" }} data-testid={`invoice-pdf-${i.number}`}>Proformă PDF</button>
+              {i.fiscal?.status === "emisă" && <button type="button" onClick={() => openAuthenticatedFile(`/billing/invoices/${i.id}/fiscal-pdf`)} className="font-bold" style={{ color: "#166534" }} data-testid={`invoice-fiscal-pdf-${i.number}`}>Factură PDF</button>}
               {actions?.(i)}
             </td>
           </tr>))}</tbody>

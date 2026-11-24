@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { api, API } from "@/lib/api";
+import { api, downloadAuthenticatedFile } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { SubscriberRow } from "@/components/billing/SubscriberRow";
 import { PlanEditor } from "@/components/billing/PlanEditor";
@@ -35,7 +35,7 @@ export default function AdminBilling() {
   return (
     <div>
       <PageHeader eyebrow="Administrare platformă" title="Utilizatori și abonamente" sub="Conturi abonați, date de facturare, abonamente, plăți (online și manuale), istoric și export pentru contabilitate."
-        action={<a href={`${API}/admin/billing/export?auth=${localStorage.getItem("den_token")}`} data-testid="billing-export"><Btn variant="secondary"><Download size={15} />Export contabilitate (CSV)</Btn></a>} />
+        action={<Btn type="button" variant="secondary" onClick={() => downloadAuthenticatedFile("/admin/billing/export", "export-contabilitate.csv")} data-testid="billing-export"><Download size={15} />Export contabilitate (CSV)</Btn>} />
       <div className="flex gap-2 flex-wrap mb-4">{TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} data-testid={`ab-tab-${k}`} className="rounded-full px-4 py-2 text-[12px] font-bold border"
         style={k === tab ? { background: "var(--navy)", color: "#fff", borderColor: "var(--navy)" } : { background: "#fff", borderColor: "var(--line)" }}>{l}</button>)}</div>
       {tab === "users" && <div className="den-panel" data-testid="subscribers-list">{subs.length ? subs.map((u) => <SubscriberRow key={u.id} u={u} plans={plans.plans} reload={load} />)

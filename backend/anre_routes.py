@@ -1,4 +1,6 @@
 import io
+import re
+import unicodedata
 import uuid
 import zipfile
 from datetime import datetime, timezone, date
@@ -7,6 +9,7 @@ from fastapi import HTTPException, Request, Depends, UploadFile, File, Form, Hea
 
 import server as S
 import anre_doc as AD
+from anre_rules import has_attestation_type
 
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
 PRICE = 3200.0
@@ -22,17 +25,46 @@ def is_pf(user):
     return user["uid"] == S.PLATFORM["id"]
 
 
-async def get_d(user, did):
+async def company_profile(owner):
+    """Use the tenant's ANRE operator record first, then its shared company settings."""
+    profile = await db.settings.find_one({"owner": owner}, {"_id": 0}) or {}
+    operator = await db.operators.find_one({"tenant": owner}, {"_id": 0}) or {}
+    types = operator.get("attest_types") or profile.get("attest_types") or []
+    return {
+        "name": operator.get("company") or profile.get("company") or "",
+        "cui": operator.get("cui") or profile.get("cui") or "",
+        "regcom": operator.get("regcom") or profile.get("regcom") or "",
+        "address": profile.get("address") or "",
+        "rep_name": operator.get("contact_name") or profile.get("rep") or "",
+        "rep_role": operator.get("holder_role") or profile.get("rep_role") or "",
+        "email": operator.get("contact_email") or profile.get("email") or "",
+        "phone": operator.get("contact_phone") or profile.get("phone") or "",
+        "attest_no": operator.get("attest_no") or profile.get("attest_no") or "",
+        "attest_types": ", ".join(types) if isinstance(types, list) else str(types or ""),
+        "attest_valid": operator.get("attest_valid") or profile.get("attest_valid") or "",
+    }
+
+
+def merged_company(d, profile):
+    """Fill only blank dossier fields, preserving any values explicitly saved on it."""
+    saved = {k: v for k, v in (d.get("company") or {}).items() if v not in (None, "")}
+    return {**d, "company": {**profile, **saved}}
+
+
+async def get_d(user: dict, did: str):
     q = {"id": did} if is_pf(user) else {"id": did, "owner": user["id"]}
     d = await db.anre_dossiers.find_one(q, {"_id": 0})
     if not d:
         raise HTTPException(status_code=404, detail="Dosar inexistent")
+    company = d.get("company") or {}
+    if any(company.get(k) in (None, "") for k in ("name", "cui", "regcom", "address", "rep_name", "email", "phone")):
+        d = merged_company(d, await company_profile(d["owner"]))
     return d
 
 
 def paid_or_403(d, user):
-    if d.get("payment_status") != "plătit" and not is_pf(user):
-        raise HTTPException(status_code=402, detail="Serviciul Dosare ANRE (3.200 lei + TVA) se activează după confirmarea plății prin OP de către administrator")
+    if d.get("payment_status") not in ("plătit", "intern") and not is_pf(user):
+        raise HTTPException(status_code=402, detail="Serviciul ANRE comandat (3.200 lei + TVA) se activează după confirmarea plății prin OP de către administrator")
 
 
 def items(d):
@@ -52,6 +84,30 @@ def items(d):
     return out
 
 
+# Minimum electrician qualifications by attestation type, transcribed from
+# Annex 8 of ANRE Order 134/2021. Each entry is the required count per grade.
+ANRE_MIN_STAFF = {
+    "A": {"IIIB": 1, "IVB": 1},
+    "A1": {"IIB": 2}, "A2": {"IIB": 1, "IIIB": 1}, "A3": {"IIB": 1, "IIIB": 1},
+    "B": {"IIA": 1, "IIB": 1}, "Be": {"IIB": 2}, "Bi": {"IIB": 2}, "Bp": {"IIA": 2},
+    "C1A": {"IIIA": 2}, "C1B": {"IVA": 2}, "C2A": {"IIIB": 2}, "C2B": {"IVB": 2},
+    "D1": {"IVA": 2}, "D2": {"IVB": 2}, "E1": {"IVA": 2}, "E2": {"IVB": 2},
+    "E2PA": {"IIIB": 1, "IVB": 1},
+}
+
+
+def staff_grades(value):
+    normalized = unicodedata.normalize("NFD", str(value or "")).encode("ascii", "ignore").decode("ascii").upper()
+    normalized = re.sub(r"[^A-Z0-9]", "", normalized)
+    return set(re.findall(r"IV[AB]|III[AB]|II[AB]", normalized))
+
+
+def staff_name_key(value):
+    normalized = unicodedata.normalize("NFD", str(value or ""))
+    normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    return " ".join(normalized.casefold().split())
+
+
 def check(d):
     its = items(d)
     c = d.get("company") or {}
@@ -62,17 +118,46 @@ def check(d):
         if not c.get(k):
             rep["incomplete"].append(f"Date firmă: lipsește {l}")
     if d.get("kind") in ("nou", "b_c1a", "b_c2a", "vizare"):
-        if len([s for s in d.get("staff") or [] if s.get("name") and s.get("grade")]) < 2:
-            rep["incomplete"].append("Fișa de personal: minimum 2 electricieni autorizați cu grad/tip de autorizare (Anexa nr. 8)")
         if not [x for x in d.get("equipment") or [] if x.get("name")]:
             rep["incomplete"].append("Lista dotărilor tehnico-materiale este goală (minimul din Anexa nr. 6)")
-        if not d.get("target_types"):
+        raw_target_types = d.get("target_types") or []
+        if isinstance(raw_target_types, str):
+            raw_target_types = [raw_target_types]
+        target_types = list(dict.fromkeys(str(x).strip() for x in raw_target_types if str(x).strip()))
+        if not target_types:
             rep["incomplete"].append("Tipul de atestat solicitat nu este ales")
-    if d.get("kind") in ("b_c1a", "b_c2a") and "B" not in str(c.get("attest_types") or ""):
+        complete_org = [
+            row for row in d.get("org") or []
+            if all(str(row.get(field) or "").strip() for field in ("dept", "name", "activity"))
+        ]
+        if not complete_org:
+            rep["incomplete"].append("Organigrama lipsește sau nu are un compartiment, responsabil și activitate completate")
+        named_staff = {}
+        for person in d.get("staff") or []:
+            key = staff_name_key(person.get("name"))
+            if key:
+                named_staff.setdefault(key, person)
+        for target in target_types:
+            requirements = ANRE_MIN_STAFF.get(target)
+            if not requirements:
+                rep["issues"].append(f"Tipul de atestat {target} nu are o regulă de personal mapată; verificați Anexa nr. 8 înainte de finalizare")
+                continue
+            for grade, required_count in requirements.items():
+                found = sum(1 for person in named_staff.values() if grade in staff_grades(person.get("grade")))
+                if found < required_count:
+                    rep["incomplete"].append(
+                        f"Personal insuficient pentru {target}: lipsesc {required_count - found} electrician(i) cu autorizare {grade} conform Anexei nr. 8"
+                    )
+        for person in named_staff.values():
+            if person.get("grade") and not person.get("license"):
+                rep["incomplete"].append(f"Fișa de personal: lipsește numărul legitimației ANRE pentru {person.get('name')}")
+    if d.get("kind") in ("b_c1a", "b_c2a") and not has_attestation_type(c.get("attest_types"), "B"):
         rep["issues"].append("Solicitare de extindere de la B, dar atestatul existent declarat nu conține tipul B — verificați eligibilitatea")
     for s in d.get("staff") or []:
         if s.get("license_valid") and s["license_valid"] < date.today().isoformat():
             rep["issues"].append(f"Autorizarea ANRE a lui {s.get('name')} este expirată ({s['license_valid']})")
+        elif s.get("name") and s.get("grade") and not s.get("license_valid"):
+            rep["issues"].append(f"Valabilitatea autorizației ANRE a lui {s.get('name')} nu este precizată — verificați legitimația")
     rep["actions"] = [f"Încărcați / verificați: {x}" for x in rep["missing"] + rep["review"]] + [f"Completați: {x}" for x in rep["incomplete"]] + [f"Clarificați: {x}" for x in rep["issues"]]
     rep["ok"] = not (rep["missing"] or rep["review"] or rep["incomplete"] or rep["issues"])
     return rep
@@ -85,16 +170,48 @@ def pub(d):
 
 
 @api.get("/anre/dossiers")
-async def anre_list(user: dict = Depends(get_current_user)):
-    q = {} if is_pf(user) else {"owner": user["id"]}
+async def anre_list(include_archived: bool = False, user: dict = Depends(get_current_user)):
+    await S.archive_inactive_dossiers(user)
+    q = S.dossier_archive_filter(include_archived)
+    if not is_pf(user):
+        q["owner"] = user["id"]
     out = []
+    profiles = {}
     for d in await db.anre_dossiers.find(q, {"_id": 0, "ai": 0}).sort("created_at", -1).to_list(1000):
-        p = pub(d)
+        company = d.get("company") or {}
+        if any(company.get(k) in (None, "") for k in ("name", "cui", "regcom", "address", "rep_name", "email", "phone")):
+            owner = d["owner"]
+            if owner not in profiles:
+                profiles[owner] = await company_profile(owner)
+            view = merged_company(d, profiles[owner])
+        else:
+            view = d
+        p = pub(view)
         op = await db.operators.find_one({"tenant": d["owner"]}, {"status": 1}) or {}
-        out.append({k: p.get(k) for k in ("id", "owner", "kind", "status", "payment_status", "progress", "created_at", "final_check")} | {
-            "company": (d.get("company") or {}).get("name"), "cui": (d.get("company") or {}).get("cui"), "owner_email": d.get("created_by"), "attest_status": op.get("status") or "netrimis",
+        out.append({k: p.get(k) for k in ("id", "owner", "kind", "status", "creation_mode", "payment_status", "progress", "created_at", "final_check", "archived_at")} | {
+            "company": (p.get("company") or {}).get("name"), "cui": (p.get("company") or {}).get("cui"), "owner_email": d.get("created_by"), "attest_status": op.get("status") or "netrimis",
             "missing": sum(1 for i in p["items"] if i["status"] != "verificat")})
     return out
+
+
+
+@api.post("/anre/dossiers/{did}/restore")
+async def anre_restore(did: str, user: dict = Depends(get_current_user)):
+    dossier = await get_d(user, did)
+    if not dossier.get("archived_at"):
+        return {"ok": True, "restored": False, "id": did}
+    restored_at = now()
+    query = {"id": did} if is_pf(user) else {"id": did, "owner": user["id"]}
+    result = await db.anre_dossiers.update_one(
+        {**query, "archived_at": {"$exists": True}},
+        {"$set": {"updated_at": restored_at, "updated_by": user.get("email")},
+         "$unset": {"archived_at": "", "archive_reason": "", "archived_by": ""},
+         "$push": {"history": {"at": restored_at, "by": user.get("email"), "event": "Dosar readus din arhivă"}}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dosarul arhivat nu mai există")
+    await S.audit(user, "restaurare din arhivă automată", "anre_dossiers", did, ["archived_at"])
+    return {"ok": True, "restored": True, "id": did, "updated_at": restored_at}
 
 
 @api.post("/anre/dossiers")
@@ -103,21 +220,23 @@ async def anre_create(request: Request, user: dict = Depends(get_current_user)):
     if b.get("kind") not in AD.TYPES:
         raise HTTPException(status_code=400, detail="Alegeți tipul solicitării")
     op = await db.operators.find_one({"tenant": user["id"]}, {"_id": 0}) or {}
-    cfg = await S.billing_cfg()
-    vat = round(PRICE * float(cfg.get("vat_rate", 21)) / 100, 2)
+    profile = await company_profile(user["id"])
+    internal = b.get("mode") == "intern"
+    cfg = await S.billing_cfg() if not internal else {}
+    vat = round(PRICE * float(cfg.get("vat_rate", 21)) / 100, 2) if not internal else 0
     d = {"id": str(uuid.uuid4()), "owner": user["id"], "kind": b["kind"], "target_types": b.get("target_types") or [], "status": "Ciornă", "created_at": now(), "updated_at": now(),
-         "created_by": user.get("email"), "payment_status": "neplătit", "price": {"net": PRICE, "vat": vat, "total": round(PRICE + vat, 2), "note": "Serviciu D-ENERGY; tarifele ANRE se plătesc separat"},
-         "company": {"name": op.get("company"), "cui": op.get("cui"), "regcom": op.get("regcom"), "email": op.get("contact_email"), "phone": op.get("contact_phone"),
-                     "rep_name": op.get("contact_name"), "rep_role": op.get("holder_role"), "attest_no": op.get("attest_no"), "attest_types": ", ".join(op.get("attest_types") or []), "attest_valid": op.get("attest_valid")},
-         "docs": {}, "staff": [], "equipment": [], "org": [], "history": [{"at": now(), "by": user.get("email"), "event": "comandă creată"}]}
-    import billing_routes as BR
-    inv = await BR.service_invoice(user["id"], user.get("email"), f"Serviciu D-ENERGY — pregătire Dosar ANRE ({AD.TYPES[b['kind']]}), ref. {d['id'][:8]}", PRICE, user.get("email"),
-                                   {"client_type": "pj", "company_name": op.get("company"), "cui": op.get("cui"), "regcom": op.get("regcom"), "billing_email": op.get("contact_email") or user.get("email"),
+         "created_by": user.get("email"), "creation_mode": "intern" if internal else "serviciu", "payment_status": "intern" if internal else "neplătit", "price": {"net": 0 if internal else PRICE, "vat": vat, "total": 0 if internal else round(PRICE + vat, 2), "note": "Dosar intern — fără comandă de servicii" if internal else "Serviciu D-ENERGY; tarifele ANRE se plătesc separat"},
+         "company": {**profile, "email": profile.get("email") or user.get("email", "")},
+         "docs": {}, "staff": [], "equipment": [], "org": [], "history": [{"at": now(), "by": user.get("email"), "event": "dosar intern creat" if internal else "comandă creată"}]}
+    if not internal:
+        import billing_routes as BR
+        inv = await BR.service_invoice(user["id"], user.get("email"), f"Serviciu D-ENERGY — pregătire Dosar ANRE ({AD.TYPES[b['kind']]}), ref. {d['id'][:8]}", PRICE, user.get("email"),
+                                       {"client_type": "pj", "company_name": op.get("company"), "cui": op.get("cui"), "regcom": op.get("regcom"), "billing_email": op.get("contact_email") or user.get("email"),
                                     "phone": op.get("contact_phone"), "rep_name": op.get("contact_name"), "country": "România"})
-    d.update({"invoice_id": inv["id"], "invoice_number": inv["number"], "transfer": inv["transfer"]})
-    d["history"].append({"at": now(), "by": "sistem", "event": f"proformă emisă: {inv['number']}"})
+        d.update({"invoice_id": inv["id"], "invoice_number": inv["number"], "transfer": inv["transfer"]})
+        d["history"].append({"at": now(), "by": "sistem", "event": f"proformă emisă: {inv['number']}"})
     await db.anre_dossiers.insert_one(dict(d))
-    await S.audit(user, "comandă dosar ANRE", "anre", d["id"], [d["kind"], inv["number"]])
+    await S.audit(user, "dosar ANRE intern creat" if internal else "comandă dosar ANRE", "anre", d["id"], [d["kind"], d.get("invoice_number") or "intern"])
     return pub(d)
 
 
@@ -132,7 +251,16 @@ async def anre_update(did: str, request: Request, user: dict = Depends(get_curre
     paid_or_403(d, user)
     b = await request.json()
     upd = {k: b[k] for k in ("company", "staff", "equipment", "org", "target_types") if k in b}
-    if any(d.get(k) != v for k, v in upd.items()):
+    for key in ("filing_no", "filing_date", "result"):
+        if key in b:
+            value = str(b.get(key) or "").strip()
+            upd[key] = value or None
+    if upd.get("filing_date"):
+        try:
+            date.fromisoformat(upd["filing_date"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data depunerii trebuie să fie în formatul AAAA-LL-ZZ")
+    if any(d.get(k) != upd[k] for k in ("company", "staff", "equipment", "org", "target_types") if k in upd):
         for g in GEN:
             if (d.get("docs") or {}).get(g, {}).get("approved"):
                 upd[f"docs.{g}.approved"] = False
@@ -143,11 +271,14 @@ async def anre_update(did: str, request: Request, user: dict = Depends(get_curre
             raise HTTPException(status_code=400, detail="Status invalid")
         if st in ("Pregătit pentru semnare", "Pregătit pentru depunere") and not check({**d, **upd})["ok"]:
             raise HTTPException(status_code=400, detail="Dosarul are documente lipsă sau neclarități nerezolvate — rulați verificarea finală")
-        if st == "Depus" and not (b.get("filing_no") and b.get("filing_date")):
+        filing_no = upd.get("filing_no", d.get("filing_no"))
+        filing_date = upd.get("filing_date", d.get("filing_date"))
+        result = upd.get("result", d.get("result"))
+        if st == "Depus" and not (filing_no and filing_date):
             raise HTTPException(status_code=400, detail="„Depus” se marchează doar cu numărul și data înregistrării la ANRE")
-        if st == "Soluționat" and not (b.get("result") and d.get("docs", {}).get("decizie")):
+        if st == "Soluționat" and not (result and d.get("docs", {}).get("decizie")):
             raise HTTPException(status_code=400, detail="„Soluționat” necesită rezultatul și documentul ANRE încărcat (decizie/atestat)")
-        upd.update({"status": st, **{k: b[k] for k in ("filing_no", "filing_date", "result") if b.get(k)}})
+        upd["status"] = st
     elif d["status"] == "Ciornă":
         upd["status"] = "În completare"
     await db.anre_dossiers.update_one({"id": did}, {"$set": {**upd, "updated_at": now()}, "$push": {"history": {"at": now(), "by": user.get("email"), "event": "actualizare: " + ", ".join(upd.keys())}}})
@@ -234,6 +365,17 @@ async def anre_package(did: str, authorization: str = Header(None), auth: str = 
         raise HTTPException(status_code=400, detail="Pachetul final se generează după rezolvarea tuturor lipsurilor (vezi raportul de verificare)")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("00_CITITI_INAINTE_DE_DEPUNERE.txt", "\n".join([
+            "INSTRUCTIUNI DE DEPUNERE — DOSAR ANRE",
+            "",
+            "Verificati formularul si cerintele curente pe pagina oficiala ANRE:",
+            "https://anre.ro/participanti-la-piata-de-energie/persoane-juridice/energie-electrica/",
+            "",
+            "Cererea trebuie semnata de reprezentantul legal sau persoana imputernicita pe fiecare pagina si insotita de opis.",
+            "Pentru tipurile de cerere cu tarif, atasati dovada platii tarifului ANRE din pozitia corespunzatoare a opisului.",
+            "Acest pachet este pregatit pentru verificare; DNS Energy nu il transmite si nu il semneaza in numele solicitantului.",
+            "Verificati autenticitatea, actualitatea si completitudinea tuturor documentelor inainte de depunere.",
+        ]))
         z.writestr("01_Opis/Opis.pdf", AD.opis_pdf(d, items(d)))
         for i in items(d):
             folder = "02_Cerere" if i["key"] == "cerere" else "03_Anexe_si_declaratii" if i["key"] in ("decl_9", "decl_10") else "04_Documente_generate" if i["key"] in GEN else "05_Documente_client"

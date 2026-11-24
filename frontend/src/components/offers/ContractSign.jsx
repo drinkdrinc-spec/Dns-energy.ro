@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Copy, MessageCircle, Mail, FileDown } from "lucide-react";
-import { api, API } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -39,4 +39,4 @@ export function ContractSign({ c, open, onClose, onDone }) {
   );
 }
 
-export const SignedLink = ({ c }) => c.signed ? <a href={`${API}/contracts/${c.id}/signed-pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" title="Contract semnat" data-testid={`contract-signed-pdf-${c.number}`}><FileDown size={16} style={{ color: "#166534" }} /></a> : null;
+export const SignedLink = ({ c }) => c.signed ? <button type="button" onClick={() => openAuthenticatedFile(`/contracts/${c.id}/signed-pdf`)} title="Contract semnat" aria-label="Deschide contractul semnat" data-testid={`contract-signed-pdf-${c.number}`}><FileDown size={16} style={{ color: "#166534" }} /></button> : null;

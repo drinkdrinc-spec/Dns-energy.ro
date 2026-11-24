@@ -1,27 +1,131 @@
-import { useState } from "react";
-import { Outlet, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Outlet, Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Sidebar } from "@/components/Sidebar";
 import { BrandMark } from "@/components/BrandMark";
-import { Menu } from "lucide-react";
+import { QuickSearch } from "@/components/QuickSearch";
+import { Menu, Home, Users, FolderOpen, Cpu, UserRound, FileCheck2, CircuitBoard, Wrench, Globe, Zap, Activity, Download, Mail } from "lucide-react";
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const isProsumerDossier = location.pathname.startsWith("/prosumator");
+  const workflowPaths = ["/clienti", "/cerere-atr", "/spor-putere", "/diu", "/catalog-echipamente", "/dosare-anre", "/mono", "/pram", "/portaluri-distribuitori", "/mesaje-od"];
+  const showWorkflow = workflowPaths.some((path) => location.pathname.startsWith(path));
   return (
-    <div className="flex min-h-screen" style={{ background: "var(--bg)" }}>
+    <div className={`flex min-h-screen ${isProsumerDossier ? "den-reenergy-dossier" : ""}`} style={{ background: "var(--bg)" }}>
       <Sidebar open={open} onClose={() => setOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 bg-white border-b" style={{ borderColor: "var(--line)" }}>
-          <button data-testid="menu-btn" onClick={() => setOpen(true)}><Menu size={22} /></button>
+        <header className="mobile-app-header md:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 border-b">
+          <button data-testid="menu-btn" onClick={() => setOpen(true)} aria-label="Deschide meniul"><Menu size={22} /></button>
           <BrandMark size={30} />
-          <span className="font-extrabold tracking-wide">D-ENERGY</span>
+          <span className="font-extrabold tracking-wide">DNS ENERGY</span>
+          <PwaInstallButton />
         </header>
-        <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto">
-          <PlanBanner />
+        <main className="flex-1 px-4 sm:px-6 lg:px-9 py-6 lg:py-8 max-w-[1200px] w-full mx-auto pb-24 md:pb-8">
+          {!isProsumerDossier && <QuickSearch />}
+          {!isProsumerDossier && <PlanBanner />}
+          {showWorkflow && <DossierWorkflow pathname={location.pathname} />}
           <Outlet />
         </main>
+        <nav aria-label="Navigare rapidă" className="mobile-bottom-nav md:hidden fixed bottom-0 inset-x-0 z-20 grid grid-cols-4 border-t bg-white/95 backdrop-blur px-1 pt-2 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(20,35,70,0.08)]">
+          <MobileNavItem to="/" icon={Home} label="Acasă" />
+          <MobileNavItem to="/prosumator" icon={FolderOpen} label="Dosare" />
+          <MobileNavItem to="/catalog-echipamente" icon={Cpu} label="Catalog" />
+          <MobileNavItem to="/clienti" icon={Users} label="Contacte" />
+        </nav>
       </div>
     </div>
+  );
+}
+
+function PwaInstallButton() {
+  const [installPrompt, setInstallPrompt] = useState(() => window.__dnsEnergyInstallPrompt || null);
+  const [installed, setInstalled] = useState(
+    () => window.__dnsEnergyInstalled === true || window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true
+  );
+
+  useEffect(() => {
+    const syncPrompt = () => setInstallPrompt(window.__dnsEnergyInstallPrompt || null);
+    const markInstalled = () => setInstalled(true);
+    window.addEventListener("dns-energy-install-ready", syncPrompt);
+    window.addEventListener("dns-energy-app-installed", markInstalled);
+    return () => {
+      window.removeEventListener("dns-energy-install-ready", syncPrompt);
+      window.removeEventListener("dns-energy-app-installed", markInstalled);
+    };
+  }, []);
+
+  if (installed) return null;
+
+  const install = async () => {
+    if (installPrompt) {
+      await installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      window.__dnsEnergyInstallPrompt = null;
+      if (choice?.outcome === "accepted") setInstalled(true);
+      setInstallPrompt(null);
+      return;
+    }
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    if (isIOS) {
+      window.alert("Pentru a instala DNS Energy pe iPhone: apasă Partajare în Safari, apoi „Adăugați la ecranul principal”.");
+      return;
+    }
+    window.alert("Deschide meniul browserului și alege „Instalează aplicația” sau „Adaugă la ecranul principal”.");
+  };
+
+  return (
+    <button type="button" onClick={install} aria-label="Instalează DNS Energy pe telefon"
+      className="ml-auto inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-white/20 px-2.5 text-[11px] font-bold text-white"
+      style={{ touchAction: "manipulation" }}>
+      <Download size={16} aria-hidden="true" />
+      <span>Instalează</span>
+    </button>
+  );
+}
+
+const DOSSIER_STEPS = [
+  { to: "/clienti", label: "Client și acte", icon: UserRound, matches: ["/clienti"] },
+  { to: "/cerere-atr", label: "Cerere ATR", icon: FileCheck2, matches: ["/cerere-atr"] },
+  { to: "/spor-putere", label: "Spor putere", icon: Zap, matches: ["/spor-putere"] },
+  { to: "/prosumator", label: "Prosumator", icon: FolderOpen, matches: ["/prosumator"] },
+  { to: "/diu", label: "DI-U", icon: Wrench, matches: ["/diu"] },
+  { to: "/pram", label: "PRAM", icon: Activity, matches: ["/pram"] },
+  { to: "/mono", label: "Schemă", icon: CircuitBoard, matches: ["/mono"] },
+  { to: "/dosare-anre", label: "Dosar ANRE", icon: FileCheck2, matches: ["/dosare-anre"] },
+  { to: "/catalog-echipamente", label: "Echipamente", icon: Cpu, matches: ["/catalog-echipamente"] },
+  { to: "/portaluri-distribuitori", label: "Portal OD", icon: Globe, matches: ["/portaluri-distribuitori"] },
+  { to: "/mesaje-od", label: "Mesaje OD", icon: Mail, matches: ["/mesaje-od"] },
+];
+
+function DossierWorkflow({ pathname }) {
+  return (
+    <nav aria-label="Ordinea dosarului" className="mb-6 rounded-xl border bg-white p-3 sm:p-4" style={{ borderColor: "var(--line)" }} data-testid="dossier-workflow-nav">
+      <div className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: "var(--muted)" }}>Flux de lucru · deschide direct un pas</div>
+      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-5 xl:grid-cols-10">
+        {DOSSIER_STEPS.map(({ to, label, icon: Icon, matches }, index) => {
+          const active = matches.some((path) => pathname.startsWith(path));
+          return <li key={to} className="min-w-0">
+            <NavLink to={to} aria-current={active ? "step" : undefined} className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-xs font-semibold transition hover:border-blue-300" style={active
+              ? { background: "#eaf1ff", borderColor: "var(--blue)", color: "var(--blue)" }
+              : { background: "#fff", borderColor: "var(--line)", color: "#475569" }}>
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={active ? { background: "var(--blue)", color: "#fff" } : { background: "#f1f5f9", color: "#475569" }}>{index + 1}</span>
+              <Icon size={14} aria-hidden="true" />{label}
+            </NavLink>
+          </li>;
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+function MobileNavItem({ to, icon: Icon, label }) {
+  return (
+    <NavLink to={to} end={to === "/"} className="flex min-h-[44px] flex-col items-center justify-center gap-1 min-w-0 py-1 text-[10px] font-semibold" style={({ isActive }) => ({ color: isActive ? "var(--green)" : "var(--muted)" })}>
+      {({ isActive }) => <><Icon size={20} /><span className="truncate max-w-full">{label}</span></>}
+    </NavLink>
   );
 }
 
@@ -67,3 +171,4 @@ export function Btn({ children, variant = "primary", className = "", ...props })
     </button>
   );
 }
+

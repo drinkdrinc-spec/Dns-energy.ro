@@ -50,15 +50,16 @@ def pe_for(s):
 
 class Out:
     def __init__(self):
-        self.items, self.missing, self.errors, self.warnings, self.cables, self.prot = [], [], [], [], [], []
+        self.items, self.missing, self.unconfirmed, self.errors, self.warnings, self.cables, self.prot = [], [], [], [], [], [], []
 
     def it(self, group, label, value, src="calculat", formula="", ok=None, note=""):
         self.items.append({"group": group, "label": label, "value": value if has(value) else None, "source": src,
                            "formula": formula, "ok": ok, "note": note})
 
-    def need(self, path, label, val, group=""):
+    def need(self, path, label, val, group="", blocking=True):
         if not has(val):
-            self.missing.append({"path": path, "label": f"{group} — {label}" if group else label})
+            item = {"path": path, "label": f"{group} — {label}" if group else label}
+            (self.missing if blocking else self.unconfirmed).append(item)
             return False
         return True
 
@@ -73,7 +74,14 @@ def compute(rec: dict, client: dict | None = None) -> dict:
     base = C.check(cef)
     grid = cef.get("grid") or {}
     o = Out()
-    get = lambda k: client.get(k) if has(client.get(k)) else rec.get(k)
+    def get(k):
+        value = client.get(k) if has(client.get(k)) else rec.get(k)
+        # Every dossier already receives a unique internal number. Use it as
+        # the drawing/project reference when no external project number exists,
+        # so the monoline schema does not block on an avoidable blank.
+        if k == "project_no" and not has(value):
+            return rec.get("number") or rec.get("id")
+        return value
     for k, lbl in REQ_CLIENT:
         o.need(k, lbl, get(k), "Date generale")
     invs = cef.get("inverters") or []
@@ -86,12 +94,13 @@ def compute(rec: dict, client: dict | None = None) -> dict:
     o.need("cef.grid.supply", "Tip branșament", grid.get("supply"), G)
     o.need("cef.grid.bransament_kw", "Putere aprobată (kW)", grid.get("bransament_kw"), G)
     o.need("cef.grid.earthing", "Sistem de legare la pământ (TN-C-S / TT)", grid.get("earthing"), G)
-    o.need("cef.grid.ik_ka", "Curent de scurtcircuit la punctul de racord Ik (kA, din ATR/OD)", grid.get("ik_ka"), G)
+    o.need("cef.grid.ik_ka", "Curent de scurtcircuit la punctul de racord Ik (kA, din ATR/OD)", grid.get("ik_ka"), G, blocking=False)
+    o.need("cef.grid.column_length", "Lungime coloană BMP→TG (m)", grid.get("column_length"), G, blocking=False)
     o.need("cef.grid.bmp_a", "Întreruptor BMP (A)", grid.get("bmp_a"), G)
     o.need("cef.grid.tg_breaker_a", "Întreruptor general TG (A)", grid.get("tg_breaker_a"), G)
-    o.need("cef.grid.spd_ac", "SPD AC (tip)", grid.get("spd_ac"), G)
+    o.need("cef.grid.spd_ac", "SPD AC (tip)", grid.get("spd_ac"), G, blocking=False)
     gro = grid.get("grounding_ohm") or rec.get("grounding_ohm")
-    o.need("cef.grid.grounding_ohm", "Rezistența prizei de pământ — valoare MĂSURATĂ (Ω)", gro, G)
+    o.need("cef.grid.grounding_ohm", "Rezistența prizei de pământ — valoare MĂSURATĂ (Ω)", gro, G, blocking=False)
     inv_in = []
     tot_loss = 0.0
     for i, inv in enumerate(invs):
@@ -99,50 +108,153 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         T = f"INV {i + 1}"
         ac, dc, pa, pd = inv.get("ac") or {}, inv.get("dc") or {}, r["proposals"]["ac"], r["proposals"]["dc"]
         si, sp = src_of(inv, "x", "catalog_id"), src_of(inv, "x", "panel_catalog_id")
-        for k, lbl in [("brand_model", "Marcă și model invertor"), ("p_nom_kw", "Putere nominală AC (kW)"), ("p_max_kw", "Putere maximă AC (kW)"),
-                       ("vdc_max", "Udc max (V)"), ("mppt_min", "MPPT min (V)"), ("mppt_max", "MPPT max (V)"), ("mppt_count", "Nr. MPPT"),
-                       ("imax_mppt", "Curent max / MPPT (A)")]:
+        inverter_kind = str(inv.get("kind") or inv.get("type") or "").casefold()
+        battery_only = bool(inv.get("battery_only") or inv.get("no_panels"))
+        has_pv = not battery_only and "invertor de baterie (ac)" not in inverter_kind
+        required_inverter_specs = [
+            ("brand_model", "Marcă și model invertor"),
+            ("p_nom_kw", "Putere nominală AC (kW)"),
+            ("p_max_kw", "Putere maximă AC (kW)"),
+        ]
+        if has_pv:
+            required_inverter_specs += [
+                ("vdc_max", "Udc max (V)"), ("mppt_min", "MPPT min (V)"),
+                ("mppt_max", "MPPT max (V)"), ("mppt_count", "Nr. MPPT"),
+                ("imax_mppt", "Curent max de funcționare / MPPT (A)"),
+                ("isc_max_mppt", "Isc max admisibil / MPPT (A)"),
+            ]
+        for k, lbl in required_inverter_specs:
             if o.need(f"cef.inverters.{i}.{k}", lbl, inv.get(k), T):
                 o.it(T, lbl, g(inv.get(k)), si)
         strings = r["strings"]
-        if inv.get("kind") != "Invertor de baterie (AC)":
-            for k, lbl in [("panel_model", "Model panou"), ("panel_w", "Putere panou (W)"), ("panel_voc", "Voc panou (V)"),
-                           ("panel_vmp", "Vmp panou (V)"), ("panel_isc", "Isc panou (A)")]:
-                if o.need(f"cef.inverters.{i}.{k}", lbl, inv.get(k), T):
-                    o.it(T, lbl, g(inv.get(k)), sp)
-            o.it(T, "Coeficient Voc (%/°C)", g(n(inv.get("panel_coef_voc"), -0.27)), sp if has(inv.get("panel_coef_voc")) else "de confirmat",
-                 note="" if has(inv.get("panel_coef_voc")) else "valoare implicită -0,27 %/°C — confirmați din fișa panoului")
-            if not strings:
+        # A selected rapid-shutdown device must be checked against the actual
+        # PV strings. Merely drawing an RSD in the schematic is not a technical
+        # compatibility check. Ratings are per voltage tier from the exact
+        # catalog model; unknown values remain unresolved instead of passing.
+        rsd = inv.get("rsd") or {}
+        if rsd.get("enabled") and has_pv:
+            rsd_group = f"RSD INV {i + 1}"
+            o.need(f"cef.inverters.{i}.rsd.brand_model", "Model RSD", rsd.get("brand_model"), rsd_group)
+            rsd_strings = n(rsd.get("string_count"))
+            rsd_poles = n(rsd.get("poles"))
+            o.need(f"cef.inverters.{i}.rsd.string_count", "Număr de stringuri acceptat de model", rsd_strings, rsd_group)
+            o.need(f"cef.inverters.{i}.rsd.poles", "Număr de poli din fișa modelului", rsd_poles, rsd_group)
+            active_strings = len(strings)
+            capacity_ok = rsd_strings >= active_strings if rsd_strings and active_strings else None
+            poles_ok = rsd_poles >= 2 * active_strings if rsd_poles and active_strings else None
+            o.it(rsd_group, "Canale/stringuri și poli RSD",
+                 f"{active_strings} stringuri active · {rsd_poles or '—'} poli / {rsd_strings or '—'} stringuri admise",
+                 "catalog", "minimum 2 poli pentru fiecare string comutat", capacity_ok and poles_ok if capacity_ok is not None and poles_ok is not None else None,
+                 "numărul de poli sau de stringuri din fișa modelului este incomplet" if capacity_ok is None or poles_ok is None else
+                 ("modelul nu acoperă toate stringurile active" if not capacity_ok else "poli insuficienți pentru stringurile active" if not poles_ok else ""))
+            if active_strings:
+                voltages = [300, 600, 800, 1000, 1200, 1500]
+                voltage = max((s.get("voc_cold") or 0) * 1.15 for s in strings) if all(s.get("voc_cold") is not None for s in strings) else None
+                currents = [n(s.get("isc")) * 1.25 for s in strings]
+                required_current = max(currents) if currents and all(currents) else None
+                tier = next((v for v in voltages if voltage is not None and voltage <= v), None)
+                o.need(f"cef.inverters.{i}.rsd.voltage_max_v", "Tensiune maximă DC admisă din fișa RSD", rsd.get("voltage_max_v"), rsd_group)
+                rating_key = f"current_{tier}v_a" if tier else None
+                rated_current = n(rsd.get(rating_key)) if rating_key else None
+                if voltage is None:
+                    o.need(f"cef.inverters.{i}.rsd.string_voc", "Voc la temperatura minimă din fișa panoului", None, rsd_group)
+                o.it(rsd_group, "Tensiune de proiectare RSD",
+                     g(voltage, " V", 0) if voltage is not None else None, "calculat" if voltage is not None else "de confirmat",
+                     "1,15 × Voc string la temperatura minimă",
+                     (voltage <= n(rsd.get("voltage_max_v"))) if voltage is not None and n(rsd.get("voltage_max_v")) else None,
+                     f"limita din fișa RSD: {n(rsd.get('voltage_max_v')):g} V" if n(rsd.get("voltage_max_v")) else "lipsește limita de tensiune DC din fișa modelului")
+                o.it(rsd_group, f"Curent admis RSD la {tier or '—'} V",
+                     f"{rated_current:g} A ≥ {required_current:.1f} A" if rated_current and required_current is not None else None,
+                     "catalog" if rated_current else "de confirmat", "rating model la tensiunea aplicabilă ≥ 1,25 × Isc string",
+                     (rated_current >= required_current) if rated_current and required_current is not None else (False if voltage is not None and tier is None else None),
+                     "tensiunea calculată depășește toate treptele publicate" if voltage is not None and tier is None else
+                     ("lipsește ratingul de curent al modelului la tensiunea aplicabilă sau Isc din fișa panoului" if not rated_current or required_current is None else ""))
+        if has_pv:
+            if strings:
+                # Panel models belong to their strings. Requiring duplicate
+                # inverter-level panel fields blocks valid mixed-model rows and
+                # can hide exact catalog values already attached to each string.
+                string_rows = [row for row in (inv.get("strings") or []) if n(row.get("panels")) > 0]
+                for string_index, string in enumerate(strings):
+                    row = string_rows[string_index] if string_index < len(string_rows) else {}
+                    for key, label in [("panel_model", "Model panou"), ("panel_w", "Putere panou (W)"),
+                                       ("panel_voc", "Voc panou (V)"), ("panel_vmp", "Vmp panou (V)"),
+                                       ("panel_isc", "Isc panou (A)")]:
+                        if o.need(f"cef.inverters.{i}.strings.{string_index}.{key}", label,
+                                  string.get(key), f"{T} / String {string_index + 1}"):
+                            o.it(f"{T} / String {string_index + 1}", label, g(string.get(key)),
+                                 "catalog" if (inv.get("panel_catalog_id") or row.get("panel_catalog_id")) else "introdus")
+                    for key, label, note in [
+                        ("panel_coef_voc", "Coeficient Voc (%/°C)",
+                         "Se folosește numai valoarea publicată în fișa exactă a modulului."),
+                        ("panel_coef_vmp", "Coeficient Vmp (%/°C)",
+                         "Fără această valoare, verificarea Vmp la cald rămâne neconfirmată.")
+                    ]:
+                        value = string.get(key)
+                        o.it(f"{T} / String {string_index + 1}", label, g(value),
+                             "catalog" if (inv.get("panel_catalog_id") or row.get("panel_catalog_id")) and has(value) else ("introdus" if has(value) else "lipsă"),
+                             note="" if has(value) else note)
+            else:
                 o.missing.append({"path": f"cef.inverters.{i}.strings", "label": f"{T} — configurația stringurilor"})
         vdc_max, mmin, mmax, imax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max")), n(inv.get("imax_mppt"))
+        isc_limit = n(inv.get("isc_max_mppt"))
         for k, s in enumerate(strings):
             o.it(T, f"String {k + 1} (MPPT {s['mppt']}) — {s['panels']} panouri", g(s["kwp"], " kWp"), "calculat", "P = Ns · Pmod")
-            o.it(T, f"String {k + 1} — Voc la {tmin:g}°C", g(s["voc_cold"], " V", 0), "calculat", "Voc,min = Ns·Voc·[1 + βVoc·(Tmin − 25)]",
-                 (s["voc_cold"] <= vdc_max) if vdc_max else None, f"≤ Udc max {vdc_max:g} V" if vdc_max else "")
-            o.it(T, f"String {k + 1} — Vmp la 70°C / STC", f"{s['vmp_hot']:.0f} / {s['vmp_stc']:.0f} V", "calculat", "Vmp,70 = Ns·Vmp·[1 + (βVoc−0,08%)·45]",
-                 (mmin <= s["vmp_hot"] and s["vmp_stc"] <= mmax) if (mmin and mmax) else None, f"în domeniul MPPT {mmin:g}–{mmax:g} V" if mmax else "")
+            o.it(T, f"String {k + 1} — Voc la {tmin:g}°C", g(s["voc_cold"], " V", 0), "calculat" if s["voc_cold"] is not None else "necalculat",
+                 "Voc,min = Ns·Voc·[1 + βVoc·(Tmin − 25)]",
+                 (s["voc_cold"] <= vdc_max) if (vdc_max and s["voc_cold"] is not None) else None,
+                 note="; ".join(filter(None, [
+                     f"≤ Udc max {vdc_max:g} V" if vdc_max else "lipsește Udc max din fișa invertorului",
+                     "" if s["voc_cold"] is not None else "lipsește coeficientul Voc din fișa panoului"
+                 ])))
+            vmp_hot_label = f"{s['vmp_hot']:.0f} / {s['vmp_stc']:.0f} V" if s["vmp_hot"] is not None else f"— / {s['vmp_stc']:.0f} V"
+            o.it(T, f"String {k + 1} — Vmp la 70°C / STC", vmp_hot_label, "calculat" if s["vmp_hot"] is not None else "necalculat",
+                 "Vmp,70 = Ns·Vmp·[1 + βVmp·(Tcell − 25)]",
+                 (mmin <= s["vmp_hot"] and s["vmp_stc"] <= mmax) if (mmin and mmax and s["vmp_hot"] is not None) else None,
+                 note="; ".join(filter(None, [
+                     f"în domeniul MPPT {mmin:g}–{mmax:g} V" if mmin and mmax else "lipsește domeniul MPPT din fișa invertorului",
+                     "" if s["vmp_hot"] is not None else "lipsește coeficientul Vmp din fișa panoului"
+                 ])))
         per = {}
         for s in strings:
             per.setdefault(s["mppt"], []).append(s)
+        def string_imp(s):
+            return n(s.get("imp")) or (
+                n(s.get("panel_w")) / n(s.get("panel_vmp")) if n(s.get("panel_vmp")) else 0
+            )
+        string_currents = [string_imp(s) for s in strings]
+        imp = max(string_currents or [0])
         for m, ss in per.items():
-            isum = sum(x["isc"] for x in ss)
-            o.it(T, f"MPPT {m} — Isc total ({len(ss)} string)", g(isum, " A", 1), "calculat", "ΣIsc pe MPPT", (isum <= imax) if imax else None,
-                 f"≤ Imax MPPT {imax:g} A" if imax else "")
+            isc_sum = sum(x["isc"] for x in ss)
+            operating_sum = sum(string_imp(x) for x in ss)
+            o.it(T, f"MPPT {m} — Isc total ({len(ss)} string)", g(isc_sum, " A", 1), "calculat", "ΣIsc pe MPPT; comparat separat cu Isc max din fișa invertorului", (isc_sum <= isc_limit) if isc_limit else None,
+                 f"≤ Isc max / MPPT {isc_limit:g} A" if isc_limit else "lipsește limita Isc max / MPPT din fișa invertorului")
+            o.it(T, f"MPPT {m} — Imp total în funcționare", g(operating_sum, " A", 1) if operating_sum else None,
+                 "calculat" if operating_sum else "necalculat", "Σ Imp stringuri conectate la MPPT",
+                 (operating_sum <= imax) if (operating_sum and imax) else None,
+                 f"≤ Imax / MPPT {imax:g} A" if imax and operating_sum else "lipsește Imp panou sau Imax / MPPT")
         isc1 = max([s["isc"] for s in strings] or [0])
-        imp = n(inv.get("panel_w")) / n(inv.get("panel_vmp")) if n(inv.get("panel_vmp")) else 0
         voc_max = r["voc_cold_max"]
         if strings:
             # DC cable
-            dmat, dL, ds = dc.get("material") or "Cu", n(dc.get("length_m")), n(dc.get("section"))
-            o.need(f"cef.inverters.{i}.dc.length_m", "Lungime cablu DC (m)", dc.get("length_m"), T)
-            o.need(f"cef.inverters.{i}.dc.section", "Secțiune cablu DC (mm²)", dc.get("section"), T)
+            dmat, dL = dc.get("material") or "Cu", n(dc.get("length_m"))
+            ds = n(dc.get("section")) or n(pd.get("section"))
+            o.need(f"cef.inverters.{i}.dc.length_m", "Lungime cablu DC (m)", dc.get("length_m"), T, blocking=False)
+            o.need(f"cef.inverters.{i}.dc.section", "Secțiune cablu DC (mm²)", ds, T)
             o.it(T, "DC — curent de dimensionare", g(1.25 * isc1, " A", 1), "calculat", "Ib,DC = 1,25 · Isc,STC (IEC 62548)")
-            o.it(T, "DC — secțiune propusă", g(pd["section"], " mm²"), "calculat", "Iz ≥ 1,25·Isc și ΔU ≤ 1%")
-            vmp = max(s["vmp_stc"] for s in strings)
+            o.it(T, "DC — secțiune propusă", g(pd["section"], " mm²"), "calculat", "H1Z2Z2-K minimum 6 mm²; Iz ≥ 1,25·Isc și ΔU ≤ 1%")
             if ds:
                 izd = iz(ds, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True)
-                du = vdrop_dc(imp, dL, ds, dmat, vmp)
-                loss = len(strings) * 2 * dL * imp ** 2 * RHO.get(dmat, RHO["Cu"]) / ds
+                cable_drops = [
+                    vdrop_dc(current, dL, ds, dmat, string["vmp_stc"])
+                    for string, current in zip(strings, string_currents)
+                    if current and string.get("vmp_stc")
+                ]
+                du = max(cable_drops or [0])
+                loss = sum(
+                    2 * dL * current ** 2 * RHO.get(dmat, RHO["Cu"]) / ds
+                    for current in string_currents
+                )
                 tot_loss += loss
                 o.it(T, "DC — Iz cablu ales", g(izd, " A", 0), "calculat", "Iz = Iz,tabel · k", izd >= 1.25 * isc1, f"≥ {1.25 * isc1:.1f} A")
                 o.it(T, "DC — cădere de tensiune", g(du, " %") or "0 %", "calculat", "ΔU = 2·L·Imp·ρ/(S·Ump)·100", du <= 1, "≤ 1 % (recomandat)")
@@ -157,33 +269,45 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                  note=f"propus {sw_v} V / {sw_a} A, categorie DC-PV2 (SR EN 60947-3)")
             o.need(f"cef.inverters.{i}.dc.switch", "Separator DC (Ue/Ie, model)", dc.get("switch") or inv.get("dc_switch_integrated"), T)
             par = max([len(x) for x in per.values()] or [0])
-            if par >= 3:
+            fa = n(dc.get("fuse_a")) or 15
+            isc_complete = bool(strings) and all(n(string.get("isc")) > 0 for string in strings)
+            if isc_complete and par >= 3:
                 fmin, fmax = 1.5 * isc1, 2.4 * isc1
-                fa = n(dc.get("fuse_a"))
-                o.it(T, "Siguranțe gPV", g(fa, " A") or g(pd["fuse"], " A (propus)"), "introdus" if fa else "calculat", "1,5·Isc ≤ In ≤ 2,4·Isc",
-                     (fmin <= fa <= fmax) if fa else None, f"{fmin:.1f}–{fmax:.1f} A")
-                o.need(f"cef.inverters.{i}.dc.fuse_a", "Siguranțe gPV (A)", dc.get("fuse_a"), T)
+                fuse_ok = fmin <= fa <= fmax
+                fuse_note = f"{fmin:.1f}–{fmax:.1f} A din Isc; confirmă și limita serie din fișa panoului"
+            elif isc_complete:
+                fmin, fmax = 1.5 * isc1, 2.4 * isc1
+                fuse_ok = None
+                fuse_note = (f"{fmin:.1f}–{fmax:.1f} A orientativ; la cel mult 2 stringuri/MPPT necesitatea nu se stabilește doar din numărul stringurilor; "
+                             "confirmă limita modulului și backfeed-ul invertorului")
             else:
-                o.it(T, "Siguranțe gPV", "nu sunt necesare", "calculat", "≤ 2 stringuri în paralel / MPPT (IEC 62548)")
+                fuse_ok = None
+                fuse_note = "15 A propus; confirmă Isc și limita serie din fișa panoului"
+            if par < 3:
+                fuse_note += "; siguranța rămâne propunere până la confirmarea proiectantului"
+            o.it(T, "Separator fuzibil gPV / string", g(fa, " A"), "introdus" if dc.get("fuse_a") else "propus DNS",
+                 "1,5·Isc ≤ In ≤ 2,4·Isc (când se cere protecție de string)", fuse_ok, fuse_note)
             spd = n(dc.get("spd_ucpv"))
-            o.need(f"cef.inverters.{i}.dc.spd_ucpv", "SPD DC Ucpv (V)", dc.get("spd_ucpv"), T)
+            o.need(f"cef.inverters.{i}.dc.spd_ucpv", "SPD DC Ucpv (V)", dc.get("spd_ucpv") or pd.get("spd_ucpv"), T)
             o.it(T, "SPD DC Ucpv", g(spd, " V") or g(pd["spd_ucpv"], " V (propus)"), "introdus" if spd else "calculat", "Ucpv ≥ Voc,min",
                  (spd >= voc_max) if spd else None, f"≥ {voc_max:.0f} V")
         # AC
         tri = r["tri"]
-        mat, L, sct, ina = ac.get("material") or "Cu", n(ac.get("length_m")), n(ac.get("section")), n(ac.get("breaker_a"))
+        mat, L = ac.get("material") or "Cu", n(ac.get("length_m"))
+        sct, ina = n(ac.get("section")) or n(pa.get("section")), n(ac.get("breaker_a")) or n(pa.get("breaker_a"))
         ib = pa["ib"]
-        o.need(f"cef.inverters.{i}.ac.length_m", "Lungime cablu AC (m)", ac.get("length_m"), T)
-        o.need(f"cef.inverters.{i}.ac.section", "Secțiune cablu AC (mm²)", ac.get("section"), T)
-        o.need(f"cef.inverters.{i}.ac.breaker_a", "Întreruptor AC (A)", ac.get("breaker_a"), T)
+        o.need(f"cef.inverters.{i}.ac.length_m", "Lungime cablu AC (m)", ac.get("length_m"), T, blocking=False)
+        o.need(f"cef.inverters.{i}.ac.section", "Secțiune cablu AC (mm²)", sct, T)
+        o.need(f"cef.inverters.{i}.ac.breaker_a", "Întreruptor AC (A)", ina, T)
         o.need(f"cef.inverters.{i}.rcd_type", "Tip protecție diferențială (din manualul invertorului)", inv.get("rcd_type"), T)
         if ib:
             o.it(T, "AC — curent de calcul Ib", g(ib, " A", 1), "calculat", "Ib = Pmax/(√3·400·0,95)" if tri else "Ib = Pmax/(230·0,95)")
             o.it(T, "AC — întreruptor propus", g(pa["breaker_a"], f" A {pa['poles']}"), "calculat", "In ≥ Ib (valoare standard)")
-            o.it(T, "AC — secțiune propusă", g(pa["section"], " mm²"), "calculat", "Iz ≥ In și ΔU ≤ 3% (HD 60364-5-52)")
-        if ina:
+            cores = "5" if tri else "3"
+            o.it(T, "AC — secțiune propusă", f"{cores}×{g(pa['section'], ' mm²')}" if pa.get("section") else None, "calculat", "monofazat 3×6–3×16 mm²; trifazat 5×6–5×50 mm²; Iz ≥ In și ΔU ≤ 3% (HD 60364-5-52)")
+        if ina and r.get("phase_known"):
             inv_in.append(ina)
-        if sct:
+        if sct and r.get("phase_known"):
             izv = iz(sct, mat, ac.get("install") or "C", 3 if tri else 2, n(ac.get("k_correction"), 1))
             du = vdrop_ac(ib, L, sct, mat, tri)
             loss = (3 if tri else 2) * L * ib ** 2 * RHO.get(mat, RHO["Cu"]) / sct
@@ -199,7 +323,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                              "cores": "3L+N+PE" if tri else "L+N+PE", "section": sct, "material": mat, "length": L or None, "ib": ib,
                              "iz": round(izv), "du": round(du, 2), "loss": round(loss, 1), "pe": pe})
         icu = n(ac.get("icu_ka"))
-        if ina:
+        if ina and r.get("phase_known"):
             o.it(T, "AC — capacitate de rupere Icu ≥ Ik", f"{icu:g} kA ≥ {ik:g} kA" if (icu and ik) else None, "calculat" if icu and ik else "de confirmat",
                  "Icu (SR EN 60898/60947-2) ≥ Ik la punctul de montaj", (icu >= ik) if (icu and ik) else None,
                  "" if (icu and ik) else "completați Icu al aparatului și Ik comunicat de OD")
@@ -211,17 +335,30 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         if inv.get("battery_mode") == "own":
             o.need(f"cef.inverters.{i}.battery.model", "Model baterie", bat.get("model"), T)
             o.need(f"cef.inverters.{i}.battery.i_max", "Curent max descărcare baterie (A)", bat.get("i_max"), T)
+            o.need(f"cef.inverters.{i}.battery.cable_length", "Lungime cablu baterie (m)", bat.get("cable_length"), T, blocking=False)
+            o.need(f"cef.inverters.{i}.battery.dc_switch_voltage_v", "Tensiune nominală separator / întreruptor DC baterie (V, din fișă)",
+                   bat.get("dc_switch_voltage_v") or bat.get("breaker_voltage_dc"), T)
+            o.need(f"cef.inverters.{i}.battery.dc_switch_current_a", "Curent nominal separator / întreruptor DC baterie (A, din fișă)",
+                   bat.get("dc_switch_current_a") or bat.get("breaker_a"), T)
             ibat = n(bat.get("i_max"))
             if ibat:
-                fb = up(BAT_FUSE, 1.25 * ibat)
-                o.it(T, "Baterie — protecție DC propusă", g(fb, " A"), "calculat", "In ≥ 1,25·Imax,desc. (conform manual)")
-                bs = n(bat.get("cable_section"))
+                battery_proposal = r.get("proposals", {}).get("battery") or {}
+                fuse = n(bat.get("fuse_a")) or n(battery_proposal.get("fuse_a"))
+                if fuse:
+                    o.it(T, "Baterie — protecție DC propusă", g(fuse, " A"), "calculat" if not bat.get("fuse_a") else "introdus",
+                         "In ≥ 1,25·Imax și nu depășește limita maximă din manual")
+                else:
+                    o.need(f"cef.inverters.{i}.battery.max_fuse_a", "Limita siguranței DC admisă de producător (A)", bat.get("max_fuse_a"), T)
+                manual_section = n(bat.get("cable_section"))
+                proposed_section = n(battery_proposal.get("section"))
+                bs = manual_section or proposed_section
                 if bs:
-                    izb = iz(bs, "Cu", None, 1, 1, dc=True)
-                    fa = n(bat.get("fuse_a")) or fb
-                    o.it(T, "Baterie — Iz cablu ≥ In protecție", f"{izb:.0f} ≥ {fa:g} A", "calculat", "Iz ≥ In", izb >= fa)
+                    izb = n(battery_proposal.get("iz")) if not manual_section and proposed_section == bs else iz(bs, "Cu", "C", 3, 1)
+                    threshold = fuse or 1.25 * ibat
+                    threshold_note = "Iz ≥ In protecție" if fuse else "Iz ≥ 1,25·Imax; siguranța finală necesită limita producătorului"
+                    o.it(T, "Baterie — Iz cablu ≥ curent de proiectare", f"{izb:.0f} ≥ {threshold:g} A", "calculat", threshold_note, izb >= threshold)
                     o.cables.append({"id": f"W{i + 1}.BAT", "from": f"-G{i + 1}", "to": f"-U{i + 1}", "type": bat.get("cable_type") or None, "cores": "1×(+), 1×(−)",
-                                     "section": bs, "material": "Cu", "length": n(bat.get("cable_length")) or None, "ib": ibat, "iz": round(izb), "du": None, "loss": None})
+                                     "section": bs, "material": "Cu", "length": n(bat.get("cable_length")) or None, "ib": ibat, "iz": round(izb), "du": battery_proposal.get("du"), "loss": None})
         o.errors += r["errors"]; o.warnings += r["warnings"]
     o.errors += [e for e in base["errors"] if e not in o.errors]
     o.warnings += [w for w in base["warnings"] if w not in o.warnings]
@@ -232,19 +369,19 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         o.it(G, "Curent branșament (putere aprobată)", g(gr["i_br"], " A", 1), "calculat", "I = P/(√3·400·0,95)" if tri_grid else "I = P/(230·0,95)")
         o.it(G, "Întreruptor BMP", g(bmp, " A") or g(gr["main_proposal"], " A (propus)"), "introdus" if bmp else "calculat", "In ≥ Ibr", (bmp >= gr["i_br"]) if bmp else None,
              "valoarea finală conform ATR / avizului OD")
-    if inv_in and tg:
+    if inv_in and tg and tri_grid is not None:
         ok = max(inv_in) < tg and (not bmp or tg <= bmp)
         o.it(G, "Selectivitate (cascadă)", f"INV {max(inv_in):g} A < TG {tg:g} A" + (f" ≤ BMP {bmp:g} A" if bmp else ""), "calculat",
              "In aval < In amonte (raport ≥ 1,6 recomandat pentru selectivitate amperometrică)", ok,
              "selectivitatea totală se confirmă din tabelele producătorului aparatelor")
-    cs, cl = n(grid.get("column_section")), n(grid.get("column_length"))
+    cs, cl = n(grid.get("column_section")) or n(gr.get("main_section_proposal")), n(grid.get("column_length"))
     if cs and gr["i_br"]:
         cm = grid.get("column_material") or "Cu"
         izc = iz(cs, cm, grid.get("column_install") or "D", 3 if tri_grid else 2, 1)
         duc = vdrop_ac(gr["i_br"], cl, cs, cm, tri_grid)
         o.it(G, "Coloană BMP→TG: Iz ≥ In BMP", f"{izc:.0f} A ≥ {bmp or gr['main_proposal']:g} A", "calculat", "HD 60364-5-52", izc >= (bmp or gr["main_proposal"] or 0))
         o.it(G, "Coloană BMP→TG: cădere de tensiune", g(duc, " %") or "0 %", "calculat", "ΔU la Ibr", duc <= 3 if cl else None)
-        o.cables.append({"id": "W0", "from": "-BMP", "to": "-TG", "type": grid.get("column_cable") or None, "cores": "3L+N+PE" if tri_grid else "L+N+PE",
+        o.cables.append({"id": "W0", "from": "-BMP", "to": "-TG", "type": grid.get("column_cable") or gr.get("main_column_cable_proposal"), "cores": "3L+N (PE separat)" if tri_grid else "L+N+PE",
                          "section": cs, "material": cm, "length": cl or None, "ib": gr["i_br"], "iz": round(izc), "du": round(duc, 2), "loss": None, "pe": pe_for(cs)})
     o.it(G, "Sistem de legare la pământ", grid.get("earthing"), "introdus" if grid.get("earthing") else "de confirmat")
     o.it(G, "Ik la punctul de racord", g(ik, " kA"), "introdus" if ik else "de confirmat", note="se preia din ATR / comunicat OD — nu se estimează")
@@ -256,7 +393,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         if "TT" in str(grid.get("earthing") or "") and idn:
             o.it(G, "Priză de pământ — condiție TT", f"{R:g} Ω ≤ {50 / idn:.0f} Ω", "calculat", "RA · IΔn ≤ 50 V (HD 60364-4-41)", R * idn <= 50)
         lim = n(grid.get("grounding_limit") or rec.get("grounding_limit"))
-        o.need("cef.grid.grounding_limit", "Valoare admisă priză de pământ (Ω) — stabilită de proiectant pentru această instalație", lim, G)
+        o.need("cef.grid.grounding_limit", "Valoare admisă priză de pământ (Ω) — stabilită de proiectant pentru această instalație", lim, G, blocking=False)
         o.it(G, "Priză de pământ — valoare măsurată vs. admisă", f"{R:g} Ω ≤ {lim:g} Ω" if lim else g(R, " Ω"), "introdus", "Buletin de măsurare vs. valoarea admisă",
              (R <= lim) if lim else None, "valoarea admisă se stabilește de proiectant (I7-2011, schema TN/TT, IPT, cerințe OD/producător) — fără prag universal")
     else:
@@ -265,17 +402,23 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         o.need("cef.grid.anti_relay", "Releu protecție interfață (antiinsularizare)", grid.get("anti_relay"), G)
     for b in cef.get("shared_batteries") or []:
         o.need("shared.i_max", f"Baterie comună {b.get('model') or ''} — curent max (A)", b.get("i_max"), "Baterii")
+        o.need("shared.dc_switch_voltage_v", f"Baterie comună {b.get('model') or ''} — tensiune separator / întreruptor DC (V, din fișă)",
+               b.get("dc_switch_voltage_v") or b.get("breaker_voltage_dc"), "Baterii")
+        o.need("shared.dc_switch_current_a", f"Baterie comună {b.get('model') or ''} — curent separator / întreruptor DC (A, din fișă)",
+               b.get("dc_switch_current_a") or b.get("breaker_a"), "Baterii")
     o.it(G, "Pierderi totale estimate în cabluri", g(tot_loss, " W", 1), "calculat", "Σ pierderi DC + AC (la Pmax / STC)")
     for it in o.items:
         if it["ok"] is False:
             msg = f"{it['group']}: {it['label']} = {it['value']} — NECONFORM ({it['formula']}{' · ' + it['note'] if it['note'] else ''})"
             (o.warnings if "recomandat" in (it["note"] or "") or "de confirmat" in (it["note"] or "") else o.errors).append(msg)
+    if o.unconfirmed:
+        o.warnings.append(f"{len(o.unconfirmed)} valori depind de ATR/OD, măsurători sau lungimile reale ale cablurilor; se confirmă înainte de semnarea și depunerea documentației.")
     ns = sum(len(i["strings"]) for i in base["inverters"])
     complex_ = len(invs) > 1 or ns > 2 or gr["anti"] or bool(cef.get("shared_batteries")) or any(
         i.get("battery_mode") == "own" or (i.get("backup") or {}).get("enabled") for i in invs)
-    return {"base": base, "items": o.items, "missing": o.missing, "errors": o.errors, "warnings": o.warnings,
+    return {"base": base, "items": o.items, "missing": o.missing, "unconfirmed": o.unconfirmed, "errors": o.errors, "warnings": o.warnings,
             "cables": o.cables, "format": "A3" if complex_ else "A4", "standards": STANDARDS,
-            "ready": not o.missing and not o.errors}
+            "ready": not o.missing and not o.unconfirmed and not o.errors}
 
 
 def apply(cef: dict) -> tuple[dict, list]:
@@ -300,9 +443,15 @@ def apply(cef: dict) -> tuple[dict, list]:
             put(dc, "switch", f"{up(UCPV, vm)} V / {up(SWITCH_A, 1.25 * im)} A DC-PV2", f"cef.inverters.{i}.dc.switch")
         bat = inv.get("battery") or {}
         if inv.get("battery_mode") == "own" and n(bat.get("i_max")):
-            put(bat, "fuse_a", up(BAT_FUSE, 1.25 * n(bat.get("i_max"))), f"cef.inverters.{i}.battery.fuse_a")
+            # A DC fuse is only proposed when the selected battery datasheet
+            # explicitly permits that rating. Never infer the manufacturer's
+            # maximum from a generic multiple of battery current.
+            proposal = C.battery_cable_proposal(bat)
+            put(bat, "fuse_a", proposal.get("fuse_a"), f"cef.inverters.{i}.battery.fuse_a")
     gd = cef.setdefault("grid", {})
     put(gd, "bmp_a", base["grid"]["main_proposal"], "cef.grid.bmp_a")
+    if has(gd.get("column_length")):
+        put(gd, "column_section", base["grid"].get("main_section_proposal"), "cef.grid.column_section")
     cef["auto_filled"] = sorted(set((cef.get("auto_filled") or []) + filled))
     return cef, filled
 
@@ -334,3 +483,4 @@ def approved_file(rec: dict, fp: str):
         if h.get("hash") == fp and h.get("file"):
             return h["file"]
     return None
+

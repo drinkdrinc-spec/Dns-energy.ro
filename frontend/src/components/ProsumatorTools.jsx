@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, API } from "@/lib/api";
+import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Sparkles, FileDown, FileText, Paperclip, BookOpen } from "lucide-react";
 import { toast } from "sonner";
@@ -8,11 +8,12 @@ const DOCS = [
   ["notificare", "Notificare Anexa 2 (OD)"], ["imputernicire", "Împuternicire"],
   ["declaratie_beneficiar", "Declarație beneficiar"], ["declaratie_executant", "Declarație executant"],
   ["declaratie_conformitate", "Declarație de conformitate"], ["pv_receptie", "PV recepție lucrări"],
-  ["pv_pif", "PV punere în funcțiune"], ["buletin_priza", "Buletin priză de pământ"],
+  ["pv_pif", "PV punere în funcțiune"], ["buletin_priza", "Buletin PRAM — priză de pământ"],
   ["buletin_reglaj", "Buletin reglaj invertor"], ["declaratie_autenticitate", "Declarație autenticitate"],
 ];
 
-const docUrl = (type, id) => `${API}/docs/${type}/${id}?auth=${localStorage.getItem("den_token")}`;
+const docUrl = (type, id) => `/docs/${type}/${id}`;
+const schemaUrl = (id) => `/sld/${id}/pdf?download=1`;
 
 export function AiImportButton({ onExtracted }) {
   const ref = useRef();
@@ -44,24 +45,35 @@ export function AiImportButton({ onExtracted }) {
 
 function CatalogFiles({ id }) {
   const [list, setList] = useState([]);
-  useEffect(() => { api.get(`/prosumator/${id}/catalog-files`).then((r) => setList(r.data)).catch(() => {}); }, [id]);
+  const [syncing, setSyncing] = useState(false);
+  const load = () => api.get(`/prosumator/${id}/catalog-files`).then((r) => setList(r.data)).catch(() => {});
+  useEffect(() => { load(); }, [id]);
   const attach = async () => {
-    const { data } = await api.post(`/prosumator/${id}/attach-catalog`);
-    toast.success(data.added ? `${data.added} documente adăugate la client` : "Documentele sunt deja la client");
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const { data } = await api.post(`/prosumator/${id}/attach-catalog`);
+      await load();
+      if (data.warnings?.length) toast.warning(data.warnings.join(" "));
+      else toast.success(data.added ? `${data.added} documente adăugate la client` : "Documentele sunt deja la client");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Fișele tehnice nu s-au putut sincroniza acum.");
+    } finally { setSyncing(false); }
   };
   return (
     <div className="mt-4" data-testid="catalog-files">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
         <h4 className="font-bold text-xs uppercase tracking-wider" style={{ color: "var(--blue)" }}>Fișe din catalog pentru echipamentele CEF ({list.length})</h4>
-        {list.length > 0 && <div className="flex gap-2">
-          <Btn variant="secondary" onClick={attach} data-testid="attach-catalog-btn"><BookOpen size={14} /> Adaugă la documentele clientului</Btn>
-          <a href={docUrl("all", id) + "&attach=1"} target="_blank" rel="noopener noreferrer" data-testid="doc-all-attach"><Btn variant="secondary"><FileDown size={14} /> Dosar + fișe tehnice</Btn></a>
-        </div>}
+        <div className="flex gap-2">
+          <Btn variant="secondary" disabled={syncing} onClick={attach} data-testid="attach-catalog-btn"><BookOpen size={14} /> {syncing ? "Se sincronizează…" : "Sincronizează fișele"}</Btn>
+          <Btn variant="secondary" onClick={() => openAuthenticatedFile(docUrl("all", id) + "?attach=1")} data-testid="doc-all-attach"><FileDown size={14} /> Dosar + fișe tehnice</Btn>
+        </div>
       </div>
-      {list.length === 0 ? <p className="text-xs" style={{ color: "var(--muted)" }}>Alege echipamentele din catalog în configurarea CEF și încarcă fișele în Catalog echipamente.</p> : (
+      <p className="mb-2 text-xs" style={{ color: "var(--muted)" }}>Aplicația preia automat documentele echipamentelor alese. Dacă o sursă nu răspunde, folosește sincronizarea pentru a reîncerca și vezi exact ce fișă lipsește.</p>
+      {list.length === 0 ? <p className="text-xs" style={{ color: "var(--muted)" }}>Nu sunt încă fișe salvate pentru echipamentele selectate. Sincronizează pentru a încerca preluarea din sursele oficiale.</p> : (
         <div className="flex flex-wrap gap-2 text-xs">
-          {list.map((f) => <a key={f.storage_path} href={`${API}/files/${f.storage_path}?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg border bg-white px-2 py-1.5" style={{ borderColor: "var(--line)" }} data-testid="catalog-file-link"><FileText size={12} /> {f.kind} — {f.model}</a>)}
+          {list.map((f) => <button type="button" key={f.storage_path} onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)}
+            className="inline-flex items-center gap-1 rounded-lg border bg-white px-2 py-1.5" style={{ borderColor: "var(--line)" }} data-testid="catalog-file-link"><FileText size={12} /> {f.kind} — {f.model}</button>)}
         </div>
       )}
     </div>
@@ -73,17 +85,20 @@ export function GeneratedDocs({ id, files }) {
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="generated-docs">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <h3 className="font-bold text-sm">Documente generate automat</h3>
-        {id && <a href={docUrl("all", id)} target="_blank" rel="noopener noreferrer" data-testid="doc-all">
-          <Btn><FileDown size={15} /> Dosar complet (PDF)</Btn>
-        </a>}
+        {id && <Btn onClick={() => downloadAuthenticatedFile(`/dossier/${id}/export`, "Dosar_prosumator.pdf")} data-testid="doc-all"><FileDown size={15} /> Generează dosarul (PDF)</Btn>}
+        {id && <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(schemaUrl(id), `schema_monofilara_${id}.pdf`)} data-testid="doc-schema"><FileDown size={15} /> Descarcă schema monofilară (PDF)</Btn>}
       </div>
+      {id && <div className="mb-3 flex flex-wrap gap-2" aria-label="Descarcă separat documentele de predare">
+        <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(docUrl("buletin_priza", id), `buletin_pram_${id}.pdf`)} data-testid="doc-pram-standalone"><FileDown size={15} /> Descarcă buletinul PRAM separat (PDF)</Btn>
+        <Btn variant="secondary" onClick={() => openAuthenticatedFile(docUrl("pv_pif", id))} data-testid="doc-pif-standalone"><FileDown size={15} /> Proces-verbal PIF separat (PDF)</Btn>
+      </div>}
       {!id ? <p className="text-xs" style={{ color: "var(--muted)" }}>Salvează dosarul pentru a genera documentele.</p> : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {DOCS.map(([k, label]) => (
-            <a key={k} href={docUrl(k, id)} target="_blank" rel="noopener noreferrer" data-testid={`doc-${k}`}
+            <button type="button" key={k} onClick={() => openAuthenticatedFile(docUrl(k, id))} data-testid={`doc-${k}`}
               className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2.5 text-sm hover:border-[var(--blue)] transition-colors" style={{ borderColor: "var(--line)" }}>
               <FileText size={15} style={{ color: "var(--blue)" }} /> {label}
-            </a>
+            </button>
           ))}
         </div>
       )}
@@ -91,10 +106,10 @@ export function GeneratedDocs({ id, files }) {
       {files?.length > 0 && (
         <div className="mt-3 text-xs flex flex-wrap gap-2">
           {files.map((f) => (
-            <a key={f.storage_path} href={`${API}/files/${f.storage_path}?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer"
+            <button type="button" key={f.storage_path} onClick={() => openAuthenticatedFile(`/files/${f.storage_path}`)}
               className="inline-flex items-center gap-1 underline" style={{ color: "var(--blue)" }} data-testid="attached-file">
               <Paperclip size={12} /> {f.original_filename}
-            </a>
+            </button>
           ))}
         </div>
       )}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FileDown } from "lucide-react";
-import { api, API } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { ContractSign, SignedLink } from "@/components/offers/ContractSign";
 
@@ -53,7 +53,7 @@ export default function Contracts() {
               <td className="text-xs">nr. {c.offer_number} v{c.offer_version}{c.offer_changed && <div style={{ color: "#8a5a00" }}>oferta modificată ulterior</div>}</td>
               <td>{money(c.net, c.currency)}</td><td className="text-xs">{c.payment_mode === "avans" ? "cu avans" : "integrală"}</td>
               <td><select className="den-input !py-1 !text-xs" value={c.status} onChange={(e) => status(c.id, e.target.value)} data-testid={`contract-status-${c.number}`}>{ST.map((s) => <option key={s}>{s}</option>)}</select></td>
-              <td className="flex items-center gap-2 py-2"><a href={`${API}/contracts/${c.id}/pdf?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" data-testid={`contract-pdf-${c.number}`}><FileDown size={16} style={{ color: "var(--blue)" }} /></a>
+              <td className="flex items-center gap-2 py-2"><button type="button" onClick={() => openAuthenticatedFile(`/contracts/${c.id}/pdf`)} aria-label="Deschide contractul PDF" data-testid={`contract-pdf-${c.number}`}><FileDown size={16} style={{ color: "var(--blue)" }} /></button>
                 <SignedLink c={c} />
                 {c.status !== "Semnat" && !c.signed && <button className="text-xs font-bold" style={{ color: "var(--blue)" }} onClick={() => setSign(c)} data-testid={`contract-sign-${c.number}`}>Semnare online</button>}</td>
             </tr>))}

@@ -30,6 +30,7 @@ export function AiPrecheck({ id, open, onClose, onFinalize, base = "dossier", ti
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles size={18} style={{ color: "var(--blue)" }} /> {title}</DialogTitle></DialogHeader>
         {!pc && !err && <p className="text-sm" style={{ color: "var(--muted)" }} data-testid="ai-precheck-loading">ChatGPT verifică dosarul... (până la un minut)</p>}
         {err && <p className="text-sm" style={{ color: "#9b2c2c" }} data-testid="ai-precheck-error">{err}</p>}
+        {pc?.engine === "rules" && <p className="rounded-lg border px-3 py-2 text-xs leading-5" style={{ borderColor: "#f2d28c", background: "#fff9e9", color: "#73520b" }} role="status" data-testid="ai-precheck-rules-notice">Serviciul AI nu este configurat momentan. Se afișează verificări locale bazate pe opis și validările tehnice existente; acestea nu înlocuiesc verificarea instalatorului și nu completează măsurători.</p>}
         {pc && !items.length && <p className="text-sm font-bold" style={{ color: "#166534" }} data-testid="ai-precheck-ok">Nu au fost găsite lipsuri sau neconcordanțe.</p>}
         <div className="space-y-2 max-h-[55vh] overflow-y-auto">{items.map((it, i) => {
           const [bg, fg] = SEV[it.severity] || SEV.important;

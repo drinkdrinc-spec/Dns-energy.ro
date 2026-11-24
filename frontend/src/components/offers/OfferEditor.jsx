@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FileDown, Copy, Eye, FileSignature, Save, ArrowLeft, Trash2 } from "lucide-react";
-import { api, API } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OfferItems } from "./OfferItems";
@@ -11,7 +11,6 @@ const ST = ["Ciornă", "Trimisă", "Acceptată", "Respinsă", "Expirată"];
 const BEN = [["name", "Nume și prenume / denumire societate"], ["cui_cnp", "CUI / CNP"], ["reg_com", "Nr. Registrul Comerțului", "PJ"], ["ci_series", "Serie CI", "PF"], ["ci_number", "Număr CI", "PF"],
   ["address", "Adresa beneficiarului"], ["install_address", "Adresa locului de instalare"], ["billing", "Date de facturare (dacă diferă)"], ["phone", "Telefon"], ["email", "E-mail"],
   ["rep_name", "Reprezentant legal", "PJ"], ["rep_role", "Funcția reprezentantului", "PJ"]];
-const tok = () => localStorage.getItem("den_token");
 const money = (v, c) => `${(v || 0).toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${c === "EUR" ? "€" : "lei"}`;
 
 export function OfferEditor({ id, onBack, onOpen }) {
@@ -30,9 +29,31 @@ export function OfferEditor({ id, onBack, onOpen }) {
       toast.error(e.response?.data?.detail || "Eroare"); return false;
     }
   };
-  const status = async (st) => { if (await save()) { try { await api.post(`/offers/${id}/status`, { status: st }); load(); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } } };
+  const status = async (st) => {
+    if (!(await save())) return;
+    try {
+      await api.post(`/offers/${id}/status`, { status: st });
+      if (st === "Acceptată" && !o.contract_id) {
+        try {
+          const { data } = await api.post(`/offers/${id}/contract`, {
+            payment: { mode: "integral", due_days: "", due_rule: "Conform condițiilor de plată agreate de părți", advance_type: "percent", advance_value: "", advance_days: "", balance_rule: "", tranches: [] },
+            execution_term: "Maxim 30 de zile calendaristice, conform ofertei acceptate",
+            works_warranty_months: "24",
+            place: b.install_address || b.address || "România",
+            date: new Date().toISOString().slice(0, 10)
+          });
+          toast.success(`Oferta a fost acceptată. Contractul nr. ${data.number} a fost generat automat.`);
+        } catch (e) {
+          toast.error(`Oferta a fost acceptată, dar contractul nu s-a putut genera automat: ${e.response?.data?.detail || "verifică pozițiile și prețurile ofertei"}`);
+        }
+      } else {
+        toast.success(st === "Acceptată" && o.contract_id ? "Oferta este acceptată și are deja contract." : "Status ofertă actualizat");
+      }
+      load();
+    } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); }
+  };
   const dup = async () => { const { data } = await api.post(`/offers/${id}/duplicate`); toast.success(`Ofertă nouă nr. ${data.number}`); onOpen(data.id); };
-  const pdf = `${API}/offers/${id}/pdf?auth=${tok()}`;
+  const pdf = `/offers/${id}/pdf`;
   const ta = (k, l, rows = 3) => <div className="den-field sm:col-span-2"><label>{l}</label><textarea className="den-input" rows={rows} value={o[k] ?? ""} onChange={(e) => set(k, e.target.value)} data-testid={`offer-${k}`} /></div>;
   const t = o.totals || {};
   return (
@@ -44,7 +65,7 @@ export function OfferEditor({ id, onBack, onOpen }) {
         <select className="den-input !py-1 !text-sm ml-auto" style={{ width: 140 }} value={o.status} onChange={(e) => status(e.target.value)} data-testid="offer-status">{ST.map((s) => <option key={s}>{s}</option>)}</select>
         <Btn onClick={() => save()} data-testid="offer-save"><Save size={14} /> Salvează</Btn>
         <Btn variant="secondary" onClick={async () => (await save()) && setPrev(true)} data-testid="offer-preview"><Eye size={14} /> Previzualizare</Btn>
-        <a href={pdf} target="_blank" rel="noopener noreferrer" data-testid="offer-pdf"><Btn variant="secondary"><FileDown size={14} /> PDF</Btn></a>
+        <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(pdf)} data-testid="offer-pdf"><FileDown size={14} /> PDF</Btn>
         <Btn variant="secondary" onClick={dup} data-testid="offer-duplicate"><Copy size={14} /> Duplică</Btn>
         {o.status === "Ciornă" && !o.contract_id && <Btn variant="secondary" onClick={async () => { if (!window.confirm(`Ștergi oferta nr. ${o.number}? Numărul rămâne rezervat.`)) return; try { await api.delete(`/offers/${id}`); toast.success("Ofertă ștearsă"); onBack(); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } }} data-testid="offer-delete"><Trash2 size={14} /> Șterge</Btn>}
         {o.status === "Acceptată" && <Btn onClick={async () => (await save()) && setCd(true)} data-testid="offer-generate-contract"><FileSignature size={14} /> Generează contract</Btn>}

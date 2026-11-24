@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Upload, FileDown } from "lucide-react";
-import { api, API } from "@/lib/api";
+import { api, openAuthenticatedFile } from "@/lib/api";
 import { PageHeader, Btn } from "@/components/Layout";
 import { useAuth } from "@/context/AuthContext";
 
@@ -41,7 +41,7 @@ export default function OperatorAttest() {
       <div className="den-panel mt-4 flex flex-wrap items-center gap-3">
         <label className="den-btn den-btn-secondary cursor-pointer inline-flex items-center gap-2 text-sm font-bold" data-testid="op-upload"><Upload size={14} /> Încarcă atestatul (PDF/JPG/PNG)
           <input type="file" accept="application/pdf,image/jpeg,image/png" className="hidden" onChange={(e) => e.target.files[0] && up(e.target.files[0])} data-testid="op-upload-input" /></label>
-        {o.has_document && <a href={`${API}/operator/document?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="op-doc-view"><FileDown size={14} /> {o.doc_name}</a>}
+        {o.has_document && <button type="button" onClick={() => openAuthenticatedFile("/operator/document")} className="text-sm font-bold inline-flex items-center gap-1" style={{ color: "var(--blue)" }} data-testid="op-doc-view"><FileDown size={14} /> {o.doc_name}</button>}
         <Btn className="ml-auto" onClick={save} data-testid="op-save">Trimite spre verificare</Btn>
       </div>
     </div>
