@@ -11,6 +11,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadF
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import PyMongoError
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 import logging
@@ -29,9 +30,15 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 # ---------------- DB ----------------
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# Boot must never die on a missing env var: log one clear message and start in
+# degraded mode so /health can answer and data routes return 503.
+_boot_log = logging.getLogger("d-energy.boot")
+mongo_url = (os.environ.get("MONGO_URL") or "").strip()
+if not mongo_url:
+    _boot_log.error("MONGO_URL is not set; starting in degraded mode (data routes will return 503)")
+    mongo_url = "mongodb://127.0.0.1:27017/?serverSelectionTimeoutMS=2000"
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000)
+db = client[(os.environ.get("DB_NAME") or "dns_energy").strip() or "dns_energy"]
 
 PRIVATE_MODE = os.environ.get("DNS_ENERGY_PRIVATE_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
 app = FastAPI(
@@ -41,6 +48,17 @@ app = FastAPI(
 )
 api_router = APIRouter(prefix="/api")
 
+@app.exception_handler(PyMongoError)
+async def mongo_unavailable(request: Request, exc: PyMongoError):
+    _boot_log.error("MongoDB unavailable for %s %s: %s", request.method, request.url.path, exc)
+    return JSONResponse(status_code=503, content={"detail": "Baza de date este temporar indisponibilă. Încearcă din nou."})
+
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/healthz", include_in_schema=False)
 async def healthz():
     return {"status": "ok"}
@@ -49,7 +67,7 @@ async def healthz():
 @app.get("/readyz", include_in_schema=False)
 async def readyz():
     try:
-        await asyncio.wait_for(client.admin.command("ping"), timeout=5.0)
+        await asyncio.wait_for(client.admin.command("ping"), timeout=2.0)
     except Exception:
         raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": {"mongodb": "unavailable"}})
     return {"status": "ready", "checks": {"mongodb": "ok"}}
@@ -68,7 +86,10 @@ logger = logging.getLogger("d-energy")
 JWT_ALGORITHM = "HS256"
 
 def get_jwt_secret() -> str:
-    return os.environ["JWT_SECRET"]
+    secret = (os.environ.get("JWT_SECRET") or "").strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail="JWT_SECRET nu este configurat pe server.")
+    return secret
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -2001,7 +2022,8 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
 
 @api_router.get("/docs/types")
 async def doc_types(user: dict = Depends(get_current_user)):
-    return [{"key": k, "label": v[0]} for k, v in docgen.DOCS.items()]
+    keys = list(docgen.ORDER) + [k for k in docgen.SEPARATE if k not in docgen.ORDER]
+    return [{"key": k, "label": docgen.DOCS[k][0]} for k in keys if k in docgen.DOCS]
 
 @api_router.get("/docs/anexa1/{item_id}")
 async def generate_deer_annex1(item_id: str, authorization: str = Header(None), auth: str = Query(None)):
@@ -2153,8 +2175,9 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
                             headers={"Content-Disposition": disp("attachment", f"Anexa_1_spor_putere_{(rec.get('client_name') or 'prosumator').replace(' ', '_')}_COMPLETARE.pdf")})
 
     if doc_type == "all":
-        # Dosarul complet include schema CEF o singură dată.
-        keys = [k for k in docgen.DOCS if k != "schema"]
+        # Dosarul complet urmează ordinea oficială din dosarul de referință.
+        # pv_teste / declaratie_beneficiar / schema rămân documente separate.
+        keys = list(docgen.ORDER)
         if rec.get("pram_source") == "none":
             keys = [k for k in keys if k != "buletin_priza"]
         if is_power_increase:
@@ -4952,8 +4975,7 @@ async def test_dossier_delete(user: dict = Depends(get_current_user)):
     return {"deleted": n}
 
 # ---------------- Startup ----------------
-@app.on_event("startup")
-async def startup():
+async def _startup_impl():
     await db.users.create_index("email", unique=True)
     # Failed-login records are queried and upserted on every authentication attempt.
     # Uniqueness avoids duplicate rows during concurrent failures; TTL bounds storage.
@@ -5018,9 +5040,23 @@ async def startup():
     await db.billing_config.update_one({"id": "main"}, {"$setOnInsert": {"id": "main", "vat_rate": 21.0, "expired_policy": "read_only", "currency": "RON"}}, upsert=True)
     docgen.IMG_LOADER = lambda p: get_object(p)[0]
     await forms_routes.seed()
-    # Fail fast: do not report a healthy API when private file storage is unavailable.
-    init_storage()
-    logger.info("MongoDB GridFS object storage initialized")
+    # Storage is optional for liveness: log a clear error and keep serving.
+    if init_storage():
+        logger.info("MongoDB GridFS object storage initialized")
+    else:
+        logger.error("MongoDB GridFS object storage unavailable; file routes will return 503")
+
+
+@app.on_event("startup")
+async def startup():
+    # Never let a slow/unreachable MongoDB keep uvicorn from binding: bound the
+    # whole initialization and degrade to a serving-but-not-ready API.
+    try:
+        await asyncio.wait_for(_startup_impl(), timeout=20)
+    except asyncio.TimeoutError:
+        logger.error("Startup database initialization timed out after 20s; API serves in degraded mode (data routes return 503)")
+    except Exception as exc:
+        logger.exception("Startup database initialization failed; API serves in degraded mode: %s", exc)
 
 @app.on_event("shutdown")
 async def shutdown():

@@ -42,6 +42,21 @@ S = {
     "sig": ParagraphStyle("sig", fontName="LS", fontSize=9.2, leading=12.5, alignment=TA_CENTER),
 }
 M = "…………………"
+GDPR_FILL = "……………………………………………………………………………………………………"
+GDPR_TITLE = ("NOTĂ DE INFORMARE CU PRIVIRE LA PRELUCRAREA DATELOR DUMNEAVOASTRĂ CU CARACTER PERSONAL "
+              "DE CĂTRE DISTRIBUȚIA ENERGIE ELECTRICĂ ROMÂNIA S.A.")
+GDPR_SECTIONS = [
+    "Introducere",
+    "Categoriile de date prelucrate",
+    "Scopurile și temeiurile legale ale prelucrării",
+    "Sursa datelor",
+    "Divulgarea datelor",
+    "Perioada de păstrare",
+    "Transferul datelor",
+    "Drepturile persoanei vizate",
+    "Consecințele nefurnizării datelor",
+    "DATELE NOASTRE DE CONTACT",
+]
 BREAKERS = [6, 10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160]
 SECTION = {6: 1.5, 10: 1.5, 16: 2.5, 20: 4, 25: 4, 32: 6, 40: 10, 50: 10, 63: 16, 80: 25, 100: 35, 125: 50, 160: 70}
 
@@ -761,13 +776,136 @@ def doc_decl_beneficiar(ctx):
                     sign(["Data", f"<b>{ctx.date}</b>"], ["Declarant,", f"<b>{ctx.name}</b>", "semnătura"])]
 
 
+def doc_nota_gdpr(ctx):
+    """DEER standard GDPR notice signed by the beneficiary.
+
+    The official wording is not stored in code. When settings key ``gdpr_text``
+    is present its body is rendered paragraph by paragraph (blank-line split);
+    otherwise every official section heading is followed by a visible
+    placeholder line so the document is obviously incomplete.
+    """
+    out = hdr() + [B("title", GDPR_TITLE)]
+    body = ctx.s.get("gdpr_text")
+    if body and str(body).strip():
+        for para in re.split(r"\n\s*\n", str(body).strip()):
+            para = para.strip()
+            if para:
+                out.append(B("p", escape(para).replace("\n", "<br/>")))
+    else:
+        for heading in GDPR_SECTIONS:
+            out.append(B("b", heading))
+            if heading == "DATELE NOASTRE DE CONTACT":
+                out.append(B("p", f"Distribuția Energie Electrică România S.A. — sediul central: {M}<br/>"
+                                  f"Telefon: {M} · E-mail: {M}<br/>"
+                                  f"Responsabil cu protecția datelor (DPO): {M} · E-mail DPO: {M}"))
+            else:
+                out.append(B("p", GDPR_FILL))
+    out.append(sign(["Data", f"<b>{ctx.date}</b>"], ben_sig(ctx)))
+    return out
+
+
+EQUIPMENT_SLOTS = [
+    ("inverter_datasheet", "Fișă tehnică invertor"),
+    ("inverter_cert", "Certificat de conformitate / EMC invertor"),
+    ("module_datasheet", "Fișă tehnică modul fotovoltaic"),
+    ("module_cert", "Certificat de conformitate modul fotovoltaic"),
+    ("battery_datasheet", "Fișă tehnică baterie"),
+    ("battery_cert", "Certificat de conformitate baterie"),
+]
+
+
+def equipment_slots(ctx):
+    """Ordered equipment attachment slots for the technical documentation divider.
+
+    Returns ``[(slot, label, path_or_None), ...]`` in the official sub-order
+    (inverter datasheet, inverter certificate, module datasheet, module
+    certificate, battery datasheet, battery certificate). ``path`` is the
+    storage path from ``ctx.r["equipment_docs"][slot]["storage_path"]``.
+
+    ``render()`` cannot resolve storage objects itself, so the caller
+    (``server.py`` / the prosumator PDF route) must append each attached PDF
+    after the divider page, in exactly this order.
+    """
+    docs = ctx.r.get("equipment_docs") or {}
+    out = []
+    for slot, label in EQUIPMENT_SLOTS:
+        f = docs.get(slot) or {}
+        path = f.get("storage_path") if isinstance(f, dict) else None
+        out.append((slot, label, path or None))
+    return out
+
+
+def doc_documentatie_echipamente(ctx):
+    """Divider page for manufacturer datasheets / conformity certificates.
+
+    The attached PDFs themselves are merged by the route after this page; this
+    builder only produces the cover/divider with the equipment inventory.
+    """
+    slots = {slot: path for slot, _label, path in equipment_slots(ctx)}
+    rows = [["Nr.", "Echipament", "Model / detalii", "Document atașat (fișă tehnică / certificat)"]]
+    n = 0
+    for inv in inverters(ctx):
+        n += 1
+        attached = bool(slots.get("inverter_datasheet") or slots.get("inverter_cert"))
+        rows.append([str(n), "Invertor", escape(inv.get("brand_model") or M), "DA" if attached else "—"])
+    for p in panel_rows(ctx):
+        n += 1
+        attached = bool(slots.get("module_datasheet") or slots.get("module_cert"))
+        rows.append([str(n), "Panouri fotovoltaice", escape(p.get("model") or M), "DA" if attached else "—"])
+    for b in storage(ctx):
+        n += 1
+        attached = bool(slots.get("battery_datasheet") or slots.get("battery_cert"))
+        rows.append([str(n), "Sistem de stocare", escape(f"{b.get('model')} · {b.get('kwh') or ''} kWh"), "DA" if attached else "—"])
+    if n == 0:
+        rows.append(["—", "Nu sunt configurate echipamente în dosar", M, "—"])
+    return hdr() + [
+        B("title", "DOCUMENTAȚIE TEHNICĂ ȘI CERTIFICATE DE CONFORMITATE ALE ECHIPAMENTELOR"),
+        B("p", f"<b>Beneficiar:</b> {ctx.name}<br/><b>Loc de consum:</b> {ctx.loc}<br/><b>POD:</b> {ctx.v('pod')}"),
+        B("p", "Prezenta secțiune cuprinde fișele tehnice și certificatele de conformitate ale echipamentelor, "
+               "așa cum au fost puse la dispoziție de furnizorul de echipamente. Documentele atașate sunt inserate "
+               "în continuare, în ordinea din tabel."),
+        B("table", rows, [8, 34, 62, 70], True),
+        B("small", "Coloana „Document atașat” indică dacă fișa tehnică / certificatul corespunzător este încărcat în dosar. "
+                   "Documentele marcate cu „—” trebuie solicitate furnizorului de echipamente."),
+    ]
+
+
 def doc_schema(ctx):
     return [B("schema")]
+
+
+# Official dossier order, read page by page from the company's signed reference
+# dossier. Everything that iterates the dossier must use ORDER, never the
+# insertion order of DOCS.
+ORDER = [
+    "notificare",
+    "date_stocare",
+    "nota_gdpr",
+    "imputernicire",
+    "declaratie_afm",
+    "declaratie_executant",
+    "declaratie_conformitate",
+    "pv_receptie",
+    "serii",
+    "pv_pif",
+    "buletin_priza",
+    "buletin_reglaj",
+    "declaratie_autenticitate",
+    "schema_cef",
+    "documentatie_echipamente",
+]
+
+# Documents usable individually but NOT part of the "all" bundle. The test
+# protocol is delivered as its own PDF; the beneficiary declaration is an
+# optional extra. ``schema`` is the legacy alias of ``schema_cef`` and stays
+# individually available.
+SEPARATE = ["pv_teste", "declaratie_beneficiar", "schema"]
 
 
 DOCS = {
     "notificare": ("Anexa 2 — Notificare (Ord. ANRE 19/2022)", doc_notificare),
     "date_stocare": ("Date despre instalația de stocare", doc_storage),
+    "nota_gdpr": ("Notă de informare GDPR (DEER)", doc_nota_gdpr),
     "schema_cef": ("Schemă monofilară", doc_schema),
     "declaratie_afm": ("Declarație accesare fonduri (AFM)", doc_afm),
     "buletin_reglaj": ("Buletin reglaj", doc_buletin_reglaj),
@@ -781,6 +919,7 @@ DOCS = {
     "imputernicire": ("Împuternicire", doc_imputernicire),
     "declaratie_autenticitate": ("Declarație autenticitate date și conformitate cu originalul (opis)", doc_autenticitate),
     "declaratie_beneficiar": ("Declarație beneficiar (suplimentar)", doc_decl_beneficiar),
+    "documentatie_echipamente": ("Documentație tehnică și certificate de conformitate ale echipamentelor", doc_documentatie_echipamente),
     "schema": ("Schemă monofilară", doc_schema),
 }
 
