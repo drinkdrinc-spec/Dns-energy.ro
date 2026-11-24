@@ -976,9 +976,10 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                           : exactDiuMatches.length === 0 && clientDiuMatches.length === 1
                             ? clientDiuMatches[0]
                             : null;
+                        const canCreateDiu = !exactDiuMatches.length && !clientDiuMatches.length && Boolean(form.client_id);
                         const associatedProject = linkedProjects.find((item) => item.dossier_id === editId);
                         return <>
-                          {associatedDiu && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/diu?edit=${encodeURIComponent(associatedDiu.id)}`} data-testid="quick-prosumer-diu">DIU din dosar</a>}
+                          {(associatedDiu || canCreateDiu) && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={associatedDiu ? `/diu?edit=${encodeURIComponent(associatedDiu.id)}` : `/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">DIU din dosar</a>}
                           {associatedProject && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/simulare?edit=${encodeURIComponent(associatedProject.id)}`} data-testid="quick-prosumer-project">Proiectul asociat</a>}
                         </>;
                       })()}
