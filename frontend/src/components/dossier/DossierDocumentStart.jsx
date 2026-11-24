@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Plus, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-const EMPTY = { client_name: "", kind: "", bank: "", iban: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", postal_code: "", pod: "", nlc: "", operator: "", supplier: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", existing_supply: "", supply: "Trifazat", unconnected_property: false, afm: "Nu", request_type: "Racordare prosumator — fără spor de putere" };
+const EMPTY = { client_name: "", kind: "", bank: "", iban: "", cnp: "", hq_address: "", address_same_as_ci: false, county: "", locality: "", address: "", postal_code: "", pod: "", nlc: "", operator: "", supplier: "", p_abs_kw: "", p_abs_kva: "", cf_nr: "", cadastral_nr: "", phone: "", email: "", id_series: "", id_number: "", existing_supply: "", supply: "Trifazat", unconnected_property: false, afm: "Nu", request_type: "Racordare prosumator — fără spor de putere" };
 const emptyValues = () => ({ ...EMPTY, doc_date: new Date().toISOString().slice(0, 10) });
 const COUNTY_OPERATOR = {
   bihor: "Distribuție Energie Electrică Romania Sucursala Transilvania Nord",
@@ -54,7 +54,7 @@ const COUNTY_OPERATOR = {
 const COUNTY_OPTIONS = ["Alba", "Arad", "Argeș", "Bacău", "Bihor", "Bistrița-Năsăud", "Botoșani", "Brăila", "Brașov", "București", "Buzău", "Călărași", "Caraș-Severin", "Cluj", "Constanța", "Covasna", "Dâmbovița", "Dolj", "Galați", "Giurgiu", "Gorj", "Harghita", "Hunedoara", "Ialomița", "Iași", "Ilfov", "Maramureș", "Mehedinți", "Mureș", "Neamț", "Olt", "Prahova", "Sălaj", "Satu Mare", "Sibiu", "Suceava", "Teleorman", "Timiș", "Tulcea", "Vâlcea", "Vaslui", "Vrancea"];
 const DISTRIBUTOR_OPTIONS = [...new Set([...Object.values(COUNTY_OPERATOR), "Alt operator"])];
 
-const LOCATION_FIELDS = ["address", "county", "locality", "postal_code", "pod", "nlc", "operator", "supplier", "cf_nr", "cadastral_nr"];
+const LOCATION_FIELDS = ["address", "county", "locality", "postal_code", "pod", "nlc", "operator", "supplier", "p_abs_kw", "p_abs_kva", "cf_nr", "cadastral_nr"];
 function clientConsumptionSites(client) {
   const saved = Array.isArray(client?.consumption_sites)
     ? client.consumption_sites.filter((site) => site && typeof site === "object").map((site, index) => ({ ...site, id: String(site.id || ("saved-" + index)) }))
@@ -202,7 +202,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
             county: x.county, locality: x.locality, phone: x.phone, email: x.email, id_series: x.id_series, id_number: x.id_number });
         }
         if (kind === "factura") mergedValues = putNonempty(mergedValues, { client_name: mergedValues.client_name || x.client_name, cnp: mergedValues.cnp || x.cnp,
-          address: mergedValues.address_same_as_ci ? mergedValues.hq_address : x.consumption_address || x.address, postal_code: x.postal_code, pod: x.pod, nlc: x.nlc, operator: x.operator, supplier: x.supplier,
+          address: mergedValues.address_same_as_ci ? mergedValues.hq_address : x.consumption_address || x.address, postal_code: x.postal_code, pod: x.pod, nlc: x.nlc, operator: x.operator, supplier: x.supplier, p_abs_kw: x.bransament_kw, p_abs_kva: x.p_abs_kva,
           county: mergedValues.county || x.county, locality: mergedValues.locality || x.locality, phone: mergedValues.phone || x.phone, email: mergedValues.email || x.email });
         if (kind === "factura" && !operatorManuallySet) {
           const suggestion = distributorSuggestion(mergedValues.pod, mergedValues.county);
@@ -436,7 +436,7 @@ export function DossierDocumentStart({ onCreated, autoOpen = false }) {
           <details className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--line)" }}>
             <summary className="cursor-pointer text-xs font-semibold">Date suplimentare: cod loc, furnizor, putere aprobată, CF, cadastral — opțional acum</summary>
             <div className="grid grid-cols-2 gap-3 mt-3">
-              {field("nlc", "Cod loc de consum / NLC")}{field("supplier", "Furnizor energie")}{field("p_abs_kw", "Putere aprobată (kW)")}{field("cf_nr", "Carte funciară")}{field("cadastral_nr", "Număr cadastral")}
+              {field("nlc", "Cod loc de consum / NLC")}{field("supplier", "Furnizor energie")}{field("p_abs_kw", "Putere aprobată (kW)")}{field("p_abs_kva", "Putere aprobată (kVA)")}{field("cf_nr", "Carte funciară")}{field("cadastral_nr", "Număr cadastral")}
             </div>
             <p className="mt-2 text-[11px]" style={{ color: "var(--muted)" }}>AI le completează numai dacă sunt vizibile în documentele încărcate; verifică valorile înainte de folosire.</p>
           </details>
