@@ -970,17 +970,17 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                       <button type="button" role="menuitem" className="block w-full px-4 py-3 text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/docs/pv_teste/${encodeURIComponent(editId)}`, `pv_teste_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-tests">PV probe</button>
                       {(() => {
                         const exactDiuMatches = linkedDiu.filter((item) => item.pros_id === editId);
-                        const clientDiuMatches = form.client_id ? linkedDiu.filter((item) => item.client_id === form.client_id) : [];
-                        const associatedDiu = exactDiuMatches.length === 1
-                          ? exactDiuMatches[0]
-                          : exactDiuMatches.length === 0 && clientDiuMatches.length === 1
-                            ? clientDiuMatches[0]
-                            : null;
+                        const clientDiuMatches = form.client_id ? linkedDiu.filter((item) => item.client_id
+                          ? item.client_id === form.client_id
+                          : Boolean(form.client_name && normalizeClientName(item.client_name) === normalizeClientName(form.client_name))) : [];
+                        const availableDius = exactDiuMatches.length ? exactDiuMatches : clientDiuMatches;
                         const canCreateDiu = !exactDiuMatches.length && !clientDiuMatches.length && Boolean(form.client_id);
-                        const associatedProject = linkedProjects.find((item) => item.dossier_id === editId);
+                        const associatedProjects = linkedProjects.filter((item) => item.dossier_id === editId);
                         return <>
-                          {(associatedDiu || canCreateDiu) && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={associatedDiu ? `/diu?edit=${encodeURIComponent(associatedDiu.id)}` : `/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">DIU din dosar</a>}
-                          <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={associatedProject ? `/simulare?edit=${encodeURIComponent(associatedProject.id)}` : `/simulare?new=project&dossierId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-project">{associatedProject ? "Proiectul asociat" : "Creează proiect asociat"}</a>
+                          {availableDius.map((diu) => <a key={diu.id} role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/diu?edit=${encodeURIComponent(diu.id)}`} data-testid={`quick-prosumer-diu-${diu.id}`}>{availableDius.length === 1 ? "DIU din dosar" : `DIU · ${diu.number || diu.client_name || diu.address || "Deschide dosarul"}`}</a>)}
+                          {canCreateDiu && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">Creează DIU asociat</a>}
+                          {associatedProjects.map((project) => <a key={project.id} role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/simulare?edit=${encodeURIComponent(project.id)}`} data-testid={`quick-prosumer-project-${project.id}`}>{associatedProjects.length === 1 ? "Proiectul asociat" : `Proiect · ${project.name || project.number || "Deschide proiectul"}`}</a>)}
+                          {!associatedProjects.length && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/simulare?new=project&dossierId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-project">Creează proiect asociat</a>}
                         </>;
                       })()}
                     </div>
