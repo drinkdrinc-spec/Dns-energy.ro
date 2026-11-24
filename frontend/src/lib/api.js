@@ -108,6 +108,19 @@ export function downloadAuthenticatedFile(path, fallbackName = "document") {
     let filename = fallbackName;
     try { filename = encoded ? decodeURIComponent(encoded) : (plain || fallbackName); } catch { filename = plain || fallbackName; }
     const blob = response.data.type ? response.data : new Blob([response.data], { type: response.headers["content-type"] || "application/octet-stream" });
+    if (/\.pdf$/i.test(filename)) {
+      if (!blob.size) throw new Error("Fișierul PDF primit este gol. Reîncarcă dosarul și încearcă din nou.");
+      const signature = await blob.slice(0, 1024).text();
+      if (!signature.includes("%PDF-")) throw new Error("Serverul nu a returnat un PDF valid. Reîncarcă dosarul și încearcă din nou.");
+      // iOS browsers often ignore `download` on a Blob URL. Open the verified
+      // PDF in the current tab so their native viewer exposes Save/Share.
+      const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
+        || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      if (isAppleMobile) {
+        openBlobInCurrentTab(blob);
+        return;
+      }
+    }
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
@@ -118,7 +131,7 @@ export function downloadAuthenticatedFile(path, fallbackName = "document") {
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
   } catch (error) {
-    window.alert(await apiErrorMessage(error));
+    window.alert(error.response ? await apiErrorMessage(error) : (error.message || "Nu am putut genera documentul. Verifică datele și încearcă din nou."));
   }
   });
 }
