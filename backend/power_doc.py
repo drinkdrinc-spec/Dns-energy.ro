@@ -16,116 +16,16 @@ DOCS = [("a", "copia actului de identitate / certificatului de înregistrare la 
         ("g", "autorizația de construire, pentru organizare de șantier (doar loc nou)"),
         ("h", "procesul-verbal de recepție la terminarea lucrărilor instalației de producere"),
         ("i", "buletinul de încercare a prizei de pământ"),
-        ("j", "fișele tehnice și declarațiile de conformitate pentru invertoare, panouri, baterii și alte echipamente selectate"),
+        ("j", "certificatele de conformitate și fișele tehnice ale invertoarelor și unităților generatoare"),
         ("k", "schema electrică monofilară a instalației de producere și modul de racordare, cu protecțiile și reglajele")]
 EXISTING_ONLY, NEW_ONLY = set("hijk"), set("cdefg")
-
-
-def _battery_items(pros: dict, rec: dict, flat: dict) -> list:
-    cef = (pros or {}).get("cef") or {}
-    items = []
-    for inv in cef.get("inverters") or []:
-        if inv.get("battery_mode") == "own" and isinstance(inv.get("battery"), dict):
-            battery = dict(inv["battery"])
-            inverter_count = max(1, int(D.num(inv.get("count") or inv.get("quantity")) or 1))
-            module_count = max(1, int(D.num(battery.get("modules")) or 1))
-            battery["modules"] = module_count * inverter_count
-            items.append(battery)
-    items.extend(b for b in cef.get("shared_batteries") or [] if isinstance(b, dict))
-    if not items and (flat.get("battery") or rec.get("battery") or rec.get("storage")):
-        model = flat.get("battery") or rec.get("battery") or rec.get("storage")
-        items.append({
-            "model": model if isinstance(model, str) else model.get("model"),
-            "modules": (model.get("modules") if isinstance(model, dict) else None) or rec.get("battery_count"),
-            "kwh": (model.get("kwh") if isinstance(model, dict) else None) or flat.get("battery_kwh") or rec.get("battery_kwh"),
-            "ah": (model.get("ah") if isinstance(model, dict) else None) or rec.get("battery_ah"),
-            "voltage": (model.get("voltage") if isinstance(model, dict) else None) or rec.get("battery_v"),
-            "coupling": (model.get("coupling") if isinstance(model, dict) else None) or rec.get("battery_coupling"),
-        })
-    return items
-
-
-def _battery_table(items: list) -> list:
-    rows = [["Model baterie", "Buc.", "Capacitate totală", "Ah / unitate", "Tensiune", "Imax / unitate", "Cuplare"]]
-    for b in items:
-        modules, kwh = b.get("modules"), b.get("kwh")
-        total = M
-        try:
-            if modules not in (None, "") and kwh not in (None, ""):
-                total = f"{D.fmt(float(str(modules).replace(',', '.')) * float(str(kwh).replace(',', '.')), 2)} kWh ({modules} × {kwh} kWh)"
-            elif kwh not in (None, ""):
-                total = f"{kwh} kWh / unitate"
-        except (TypeError, ValueError):
-            total = f"{kwh} kWh / unitate" if kwh not in (None, "") else M
-        rows.append([escape(str(b.get("model") or M)), escape(str(modules or M)), escape(total),
-                     escape(str(b.get("ah") or M)), escape(str(b.get("voltage") or M)),
-                     escape(str(b.get("i_max") or M)), escape(str(b.get("coupling") or M)).upper()])
-    return rows
 
 
 def box(v):
     return "<b>[X]</b>" if v else "[  ]"
 
 
-def _generator_tables(invs: list) -> tuple[list, list, list]:
-    """Build the ANRE generator tables from each inverter's actual string models."""
-    rows = [["Nr. crt.", "Nr. panouri", "Tip", "Pi panou (c.c.) (kW)", "Pi total panouri (c.c.) (kW)", "Pmax debitat (c.c.) (kW)", "Pi total panouri pe 1 invertor (kW)", "Obs."]]
-    irows = [["Nr. crt.", "Nr. invertoare", "Tipul invertoarelor", "Un invertor (c.a.) (V)", "Pi invertor (c.a.) (kW)", "Pmax evacuată în reţea (kW)", "Obs."]]
-    export_limit_notes = []
-    for i, inv in enumerate(invs):
-        unit_count = max(1, int(D.num(inv.get("count") or inv.get("quantity")) or 1))
-        battery_only = bool(inv.get("battery_only") or inv.get("no_panels"))
-        groups = {}
-        if not battery_only:
-            for string in inv.get("strings") or []:
-                panels = max(0, int(D.num(string.get("panels"))))
-                if not panels:
-                    continue
-                model = str(string.get("panel_model") or inv.get("panel_model") or M)
-                panel_w = D.num(string.get("panel_w") if string.get("panel_w") not in (None, "") else inv.get("panel_w"))
-                key = (model, round(panel_w, 3))
-                groups[key] = groups.get(key, 0) + panels
-            # Older records may have a panel count but no per-string breakdown.
-            if not groups and D.num(inv.get("panel_count")) > 0:
-                groups[(str(inv.get("panel_model") or M), round(D.num(inv.get("panel_w")), 3))] = int(D.num(inv.get("panel_count")))
-        if groups:
-            for (model, panel_w), panels_per_inverter in sorted(groups.items(), key=lambda item: (item[0][0].casefold(), item[0][1])):
-                total_panels = panels_per_inverter * unit_count
-                panel_kw = panel_w / 1000 if panel_w > 0 else 0
-                total_kwp = D.fmt(total_panels * panel_kw, 3) if panel_kw else ""
-                per_inverter_kwp = D.fmt(panels_per_inverter * panel_kw, 3) if panel_kw else ""
-                rows.append([str(i + 1), str(total_panels), escape(model), D.fmt(panel_kw, 3) if panel_kw else "",
-                             total_kwp, total_kwp, per_inverter_kwp, ""])
-        else:
-            rows.append([str(i + 1), "0" if battery_only else "", "Fără panouri (doar baterie)" if battery_only else "Model panou nedeclarat",
-                         "", "", "", "", ""])
-        rated_kw = D.num(inv.get("p_nom_kw"))
-        max_kw = D.num(inv.get("p_max_kw")) or rated_kw
-        configured_limit = D.num(inv.get("p_limit_kw"))
-        if battery_only:
-            export_per_inverter = 0
-            export_total = "0"
-            limit_note = f"{inv.get('brand_model') or 'Invertor'}: doar baterie — putere evacuată 0 kW"
-            inverter_note = "Doar baterie; fără panouri; injecție 0 kW"
-        else:
-            export_per_inverter = min(configured_limit, max_kw) if configured_limit and configured_limit > 0 and max_kw > 0 else (
-                configured_limit if configured_limit and configured_limit > 0 else max_kw)
-            export_total = D.fmt(export_per_inverter * unit_count, 3) if export_per_inverter and export_per_inverter > 0 else ""
-            limit_note = (f"{inv.get('brand_model') or 'Invertor'}: {configured_limit:g} kW/invertor × {unit_count} buc. = {configured_limit * unit_count:g} kW total"
-                          if configured_limit and configured_limit > 0 else
-                          f"{inv.get('brand_model') or 'Invertor'}: limită de injecție nedeclarată")
-            inverter_note = "Limită setată" if configured_limit and configured_limit > 0 else "Nedeclarată"
-        irows.append([str(i + 1), str(unit_count), escape(inv.get("brand_model") or ""),
-                      "400" if "tri" in str(inv.get("phases") or "").lower() else "230" if inv.get("phases") else "",
-                      escape(str(rated_kw if rated_kw > 0 else "")), export_total, inverter_note])
-        export_limit_notes.append(limit_note)
-    if not invs:
-        rows.append([""] * 8)
-        irows.append([""] * 7)
-    return rows, irows, export_limit_notes
-
-
-def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, op: str = "") -> bytes:
+def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, op: str = "deer") -> bytes:
     from atr_doc import OP_NAMES
     st = D.S
     c = client or {}
@@ -138,9 +38,9 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, o
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title="Anexa 1 — Cerere de racordare")
     T = lambda rows, w: D.pdf_table(rows, w, True, 7.6, 178)
-    story = [P(f"Anexa 1 — procedură de racordare a prosumatorilor (Ordinul ANRE nr. 19/2022, cu modificările ulterioare) — model automat pentru <b>{escape(OP_NAMES.get(op, 'operator de distribuție neselectat'))}</b>" + (" (model Delgaz Grid — cerere de racordare prosumator)" if op == "delgaz" else ""), "small"), P("Nr. înregistrare ____________ / Data ____________", "small"),
+    story = [P(f"Anexa 1 la Procedura aprobată prin Ordinul ANRE nr. 69/2020 — formular pentru <b>{escape(OP_NAMES.get(op, OP_NAMES['deer']))}</b>" + (" (model Delgaz Grid — cerere de racordare prosumator)" if op == "delgaz" else ""), "small"), P("Nr. înregistrare ____________ / Data ____________", "small"),
              P("CERERE DE RACORDARE", "h"),
-             P("pentru un loc de consum şi de producere care deţine instalaţii de producere a energiei electrice din surse regenerabile cu puteri electrice instalate de cel mult 400 kW pe loc de consum", "sub"),
+             P("pentru un loc de consum şi de producere care deţine instalaţii de producere a energiei electrice din surse regenerabile cu puteri electrice instalate de cel mult 27 kW pe loc de consum", "sub"),
              P(f"{box(new)} Loc de consum şi de producere nou<br/>{box(not new)} Loc de consum existent cu modificarea unor elemente de natură tehnică cu depăşirea puterii absorbite aprobate anterior"),
              P(f"Utilizatorul <b>{g(c, 'name')}</b>, cu domiciliul/sediul în judeţul {g(c, 'county')}, localitatea {g(c, 'locality')}, adresa {g(c, 'address')}, "
                f"codul poştal {g(c, 'postal_code')}, telefon {g(c, 'phone')}, cod fiscal/CNP {g(c, 'idcode')}, nr. registrul comerţului {g(c, 'regcom') if c.get('regcom') else '—'}, "
@@ -167,20 +67,27 @@ def render_anexa1(rec: dict, client: dict, s: dict, pros: dict, attached: set, o
               P(f"2.1. Puterea aprobată — Puterea maximă simultan evacuată în reţea: <b>{g(p, 'power')}</b> kW / <b>{g(p, 'apparent_kva')}</b> kVA"),
               P("2.2. Generatoare fotovoltaice:")]
     invs = (pros.get("cef") or {}).get("inverters") or [] if pros else []
-    rows, irows, export_limit_notes = _generator_tables(invs)
-    story += [T(rows, [7, 9, 22, 11, 13, 12, 14, 8]), Spacer(1, 3), P("Invertoare:"), T(irows, [7, 10, 30, 12, 12, 16, 9]),
-              P("Limită de injecție declarată: " + escape("; ".join(export_limit_notes) or "nedeclarată în configurarea invertorului."), "small"), Spacer(1, 3),
+    rows = [["Nr. crt.", "Nr. panouri", "Tip", "Pi panou (c.c.) (kW)", "Pi total panouri (c.c.) (kW)", "Pmax debitat (c.c.) (kW)", "Pi total panouri pe 1 invertor (kW)", "Obs."]]
+    irows = [["Nr. crt.", "Nr. invertoare", "Tipul invertoarelor", "Un invertor (c.a.) (V)", "Pi invertor (c.a.) (kW)", "Pmax evacuată în reţea (kW)", "Obs."]]
+    for i, inv in enumerate(invs):
+        n = sum(int(D.num(x.get("panels"))) for x in inv.get("strings") or [])
+        w = D.num(inv.get("panel_w")) / 1000
+        tot = D.fmt(n * w, 3) if n and w else ""
+        rows.append([str(i + 1), str(n or ""), escape(inv.get("panel_model") or ""), D.fmt(w, 3) if w else "", tot, tot, tot, ""])
+        irows.append([str(i + 1), "1", escape(inv.get("brand_model") or ""), "400" if "tri" in str(inv.get("phases") or "").lower() else "230" if inv.get("phases") else "",
+                      escape(str(inv.get("p_nom_kw") or "")), escape(str(inv.get("p_max_kw") or inv.get("p_nom_kw") or "")), ""])
+    if not invs:
+        rows.append([""] * 8); irows.append([""] * 7)
+    story += [T(rows, [7, 9, 22, 11, 13, 12, 14, 8]), Spacer(1, 3), P("Invertoare:"), T(irows, [7, 10, 30, 12, 12, 16, 9]), Spacer(1, 3),
               P(f"2.3. Serviciile interne ale instalaţiei de producere: Pi servicii interne {g(p, 'internal_pi')} kW; Puterea maximă simultan absorbită servicii interne {g(p, 'internal_pmax')} kW"),
               P("Anexez prezentei următoarele documente:", "b")]
     for k, t in DOCS:
         na = (k in NEW_ONLY and not new) or (k in EXISTING_ONLY and new) or (k == "b" and "jurid" not in str(c.get("kind") or "").lower())
         story.append(P(f"{box(k in attached)} {k}) {t}{' — nu este cazul' if na and k not in attached else ''}", "li"))
-    batteries = _battery_items(pros or {}, rec, p)
-    bat = bool(batteries)
+    bat = p.get("battery") or (pros or {}).get("battery")
     story += [P("În sprijinul solicitării mele transmit următoarele informaţii privind:"),
-              P(f"a) deţinerea de sisteme de stocare a energiei electrice: {box(not bat)} NU {box(bat)} DA."
-                + (f" Detalii scheme de alimentare: {', '.join(str(b.get('coupling') or 'nespecificată').upper() for b in batteries)}." if bat else "")),
-              *([T(_battery_table(batteries), [40, 10, 38, 18, 18, 22, 32])] if bat else []),
+              P(f"a) deţinerea de sisteme de stocare a energiei electrice: {box(not bat)} NU {box(bat)} DA. Detalii schemă alimentare: {escape(str(bat)) if bat else '—'}; "
+                f"capacitate baterii de acumulatoare: {g(p, 'battery_ah') if bat else '—'} Ah"),
               P(f"b) echipamente de măsurare montate în instalaţiile de utilizare, altele decât ale operatorului: {box(not p.get('smart_meter_type'))} NU {box(p.get('smart_meter_type'))} DA"),
               T([["Nr. crt.", "Serie contor", "Tip contor", "Date tehnice"], ["1", g(p, "smart_meter_serial") if p.get("smart_meter_type") else "", g(p, "smart_meter_type") if p.get("smart_meter_type") else "",
                  g(p, "smart_meter_data") if p.get("smart_meter_type") else ""]], [8, 30, 30, 32]),

@@ -1,19 +1,3 @@
-import { useState } from "react";
-
-function formatPartnerPrice(raw, markup) {
-  const match = String(raw || "").match(/\d[\d\s.,]*/);
-  if (!match) return "";
-  const value = match[0].replace(/\s/g, "");
-  const decimalAt = Math.max(value.lastIndexOf(","), value.lastIndexOf("."));
-  const fractionLength = decimalAt >= 0 ? value.length - decimalAt - 1 : 0;
-  const normalized = decimalAt >= 0 && fractionLength > 0 && fractionLength <= 2
-    ? `${value.slice(0, decimalAt).replace(/[.,]/g, "")}.${value.slice(decimalAt + 1)}`
-    : value.replace(/[.,]/g, "");
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount) || amount <= 0) return "";
-  const currency = /\bEUR\b|€/i.test(raw) ? "EUR" : "RON";
-  return new Intl.NumberFormat("ro-RO", { style: "currency", currency, minimumFractionDigits: 2 }).format(amount * (1 + markup / 100));
-}
 export function F({ label, value, onChange, type = "text", options, testid, className = "" }) {
   const common = { className: "den-input", value: value ?? "", "data-testid": testid, onChange: (e) => onChange(type === "number" && e.target.value !== "" ? Number(e.target.value) : e.target.value) };
   return (
@@ -34,125 +18,19 @@ export function Check({ label, value, onChange, testid }) {
   );
 }
 
-export function CatalogPick({ items, category, onPick, onQueryChange, testid, selectedId, label = "Caută model în catalog" }) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
+export function CatalogPick({ items, category, onPick, testid, label = "Alege din catalog" }) {
   const list = items.filter((i) => i.category === category);
-  const selectedItem = list.find((item) => item.id === selectedId);
-  const markup = typeof window !== "undefined" && Number(window.localStorage.getItem("dns-supplier-markup")) === 20 ? 20 : 15;
-  const dnsPrice = formatPartnerPrice(selectedItem?.source_price, markup);
-  const fold = (value) => String(value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("ro-RO");
-  const hasValue = (value) => value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
-  const positive = (value) => hasValue(value) && Number(value) > 0;
-  const missing = (item) => {
-    const absent = [];
-    const name = String(item.brand_model || "");
-    const foldedName = fold(name);
-    const isGenericModel = foldedName.includes("model de completat") || foldedName.includes("series") ||
-      foldedName.includes("family") || foldedName.includes("familie") || foldedName.includes("(test)") ||
-      (foldedName.startsWith("solis s6 ") && foldedName.endsWith(" kw")) ||
-      (foldedName.startsWith("aiko neostar ") && foldedName.endsWith(" w")) ||
-      (foldedName.startsWith("jinkosolar tiger neo ") && foldedName.endsWith(" w"));
-    if (isGenericModel) absent.push("codul exact al modelului");
-    if (category === "Invertor") {
-      const isBundle = /\\b(?:kit|bundle|pachet)\\b|\\bcu\\s+(?:baterie|acumulator)\\b|\\bwith\\s+(?:battery|accumulator)\\b|\\b(?:baterie|acumulator)\\s+inclus/.test(foldedName)
-        || /\\b(?:invertor|inverter)\\b.*(?:\\+|&|\\band\\b|\\bcu\\b).*\\b(?:baterie|acumulator|battery)\\b/.test(foldedName)
-        || /\\b(?:baterie|acumulator|battery)\\b.*(?:\\+|&|\\band\\b|\\bcu\\b).*\\b(?:invertor|inverter)\\b/.test(foldedName);
-      if (isBundle) absent.push("model individual (listarea include și o baterie)");
-      const titlePower = foldedName.match(/\\b(\\d+(?:[.,]\\d+)?)\\s*kw\\b/);
-      const catalogPower = Number(item.p_nom_kw);
-      if (!isBundle && titlePower && positive(catalogPower)) {
-        const namedPower = Number(titlePower[1].replace(",", "."));
-        if (Math.abs(namedPower - catalogPower) > Math.max(0.1, namedPower * 0.03)) {
-          absent.push(`puterea nominală confirmată (titlu ${namedPower} kW, catalog ${catalogPower} kW)`);
-        }
-      }
-    }
-    if (!(item.datasheet?.storage_path || item.datasheet_url)) absent.push("fișa tehnică oficială");
-    if (!(item.conformity?.storage_path || item.conformity_url)) absent.push("documentul de conformitate");
-    const required = category === "Invertor" ? [
-      [positive(item.p_nom_kw), "puterea nominală"],
-      [!!item.phases, "numărul de faze"],
-      [!!item.type, "tipul invertorului"],
-    ] : category === "Panou" ? [
-      [positive(item.w), "puterea panoului"],
-      [positive(item.voc), "Voc"],
-      [positive(item.vmp), "Vmp"],
-      [positive(item.isc), "Isc"],
-      [hasValue(item.coef_voc), "coeficientul Voc"],
-    ] : category === "Baterie" ? [
-      [positive(item.kwh) || positive(item.ah), "capacitatea (kWh sau Ah)"],
-      [(positive(item.voltage) || (positive(item.voltage_1ph) && positive(item.voltage_3ph))), "tensiunea compatibilă cu fazele invertorului"],
-      [positive(item.i_max), "curentul maxim"],
-      [!!item.coupling, "tipul de cuplare AC/DC"],
-    ] : [];
-    required.filter(([ok]) => !ok).forEach(([, label]) => absent.push(label));
-    return absent;
-  };
-  const filtered = list.filter((item) => fold(item.brand_model).includes(fold(query)));
-  const pick = (item) => {
-    if (missing(item).length) return;
-    onPick(item);
-    setQuery(item.brand_model);
-    setOpen(false);
-  };
   return (
-    <div className="den-field relative">
-      <label htmlFor={testid}>{label}</label>
-      <input
-        id={testid}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={open}
-        aria-controls={`${testid}-options`}
-        className="den-input"
-        value={query}
-        placeholder={`Caută în ${list.length} modele...`}
-        autoComplete="off"
-        data-testid={testid}
-        onFocus={() => setOpen(true)}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        onChange={(event) => { const value = event.target.value; setQuery(value); setOpen(true); onQueryChange?.(value); }}
-        onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
-      />
-      {selectedItem && <div className="mt-1 text-[11px] leading-4" style={{ color: "var(--muted)" }} data-testid={`${testid}-price`}>
-        {selectedItem.source_price
-          ? <><span>Preț furnizor: {selectedItem.source_price}</span>{dnsPrice && <span className="ml-2 font-bold" style={{ color: "var(--green, #168363)" }}>Preț orientativ DNS (+{markup}%): {dnsPrice}</span>}<span className="block">{selectedItem.source_price_tax_note || "TVA de verificat la furnizor"} · preț importat; verifică actualitatea la furnizor</span></>
-          : <span>Prețul nu este disponibil pentru acest model. Caută-l în Catalog → la furnizori.</span>}
-      </div>}
-      {open && (
-        <div id={`${testid}-options`} role="listbox" className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border bg-white p-1 shadow-xl" style={{ borderColor: "var(--line)" }}>
-          {filtered.slice(0, 60).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="option"
-              aria-selected={false}
-              aria-disabled={missing(item).length > 0}
-              disabled={missing(item).length > 0}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => pick(item)}
-              className={`block w-full rounded-md px-3 py-2 text-left text-xs ${missing(item).length ? "cursor-not-allowed opacity-60" : "hover:bg-[#eef4ff]"}`}
-            >
-              <span className="block font-semibold">{item.brand_model}</span>
-              <span className="block" style={{ color: "var(--muted)" }}>
-                {category === "Invertor" ? [item.p_nom_kw && `${item.p_nom_kw} kW`, item.phases, item.type].filter(Boolean).join(" · ")
-                  : category === "Panou" ? [item.w && `${item.w} W`, item.voc && `Voc ${item.voc} V`].filter(Boolean).join(" · ")
-                  : category === "Baterie" ? [item.kwh && `${item.kwh} kWh`, item.ah && `${item.ah} Ah`, item.voltage && `${item.voltage} V`].filter(Boolean).join(" · ")
-                  : [item.phases].filter(Boolean).join(" · ")}
-              </span>
-              {item.source_price && <span className="mt-1 block text-[11px] font-semibold" style={{ color: "var(--green, #168363)" }}>Preț furnizor: {item.source_price}{formatPartnerPrice(item.source_price, markup) ? ` · DNS (+${markup}%): ${formatPartnerPrice(item.source_price, markup)}` : ""} · {item.source_price_tax_note || "TVA de verificat"}</span>}
-              {missing(item).length > 0 && <span className="mt-1 block text-[11px] font-medium text-amber-700">Indisponibil pentru proiectare · verifică: {missing(item).join(", ")}</span>}
-            </button>
-          ))}
-          {!filtered.length && <p className="px-3 py-2 text-xs" style={{ color: "var(--muted)" }}>Modelul nu este în catalog. Îl poți scrie în câmpul de model de mai jos.</p>}
-          {filtered.length > 60 && <p className="px-3 py-2 text-[11px]" style={{ color: "var(--muted)" }}>Afișez primele 60 de rezultate; rafinează căutarea.</p>}
-        </div>
-      )}
+    <div className="den-field">
+      <label>{label}</label>
+      <select className="den-input" value="" data-testid={testid} onChange={(e) => { const it = list.find((x) => x.id === e.target.value); if (it) onPick(it); }}>
+        <option value="">— {list.length} modele {category.toLowerCase()} —</option>
+        {list.map((i) => <option key={i.id} value={i.id}>{i.brand_model}</option>)}
+      </select>
     </div>
   );
 }
 
 export const INSTALL = [["A1", "A1 — în tub, perete izolat"], ["B1", "B1 — în tub pe perete"], ["B2", "B2 — multiconductor în tub"], ["C", "C — aparent pe perete"], ["D", "D — îngropat"], ["E", "E — pat de cabluri / aer liber"]];
-export const SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240];
+export const SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120];
 export const uid = () => Math.random().toString(36).slice(2, 9);

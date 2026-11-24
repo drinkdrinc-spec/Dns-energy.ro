@@ -10,14 +10,12 @@ export function Issues({ errors = [], warnings = [], testid }) {
   );
 }
 
-export function Totals({ res, inverters = [], sharedBatteries = [] }) {
+export function Totals({ res }) {
   if (!res) return null;
-  const t = res.totals || {};
-  const errors = Array.isArray(res.errors) ? res.errors : [];
-  const warnings = Array.isArray(res.warnings) ? res.warnings : [];
+  const t = res.totals;
   const items = [["Panouri", `${t.kwp} kWp`, "tot-kwp"], ["Invertoare", `${t.inverters_kw} kW`, "tot-kw"], ["Evacuat", `${t.export_kw} kW`, "tot-export"],
     ["Stocare", `${t.storage_kwh} kWh`, "tot-kwh"], ["Nr. panouri", t.panels, "tot-panels"], ["Invertoare", `${t.inverters} buc.`, "tot-inv"]];
-  const ok = !errors.length && !warnings.length;
+  const ok = !res.errors.length && !res.warnings.length;
   return (
     <div className="rounded-xl p-4 text-white" style={{ background: "var(--navy)" }} data-testid="cef-totals">
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
@@ -27,37 +25,9 @@ export function Totals({ res, inverters = [], sharedBatteries = [] }) {
       </div>
       <div className="mt-3 text-xs flex items-center gap-2" data-testid="cef-status">
         {ok ? <><CheckCircle2 size={14} color="#4ade80" /> Configurație fără incompatibilități detectate</> :
-          <><AlertTriangle size={14} color="#fbbf24" /> {errors.length} erori · {warnings.length} avertizări</>}
+          <><AlertTriangle size={14} color="#fbbf24" /> {res.errors.length} erori · {res.warnings.length} avertizări</>}
         {res.grid.anti && <span className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "#7f1d1d" }}>Tablou antiinsularizare inclus</span>}
       </div>
-      {res.inverters?.length > 0 && <div className="mt-3 rounded-lg border border-white/15 bg-white/5 p-3" data-testid="cef-auto-sizing">
-        <b className="block text-xs">Propuneri preliminare automate de protecții și cabluri</b>
-        {res.grid?.main_proposal && <p className="mt-2 text-xs">Branșament: protecție generală propusă {res.grid.main_proposal} A · Ib {res.grid.i_br} A{res.grid.main_section_proposal ? " · coloană BMP–TG: " + (res.grid.main_column_cable_proposal || `${res.grid.main_section_proposal} mm²`) + " (Iz " + res.grid.main_section_iz + " A" + (res.grid.main_section_du != null ? ", ΔU " + res.grid.main_section_du + "%" : "") + ")" : ""}.</p>}
-        {res.grid?.anti_breaker_proposal && <p className="mt-1 text-xs">Antiinsularizare: întreruptor motorizat propus {res.grid.anti_breaker_proposal} A, cu bobină de declanșare. Verifică modelul, Icu/Ics și soluția din ATR.</p>}
-        {res.grid?.main_proposal && !res.grid.main_section_proposal && <p className="mt-1 text-xs text-amber-100">Pentru această putere secțiunea coloanei nu poate fi aleasă sigur din tabelul disponibil; este necesar proiect dedicat.</p>}
-        <div className="mt-2 space-y-1.5">
-          {res.inverters.map((inv, index) => {
-            const ac = inv.proposals?.ac || {};
-            const dc = inv.proposals?.dc || {};
-            const configured = inverters[index] || {};
-            const battery = configured.battery_mode === "shared"
-              ? sharedBatteries.find((item) => item.id === configured.shared_battery_id)
-              : configured.battery_mode === "own" ? configured.battery : null;
-            const batteryProposal = configured.battery_mode === "shared"
-              ? res.shared_battery_proposals?.[configured.shared_battery_id]
-              : inv.proposals?.battery;
-            const units = inv.count > 1 ? ` · ${inv.count} buc.` : "";
-            return <div key={inv.index || index} className="text-xs leading-relaxed" data-testid={`cef-auto-sizing-${inv.index || index + 1}`}>
-              <p>Invertor {inv.index || index + 1}{units}: AC {ac.breaker_a ? `${ac.breaker_a} A` : "protecție nedeterminată"} / {ac.section ? `${inv.tri === null ? "faze neconfirmate · " : ""}${inv.tri ? "5" : "3"}×${ac.section} mm²` : "secțiune nedeterminată"} · DC {dc.section ? `${dc.section} mm²` : "secțiune nedeterminată"}{dc.spd_ucpv ? ` · SPD ${dc.spd_ucpv} V` : ""}{dc.fuse ? ` · separator fuzibil ${dc.fuse} A/string` : ""}</p>
-              {battery && <p className="mt-1 text-amber-100" data-testid={`cef-battery-sizing-${inv.index || index + 1}`}>
-                Baterie {battery.model || "selectată"}: {battery.voltage ? `${battery.voltage} V` : "tensiune din fișa tehnică neidentificată"} · {battery.i_max ? `Imax ${battery.i_max} A` : "Imax din fișa tehnică neidentificat"} · cablu DC {batteryProposal?.section ? `${batteryProposal.section} mm²` : "nedimensionat"}{batteryProposal?.fuse_a ? ` · protecție ${batteryProposal.fuse_a} A` : " · protecție de confirmat din fișa producătorului"}{batteryProposal?.du != null ? ` · ΔU ${batteryProposal.du}%` : Number(battery.cable_length) > 0 ? " · ΔU neverificată" : " · ΔU neverificată (lungime traseu lipsă)"}{batteryProposal?.note ? ` — ${batteryProposal.note}` : ""}
-              </p>}
-            </div>;
-          })}
-        </div>
-        {inverters.length > 0 && inverters.some((inv) => !Number(inv.ac?.length_m) || !Number(inv.dc?.length_m)) &&
-          <p className="mt-2 text-[11px] leading-relaxed text-amber-100">Lungimea unuia sau mai multor trasee nu este introdusă: secțiunile sunt propuneri după curent, iar căderea de tensiune nu este verificată complet. Confirmarea proiectantului autorizat rămâne necesară.</p>}
-      </div>}
     </div>
   );
 }

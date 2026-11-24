@@ -14,8 +14,7 @@ DOCS = [("opis", "Opis documente — dosar instalație de utilizare"), ("memoriu
         ("pram_priza", "Buletin PRAM — rezistența de dispersie a prizei de pământ"), ("pram_cont", "Buletin PRAM — continuitatea conductoarelor de protecție"),
         ("pram_izol", "Buletin PRAM — rezistența de izolație"), ("pram_ddr", "Buletin PRAM — verificarea dispozitivelor diferențiale (DDR)"),
         ("receptie", "Proces-verbal de recepție la terminarea lucrărilor"), ("pif", "Proces-verbal de punere în funcțiune"),
-        ("conformitate", "Declarație de conformitate a executantului"), ("garantie", "Certificat de garanție"),
-        ("angajament_delgaz", "Angajament consumator — acces personal autorizat ANRE")]
+        ("conformitate", "Declarație de conformitate a executantului"), ("garantie", "Certificat de garanție")]
 TITLES = dict(DOCS)
 RISO_MIN, DDR_MAX_MS = 1.0, 300.0
 
@@ -42,31 +41,20 @@ def missing(key, r, s):
     m = []
     if key == "memoriu":
         m = need([(r.get("type"), "Tip instalație"), (r.get("power"), "Putere instalată"), (r.get("supply"), "Tip alimentare (mono/trifazat)")])
-        if "delgaz" in str(r.get("operator") or "").casefold():
-            if r.get("meter_enabled") is None:
-                m.append("Confirmați dacă este montat un contor separat de cel al operatorului")
-            elif r.get("meter_enabled"):
-                m += need([(r.get("meter"), "Model/tip contor instalat de utilizator"),
-                           (r.get("meter_serial"), "Serie contor instalat de utilizator"),
-                           (r.get("meter_specs"), "Date tehnice contor instalat de utilizator")])
     elif key == "schema_tg":
         m = need([(r.get("tg_breaker_a"), "Întreruptor general TG (A)")]) + ([] if cs else ["Circuitele tabloului"])
         m += [f"Circuit „{c['name']}”: întreruptor / secțiune cablu" for c in cs if not c.get("breaker_a") or not c.get("section")]
     elif key.startswith("pram_"):
-        m = need([(p.get("date"), "Data măsurătorilor")])
+        m = need([(p.get("date"), "Data măsurătorilor"), (p.get("instrument"), "Aparat de măsură (tip, serie)"), (p.get("verifier"), "Verificator PRAM")])
         if key == "pram_priza":
             m += need([(p.get("earth_ohm"), "Rezistența de dispersie măsurată (Ω)"), (p.get("earth_limit"), "Valoarea admisă (Ω)")])
         if key == "pram_cont":
-            m += ([] if cs else ["Circuitele tabloului"])
-            m += [f"Continuitate PE — {c['name']}: valoare măsurată lipsă" for c in cs if c.get("r_pe") in (None, "")]
-            m += [f"Continuitate PE — {c['name']}: limită de acceptare din proiect lipsă" for c in cs if c.get("r_pe_limit") in (None, "")]
+            m += ([] if cs else ["Circuitele tabloului"]) + [f"Continuitate PE — {c['name']}" for c in cs if c.get("r_pe") in (None, "")]
         if key == "pram_izol":
             m += need([(p.get("test_v"), "Tensiune de încercare (V)")]) + ([] if cs else ["Circuitele tabloului"]) + [f"Rezistență izolație — {c['name']}" for c in cs if c.get("riso") in (None, "")]
         if key == "pram_ddr":
             dd = [c for c in cs if c.get("rcd_ma")]
-            m += [] if dd else ["Niciun circuit cu DDR definit"]
-            m += [f"Curent declanșare DDR — {c['name']}: valoare măsurată lipsă" for c in dd if c.get("rcd_i") in (None, "")]
-            m += [f"Timp declanșare DDR — {c['name']}: valoare măsurată lipsă" for c in dd if c.get("rcd_t") in (None, "")]
+            m += ([] if dd else ["Niciun circuit cu DDR definit"]) + [f"Timp declanșare DDR — {c['name']}" for c in dd if c.get("rcd_t") in (None, "")]
     elif key == "receptie":
         m = need([(r.get("receptie_date"), "Data recepției"), (r.get("receptie_decision"), "Hotărâre recepție")])
     elif key == "pif":
@@ -75,27 +63,16 @@ def missing(key, r, s):
         m = need([(r.get("date") or r.get("doc_date"), "Data finalizării")])
     elif key == "garantie":
         m = need([(r.get("warranty_months") or s.get("warranty_months"), "Durata garanției (luni)"), (r.get("warranty_start") or r.get("receptie_date"), "Data începerii garanției")])
-    elif key == "angajament_delgaz":
-        m = need([(r.get("client_name") or r.get("name"), "Beneficiar"), (r.get("address"), "Adresă obiectiv")])
-    if key not in ("opis", "angajament_delgaz"):
+    if key != "opis":
         m = need([(r.get("client_name") or r.get("name"), "Beneficiar"), (r.get("address"), "Adresă obiectiv")]) + \
             need([(s.get("company"), "Denumire executant"), (s.get("anre_attest"), "Atestat ANRE executant"), (s.get("rep"), "Reprezentant executant")]) + m
     return list(dict.fromkeys(m))
 
 
-def applicable_docs(r):
-    """Return the DI-U documents relevant to the selected distribution operator."""
-    operator = str(r.get("operator") or "").lower()
-    docs = [item for item in DOCS if item[0] != "angajament_delgaz"]
-    if "delgaz" in operator:
-        docs.append(next(item for item in DOCS if item[0] == "angajament_delgaz"))
-    return docs
-
-
 def positions(r, s):
     out = []
     sg = r.get("signed") or {}
-    for i, (k, t) in enumerate(applicable_docs(r)):
+    for i, (k, t) in enumerate(DOCS):
         m = missing(k, r, s)
         out.append({"nr": i + 1, "key": k, "title": t, "missing": m, "status": "semnat" if sg.get(k) else ("de completat" if m else "generat"),
                     "signed_at": (sg.get(k) or {}).get("signed_at"), "docx": k != "schema_tg"})
@@ -103,7 +80,7 @@ def positions(r, s):
 
 
 def render_docx(key, r, s, client):
-    ctx = D.Ctx(r, s, client, [t for k, t in applicable_docs(r)])
+    ctx = D.Ctx(r, s, client, [t for k, t in DOCS])
     return D.render_docx(None, {}, s, client, blocks=RENDER[key](ctx, r, positions(r, s)), ctx=ctx)
 
 
@@ -111,11 +88,11 @@ def pram_head(ctx, r, title, norm):
     p = r.get("pram_m") or {}
     return hdr() + [B("title", title), B("sub", norm),
                     B("p", f"Beneficiar: <b>{ctx.name}</b> · Obiectiv: {ctx.loc} · Dosar DI-U: {e(r.get('number'))}"),
-                    B("p", f"Data măsurătorilor: {ro_date(p.get('date')) or M}")]
+                    B("p", f"Data măsurătorilor: {ro_date(p.get('date')) or M} · Aparat de măsură: {e(p.get('instrument'))} · Verificator: {e(p.get('verifier'))}")]
 
 
 def pram_sign(ctx, r):
-    return sign(ex_sig(ctx, "Reprezentantul firmei executante,"), [])
+    return sign(["Verificator PRAM,", e((r.get("pram_m") or {}).get("verifier")), "numele și semnătura"], ex_sig(ctx))
 
 
 def verdict(ok):
@@ -128,7 +105,7 @@ def doc_opis(ctx, r, pos):
                     B("p", f"Beneficiar: <b>{ctx.name}</b> · Obiectiv: {ctx.loc} · Nr. dosar: {e(r.get('number'))} · Data: {ctx.date}"),
                     B("table", rows, [8, 70, 22], True),
                     B("p", "Executantul declară că documentele de mai sus aparțin instalației de utilizare descrise și reflectă situația reală de la data întocmirii."),
-                    sign(ex_sig(ctx), [])]
+                    sign(ex_sig(ctx), ben_sig(ctx))]
 
 
 def doc_memoriu(ctx, r, pos):
@@ -144,14 +121,6 @@ def doc_memoriu(ctx, r, pos):
                    B("bullets", [escape(x.strip()) for x in str(r.get("memoriu_desc") or "").split("\n") if x.strip()] or [M], False)]
     if (r.get("cef") or {}).get("inverters") or r.get("inverter"):
         out += [B("b", "4. Echipamente principale"), B("table", D.equipment_lines(ctx), [60, 24, 90], True)]
-    if "delgaz" in str(r.get("operator") or "").casefold():
-        if r.get("meter_enabled"):
-            meter_text = f"Model/tip: {e(r.get('meter'))}; serie: {e(r.get('meter_serial'))}; date tehnice: {e(r.get('meter_specs'))}."
-        elif r.get("meter_enabled") is False:
-            meter_text = "Nu este montat un contor suplimentar al utilizatorului; rămâne contorul operatorului."
-        else:
-            meter_text = "Situația contorului utilizatorului nu a fost confirmată."
-        out += [B("b", "Contor instalat de utilizator — cerință Delgaz Grid"), B("p", meter_text)]
     out += [B("b", "5. Circuitele tabloului general"),
             B("table", [["Nr.", "Circuit", "Protecție", "Cablu"]] + [[str(i + 1), escape(c["name"]), f"{e(c.get('curve'))}{e(c.get('breaker_a'))} A" + (f" + DDR {e(c.get('rcd_ma'))} mA tip {e(str(c.get('rcd_type') or '').replace('Tip', '').strip())}" if c.get("rcd_ma") else ""),
                                                                     f"{e(c.get('cable'))} {e(c.get('section'))} mm², L={e(c.get('length'))} m"] for i, c in enumerate(cs)] or [["—", M, M, M]], [6, 40, 30, 30], True),
@@ -159,11 +128,11 @@ def doc_memoriu(ctx, r, pos):
             B("bullets", ["Protecția la suprasarcină și scurtcircuit se realizează cu întreruptoarele automate indicate în schema monofilară a tabloului.",
                           "Protecția împotriva șocurilor electrice prin atingere indirectă: dispozitive diferențiale (DDR) pe circuitele indicate și legare la pământ "
                           f"(sistem {ctx.v('earthing')}), valorile măsurate fiind consemnate în buletinele PRAM anexate.",
-                          "Verificările la punerea în funcțiune trebuie efectuate și documentate conform HD 60364-6 și normativului I7/2011. Acest memoriu nu atestă efectuarea măsurătorilor; anexați numai buletinele completate cu rezultate reale."]),
+                          "Verificările la punerea în funcțiune s-au efectuat conform HD 60364-6 și normativului I7/2011; rezultatele sunt cele din buletinele PRAM."]),
             B("b", "7. Normative aplicate"),
             B("bullets", ["Normativ I7/2011 — proiectarea, execuția și exploatarea instalațiilor electrice aferente clădirilor", "SR HD 60364 — instalații electrice de joasă tensiune",
                           "SR EN IEC 62446-1 — sisteme fotovoltaice (dacă este cazul)", "Regulamentul ANRE privind racordarea utilizatorilor la rețelele electrice de interes public"]),
-            sign(ex_sig(ctx, "Întocmit — executant,"), [])]
+            sign(ex_sig(ctx, "Întocmit — executant,"), ben_sig(ctx))]
     return out
 
 
@@ -224,25 +193,17 @@ def doc_priza(ctx, r, pos):
 
 
 def doc_cont(ctx, r, pos):
-    rows = [["Nr.", "Circuit", "PE (mm²)", "R PE măsurat (Ω)", "Limită proiect (Ω)", "Rezultat"]]
-    for i, c in enumerate(circuits(r)):
-        measured, limit = num(c.get("r_pe")), num(c.get("r_pe_limit"))
-        result = "—" if measured is None or limit is None else verdict(measured <= limit)
-        rows.append([str(i + 1), escape(c["name"]), e(c.get("section")), e(c.get("r_pe")), e(c.get("r_pe_limit")), result])
-    if len(rows) == 1:
-        rows.append(["—", M, M, M, M, "—"])
-    return pram_head(ctx, r, "BULETIN DE VERIFICARE A CONTINUITĂȚII CONDUCTOARELOR DE PROTECȚIE", "SR HD 60364-6, art. 6.4.3.2 · criteriul de acceptare este cel consemnat în proiect") + [B("table", rows, [6, 26, 12, 18, 18, 20], True), pram_sign(ctx, r)]
+    rows = [["Nr.", "Circuit", "Conductor PE (mm²)", "Rezistență continuitate măsurată (Ω)", "Rezultat"]]
+    rows += [[str(i + 1), escape(c["name"]), e(c.get("section")), e(c.get("r_pe")), "—" if c.get("r_pe") in (None, "") else "Continuitate asigurată"] for i, c in enumerate(circuits(r))] or [["—", M, M, M, "—"]]
+    return pram_head(ctx, r, "BULETIN DE VERIFICARE A CONTINUITĂȚII CONDUCTOARELOR DE PROTECȚIE", "SR HD 60364-6, art. 6.4.3.2") + [B("table", rows, [6, 36, 16, 24, 18], True), pram_sign(ctx, r)]
 
 
 def doc_izol(ctx, r, pos):
     p = r.get("pram_m") or {}
     rows = [["Nr.", "Circuit", "Tensiune încercare (V)", "Riso măsurată (MΩ)", "Valoare minimă (MΩ)", "Rezultat"]]
     for i, c in enumerate(circuits(r)):
-        test_v, riso = num(p.get("test_v")), num(c.get("riso"))
-        # A pass/fail result is meaningful only when both the actual test
-        # voltage and the measured insulation resistance were recorded.
-        result = verdict(None if test_v is None or test_v <= 0 or riso is None else riso >= RISO_MIN)
-        rows.append([str(i + 1), escape(c["name"]), e(p.get("test_v")), e(c.get("riso")), f"{RISO_MIN:g}", result])
+        v = num(c.get("riso"))
+        rows.append([str(i + 1), escape(c["name"]), e(p.get("test_v")), e(c.get("riso")), f"{RISO_MIN:g}", verdict(None if v is None else v >= RISO_MIN)])
     if len(rows) == 1:
         rows.append(["—", M, M, M, f"{RISO_MIN:g}", "—"])
     return pram_head(ctx, r, "BULETIN DE MĂSURARE A REZISTENȚEI DE IZOLAȚIE", "SR HD 60364-6, art. 6.4.3.3 (circuite ≤ 500 V: încercare 500 V c.c., minimum 1 MΩ)") + [
@@ -252,26 +213,12 @@ def doc_izol(ctx, r, pos):
 def doc_ddr(ctx, r, pos):
     rows = [["Nr.", "Circuit", "DDR (IΔn, tip)", "Curent declanșare măsurat (mA)", "Timp declanșare la IΔn (ms)", "Rezultat"]]
     for i, c in enumerate([c for c in circuits(r) if c.get("rcd_ma")]):
-        measured_current, tm = num(c.get("rcd_i")), num(c.get("rcd_t"))
-        result = verdict(None if measured_current is None or tm is None else tm <= DDR_MAX_MS)
-        rows.append([str(i + 1), escape(c["name"]), f"{e(c.get('rcd_ma'))} mA tip {e(str(c.get('rcd_type') or '').replace('Tip', '').strip())}", e(c.get("rcd_i")), e(c.get("rcd_t")), result])
+        tm = num(c.get("rcd_t"))
+        rows.append([str(i + 1), escape(c["name"]), f"{e(c.get('rcd_ma'))} mA tip {e(str(c.get('rcd_type') or '').replace('Tip', '').strip())}", e(c.get("rcd_i")), e(c.get("rcd_t")), verdict(None if tm is None else tm <= DDR_MAX_MS)])
     if len(rows) == 1:
         rows.append(["—", "niciun circuit cu DDR", M, M, M, "—"])
     return pram_head(ctx, r, "BULETIN DE VERIFICARE A DISPOZITIVELOR DIFERENȚIALE (DDR)", f"SR HD 60364-6, art. 6.4.3.7 (timp maxim la IΔn: {DDR_MAX_MS:g} ms, DDR general)") + [
         B("table", rows, [6, 30, 18, 16, 16, 14], True), pram_sign(ctx, r)]
-
-
-def doc_angajament_delgaz(ctx, r, pos):
-    return hdr() + [
-        B("title", "ANGAJAMENTUL CONSUMATORULUI"),
-        B("sub", "Accesul personalului autorizat ANRE la instalația de utilizare"),
-        B("p", f"Subsemnatul/Subsemnata <b>{ctx.name}</b>, beneficiar al instalației de utilizare situate la {ctx.loc}, în relație cu operatorul de distribuție Delgaz Grid,"),
-        B("p", "mă angajez să permit accesul personalului autorizat ANRE la instalația de utilizare, în condițiile legale și pentru operațiunile de verificare sau intervenție care îi revin."),
-        B("p", f"POD / cod loc de consum: {e(r.get('pod'))}"),
-        B("p", "Data: ____________________"),
-        sign([], ben_sig(ctx)),
-        B("p", "Ciornă precompletată pentru verificare. Confirmă textul și condițiile aplicabile în formularul/cerința curentă Delgaz Grid înainte de semnare și depunere."),
-    ]
 
 
 def doc_garantie(ctx, r, pos):
@@ -285,56 +232,19 @@ def doc_garantie(ctx, r, pos):
                                   "Echipamentele (invertoare, panouri, baterii, aparataj) beneficiază de garanția producătorului, conform documentelor acestora.",
                                   "Garanția nu acoperă intervenții ale terților, modificări ale instalației, utilizare necorespunzătoare, supratensiuni atmosferice sau forță majoră.",
                                   "Defectele se notifică executantului în scris, la datele de contact de mai sus."]),
-                    sign(ex_sig(ctx), [])]
+                    sign(ex_sig(ctx), ben_sig(ctx))]
 
 
-def doc_receptie(ctx, r, pos):
-    return hdr() + [
-        B("title", "PROCES-VERBAL DE RECEPȚIE LA TERMINAREA LUCRĂRILOR"),
-        B("sub", f"Dosar DI-U nr. {e(r.get('number'))}"),
-        B("p", f"Încheiat la data de <b>{ro_date(r.get('receptie_date')) or M}</b> pentru lucrările executate la {ctx.loc}, în beneficiul {ctx.name}."),
-        B("b", "Datele lucrării"),
-        B("p", f"Obiect: {ctx.v('type')}; putere instalată: {ctx.v('power')} kW; alimentare: {ctx.v('supply')}; operator de distribuție: {ctx.v('operator')}."),
-        B("b", "Hotărârea comisiei"),
-        B("p", f"<b>{e(r.get('receptie_decision'))}</b>"),
-        B("p", f"Observații consemnate: {e(r.get('receptie_findings'))}"),
-        B("p", "Prezentul proces-verbal consemnează hotărârea și observațiile introduse pentru recepție. Valorile măsurate se consemnează în buletinele de verificare aferente."),
-        sign(ex_sig(ctx, "Executant,"), [])
-    ]
-
-
-def doc_pif(ctx, r, pos):
-    return hdr() + [
-        B("title", "PROCES-VERBAL DE PUNERE ÎN FUNCȚIUNE"),
-        B("sub", f"Dosar DI-U nr. {e(r.get('number'))}"),
-        B("p", f"Încheiat la data de <b>{ro_date(r.get('pif_date')) or M}</b> pentru instalația de la {ctx.loc}, beneficiar {ctx.name}."),
-        B("b", "Datele instalației"),
-        B("p", f"Tip: {ctx.v('type')}; putere instalată: {ctx.v('power')} kW; alimentare: {ctx.v('supply')}; operator de distribuție: {ctx.v('operator')}."),
-        B("b", "Hotărârea privind punerea în funcțiune"),
-        B("p", f"<b>{e(r.get('pif_decision'))}</b>"),
-        B("p", f"Observații consemnate: {e(r.get('pif_findings'))}"),
-        B("p", "Procesul-verbal nu completează automat rezultate de măsurare; acestea trebuie preluate din buletinele de verificare efectiv întocmite."),
-        sign(ex_sig(ctx, "Executant,"), [])
-    ]
-
-
-def doc_conformitate(ctx, r, pos):
-    return hdr() + [
-        B("title", "DECLARAȚIE DE CONFORMITATE A EXECUTANTULUI"),
-        B("sub", f"Dosar DI-U nr. {e(r.get('number'))}"),
-        B("p", f"Executantul <b>{ctx.company}</b>, reprezentat prin {ctx.rep}, declară că lucrările de instalații electrice executate la {ctx.loc}, pentru beneficiarul {ctx.name}, au fost realizate conform documentației tehnice aplicabile lucrării."),
-        B("p", f"Tip instalație: {ctx.v('type')}; putere instalată: {ctx.v('power')} kW; alimentare: {ctx.v('supply')}."),
-        B("p", f"Data declarației: {ro_date(r.get('doc_date') or r.get('date')) or M}. Rezultatele verificărilor sunt cele înscrise în buletinele de măsurare efectiv completate și anexate dosarului."),
-        sign(ex_sig(ctx, "Executant,"), [])
-    ]
+def generic(fn):
+    return lambda ctx, r, pos: fn(ctx)
 
 
 RENDER = {"opis": doc_opis, "memoriu": doc_memoriu, "schema_tg": doc_schema, "pram_priza": doc_priza, "pram_cont": doc_cont, "pram_izol": doc_izol,
-          "pram_ddr": doc_ddr, "receptie": doc_receptie, "pif": doc_pif, "conformitate": doc_conformitate, "garantie": doc_garantie, "angajament_delgaz": doc_angajament_delgaz}
+          "pram_ddr": doc_ddr, "receptie": generic(D.doc_pv_receptie), "pif": generic(D.doc_pv_pif), "conformitate": generic(D.doc_decl_conformitate), "garantie": doc_garantie}
 
 
 def render(keys, r, s, client):
-    ctx = D.Ctx(r, s, client, [t for k, t in applicable_docs(r)])
+    ctx = D.Ctx(r, s, client, [t for k, t in DOCS])
     pos = positions(r, s)
     buf = io.BytesIO()
     pw, ph = A4
@@ -358,4 +268,3 @@ def render(keys, r, s, client):
 
 
 _ = colors
-

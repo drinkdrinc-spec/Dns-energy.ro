@@ -25,14 +25,10 @@ def opis_items(kind: str) -> list:
     if kind in ("nou", "b_c1a", "b_c2a"):
         it = cer + A_G + [("tarif", "Dovada achitării tarifului ANRE de emitere (taxă externă, se plătește separat către ANRE)", "art. 13 și art. 14 alin. (1) lit. h)", "client")]
     elif kind == "vizare":
-        it = cer + [x for x in A_G] + [
-            ("atestat_original", "Originalul atestatului deținut", "art. 24 alin. (1)", "client"),
-            ("tarif_vizare", "Dovada achitării tarifului ANRE de vizare a atestatului", "art. 24 alin. (1)", "client")]
+        it = cer + [x for x in A_G] + [("atestat_original", "Originalul atestatului deținut", "Regulament, vizarea periodică (la 5 ani)", "client")]
     elif kind == "modificare":
-        it = cer + [("cert_constatator", A_G[0][1], "art. 26 alin. (2)", "client"),
-                    ("acte_modificare", "Documente care dovedesc modificarea datelor (acte ONRC, hotărâri etc.)", "art. 26 alin. (2)", "client"),
-                    ("tarif_modificare", "Dovada achitării tarifului ANRE de modificare a atestatului", "art. 26 alin. (2)", "client"),
-                    ("atestat_original", "Originalul atestatului deținut", "art. 26 alin. (4)", "client")]
+        it = cer + [("cert_constatator", A_G[0][1], "Regulament, modificarea atestatului", "client"), ("acte_modificare", "Documente care dovedesc modificarea datelor (acte ONRC, hotărâri etc.)", "Regulament, modificarea atestatului", "client"),
+                    ("atestat_original", "Originalul atestatului deținut", "Regulament, modificarea atestatului", "client")]
     else:
         it = cer + [("alte", "Documente cerute de procedura aplicabilă (stabilite împreună cu consultantul)", "de stabilit conform Regulamentului", "client")]
     return [{"nr": i + 1, "key": k, "title": t, "basis": b, "source": s} for i, (k, t, b, s) in enumerate(it)]
@@ -89,14 +85,9 @@ def render(key, d) -> bytes:
             "va menține pe toată durata de valabilitate a atestatului dotările tehnico-materiale și numărul minim de personal autorizat prevăzute de Regulament pentru tipul de atestat solicitat "
             "și că va comunica ANRE orice modificare a acestora, în condițiile Regulamentului.", S["p"])] + sig(d)
     elif key == "decl_10":
-        s = head(d, "DECLARAȚIE DE CONSIMȚĂMÂNT (Anexa nr. 10)") + [
-            Paragraph("Se completează de fiecare persoană vizată, după citirea formularului GDPR oficial ANRE.", S["p"]),
-            Paragraph("Numele și prenumele persoanei vizate: [DE COMPLETAT]", S["p"]),
-            Paragraph("[  ] Am înțeles această declarație de consimțământ și sunt de acord cu colectarea și prelucrarea datelor mele personale în scopurile descrise în formularul GDPR.", S["p"]),
-            Paragraph("Formularul este valabil numai dacă persoana vizată bifează această căsuță cu X. DNS Energy nu exprimă și nu bifează consimțământul în numele persoanei.", S["small"]),
-            Paragraph("Data: [DE COMPLETAT]", S["p"]),
-            Paragraph("Semnătura persoanei vizate: [DE COMPLETAT]", S["p"]),
-        ]
+        s = head(d, "DECLARAȚIE PRIVIND PRELUCRAREA DATELOR CU CARACTER PERSONAL (Anexa nr. 10)") + [Paragraph(
+            f"Subsemnatul {e(c.get('rep_name'))}, reprezentant legal al {e(c.get('name'))}, îmi exprim consimțământul ca ANRE să prelucreze datele cu caracter personal din documentele depuse, "
+            "în scopul soluționării solicitării, conform Regulamentului (UE) 2016/679.", S["p"])] + sig(d)
     else:
         raise KeyError(key)
     return _doc(s, key)

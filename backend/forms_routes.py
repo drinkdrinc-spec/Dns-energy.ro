@@ -17,50 +17,18 @@ from mailer import send_email
 db, api, get_current_user = S.db, S.api_router, S.get_current_user
 logger = logging.getLogger("d-energy.forms")
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"}
-OK, CHANGED, BROKEN, BLOCKED, NEW, ACCESSIBLE = "valid", "versiune nouă detectată", "link invalid", "neverificabil automat", "neverificat", "link accesibil — neconfirmat"
+OK, CHANGED, BROKEN, BLOCKED, NEW = "valid", "versiune nouă detectată", "link invalid", "neverificabil automat", "neverificat"
 
 SEED = [
     ("DEER", "Cerere de racordare prosumator — loc existent / spor de putere (Anexa 1, Ord. ANRE 69/2020)", "prosumator / spor putere",
      "https://www.distributie-energie.ro/wp-content/uploads/2021/01/10-Cerere-loc-consum-existent-Spor-de-putere-Anexa-1.pdf"),
-    ("DEER", "Cerere Anexa 1 — loc existent cu spor de putere (sursa curentă, formular DOCX)", "prosumator / spor putere",
-     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/4.-Loc-consum-si_sau-producere-existent-Spor-Putere_Anexa-nr-1.docx"),
-    ("DEER", "Cerere Anexa 1 — loc nou de consum și producere (formular DOCX)", "prosumator / racordare",
-     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/1.-Loc-consum-si-producere-nou-_Anexa-nr-1.docx"),
-    ("DEER", "Anexa 2 — notificare loc de consum existent (formular DOCX)", "prosumator / notificare",
-     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/2.-Loc-de-consum-existent_Anexa-nr-2.docx"),
-    ("DEER", "Anexa 3 — actualizare CRR loc de consum și producere existent (formular DOCX)", "prosumator / notificare",
-     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/3.-Loc-de-consum-si-producere-existent-actualizare-CRR_Anexa-nr-3.docx"),
-    ("DEER", "Anexa 4 — cerere prosumator cu finanțare (formular DOCX)", "prosumator / finanțare",
-     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Cerere-de-racordare-prosumator-%E2%80%93-prin-programe-de-finantare-Anexa-4.docx"),
-    ("DEER", "Anexa 5 — notificare prosumator până la 10,8 kW, conform portalului DEER", "prosumator / notificare",
-     "https://www.distributie-energie.ro/wp-content/uploads/2023/12/5.-Loc-consum-si_sau-producere-existent-prevazut_cu_instalatii_de_producere_Anexa-nr-5.docx"),
-    ("Delgaz Grid", "Cerere prosumator — Anexa 1 (fișier publicat în portalul Delgaz)", "prosumator / spor putere",
-     "https://delgaz.ro/getattachment/91755a0d-890c-4357-917a-ac5128ec735a/Cerere_de_racordare_prosumator-Anexa-1.pdf"),
-    ("Delgaz Grid", "Notificare racordare prosumator — loc existent (Anexa 2, DEGR E P46-F11 Ed.4)", "prosumator / notificare",
-     "https://delgaz.ro/getattachment/90cf84fa-708e-46a7-b60b-266364c50098/Notificare_racordare_prosumator-Anexa-2.pdf"),
-    ("Delgaz Grid", "Notificare certificare calitate prosumator (Anexa 3)", "prosumator / notificare",
-     "https://delgaz.ro/getattachment/e2021264-a5fa-43f4-95d6-3975d8960202/Notificare_certificare_calitate_prosumator-Anexa-3.pdf"),
-    ("Delgaz Grid", "Cerere prosumator prin program de finanțare (Anexa 4)", "prosumator / finanțare",
-     "https://delgaz.ro/getattachment/d1de9dd7-849d-458f-aed2-3f3fc1694eaf/Cerere_de_racordare_prosumator_programe-Anexa-4.pdf"),
-    ("Delgaz Grid", "Notificare racordare prosumator până la 10,8 kW (Anexa 5)", "prosumator / notificare",
-     "https://delgaz.ro/getattachment/f0d42548-d9fe-4275-b694-6bfc075842f3/Notificare_racordare_10-8kW-Anexa-5.pdf"),
-    ("Rețele Electrice România", "Anexa 1 — cerere prosumator (link publicat pe pagina oficială)", "prosumator / spor putere",
-     "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-1-cerere-racordare.pdf"),
-    ("Distribuție Energie Oltenia", "Anexa 1 rev06 — cerere prosumator, loc nou sau spor de putere", "prosumator / spor putere",
-     "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2024%2F26.01.2024%2F&fileName=01-03-01_P03-F16_Cerere+racordare+prosumatori_LC+noi+sau+spor+putere_anexa+1_rev06.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files"),
-    ("Distribuție Energie Oltenia", "Notificare certificare prosumator loc existent (Anexa 3 rev05)", "prosumator / notificare",
-     "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2023%2F&fileName=01-03-01_P03-F17_Notificare+certificarea+calitatii+de+prosumator+LC+producator+existent_anexa+3_rev05.doc.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files"),
-    ("Distribuție Energie Oltenia", "Notificare prosumator ≤10,8 kW (Anexa 5 rev01)", "prosumator / notificare",
-     "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FProsumatori%2F2023%2F08.06.2023%2F&fileName=01-03-01_P03-F28_NotifRacordLC_LC%26proddin+surse+renerabileProsumPutereSub+10%2C8kw_rev_01.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files"),
-    ("Distribuție Energie Oltenia", "Anexa 4 rev04 — cerere prosumator cu finanțare AFM", "prosumator / finanțare",
-     "https://www.distributieoltenia.ro/resources/ckfinder/core/connector/php/connector.php?command=Proxy&currentFolder=%2FDO%2FINFORMATII+UTILE%2FFormulare+racordare%2F2023%2F&fileName=01-03-01_P03-F15_Cerere+de+racordare+prosumator+pt+LC+existent+care+acceseaza+programul+AFM_anexa+4_rev04.doc.pdf&hash=24460cc7b9aefcd5&lang=en&type=Files"),
     ("DEER", "Cerere tip de racordare loc de producere / consum și producere (autoproducător)", "ATR producere",
      "https://www.distributie-energie.ro/wp-content/uploads/2020/12/4-Producator.pdf"),
     ("DEER", "Documentație prosumatori — listă documente și date tehnice", "prosumator", "https://www.distributie-energie.ro/wp-content/uploads/2020/12/5.pdf"),
     ("DEER", "Anexa tehnică consumator mare noncasnic", "ATR consum", "https://www.distributie-energie.ro/wp-content/uploads/2021/01/3-Consumator-mare-noncasnic.pdf"),
     ("DEER", "Model de împuternicire", "împuternicire", "https://www.distributie-energie.ro/wp-content/uploads/2026/07/Model-de-imputernicire.pdf"),
     ("DEER", "Pagina oficială Racordare la rețea", "pagină", "https://www.distributie-energie.ro/racordare-la-retea-2/"),
-    ("Delgaz Grid", "Cerere istorică prosumator Anexa 1 (formular înlocuit; verifică documentele curente conform Ord. ANRE 19/2022)", "prosumator / spor putere",
+    ("Delgaz Grid", "Cerere de racordare prosumator (Anexa 1, Ord. ANRE 69/2020)", "prosumator / spor putere",
      "https://delgaz.ro/getattachment/a49b57e4-6692-4772-87cd-314cd378657a/Cerere_de_racordare_prosumator.pdf"),
     ("Delgaz Grid", "Cerere de racordare prosumatori care accesează programe de finanțare", "prosumator",
      "https://delgaz.ro/getattachment/b70508d0-b697-4015-8281-440e696d57ad/Cerere-de-racordare-pt-prosumatorii-care-acceseaza-programe-de-finantare.pdf"),
@@ -68,9 +36,6 @@ SEED = [
     ("Rețele Electrice România", "Cerere și chestionar ATR — puteri sub 100 kW", "ATR consum", "https://www.reteleelectrice.ro/wp-content/uploads/atr-cerere-sub-100-kw.pdf"),
     ("Rețele Electrice România", "Cerere și chestionar ATR — puteri peste 100 kW", "ATR consum", "https://www.reteleelectrice.ro/wp-content/uploads/rer-cerere-atr-peste-100-kw.pdf"),
     ("Rețele Electrice România", "Cerere racordare prosumator (Anexa 1)", "prosumator / spor putere", "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-1-cerere-racordare.pdf"),
-    ("Rețele Electrice România", "Notificare racordare loc existent (Anexa 2)", "prosumator / notificare", "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-2-cerere-racordare.pdf"),
-    ("Rețele Electrice România", "Notificare certificare prosumator (Anexa 3)", "prosumator / notificare", "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-3-cerere-racordare.pdf"),
-    ("Rețele Electrice România", "Notificare racordare prosumator până la 10,8 kW (Anexa 5)", "prosumator / notificare", "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-5-cerere-racordare.pdf"),
     ("Rețele Electrice România", "Cerere racordare prosumator programe de finanțare (Anexa 4)", "prosumator", "https://www.reteleelectrice.ro/wp-content/uploads/rer-anexa-4-cerere-racordare.pdf"),
     ("Rețele Electrice România", "Pagina oficială Cereri și documente", "pagină", "https://www.reteleelectrice.ro/cereri-documente/"),
     ("Distribuție Energie Oltenia", "Racordarea la rețeaua electrică — documente și formulare ATR (pagina oficială)", "pagină",
@@ -89,23 +54,6 @@ async def seed():
     for op, title, kind, url in SEED:
         await db.official_forms.update_one({"url": url}, {"$setOnInsert": {"id": str(uuid.uuid4()), "operator": op, "title": title, "kind": kind, "url": url,
                                            "version": "", "notes": "", "status": NEW, "created_at": now(), "history": []}}, upsert=True)
-    retired = {
-        "https://www.distributie-energie.ro/wp-content/uploads/2021/01/10-Cerere-loc-consum-existent-Spor-de-putere-Anexa-1.pdf":
-            "Formular istoric. Folosiți formularul curent Anexa 1 din sursa DEER.",
-        "https://delgaz.ro/getattachment/a49b57e4-6692-4772-87cd-314cd378657a/Cerere_de_racordare_prosumator.pdf":
-            "Formular istoric. Folosiți formularul curent Anexa 1 publicat de Delgaz Grid.",
-    }
-    historical_titles = {
-        "https://www.distributie-energie.ro/wp-content/uploads/2021/01/10-Cerere-loc-consum-existent-Spor-de-putere-Anexa-1.pdf":
-            "Formular istoric prosumator — Anexa 1 (Ord. ANRE 69/2020)",
-        "https://delgaz.ro/getattachment/a49b57e4-6692-4772-87cd-314cd378657a/Cerere_de_racordare_prosumator.pdf":
-            "Formular istoric prosumator — Anexa 1 (înlocuit; consultați versiunea curentă Delgaz Grid)",
-    }
-    for url, note in retired.items():
-        await db.official_forms.update_one({"url": url}, {"$set": {
-            "status": "formular retras", "deprecated": True, "notes": note,
-            "title": historical_titles[url],
-        }})
 
 
 def detect_version(data: bytes, ct: str) -> str:
@@ -113,25 +61,12 @@ def detect_version(data: bytes, ct: str) -> str:
         if "pdf" in ct or data[:4] == b"%PDF":
             import pymupdf
             d = pymupdf.open(stream=data, filetype="pdf")
-            txt = d[0].get_text()[:5000] if d.page_count else ""
+            txt = d[0].get_text()[:3000] if d.page_count else ""
             meta = d.metadata or {}
             m = VER_RE.search(txt)
             return (m.group(1).strip() if m else "") or (meta.get("modDate") or "")[2:10]
-        if "wordprocessingml" in ct or data[:2] == b"PK":
-            from docx import Document
-            document = Document(io.BytesIO(data))
-            chunks = [p.text for p in document.paragraphs]
-            for table in document.tables:
-                for row in table.rows:
-                    chunks.append(" | ".join(cell.text for cell in row.cells))
-            txt = "\n".join(chunks)[:12000]
-            m = VER_RE.search(txt)
-            if m:
-                return m.group(1).strip()
-            modified = document.core_properties.modified
-            return modified.strftime("%Y-%m-%d") if modified else ""
-    except Exception as exc:
-        logger.debug("Official form version extraction failed: %s", exc)
+    except Exception:
+        pass
     return ""
 
 
@@ -158,7 +93,7 @@ async def check_one(f: dict) -> dict:
                 res["detected_version"] = detect_version(body, ct)
             res["hash"] = digest
             prev = (f.get("last_check") or {}).get("hash")
-            res["status"] = CHANGED if prev and prev != digest else (OK if f.get("confirmed_at") and prev == digest else ACCESSIBLE)
+            res["status"] = CHANGED if prev and prev != digest else OK
     except Exception as e:
         res.update({"status": BROKEN, "error": str(e)[:200]})
     upd = {"last_check": res, "status": res["status"] if res["status"] != CHANGED else CHANGED}
@@ -189,7 +124,7 @@ def pub(f: dict) -> dict:
 
 @api.get("/forms")
 async def forms_list(user: dict = Depends(get_current_user)):
-    return [pub(f) for f in await db.official_forms.find({"deprecated": {"$ne": True}}, {"_id": 0}).sort([("operator", 1), ("title", 1)]).to_list(500)]
+    return [pub(f) for f in await db.official_forms.find({}, {"_id": 0}).sort([("operator", 1), ("title", 1)]).to_list(500)]
 
 
 def plat(user: dict):

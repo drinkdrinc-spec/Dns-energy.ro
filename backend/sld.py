@@ -5,54 +5,18 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A3, A4, landscape
 from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Table, TableStyle, Paragraph
 from reportlab.lib.styles import ParagraphStyle
 import docgen  # registers LS / LSB fonts
-from cef import n, battery_cable_proposal
+from cef import n
 
-# SLD geometry is expressed in millimetres after ``canvas.scale(mm, mm)``.
-# ReportLab font sizes are points. Keep labels at a readable intermediate size
-# that fits the existing electrical clearances and label boxes.
-PT = 0.5
+PT = 0.3528
 INK = colors.HexColor("#111111")
 RED = colors.HexColor("#c0392b")
 PEC = colors.HexColor("#1e8449")
 GREY = colors.HexColor("#666666")
-PV_ORANGE = colors.HexColor("#d9822b")
-BATTERY_GREEN = colors.HexColor("#26834a")
-BACKUP_BLUE = colors.HexColor("#3066c2")
-PAPER = colors.HexColor("#fbf8f2")
-GRID_LINE = colors.HexColor("#e8e2d8")
 CELL = ParagraphStyle("c", fontName="LS", fontSize=6.6, leading=8)
 CELLB = ParagraphStyle("cb", fontName="LSB", fontSize=6.6, leading=8)
-
-
-def battery_protection(battery, proposal=None):
-    """Describe known DC battery protection without turning a proposal into an installed device."""
-    battery = battery or {}
-    proposal = proposal or {}
-    breaker = n(battery.get("breaker_a"))
-    fuse = n(battery.get("fuse_a"))
-    proposed_fuse = n(proposal.get("fuse_a"))
-    if breaker:
-        return {"kind": "breaker", "rating": breaker, "source": "documentată"}
-    if battery.get("breaker_integrated"):
-        return {"kind": "integrated", "rating": None, "source": "integrată; calibru neconfirmat"}
-    if fuse:
-        return {"kind": "fuse", "rating": fuse, "source": "declarată; de verificat"}
-    if proposed_fuse:
-        return {"kind": "proposal", "rating": proposed_fuse, "source": "PROPUSĂ — de confirmat"}
-    return {"kind": "missing", "rating": None, "source": "LIPSĂ — protecție de confirmat"}
-
-
-def battery_protection_text(state):
-    kind = state["kind"]
-    device = {"breaker": "întreruptor DC", "integrated": "protecție integrată",
-              "fuse": "siguranță fuzibilă DC", "proposal": "siguranță fuzibilă DC propusă",
-              "missing": "protecție DC neidentificată"}[kind]
-    rating = gv(state.get("rating"), " A")
-    return f"{device}{f' {rating}' if rating else ''} — {state['source']}"
 
 
 def gv(x, unit=""):
@@ -67,7 +31,6 @@ class Sheet:
     def __init__(self, c):
         self.c = c
         self.miss = 0
-        self.mirror_x = False
 
     # ---------- primitives (units: mm after scaling) ----------
     def lw(self, w=0.25, color=INK, dash=None):
@@ -80,11 +43,7 @@ class Sheet:
         elif kind == "ctl":
             self.lw(0.18, GREY, ([0.8, 0.6], 0))
         elif kind == "dc":
-            self.lw(0.35, PV_ORANGE)
-        elif kind == "backup":
-            self.lw(0.35, BACKUP_BLUE)
-        elif kind == "bat":
-            self.lw(0.35, BATTERY_GREEN)
+            self.lw(0.35)
         else:
             self.lw(0.4)
         self.c.line(x1, y1, x2, y2)
@@ -99,16 +58,7 @@ class Sheet:
             while s and c.stringWidth(s, f, fs) > w:
                 s = s[:-2]
         c.setFont(f, fs); c.setFillColor(color)
-        if self.mirror_x:
-            # The electrical layout is reversed to run from utility/grid at
-            # the left to PV strings at the right. Counter-flip text locally so
-            # labels remain readable while following their equipment.
-            c.saveState(); c.translate(x, y); c.scale(-1, 1)
-            draw = {"l": c.drawRightString, "c": c.drawCentredString, "r": c.drawString}[anchor]
-            draw(0, 0, s)
-            c.restoreState()
-        else:
-            {"l": c.drawString, "c": c.drawCentredString, "r": c.drawRightString}[anchor](x, y, s)
+        {"l": c.drawString, "c": c.drawCentredString, "r": c.drawRightString}[anchor](x, y, s)
 
     def val(self, x, y, label, value, unit="", size=5.2, anchor="l", w=None, bold=False):
         v = gv(value, unit)
@@ -127,15 +77,6 @@ class Sheet:
             self.c.rect(x - 1.1, y - 3, 2.2, 6, stroke=1, fill=0); self.c.line(x, y - 3, x, y + 3)
         else:
             self.c.rect(x - 3, y - 1.1, 6, 2.2, stroke=1, fill=0); self.c.line(x - 3, y, x + 3, y)
-
-    def switch_vertical(self, x, y):
-        """Vertical DC breaker symbol; ratings come from the selected equipment data."""
-        self.lw(0.4)
-        self.c.line(x, y - 5, x, y - 3)
-        self.c.line(x, y + 3, x, y + 5)
-        self.c.rect(x - 2.2, y - 3, 4.4, 6, stroke=1, fill=0)
-        self.c.line(x - 1.4, y - 1.6, x + 1.4, y + 1.6)
-        self.lw()
 
     def switch(self, x, y, kind="Q"):
         """horizontal switching device occupying x-5..x+5. kind: Q breaker, S disconnector, LS switch-disconnector, K contactor"""
@@ -194,7 +135,7 @@ class Sheet:
         self.text(cx + h - 7, cy - h + 2.2, "~", 10, True)
 
     def pv(self, x1, y, w=16, h=8):
-        self.lw(0.35, PV_ORANGE); self.c.setStrokeColor(PV_ORANGE); self.c.setFillColor(colors.white)
+        self.lw(0.35); self.c.setFillColor(colors.white)
         self.c.rect(x1, y - h / 2, w, h, stroke=1, fill=1)
         self.lw(0.25); self.c.line(x1, y - h / 2, x1 + w, y + h / 2)
         for dx in (0, 2.2):
@@ -203,22 +144,15 @@ class Sheet:
         self.text(x1 + w - 3.5, y - h / 2 + 1, "=", 6)
 
     def battery(self, x, y):
-        self.lw(0.4, BATTERY_GREEN)
+        self.lw(0.4)
         for k in range(2):
             yy = y - k * 2.6
             self.c.line(x - 3.2, yy, x + 3.2, yy)
-            self.lw(0.9, BATTERY_GREEN); self.c.line(x - 1.6, yy - 1.2, x + 1.6, yy - 1.2); self.lw(0.4, BATTERY_GREEN)
+            self.lw(0.9); self.c.line(x - 1.6, yy - 1.2, x + 1.6, yy - 1.2); self.lw(0.4)
         self.text(x + 3.8, y - 0.6, "+", 5); self.text(x + 3.8, y - 5, "−", 5)
 
-    def bms(self, x, y):
-        """Battery management block, distinct from the battery enclosure."""
-        self.lw(0.4, BATTERY_GREEN)
-        self.c.setFillColor(colors.white)
-        self.c.roundRect(x - 12, y - 4, 24, 8, 1.2, stroke=1, fill=1)
-        self.text(x, y - 1.2, "BMS", 5.2, True, BATTERY_GREEN, "c")
-
-    def enclosure(self, x1, y1, x2, y2, label, sub="", color=GREY):
-        self.lw(0.25, color, ([3, 0.8, 0.5, 0.8], 0))
+    def enclosure(self, x1, y1, x2, y2, label, sub=""):
+        self.lw(0.25, GREY, ([3, 0.8, 0.5, 0.8], 0))
         self.c.rect(x1, y1, x2 - x1, y2 - y1, stroke=1, fill=0); self.lw()
         self.text(x1 + 1, y2 - 2.6, label, 5.4, True, w=x2 - x1 - 2)
         if sub:
@@ -247,12 +181,11 @@ def diagram(S, rec, res, client):
         st = base["inverters"][i]["strings"] or []
         nm = len({x["mppt"] for x in st}) or 1
         hh = max(13, 1.6 * (nm + 1))
-        string_pitch = 24 if 2 <= len(st) <= 3 else 14
-        hs = max(len(st) * string_pitch, 36, 2 * hh + 22) + 10
-        hb = 50 if inv.get("battery_mode") == "own" else (12 if (inv.get("backup") or {}).get("enabled") else 4)
+        hs = max(len(st) * 14, 36, 2 * hh + 22) + 10
+        hb = 30 if inv.get("battery_mode") == "own" else (12 if (inv.get("backup") or {}).get("enabled") else 4)
         rows.append((hs, hb + 2 * (hh - 13)))
     shared = cef.get("shared_batteries") or []
-    H = 12 + sum(a + b for a, b in rows) + (46 if shared else 0) + 18
+    H = 12 + sum(a + b for a, b in rows) + (30 if shared else 0) + 18
     W = 418 + A
     return W, H, lambda: _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, shared)
 
@@ -284,17 +217,11 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         pe_y = row_bot + 1.5
         # PV strings + TDC
         if strings:
-            string_pitch = 24 if 2 <= len(strings) <= 3 else 14
-            ys = [cy + (len(strings) - 1) * string_pitch / 2 - k * string_pitch for k in range(len(strings))]
+            ys = [cy + (len(strings) - 1) * 7 - k * 14 for k in range(len(strings))]
             par = {}
             for k, s in enumerate(strings):
                 par.setdefault(s["mppt"], []).append(k)
-            fuse_rating = n(dc.get("fuse_a")) or 15
-            fuses = True  # DNS standard: show a proposed fuse-separator on each PV string.
-            rsd = inv.get("rsd") or {}
-            if rsd.get("enabled"):
-                S.enclosure(73, max(ys) + 3, 115, max(ys) + 9,
-                            f"-Q{i + 1}.RSD  Oprire rapidă", f"{rsd.get('brand_model') or 'RSD'} · {rsd.get('poles') or '?'}P")
+            fuses = max(len(v) for v in par.values()) >= 3
             S.enclosure(56, min(ys) - 13, 116, max(ys) + 13, f"-TDC{i + 1}  Cutie DC / joncțiune", "SR EN 61439-2 · IEC 62548")
             for k, s in enumerate(strings):
                 y = ys[k]
@@ -302,7 +229,7 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                 S.text(6, y + 4.9, f"-PV{i + 1}.{k + 1}", 4.8, True)
                 agg = strings_raw[k].get("aggregate")
                 lbl = "Câmp PV total (stringuri nedefinite)" if agg else f"S{k + 1}:"
-                val = f"{s['panels']}×{gv(n(s.get('panel_w')), ' W') or '[W lipsă]'} = " + (f"{s['kwp']:g} kWp" if s['kwp'] else "[kWp lipsă]")
+                val = f"{s['panels']}×{gv(n(inv.get('panel_w')), ' W') or '[W lipsă]'} = " + (f"{s['kwp']:g} kWp" if s['kwp'] else "[kWp lipsă]")
                 if agg:
                     S.text(24, y + 3.6, lbl, 4.4, True, w=31)
                     S.text(24, y + 1.0, val, 4.8, w=31)
@@ -312,10 +239,8 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                 S.wire(22, y, 72, y, "dc")
                 if fuses:
                     S.fuse(62, y)
-                    S.text(62, y + 3.8, f"-FU{i + 1}.{k + 1} {fuse_rating:g} A", 3.8, True, anchor="c")
                 S.wire(2, y - 4, 6, y - 4, "pe")
-            panel_models = list(dict.fromkeys(str(s.get("panel_model") or inv.get("panel_model") or "[model panou lipsă]") for s in strings))
-            S.text(6, min(ys) - 8.5, " · ".join(panel_models), 4.6, color=INK if all(model != "[model panou lipsă]" for model in panel_models) else RED, w=48)
+            S.text(6, min(ys) - 8.5, str(inv.get("panel_model") or "[model panou lipsă]"), 4.6, color=INK if inv.get("panel_model") else RED, w=48)
             mppts = sorted(par)
             nm = len(mppts)
             for j, m in enumerate(mppts):
@@ -336,11 +261,10 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
             S.val(58, ty - 2.6, "Separator DC: ", sw, w=56, size=4.6)
             S.val(58, ty - 4.8, "SPD DC T2 Ucpv ", n(dc.get("spd_ucpv")), " V", w=56, size=4.6)
             if fuses:
-                S.val(58, ty - 7.0, "Separator fuzibil gPV: ", fuse_rating, " A/string*", w=56, size=4.0)
+                S.val(58, ty - 7.0, "Siguranțe gPV ", n(dc.get("fuse_a")), " A / 1000 V", w=56, size=4.6)
             by = min(ys) - 11.8
             S.text(58, by + 2.2, f"-W{i + 1}.DC  {dc.get('cable_type') or 'H1Z2Z2-K'}", 4.6, True, w=56)
-            dc_section = n(dc.get("section")) or n(r["proposals"]["dc"].get("section")) or 6
-            S.val(58, by, "1×", dc_section, f" mm² {dc.get('material') or 'Cu'} (+/−), L=" + (gv(n(dc.get('length_m')), ' m') or "[lipsă]"), w=56, size=4.6)
+            S.val(58, by, "1×", n(dc.get("section")), f" mm² {dc.get('material') or 'Cu'} (+/−), L=" + (gv(n(dc.get('length_m')), ' m') or "[lipsă]"), w=56, size=4.6)
             S.wire(2, min(ys) - 4, 2, pe_y, "pe")
         # inverter
         cx = 134
@@ -354,64 +278,24 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.wire(cx - 9, cy - 13, cx - 9, pe_y, "pe")
         S.text(cx - 12, cy - 16, "PE", 4.2, color=PEC, anchor="r")
         S.wire(2, pe_y, cx - 9, pe_y, "pe")
-        # Battery branch: DC breaker, datasheet ratings and cable section from selected data.
+        # battery own
         if inv.get("battery_mode") == "own":
             bt = inv.get("battery") or {}
-            protection = battery_protection(bt, r["proposals"]["battery"])
-            S.wire(cx, cy - 13, cx, cy - 16, "bat")
-            if protection["kind"] == "breaker":
-                S.switch_vertical(cx, cy - 19)
-            elif protection["kind"] in ("fuse", "proposal"):
-                S.fuse(cx, cy - 19, vertical=True)
-            elif protection["kind"] == "missing":
-                S.node(cx, cy - 16); S.node(cx, cy - 22)
-            else:
-                S.wire(cx, cy - 16, cx, cy - 22, "bat")
-            S.wire(cx, cy - 22, cx, cy - 24, "bat")
-            S.bms(cx, cy - 29)
-            S.wire(cx, cy - 33, cx, cy - 36, "bat")
-            S.battery(cx, cy - 36)
-            device_code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
-            rating = gv(protection.get("rating"), " A")
-            switch_voltage = n(bt.get("breaker_voltage_dc") or bt.get("dc_switch_voltage_v"))
-            if protection["kind"] == "breaker":
-                details = f"{device_code}{i + 1}.B {rating or '[lipsă]'} DC"
-            else:
-                details = f"{device_code}{i + 1}.B {rating + ' · ' if rating else ''}{protection['source']}"
-            color = RED if protection["kind"] == "missing" else (PV_ORANGE if protection["kind"] == "proposal" else INK)
-            S.text(cx + 10, cy - 17.2, details, 4.15, True, color, w=27)
-            detail_y = cy - 22.4
-            if protection["kind"] == "breaker":
-                voltage_color = RED if not switch_voltage else INK
-                S.text(cx + 10, detail_y, f"UdcQ {gv(switch_voltage, 'V') or '[lipsă]'}", 4.15, True, voltage_color, w=27)
-                detail_y -= 4.4
-            S.text(cx + 10, detail_y, f"-G{i + 1} {bt.get('model') or '[model baterie lipsă]'}", 4.4, True, w=27)
-            detail_y -= 4.4
-            cable_unit = " mm² DC"
-            if n(bt.get("breaker_icu_ka")):
-                cable_unit += f" · Icu {gv(n(bt.get('breaker_icu_ka')), 'kA')}"
-            S.val(cx + 10, detail_y, "Cablu ", bt.get("cable_section") or bt.get("section") or r["proposals"]["battery"].get("section"), cable_unit, size=4.4, w=27)
-            detail_y -= 4.4
-            battery_unit = f" A · Ubat {gv(n(bt.get('voltage')), 'V') or '[lipsă]'}"
-            S.val(cx + 10, detail_y, "I max ", bt.get("i_max"), battery_unit, size=4.4, w=27)
+            S.wire(cx, cy - 13, cx, cy - 26, "dc")
+            S.fuse(cx, cy - 19, vertical=True)
+            S.battery(cx, cy - 26)
+            S.val(cx + 6, cy - 18.6, f"-F{i + 1}.B ", n(bt.get("fuse_a")), " A DC", size=4.6, w=28)
+            S.text(cx + 6, cy - 23.2, f"-G{i + 1}", 4.8, True)
+            S.val(cx + 6, cy - 25.6, "", bt.get("model"), size=4.6, w=28)
+            kwh = r["battery_kwh"]
+            S.val(cx + 6, cy - 28, "", kwh, f" kWh · {gv(n(bt.get('voltage')), ' V') or '— V'} · {bt.get('coupling') or 'DC'}", size=4.4, w=28)
         if (inv.get("backup") or {}).get("enabled"):
             b = inv["backup"]
-            grid = ((rec.get("cef") or {}).get("grid") or {})
-            backup_circuits = backup_teg_circuits(grid)
-            mode = str(grid.get("backup_mode") or "").casefold()
-            if "total" in mode:
-                eps_target = "LOAD/EPS → tot TEG"
-            elif "parțial" in mode or "partial" in mode:
-                selected_ids = {id(c) for c in backup_circuits}
-                eps_names = [str(c.get("name") or f"C{j + 1}") for j, c in enumerate((grid.get("circuits") or [])) if isinstance(c, dict) and id(c) in selected_ids]
-                eps_target = "LOAD/EPS → " + (", ".join(eps_names) if eps_names else "TEG: neselectat")
-            else:
-                eps_target = str(b.get("circuits") or "circuite EPS — de configurat")
-            S.wire(cx + hh, cy - 10, 152, cy - 10, "backup"); S.wire(152, cy - 10, 152, cy - 16, "backup"); S.wire(152, cy - 16, 182, cy - 16, "backup")
-            S.switch(187, cy - 16, "Q"); S.wire(192, cy - 16, 200, cy - 16, "backup")
-            S.enclosure(176, cy - 24, 228, cy - 9, "-BMP LOAD", "protecție backup / EPS", color=RED)
+            S.wire(cx + hh, cy - 10, 152, cy - 10); S.wire(152, cy - 10, 152, cy - 16); S.wire(152, cy - 16, 182, cy - 16)
+            S.switch(187, cy - 16, "Q"); S.wire(192, cy - 16, 200, cy - 16)
+            S.enclosure(176, cy - 24, 228, cy - 9, f"-TB{i + 1}  Tablou backup / EPS")
             S.val(202, cy - 16.8, "", b.get("breaker"), size=4.6, w=25)
-            S.text(178, cy - 22.6, eps_target, 4.2, color=GREY, w=48)
+            S.text(178, cy - 22.6, str(b.get("circuits") or "circuite EPS"), 4.2, color=GREY, w=48)
         # AC side
         ina = n(ac.get("breaker_a"))
         if ina:
@@ -419,10 +303,8 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.wire(cx + hh, cy + dd, 181, cy + dd)
         cy += dd
         S.tick(max(158, cx + hh + 12), cy, conductors if r["tri"] else "L+N+PE")
-        ac_section = n(ac.get("section")) or n(r["proposals"]["ac"].get("section"))
-        cores_label = (("5" if r["tri"] else "3") + f"×{ac_section:g} mm²") if r.get("phase_known") and ac_section else "faze/secțiune de confirmat"
         S.text(cx + hh + 1, cy + 6.6, f"-W{i + 1}.AC  {ac.get('cable_type') or ''}".strip(), 4.6, True, w=28)
-        S.text(cx + hh + 1, cy + 4.4, cores_label + f" {ac.get('material') or 'Cu'}" + (f", PE {gv(n(ac.get('pe_section')))}" if n(ac.get("pe_section")) else ""), 4.2, w=28)
+        S.val(cx + hh + 1, cy + 4.4, "", n(ac.get("section")), f" mm² {ac.get('material') or 'Cu'}" + (f", PE {gv(n(ac.get('pe_section')))}" if n(ac.get("pe_section")) else ""), size=4.4, w=28)
         S.val(cx + hh + 1, cy + 2.2, "L=", n(ac.get("length_m")), " m", size=4.4, w=28)
         S.enclosure(174, cy - 7, 230, cy + 13, f"-TFV  Tablou fotovoltaic (INV {i + 1})")
         S.switch(186, cy, "Q")
@@ -434,39 +316,18 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.text(207, cy + 6.4, f"-F{i + 1}.1", 4.6, True)
         S.val(204, cy - 5.6, "", inv.get("rcd_type"), (f" {gv(n(inv.get('rcd_ma')), ' mA')}" if n(inv.get("rcd_ma")) else ""), size=4.4, w=25)
         S.node(BUS, cy)
-    # Shared battery branch with separate DC breaker and visible technical data.
+    # shared batteries
     for k, b in enumerate(shared):
         x = 134 + k * 30
         users = [i for i, inv in enumerate(invs) if inv.get("battery_mode") == "shared" and inv.get("shared_battery_id") == b.get("id")]
         for u in users:
-            S.wire(126, cys[u] - 13, 126, y_shared + 10, "dc")
+            S.wire(126 + 0, cys[u] - 13, 126, y_shared + 6, "dc")
         if users:
-            S.wire(126, y_shared + 10, x, y_shared + 10, "dc")
-        protection = battery_protection(b, battery_cable_proposal(b))
-        S.wire(x, y_shared + 10, x, y_shared + 5, "dc")
-        if protection["kind"] == "breaker":
-            S.switch_vertical(x, y_shared + 2)
-        elif protection["kind"] in ("fuse", "proposal"):
-            S.fuse(x, y_shared + 2, vertical=True)
-        elif protection["kind"] == "missing":
-            S.node(x, y_shared + 5); S.node(x, y_shared - 1)
-        else:
-            S.wire(x, y_shared + 5, x, y_shared - 1, "dc")
-        S.wire(x, y_shared - 1, x, y_shared - 4, "dc")
-        S.battery(x, y_shared - 4)
-        S.text(x + 6, y_shared + 11, f"-G{len(invs) + k + 1} baterie comună", 4.5, True, w=38)
-        rating = gv(protection.get("rating"), " A")
-        code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
-        status = f"{code}{k + 1}.B {rating + ' A DC · ' if rating else ''}{protection['source']}"
-        switch_voltage = n(b.get("breaker_voltage_dc") or b.get("dc_switch_voltage_v"))
-        S.text(x + 6, y_shared + 7, status, 4.0, True, RED if protection["kind"] == "missing" else (PV_ORANGE if protection["kind"] == "proposal" else INK), w=38)
-        voltage_line = f"Ubat {gv(n(b.get('voltage')), 'V') or '[lipsă]'}"
-        if protection["kind"] == "breaker":
-            voltage_line += f" · UdcQ {gv(switch_voltage, 'V') if switch_voltage else '[lipsă]'}"
-        S.text(x + 6, y_shared + 2.5, voltage_line, 4.0, True, RED if protection["kind"] == "breaker" and not switch_voltage else INK, w=38)
-        S.text(x + 6, y_shared - 2, str(b.get("model") or "[model baterie lipsă]"), 4.2, w=38)
-        S.val(x + 6, y_shared - 6.5, "I max ", b.get("i_max"), " A", size=4.2, w=38)
-        S.val(x + 6, y_shared - 11, "Cablu ", b.get("cable_section") or b.get("section") or battery_cable_proposal(b).get("section"), " mm²", size=4.2, w=38)
+            S.wire(126, y_shared + 6, x, y_shared + 6, "dc"); S.wire(x, y_shared + 6, x, y_shared + 1, "dc")
+        S.battery(x, y_shared)
+        S.text(x + 6, y_shared + 1, f"-G{len(invs) + k + 1} baterie comună", 4.8, True)
+        S.val(x + 6, y_shared - 1.6, "", b.get("model"), size=4.6, w=40)
+        S.text(x + 6, y_shared - 4.2, "INV " + ", ".join(str(u + 1) for u in users), 4.4, color=GREY)
     # busbar + TG
     if cys:
         ytop, ybot = max(cys), min(cys)
@@ -487,15 +348,13 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         S.wire(BUS, ybot - 12, BUS, ybot - 18, "pe")
         x = 300
         if anti:
-            S.enclosure(302, y - 9, 330, y + 15, "-TAI / QINT  Interfață EPS" if base["grid"].get("anti_backup") else "-TAI  Antiinsularizare")
+            S.enclosure(302, y - 9, 330, y + 15, "-TAI  Antiinsularizare")
             S.switch(312, y, "K")
             S.lw(0.35); S.c.rect(318, y + 4, 9, 5, stroke=1, fill=0); S.lw()
             S.text(322.5, y + 5.6, "PI", 5, True, anchor="c")
             S.wire(322.5, y + 4, 322.5, y + 2, "ctl"); S.wire(322.5, y + 2, 313, y + 2, "ctl")
-            anti_breaker = grid.get("anti_breaker") or base["grid"].get("anti_breaker_proposal")
-            anti_relay = grid.get("anti_relay") or "model conform ATR / OD"
-            S.val(304, y - 4, "-K1 ", f"{anti_breaker} A (propus)" if anti_breaker and not grid.get("anti_breaker") else anti_breaker, size=4.2, w=25)
-            S.val(304, y - 6.6, "-K2 releu ", anti_relay, size=4.2, w=25)
+            S.val(304, y - 4, "-K1 ", grid.get("anti_breaker"), size=4.2, w=25)
+            S.val(304, y - 6.6, "-K2 releu ", grid.get("anti_relay"), size=4.2, w=25)
         # smart meter
         mx = 306 + A
         if grid.get("meter"):
@@ -510,11 +369,11 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
         # column
         S.tick(326 + A, y, conductors)
         S.text(318 + A, y + 6.6, "-W0 coloană BMP→TG", 4.6, True, w=26)
-        S.val(318 + A, y + 4.4, "", grid.get("column_cable") or base["grid"].get("main_column_cable_proposal") or (gv(n(grid.get("column_section")), " mm²")), size=4.4, w=26)
+        S.val(318 + A, y + 4.4, "", grid.get("column_cable") or (gv(n(grid.get("column_section")), " mm²")), size=4.4, w=26)
         if n(grid.get("column_length")):
             S.text(318 + A, y + 2.2, f"L={n(grid.get('column_length')):g} m", 4.4)
         # BMP
-        S.enclosure(346 + A, y - 10, 392 + A, y + 15, "-BMP GRID", "măsură · proprietate OD", color=RED)
+        S.enclosure(346 + A, y - 10, 392 + A, y + 15, "-BMP  Bloc măsură și protecție", "proprietate OD")
         mx = 358 + A
         if grid.get("ct_ratio"):
             S.ct(mx - 6, y); S.wire(mx - 6, y + 1.9, mx - 6, y + 4, "ctl"); S.wire(mx - 6, y + 4, mx - 5.5, y + 4, "ctl")
@@ -552,26 +411,27 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
     c = S.c
     L, B, R, T = 20, 10, PW - 10, PH - 10
     S.lw(0.5); c.rect(L, B, R - L, T - B, stroke=1, fill=0); S.lw()
-    tbw, tbh = 190, 58
+    tbw, tbh = 180, 44
     x0, y0 = R - tbw, B
-    meta_w = 137
     get = lambda k: client.get(k) or rec.get(k)
     t = res["base"]["totals"]
     kwp = f"{t['kwp']:g} kWp" if t["kwp"] else "[kWp lipsă]"
     kw = f"{t['inverters_kw']:g} kW" if t["inverters_kw"] else "[kW lipsă]"
     loc = ", ".join(str(x) for x in [get("address"), get("locality"), ("jud. " + str(get("county"))) if get("county") else None] if x)
     st = approval.get("status")
-    stat = {"approved": "APROBAT — validare internă înregistrată", "stale": "APROBARE ANULATĂ — configurația s-a modificat", "draft": "CIORNĂ — neverificat / neaprobat"}.get(st, "CIORNĂ")
+    names = "; ".join(f"{a.get('name')} ({a.get('role_label')}, {str(a.get('at'))[:10]})" for a in (approval.get("approvals") or {}).values() if a.get("valid"))
+    stat = {"approved": f"APROBAT — {names or approval.get('name')}",
+            "stale": "APROBARE ANULATĂ — configurația s-a modificat", "draft": "CIORNĂ — neverificat / neaprobat"}.get(st, "CIORNĂ")
     if demo:
         stat = "EXEMPLU DEMONSTRATIV — nu este document de execuție"
     rows = [
-        [("", f"{settings.get('company') or 'DNS HOSTESS S.R.L.'}" + (f" · Atestat ANRE {settings.get('anre_type') or ''} nr. {settings.get('anre_attest')}" if settings.get("anre_attest") else " · Atestat ANRE [lipsă]"), meta_w, True)],
-        [("Beneficiar", get("name"), 80, False), ("Nr. proiect", get("project_no"), 57, False)],
-        [("Adresă CEF", loc or None, 80, False), ("Planșa", f"E-0{sheet} ({sheet}/{sheets})", 57, False)],
-        [("Titlu", f"CEF {kwp} — Schemă monofilară" if sheet == 1 else "Tabel cabluri, aparate și verificări", 82, True), ("Format / scara", f"{fmt} orizontal · fără scară", 55, False)],
-        [("Proiectant", settings.get("designer_name"), 68, False), ("Verificator", settings.get("verifier"), 69, False)],
-        [("Data", docgen.ro_date(get("doc_date") or get("date")) or datetime.now().strftime("%d.%m.%Y"), 52, False), ("POD", get("pod"), 85, False)],
-        [("Stare", stat, meta_w, True)],
+        [("", f"{settings.get('company') or 'DNS HOSTESS S.R.L.'}" + (f" · Atestat ANRE {settings.get('anre_type') or ''} nr. {settings.get('anre_attest')}" if settings.get("anre_attest") else " · Atestat ANRE [lipsă]"), 180, True)],
+        [("Beneficiar", get("name"), 110, False), ("Nr. proiect", get("project_no"), 70, False)],
+        [("Adresă", loc or None, 110, False), ("Planșa", f"E-0{sheet} ({sheet}/{sheets})", 70, False)],
+        [("Titlu", f"Schemă electrică monofilară — CEF {kwp} / {kw}" if sheet == 1 else "Tabel cabluri, aparate și verificări", 110, True), ("Format / scara", f"{fmt} orizontal · fără scară", 70, False)],
+        [("Proiectant", approval.get("designer"), 110, False), ("Data", docgen.ro_date(get("doc_date") or get("date")) or datetime.now().strftime("%d.%m.%Y"), 70, False)],
+        [("Verificator", approval.get("verifier"), 110, False), ("Revizie", str((rec.get("sld") or {}).get("revision") or 0), 70, False)],
+        [("Stare", stat, 180, True)],
     ]
     rh = tbh / len(rows)
     S.lw(0.4); c.rect(x0, y0, tbw, tbh, stroke=1, fill=0)
@@ -585,202 +445,46 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
             if lbl:
                 S.text(xx + 1, yy + rh - 2.2, lbl, 4.4, color=GREY)
             color = RED if (val in (None, "") or "lipsă" in str(val) or (ri == 6 and st != "approved")) else INK
-            S.text(xx + (16 if lbl else 1.5), yy + 1.5, val if val not in (None, "") else "[lipsă]", 5.6, bold, color, w=w - (17 if lbl else 3))
+            S.text(xx + (16 if lbl else 1.5), yy + 1.6, val if val not in (None, "") else "[lipsă]", 6.2, bold, color, w=w - (17 if lbl else 3))
             xx += w
-    # Signature and company-stamp boxes remain empty until authorized images are
-    # present in Settings. Nothing is synthesized or copied from another file.
-    sig_x, box_y, box_w, box_h = x0 + 141, y0 + 8, 20, 37
-    stamp_x = x0 + 165
-    S.text(sig_x + box_w / 2, y0 + tbh - 3.8, "PROIECTANT", 4.0, True, anchor="c")
-    S.text(stamp_x + box_w / 2, y0 + tbh - 3.8, "ȘTAMPILĂ", 4.0, True, anchor="c")
-    for bx in (sig_x, stamp_x):
-        S.lw(0.25, GREY, ([1.5, 1.0], 0)); c.rect(bx, box_y, box_w, box_h, stroke=1, fill=0); S.lw()
-    def place_image(data, bx, by, bw, bh):
-        if not data:
-            return
-        try:
-            img = ImageReader(io.BytesIO(data))
-            iw, ih = img.getSize()
-            scale = min((bw - 2) / iw, (bh - 2) / ih)
-            dw, dh = iw * scale, ih * scale
-            c.drawImage(img, bx + (bw - dw) / 2, by + (bh - dh) / 2, dw, dh, mask="auto")
-        except Exception:
-            return
-    signatures = settings.get("_sld_signature_bytes") or {}
-    place_image(signatures.get("designer"), sig_x + 0.5, box_y + 2, box_w - 1, box_h - 4)
-    place_image(settings.get("_stamp_bytes"), stamp_x + 0.5, box_y + 2, box_w - 1, box_h - 4)
-    S.text(sig_x + box_w / 2, y0 + 2, "semnătură", 3.7, color=GREY, anchor="c")
-    S.text(stamp_x + box_w / 2, y0 + 2, "firmă", 3.7, color=GREY, anchor="c")
     # legend
     lw_ = x0 - L - 4
     if sheet == 1 and lw_ > 70:
-        legend(S, L + 2, B + tbh - 12, lw_, 10)
-        protection_settings_table(S, L + 2, B + 1, lw_, tbh - 14, rec)
+        legend(S, L + 2, B, lw_, tbh)
     return (L + 2, B + tbh + 3, R - 2, T - 2)
 
 
 def legend(S, x, y, w, h):
     c = S.c
-    items = [(INK, "AC REȚEA"), (BACKUP_BLUE, "BACK-UP · TEG"), (PV_ORANGE, "DC FOTOVOLTAIC"),
-             (BATTERY_GREEN, "BATERIE"), (GREY, "COMUNICAȚII")]
-    cw = (w - 6) / len(items)
-    for i, (color, label) in enumerate(items):
-        xx, yy = x + 2 + i * cw, y + 1
-        pill_w, pill_h = cw - 3, h - 2
-        c.setFillColor(colors.white); S.lw(0.25, GRID_LINE)
-        c.roundRect(xx, yy, pill_w, pill_h, pill_h / 2, stroke=1, fill=1)
-        S.lw(0.7, color, ([1.0, 0.8], 0) if color == GREY else None)
-        c.line(xx + 2, yy + pill_h / 2, xx + 8, yy + pill_h / 2)
-        S.lw()
-        S.text(xx + 10, yy + pill_h / 2 - 1.3, label, 4.0, True, color, w=pill_w - 12)
-
-
-def protection_settings_table(S, x, y, w, h, rec):
-    """Draw only entered protection-interface settings; leave the rest blank."""
-    try:
-        params = docgen.REGLAJ
-    except Exception:
-        params = []
-    values = rec.get("reglaj") or {}
-    S.text(x + 1, y + h - 4.1, "FUNCȚII DE PROTECȚIE INTERFAȚĂ · ORDIN ANRE 228/2018", 4.5, True, w=w - 2)
-    headers_y = y + h - 9
-    S.lw(0.25, GREY); S.c.line(x, headers_y - 1.4, x + w, headers_y - 1.4)
-    S.text(x + 1, headers_y, "Parametru", 3.9, True, color=GREY)
-    S.text(x + w - 36, headers_y, "Prag", 3.9, True, color=GREY)
-    S.text(x + w - 16, headers_y, "t (s)", 3.9, True, color=GREY)
-    rows = []
-    for key, label in params:
-        value = values.get(key) or {}
-        rows.append((label, value.get("val"), value.get("t")))
-    if not rows:
-        rows = [("Setările se completează din buletinul de reglaj", None, None)]
-    row_h = max(2.6, (headers_y - y - 4) / len(rows))
-    for i, (label, val, sec) in enumerate(rows):
-        yy = headers_y - 3.7 - i * row_h
-        shown_label = str(label).replace("Tensiune", "U").replace("frecvență", "frecvență")
-        S.text(x + 1, yy, shown_label, 3.75, color=INK, w=w - 42)
-        S.text(x + w - 36, yy, val if val not in (None, "") else "—", 3.75, color=INK, w=16)
-        S.text(x + w - 16, yy, sec if sec not in (None, "") else "—", 3.75, color=INK, w=14)
-
-
-def backup_teg_circuits(grid):
-    """Return the circuit rows explicitly supplied from LOAD/EPS by the saved TEG mode."""
-    circuits = [c for c in (grid.get("circuits") or []) if isinstance(c, dict)]
-    mode = str(grid.get("backup_mode") or "").casefold()
-    if "total" in mode:
-        return circuits
-    if "parțial" in mode or "partial" in mode:
-        return [c for c in circuits if bool(c.get("backup"))]
-    return []
-
-
-def teg_schedule(S, area, rec):
-    """Compact TEG circuit schedule placed on the same drawing sheet as the SLD."""
-    x1, y1, x2, y2 = area
-    grid = (rec.get("cef") or {}).get("grid") or {}
-    circuits = [c for c in (grid.get("circuits") or []) if isinstance(c, dict)]
-    backup_mode = str(grid.get("backup_mode") or "").casefold()
-    backup_configured = "total" in backup_mode or "parțial" in backup_mode or "partial" in backup_mode
-    backup_circuits = backup_teg_circuits(grid)
-    backup_ids = {id(c) for c in backup_circuits}
-    if not circuits:
-        return
-    # Match the reference drawing: show the TEG board, RCD and each breaker as
-    # a small single-line diagram, with labels sourced only from saved values.
-    x, y, w = x1 + 4, y1 + 4, min(132, x2 - x1 - 8)
-    row_h = min(4.7, max(3.3, (y2 - y1 - 18) / max(len(circuits), 1)))
-    h = 12 + len(circuits) * row_h
-    S.enclosure(x, y, x + w, y + h, "-TEG  TABLOU ELECTRIC GENERAL", "circuite consumatori")
-    bus_x = x + 20
-    first_y = y + h - 12
-    # Main differential protection and the outgoing bus are shown separately
-    # from individual branch breakers.
-    S.wire(x + 7, first_y + row_h, bus_x, first_y + row_h)
-    S.rcd(x + 13, first_y + row_h)
-    S.text(x + 2, first_y + row_h + 2.2, "-Q0.TEG", 3.8, True)
-    S.wire(bus_x, first_y + row_h, bus_x, first_y - (len(circuits) - 1) * row_h)
-    for i, circuit in enumerate(circuits):
-        cy = first_y - i * row_h
-        S.node(bus_x, cy)
-        S.wire(bus_x, cy, x + 27, cy)
-        S.switch(x + 32, cy, "Q")
-        S.wire(x + 37, cy, x + 43, cy)
-        name = circuit.get("name") or f"Circuit {i + 1}"
-        rating = " · ".join(str(v) for v in (circuit.get("breaker"), circuit.get("poles"), circuit.get("rcd")) if v)
-        source = (" · LOAD/EPS" if id(circuit) in backup_ids else " · rețea") if backup_configured else ""
-        label = f"C{i + 1}  {name}" + (f"  ·  {rating}" if rating else "") + source
-        S.text(x + 45, cy - 1.2, label, 4.15, w=w - 48)
-    if backup_circuits:
-        names = [str(c.get("name") or f"C{i + 1}") for i, c in enumerate(circuits) if id(c) in backup_ids]
-        source_label = "LOAD/EPS → TEG: " + (", ".join(names) if len(names) <= 4 else f"{len(names)} circuite selectate")
-        S.text(x + 2, y + 5.4, source_label, 3.7, True, color=RED, w=w - 4)
-    S.text(x + 2, y + 1.4, "Valorile necompletate nu sunt presupuse.", 3.7, color=GREY, w=w - 4)
-
-
-def execution_notes(S, area, rec):
-    """Show a compact note block using only values saved in the dossier."""
-    x1, y1, x2, y2 = area
-    cef = rec.get("cef") or {}
-    grid = cef.get("grid") or {}
-    inverters = cef.get("inverters") or []
-    notes = []
-    for inverter in inverters:
-        if inverter.get("battery_only") or inverter.get("no_panels"):
-            notes.append(f"{inverter.get('brand_model') or 'Invertor hibrid'}: doar baterie, fără panouri; putere evacuată 0 kW.")
-    spd_dc = grid.get("spd_dc")
-    if not spd_dc:
-        spd_dc = next(((inv.get("dc") or {}).get("spd_ucpv") for inv in inverters
-                       if (inv.get("dc") or {}).get("spd_ucpv")), None)
-    if spd_dc:
-        notes.append(f"SPD CC: {spd_dc} — tablou DC / TDC")
-    if grid.get("spd_ac"):
-        notes.append(f"SPD AC: {grid['spd_ac']} — tablou general")
-    backups = [inv.get("backup") or {} for inv in inverters if (inv.get("backup") or {}).get("enabled")]
-    if backups:
-        notes.insert(0, "Back-up/EPS: QINT separă instalația de RED la căderea rețelei; în insularizare se alimentează doar consumul local, fără injecție în RED. Reconectare după ≥15 min de la revenirea tensiunii (Ordinul ANRE nr. 228/2018, art. 10 alin. (2) lit. c și art. 14 alin. (1), (4)).")
-        for backup in backups[:2]:
-            notes.append("Backup: " + ", ".join(str(v) for v in (backup.get("type"), backup.get("circuits")) if v))
-    measured = grid.get("grounding_ohm") or rec.get("grounding_ohm")
-    if measured not in (None, ""):
-        limit = grid.get("grounding_limit") or rec.get("grounding_limit")
-        notes.append(f"Priză de pământ: R măsurat {measured} Ω" + (f" · limită {limit} Ω" if limit else ""))
-    notes.append("Seriile echipamentelor se completează la PV Teste / PIF.")
-    notes.append("Verifică schema pe teren și actualizeaz-o după modificări.")
-
-    w, h = min(132, x2 - x1 - 146), 48
-    x, y = x1 + 144, y1 + 4
-    if w < 80 or y + h > y2:
-        return
-    # Cover PE and circuit lines behind the note panel so its text stays
-    # legible on the dense one-sheet drawing.
-    S.c.setFillColor(colors.white)
-    S.c.rect(x, y, w, h, stroke=0, fill=1)
-    S.enclosure(x, y, x + w, y + h, "NOTE DE EXECUȚIE")
-    row_y = y + h - 9
-    text_size = 4.0
-    max_width = w - 12
-    line_step = 4.7
-    font_size = text_size * PT
-    for i, note in enumerate(notes[:6], 1):
-        lines = []
-        current = ""
-        for word in str(note).split():
-            candidate = f"{current} {word}".strip()
-            if current and S.c.stringWidth(candidate, "LS", font_size) > max_width:
-                lines.append(current)
-                current = word
-            else:
-                current = candidate
-        if current:
-            lines.append(current)
-        if not lines:
-            continue
-        S.text(x + 3, row_y, f"{i}.", text_size, True, PV_ORANGE)
-        for line in lines:
-            if row_y < y + 3:
-                break
-            S.text(x + 9, row_y, line, text_size, w=max_width)
-            row_y -= line_step
+    S.lw(0.3); c.rect(x, y, w, h, stroke=1, fill=0); S.lw()
+    S.text(x + 2, y + h - 3.4, "LEGENDĂ — simboluri SR EN 60617 (IEC 60617), coduri SR EN 81346-2", 5.2, True, w=w - 4)
+    items = [("pv", "Generator fotovoltaic (string)"), ("inv", "Invertor c.c./c.a."), ("fuse", "Siguranță fuzibilă gPV"),
+             ("LS", "Separator de sarcină (DC)"), ("Q", "Întreruptor automat"), ("rcd", "Dispozitiv diferențial (DDR)"),
+             ("K", "Contactor / element de decuplare"), ("spd", "Descărcător supratensiune (SPD)"), ("kwh", "Contor de energie"),
+             ("ct", "Transformator de curent (TC)"), ("bat", "Baterie de acumulatori"), ("earth", "Priză de pământ"),
+             ("pe", "Conductor PE / echipotențializare"), ("enc", "Tablou / carcasă")]
+    cols = 3 if w > 150 else 2
+    cw = (w - 4) / cols
+    per = -(-len(items) // cols)
+    rh = (h - 9) / per
+    for k, (kind, lbl) in enumerate(items):
+        col, row = k // per, k % per
+        sx, sy = x + 3 + col * cw, y + h - 8 - row * rh - rh / 2 + 1
+        c.saveState(); c.translate(sx + 6, sy); c.scale(0.55, 0.55)
+        if kind == "pv": S.pv(-8, 0)
+        elif kind == "inv": S.inverter(0, 0, 5)
+        elif kind == "fuse": S.wire(-7, 0, 7, 0); S.fuse(0, 0)
+        elif kind in ("LS", "Q", "K"): S.switch(0, 0, kind)
+        elif kind == "rcd": S.rcd(3, 0)
+        elif kind == "spd": S.lw(0.3); c.rect(-1.3, -3, 2.6, 6, stroke=1, fill=0); c.line(-1.3, -2, 1.3, 2)
+        elif kind == "kwh": S.meter(0, 0)
+        elif kind == "ct": S.wire(-6, 0, 6, 0); S.ct(0, 0)
+        elif kind == "bat": S.battery(0, 2)
+        elif kind == "earth": S.earth(0, 3)
+        elif kind == "pe": S.wire(-8, 0, 8, 0, "pe")
+        elif kind == "enc": S.enclosure(-8, -3, 8, 3, "")
+        c.restoreState()
+        S.text(sx + 14, sy - 0.8, lbl, 4.8, w=cw - 15)
 
 
 def watermark(S, PW, PH, label):
@@ -808,9 +512,6 @@ def table_page(S, area, res, rec):
         okt = "conform" if it["ok"] else ("NECONFORM" if it["ok"] is False else "de confirmat")
         vr.append([P(it["group"]), P(it["label"]), P(it["value"]), P(it["source"]), P((it["formula"] + (" · " + it["note"] if it["note"] else "")).strip(" ·") or "—"), P(okt, it["ok"] is False)])
     blocks.append(("VERIFICĂRI ȘI APARATE DE PROTECȚIE", vr, [24, 52, 30, 18, 70, 18]))
-    pr = [[P(h, True) for h in ["Cod", "Aparat / circuit", "Valori nominale", "Amplasare"]]]
-    pr.extend([[P(code), P(label), P(value), P(location)] for code, label, value, location in protections(rec, res)])
-    blocks.append(("APARATE DE PROTECȚIE ȘI CIRCUITE TEG", pr, [22, 66, 64, 28]))
     y = y2 - 4
     for title, rows, ws in blocks:
         S.text(x1 + 2, y, title, 7, True)
@@ -858,7 +559,7 @@ def report(rec, client, settings, res, approval) -> bytes:
            Pp("RAPORT DE CALCUL ȘI VALIDARE — DIMENSIONARE TEHNICĂ CEF", "h"),
            Pp(f"Beneficiar: <b>{escape(str(get('name') or '[lipsă]'))}</b> · Proiect nr. {escape(str(get('project_no') or '[lipsă]'))} · "
               f"Putere instalată DC {t['kwp']:g} kWp · AC {t['inverters_kw']:g} kW" if t["kwp"] else "Putere instalată: [date lipsă]"),
-           Pp("<b>Statut:</b> " + {"approved": "validare internă înregistrată",
+           Pp("<b>Statut:</b> " + {"approved": f"Verificat și asumat de {escape(str(approval.get('name')))} ({escape(str(approval.get('role_label')))}), {str(approval.get('at'))[:16].replace('T', ' ')} UTC",
                                     "stale": "Aprobarea anterioară a fost anulată deoarece configurația s-a modificat."}.get(st, "PROPUNERE VERIFICABILĂ — neaprobată. Dimensionarea automată nu constituie aprobarea proiectului.")),
            Spacer(1, 4), Pp("1. Surse ale valorilor", "b"),
            Pp("<b>introdus</b> — valoare completată de utilizator; <b>catalog</b> — preluată din fișa tehnică a producătorului (catalog echipamente); "
@@ -895,92 +596,9 @@ def report(rec, client, settings, res, approval) -> bytes:
     out.append(tbl([[C_("Referință", True), C_("Domeniu", True)]] + [[C_(a), C_(b)] for a, b in res["standards"]] +
                    [[C_("Fișe tehnice / manuale producători"), C_("Limitele invertorului (Udc max, MPPT, Imax), panourilor (Voc, Vmp, Isc, βVoc), bateriei (Imax), cerința privind tipul DDR")]], [60, 122]))
     out.append(Spacer(1, 8))
-    out.append(Pp("Rezultatele sunt o propunere de dimensionare ce trebuie confirmată de reprezentantul firmei executante înainte de utilizarea oficială.", "small"))
+    out.append(Pp("Rezultatele sunt o propunere de dimensionare care trebuie verificată și asumată de persoana competentă (proiectant / verificator atestat) înainte de utilizarea oficială.", "small"))
     doc.build(out)
     return buf.getvalue()
-
-
-def drawing_header(S, PW, PH, rec, client, settings, res, approval):
-    c = S.c
-    company = settings.get("company") or "DNS HOSTESS S.R.L."
-    totals = res["base"]["totals"]
-    cef = rec.get("cef") or {}
-    grid = cef.get("grid") or {}
-    invs = cef.get("inverters") or []
-    inverter_names = ", ".join(str(i.get("brand_model")) for i in invs if i.get("brand_model"))
-    batteries = [i.get("battery") or {} for i in invs if i.get("battery_mode") == "own"]
-    batteries += list(cef.get("shared_batteries") or [])
-    storage = ", ".join(str(b.get("model")) for b in batteries if b.get("model"))
-    panels = totals.get("panels") or 0
-    summary_parts = [f"CEF {totals['kwp']:g} kWp · {totals['inverters_kw']:g} kW AC"] if totals["kwp"] else ["CEF · date tehnice de verificat"]
-    if inverter_names:
-        summary_parts.append(inverter_names)
-    if panels:
-        summary_parts.append(f"{panels} panouri")
-    if storage:
-        summary_parts.append(storage)
-    if grid.get("teg_supply"):
-        summary_parts.append(f"alimentare TEG {grid['teg_supply']}")
-    summary = " · ".join(summary_parts)
-    title = "SCHEMĂ MONOFILARĂ"
-    y = PH - 17
-    logo_data = settings.get("_header_logo_bytes") or docgen.company_logo_bytes(settings)
-    text_x = 22
-    if logo_data:
-        try:
-            logo = ImageReader(io.BytesIO(logo_data))
-            iw, ih = logo.getSize()
-            scale = min(22 / iw, 10 / ih)
-            logo_w, logo_h = iw * scale, ih * scale
-            c.drawImage(logo, 22, y - 1.5 - logo_h / 2, logo_w, logo_h, mask="auto")
-            text_x = 22 + logo_w + 3
-        except Exception:
-            pass
-    S.text(text_x, y + 1.2, company, 7.2, True)
-    S.text(text_x, y - 2.2, "INSTALAȚII FOTOVOLTAICE", 4.2, color=GREY)
-    S.text(PW / 2, y, title, 10, True, anchor="c")
-    S.text(PW / 2, y - 4.2, summary, 5, color=GREY, anchor="c", w=PW - 105)
-    supply = "TRIFAZAT" if res["base"]["grid"]["tri"] else "MONOFAZAT"
-    backup = str(grid.get("backup_mode") or "LOAD").upper()
-    badge = f"{backup} · {supply}"
-    badge_w = 58
-    bx = PW - 12 - badge_w
-    S.lw(0.35, RED)
-    c.roundRect(bx, y - 2, badge_w, 7, 1.5, stroke=1, fill=0)
-    S.text(bx + badge_w / 2, y + 0.3, badge, 4.5, True, RED, "c", w=badge_w - 3)
-    status = "CIORNĂ — NEVERIFICATĂ" if approval.get("status") != "approved" else "VERIFICATĂ INTERN"
-    S.text(bx + badge_w / 2, y - 4.5, status, 3.8, True, RED if approval.get("status") != "approved" else BATTERY_GREEN, "c")
-    S.lw(0.25, GREY)
-    c.line(22, PH - 24, PW - 12, PH - 24)
-    return PH - 27
-
-
-def drawing_grid(S, x1, y1, x2, y2):
-    c = S.c
-    top = y2
-    c.saveState()
-    c.setFillColor(PAPER)
-    c.rect(x1, y1, x2 - x1, top - y1, stroke=0, fill=1)
-    S.lw(0.4, GREY)
-    c.rect(x1, y1, x2 - x1, top - y1, stroke=1, fill=0)
-    cols, rows = 7, 4
-    faint = GRID_LINE
-    for i in range(1, cols):
-        x = x1 + (x2 - x1) * i / cols
-        S.lw(0.15, faint, ([0.45, 1.4], 0)); c.line(x, y1, x, top)
-    for j in range(1, rows):
-        y = y1 + (top - y1) * j / rows
-        S.lw(0.15, faint, ([0.45, 1.4], 0)); c.line(x1, y, x2, y)
-    S.lw(0.25, GREY)
-    for i, label in enumerate("ABCDEFG"):
-        x = x1 + (x2 - x1) * (i + 0.5) / cols
-        S.text(x, top + 1.2, label, 3.8, color=GREY, anchor="c")
-        S.text(x, y1 - 3.6, label, 3.8, color=GREY, anchor="c")
-    for j in range(rows):
-        y = top - (top - y1) * (j + 0.5) / rows
-        S.text(x1 - 2.1, y, str(j + 1), 3.8, color=GREY, anchor="r")
-        S.text(x2 + 2.1, y, str(j + 1), 3.8, color=GREY, anchor="l")
-    c.restoreState()
 
 
 def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> bytes:
@@ -988,35 +606,31 @@ def render(rec, client, settings, res, approval, fmt="auto", demo=False) -> byte
     PW, PH = [x / mm for x in landscape(A3 if fmt == "A3" else A4)]
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(PW * mm, PH * mm))
-    c.setFillColor(PAPER); c.rect(0, 0, PW, PH, stroke=0, fill=1)
     c.setTitle(f"Schemă monofilară — {client.get('name') or rec.get('client_name') or ''}")
     c.setAuthor(settings.get("company") or "DNS HOSTESS S.R.L.")
     c.scale(mm, mm)
     S = Sheet(c)
-    area = frame(S, PW, PH, rec, client, settings, res, approval, 1, 1, fmt, demo)
-    x1, y1, x2, _ = area
-    plot_y2 = drawing_header(S, PW, PH, rec, client, settings, res, approval)
-    drawing_grid(S, x1, y1, x2, plot_y2)
+    area = frame(S, PW, PH, rec, client, settings, res, approval, 1, 2, fmt, demo)
     W, H, draw = diagram(S, rec, res, client)
-    s = min((x2 - x1 - 8) / W, (plot_y2 - y1 - 8) / H, 1.6)
-    available_h, diagram_h = plot_y2 - y1 - 8, H * s
-    dx = x1 + 4 + ((x2 - x1 - 8) - W * s) / 2
-    # Keep the main circuit toward the upper half, as in the ReEnergy sheet,
-    # while leaving a clear lower zone for the TEG schedule and execution notes.
-    dy = y1 + 4 + (available_h - diagram_h) * 0.95
-    c.saveState(); c.translate(dx + W * s, dy); c.scale(-s, s); S.mirror_x = True
+    x1, y1, x2, y2 = area
+    s = min((x2 - x1) / W, (y2 - y1 - 6) / H, 1.6)
+    c.saveState(); c.translate(x1 + ((x2 - x1) - W * s) / 2, y1 + max(1, ((y2 - y1 - 6) - H * s) / 2)); c.scale(s, s)
     draw()
-    S.mirror_x = False
     c.restoreState()
-    teg_schedule(S, (x1, y1, x2, plot_y2), rec)
-    execution_notes(S, (x1, y1, x2, plot_y2), rec)
-    S.text(x1 + 2, y1 + 2, "DC fotovoltaic — portocaliu · stocare — verde · PE — verde întrerupt · valorile [lipsă] rămân de confirmat.", 4.1, color=GREY)
+    S.text(x1 + 1, y2 - 3, "Notă: c.c. — linie continuă subțire, c.a. — linie continuă, PE — linie întreruptă verde. Valorile marcate [lipsă] trebuie completate și verificate.", 5, color=GREY)
     if demo:
         watermark(S, PW, PH, "EXEMPLU DEMONSTRATIV")
     elif rec.get("is_test"):
         watermark(S, PW, PH, "DOSAR DE TEST — NU ESTE OFICIAL")
     elif approval.get("status") != "approved":
         watermark(S, PW, PH, "CIORNĂ — NEVERIFICAT" if approval.get("status") != "stale" else "APROBARE ANULATĂ")
+    c.showPage()
+    c.scale(mm, mm)
+    S2 = Sheet(c)
+    area = frame(S2, PW, PH, rec, client, settings, res, approval, 2, 2, fmt, demo)
+    table_page(S2, area, res, rec)
+    if approval.get("status") != "approved" or demo:
+        watermark(S2, PW, PH, "EXEMPLU DEMONSTRATIV" if demo else "CIORNĂ — NEVERIFICAT")
     c.showPage()
     c.save()
     return buf.getvalue()
@@ -1034,43 +648,18 @@ def protections(rec, res):
         if r["strings"]:
             out.append((f"-Q{i + 1}.D", "Separator de sarcină DC (DC-PV2)", dc.get("switch"), f"-TDC{i + 1}"))
             out.append((f"-FA{i + 1}.DC", "Descărcător SPD DC tip 2", gv(n(dc.get("spd_ucpv")), " V Ucpv"), f"-TDC{i + 1}"))
-            fuse_rating = n(dc.get("fuse_a")) or n(r["proposals"]["dc"].get("fuse")) or 15
-            out.append((f"-FU{i + 1}.S", "Separator fuzibil gPV pe fiecare string", f"{fuse_rating:g} A propus; verifică Isc și fișa modulului", f"-TDC{i + 1}"))
-            rsd = inv.get("rsd") or {}
-            if rsd.get("enabled"):
-                voltage_rows = [(300, "current_300v_a"), (600, "current_600v_a"), (800, "current_800v_a"), (1000, "current_1000v_a"), (1200, "current_1200v_a"), (1500, "current_1500v_a")]
-                ratings = ", ".join(f"{voltage} V: {rsd[key]} A" for voltage, key in voltage_rows if n(rsd.get(key)))
-                out.append((f"-Q{i + 1}.RSD", "Întrerupător de oprire rapidă DC (RSD)",
-                            f"{rsd.get('brand_model') or 'model neprecizat'} · {rsd.get('string_count') or '?'} stringuri / {rsd.get('poles') or '?'} poli · {ratings or 'rating de confirmat'}; verificare Voc×1,15 și Isc×1,25",
-                            f"-TDC{i + 1}"))
+            if r["proposals"]["dc"]["fuse"]:
+                out.append((f"-F{i + 1}.S", "Siguranțe gPV pe stringuri", gv(n(dc.get("fuse_a")), " A gPV"), f"-TDC{i + 1}"))
         out.append((f"-Q{i + 1}.1", "Întreruptor automat AC invertor", (f"C{gv(n(ac.get('breaker_a')))} A {r['proposals']['ac']['poles']}" + (f", Icu {gv(n(ac.get('icu_ka')))} kA" if n(ac.get("icu_ka")) else "")) if n(ac.get("breaker_a")) else None, "-TFV"))
         out.append((f"-F{i + 1}.1", "Dispozitiv diferențial (DDR)", (f"{inv.get('rcd_type')} {gv(n(inv.get('rcd_ma')), ' mA') or ''}".strip()) if inv.get("rcd_type") else None, "-TFV"))
         if inv.get("battery_mode") == "own":
-            protection = battery_protection(bt, r["proposals"]["battery"])
-            code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
-            out.append((f"{code}{i + 1}.B", battery_protection_text(protection), f"{gv(protection.get('rating'), ' A DC') or protection['source']} · {gv(n(bt.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(bt.get('cable_section') or bt.get('section') or r['proposals']['battery'].get('section')), ' mm²') or '[lipsă]'}", f"-G{i + 1}"))
+            out.append((f"-F{i + 1}.B", "Protecție DC baterie", gv(n(bt.get("fuse_a")), " A DC"), f"-G{i + 1}"))
         if (inv.get("backup") or {}).get("enabled"):
             out.append((f"-Q{i + 1}.EPS", "Întreruptor circuit backup / EPS", inv["backup"].get("breaker"), f"-TB{i + 1}"))
-    for k, battery in enumerate(cef.get("shared_batteries") or []):
-        proposal = battery_cable_proposal(battery)
-        protection = battery_protection(battery, proposal)
-        value = f"{gv(protection.get('rating'), ' A DC') or protection['source']} · {gv(n(battery.get('voltage')), ' V') or '[lipsă V]'} · cablu {gv(n(battery.get('cable_section') or battery.get('section') or proposal.get('section')), ' mm²') or '[lipsă]'}"
-        code = {"breaker": "-Q", "fuse": "-FU", "proposal": "-FU?", "integrated": "-INT", "missing": "-Q?"}[protection["kind"]]
-        out.append((f"{code}{len(cef.get('inverters') or []) + k + 1}.B", battery_protection_text(protection), value, f"-GC{k + 1}"))
     out.append(("-Q0.TG", "Întreruptor general TG", gv(n(grid.get("tg_breaker_a")), " A " + ("4P" if tri else "2P")), "-TG"))
-    out.append(("-FA DC", "Descărcător SPD DC", grid.get("spd_dc"), "-TDC"))
-    for index, circuit in enumerate(grid.get("circuits") or []):
-        if not isinstance(circuit, dict):
-            continue
-        label = str(circuit.get("name") or f"Circuit {index + 1}")
-        rating = " · ".join(str(value) for value in (circuit.get("breaker"), circuit.get("poles"), circuit.get("rcd")) if value)
-        out.append((f"-QTEG-{index + 1}", f"Circuit TEG — {label}", rating or None, "-TEG"))
     out.append(("-FA AC", "Descărcător SPD AC", grid.get("spd_ac"), "-TG"))
     if base["grid"]["anti"]:
-        anti_breaker = grid.get("anti_breaker") or base["grid"].get("anti_breaker_proposal")
-        breaker_value = (f"{anti_breaker} A (propus)" if anti_breaker and not grid.get("anti_breaker") else f"{anti_breaker} A" if anti_breaker else "")
-        anti_relay = grid.get("anti_relay") or "model conform ATR / OD"
-        out.append(("-K1/-K2", "Întreruptor motorizat cu bobină + releu protecție interfață", " / ".join(x for x in [breaker_value, anti_relay] if x) or None, "-TAI"))
+        out.append(("-K1/-K2", "Element decuplare + releu protecție interfață", " / ".join(x for x in [grid.get("anti_breaker"), grid.get("anti_relay")] if x) or None, "-TAI"))
     out.append(("-Q0", "Întreruptor BMP (OD)", gv(n(grid.get("bmp_a")), " A " + ("4P" if tri else "2P")), "-BMP"))
     return out
 
@@ -1090,11 +679,6 @@ def sheet_data(rec, client, settings, res, approval):
         ["Beneficiar", get("name")], ["Loc de producere / consum", loc or None], ["POD", get("pod")], ["Operator de distribuție", get("operator")],
         ["Număr proiect", get("project_no")],
         ["Branșament", f"{grid.get('supply')}, putere aprobată {gv(n(grid.get('bransament_kw')), ' kW') or '[lipsă]'}" if grid.get("supply") else None],
-        ["Măsură / smart meter", f"{grid.get('measure_mode') or ('prin TC' if grid.get('ct_ratio') else 'directă')} / {grid.get('smart_meter_mode') or grid.get('meter') or 'model neprecizat'}"],
-        ["Alimentare TEG / backup", f"{grid.get('teg_supply') or 'Auto (derivat)'} / {grid.get('backup_mode') or '—'}"],
-        ["Protecții TEG", f"SPD DC: {grid.get('spd_dc') or '[de completat]'} · SPD AC: {grid.get('spd_ac') or '[de completat]'} · generală: {grid.get('teg_main_protection') or gv(n(grid.get('tg_breaker_a')), ' A') or '[de completat]'}"],
-        ["Cabluri CEF", f"Solar: {grid.get('solar_conductor') or 'H1Z2Z2-K 6 mm²'} · AC invertor → BMP/TEG: {grid.get('inverter_ac_cable') or 'secțiunile W1…Wn din calcul'}"],
-        ["Circuite TEG", "; ".join(f"{c.get('name') or f'Circuit {i + 1}'} — {c.get('breaker') or 'siguranță de completat'} {c.get('poles') or ''} {c.get('rcd') or ''}".strip() for i, c in enumerate(grid.get('circuits') or []) if isinstance(c, dict)) or None],
         ["Putere instalată DC", gv(t["kwp"], " kWp")], ["Putere invertoare AC (nominal / maxim)", f"{t['inverters_kw']:g} / {t['inverters_kw_max']:g} kW" if t["inverters_kw"] else None],
         ["Putere maximă evacuată", gv(t["export_kw"], " kW")], ["Capacitate stocare", gv(t["storage_kwh"], " kWh") or "fără stocare"],
         ["Sistem de legare la pământ", grid.get("earthing")], ["Ik la punctul de racord", gv(n(grid.get("ik_ka")), " kA")],
@@ -1105,31 +689,14 @@ def sheet_data(rec, client, settings, res, approval):
         eq.append([f"-U{i + 1}", f"Invertor {inv.get('type') or ''}".strip(), inv.get("brand_model"),
                    f"Pn {gv(n(inv.get('p_nom_kw')), ' kW') or '—'} · Pmax {gv(n(inv.get('p_max_kw')), ' kW') or '—'} · {'3F' if r['tri'] else '1F'} · Udc max {gv(n(inv.get('vdc_max')), ' V') or '—'} · MPPT {gv(n(inv.get('mppt_min'))) or '—'}–{gv(n(inv.get('mppt_max')), ' V') or '—'} × {gv(n(inv.get('mppt_count'))) or '—'}", "1"])
         if r["strings"]:
-            panel_groups = {}
-            for string in r["strings"]:
-                model = string.get("panel_model") or inv.get("panel_model") or "Model panou neprecizat"
-                panel_groups.setdefault(model, []).append(string)
-            for panel_index, (model, strings) in enumerate(panel_groups.items(), start=1):
-                sample = strings[0]
-                details = (f"{gv(n(sample.get('panel_w')), ' W') or '—'} · Voc {gv(n(sample.get('panel_voc')), ' V') or '—'} · "
-                           f"Isc {gv(n(sample.get('panel_isc')), ' A') or '—'} · stringuri: " +
-                           " + ".join(f"{string['panels']} (MPPT{string['mppt']})" for string in strings))
-                eq.append([f"-PV{i + 1}.{panel_index}", "Module fotovoltaice", model, details,
-                           str(sum(string["panels"] for string in strings))])
-        rsd = inv.get("rsd") or {}
-        if rsd.get("enabled"):
-            voltage_rows = [(300, "current_300v_a"), (600, "current_600v_a"), (800, "current_800v_a"), (1000, "current_1000v_a"), (1200, "current_1200v_a"), (1500, "current_1500v_a")]
-            ratings = "; ".join(f"{voltage} Vdc / {rsd[key]} A" for voltage, key in voltage_rows if n(rsd.get(key)))
-            eq.append([f"-Q{i + 1}.RSD", "Oprire rapidă stringuri fotovoltaice", rsd.get("brand_model"),
-                       f"{rsd.get('string_count') or '—'} stringuri · {rsd.get('poles') or '—'} poli · {ratings or 'rating de confirmat'} · alimentare AC {rsd.get('ac_voltage_min_v') or '—'}–{rsd.get('ac_voltage_max_v') or '—'} V · IP{rsd.get('ip_rating') or '—'} · verificați Voc×1,15 și Isc×1,25",
-                       "1"])
+            eq.append([f"-PV{i + 1}", "Module fotovoltaice", inv.get("panel_model"),
+                       f"{gv(n(inv.get('panel_w')), ' W') or '—'} · Voc {gv(n(inv.get('panel_voc')), ' V') or '—'} · Isc {gv(n(inv.get('panel_isc')), ' A') or '—'} · stringuri: " + " + ".join(f"{s['panels']} (MPPT{s['mppt']})" for s in r["strings"]),
+                       str(sum(s["panels"] for s in r["strings"]))])
         if inv.get("battery_mode") == "own":
             bt = inv.get("battery") or {}
-            protection = battery_protection(bt, r["proposals"]["battery"])
-            eq.append([f"-G{i + 1}", "Baterie", bt.get("model"), f"{gv(r['battery_kwh'], ' kWh') or '—'} · {gv(n(bt.get('voltage')), ' V') or '—'} · cuplare {bt.get('coupling') or 'DC'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'} · {battery_protection_text(protection)} · cablu {gv(n(bt.get('cable_section') or bt.get('section') or r['proposals']['battery'].get('section')), ' mm²') or '[lipsă]'}", str(int(n(bt.get("modules"), 1)) or 1)])
+            eq.append([f"-G{i + 1}", "Baterie", bt.get("model"), f"{gv(r['battery_kwh'], ' kWh') or '—'} · {gv(n(bt.get('voltage')), ' V') or '—'} · cuplare {bt.get('coupling') or 'DC'} · Imax {gv(n(bt.get('i_max')), ' A') or '—'}", str(int(n(bt.get("modules"), 1)) or 1)])
     for k, b in enumerate(cef.get("shared_batteries") or []):
-        protection = battery_protection(b, battery_cable_proposal(b))
-        eq.append([f"-GC{k + 1}", "Baterie comună", b.get("model"), f"{gv(n(b.get('kwh')), ' kWh/modul') or '—'} · {gv(n(b.get('voltage')), ' V') or '—'} · Imax {gv(n(b.get('i_max')), ' A') or '—'} · {battery_protection_text(protection)} · cablu {gv(n(b.get('cable_section') or b.get('section') or battery_cable_proposal(b).get('section')), ' mm²') or '[lipsă]'}", str(int(n(b.get("modules"), 1)) or 1)])
+        eq.append([f"-GC{k + 1}", "Baterie comună", b.get("model"), f"{gv(n(b.get('kwh')), ' kWh/modul') or '—'} · Imax {gv(n(b.get('i_max')), ' A') or '—'}", str(int(n(b.get("modules"), 1)) or 1)])
     if grid.get("meter"):
         eq.append(["-P2", "Smart meter", grid.get("meter"), f"TC {grid.get('sm_ct_ratio')}" if grid.get("sm_ct_ratio") else "conectare directă", "1"])
     eq.append(["-P1", "Contor bidirecțional OD", "proprietate OD", f"măsură prin TC {grid.get('ct_ratio')}" if grid.get("ct_ratio") else "măsură directă", "1"])
@@ -1141,7 +708,7 @@ def sheet_data(rec, client, settings, res, approval):
     issues = [f"LIPSĂ: {m['label']}" for m in res["missing"]] + [f"EROARE: {e}" for e in res["errors"]]
     aps = [a for a in (approval.get("approvals") or {}).values() if a.get("valid")]
     appr = "; ".join(f"{a['name']} ({a['role_label']}, {a.get('auth') or ''}), {a['at'][:10]}" for a in aps) if aps else "neaprobat"
-    return {"company": settings.get("company") or "DNS HOSTESS S.R.L.", "status": status, "sections": sec, "issues": issues, "approved_by": ""}
+    return {"company": settings.get("company") or "DNS HOSTESS S.R.L.", "status": status, "sections": sec, "issues": issues, "approved_by": appr}
 
 
 TS_TITLE = "FIȘĂ TEHNICĂ A INSTALAȚIEI DE PRODUCERE — ECHIPAMENTE, CABLURI ȘI PROTECȚII"
@@ -1165,7 +732,7 @@ def tech_sheet(rec, client, settings, res, approval) -> bytes:
     if D["issues"]:
         out.append(Pp("5. Date lipsă / neconformități", "b"))
         out += [Pp(f"<font color='#b03a2e'>{escape(x)}</font>", "li") for x in D["issues"]]
-    out += [Spacer(1, 8), Pp("Document tehnic generat pentru semnarea reprezentantului firmei executante.", "small")]
+    out += [Spacer(1, 8), Pp("Verificat și aprobat: " + escape(D["approved_by"]), "small")]
     doc.build(out)
     return buf.getvalue()
 
@@ -1201,7 +768,7 @@ def tech_sheet_docx(rec, client, settings, res, approval) -> bytes:
         d.add_paragraph().add_run("5. Date lipsă / neconformități").bold = True
         for x in D["issues"]:
             d.add_paragraph(x).runs[0].font.color.rgb = RGBColor(0xB0, 0x3A, 0x2E)
-    d.add_paragraph("Document tehnic generat pentru semnarea reprezentantului firmei executante.")
+    d.add_paragraph("Verificat și aprobat: " + D["approved_by"])
     o = io.BytesIO(); d.save(o)
     return o.getvalue()
 
@@ -1213,5 +780,3 @@ def snapshot(rec, res):
     for code, name, val, loc in protections(rec, res):
         v[f"Protecție {code} {name}"] = str(val or "—")
     return v
-
-

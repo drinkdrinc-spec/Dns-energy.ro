@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, openAuthenticatedFile } from "@/lib/api";
+import { api, API } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Copy, Link2, Ban, RefreshCw, FileDown, ChevronDown, Plus, MessageCircle, Mail, Smartphone } from "lucide-react";
 import { toast } from "sonner";
@@ -51,7 +51,7 @@ function Req({ r, token, reload, setToken }) {
       <div className="flex flex-wrap gap-3 mt-2 text-xs">
         {!closed && <button className="inline-flex items-center gap-1 font-bold" style={{ color: "var(--blue)" }} onClick={() => act("new-link", { expires_days: 7 })} data-testid={`sign-newlink-${r.id}`}><RefreshCw size={13} /> {token ? "Link nou" : "Generează link nou / retrimite"}</button>}
         {!closed && r.status !== "Expirat" && <button className="inline-flex items-center gap-1 font-bold" style={{ color: "#9b2c2c" }} onClick={() => window.confirm("Revoci linkul?") && act("revoke")} data-testid={`sign-revoke-${r.id}`}><Ban size={13} /> Revocă</button>}
-        {r.has_signed_file && <button type="button" className="inline-flex items-center gap-1 font-bold" style={{ color: "#166534" }} onClick={() => openAuthenticatedFile(`/sign/requests/${r.id}/file`)} data-testid={`sign-download-${r.id}`}><FileDown size={13} /> PDF semnat</button>}
+        {r.has_signed_file && <a className="inline-flex items-center gap-1 font-bold" style={{ color: "#166534" }} href={`${API}/sign/requests/${r.id}/file?auth=${localStorage.getItem("den_token")}`} target="_blank" rel="noopener noreferrer" data-testid={`sign-download-${r.id}`}><FileDown size={13} /> PDF semnat</a>}
         <button className="inline-flex items-center gap-1" onClick={() => setOpen(!open)} data-testid={`sign-history-${r.id}`}><ChevronDown size={13} /> Istoric ({r.history.length})</button>
       </div>
       {open && <div className="mt-2 text-[11px] space-y-1" data-testid={`sign-history-list-${r.id}`}>{r.history.map((h, i) => <div key={i}><b>{new Date(h.at).toLocaleString("ro-RO")}</b> — {h.action}{h.detail ? `: ${h.detail}` : ""}{h.ip ? ` · IP ${h.ip}` : ""}</div>)}
@@ -102,14 +102,11 @@ export function SignRequests({ dossierId, clientName, module = "prosumator" }) {
   const [list, setList] = useState([]);
   const [tokens, setTokens] = useState({});
   const [show, setShow] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const q = dossierId ? `?dossier_id=${dossierId}&module=${module}` : clientName ? `?client_name=${encodeURIComponent(clientName)}` : "";
   const load = () => api.get(`/sign/requests${q}`).then((r) => setList(r.data)).catch(() => {});
   useEffect(() => { load(); }, [q]); // eslint-disable-line
   const { user } = useAuth();
-  const activeRequests = list.filter((r) => !["Semnat", "Refuzat", "Expirat"].includes(r.status) && !r.revoked);
-  const historyRequests = list.filter((r) => ["Semnat", "Refuzat", "Expirat"].includes(r.status) || r.revoked);
-  const active = activeRequests.filter((r) => tokens[r.id]).map((r) => ({ r, token: tokens[r.id] }));
+  const active = list.filter((r) => tokens[r.id] && !["Semnat", "Refuzat", "Expirat"].includes(r.status) && !r.revoked).map((r) => ({ r, token: tokens[r.id] }));
   return (
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="sign-section">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
@@ -118,19 +115,8 @@ export function SignRequests({ dossierId, clientName, module = "prosumator" }) {
       </div>
       {show && dossierId && <CreateForm dossierId={dossierId} module={module} onCreated={(rs) => { setTokens({ ...tokens, ...Object.fromEntries(rs.map((r) => [r.id, r.token])) }); setShow(false); load(); }} />}
       {dossierId && can(user, "ai_gpt") && active.length > 0 && <AiClientMessage dossierId={dossierId} module={module} items={active} linkOf={linkOf} onSent={load} />}
-      {activeRequests.length > 0 && <section aria-label="Cereri de semnare active">
-        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide" style={{ color: "var(--muted)" }}>În desfășurare ({activeRequests.length})</h4>
-        <div className="space-y-2">{activeRequests.map((r) => <Req key={r.id} r={r} token={tokens[r.id]} reload={load} setToken={(id, t) => setTokens({ ...tokens, [id]: t })} />)}</div>
-      </section>}
-      {historyRequests.length > 0 && <section className={activeRequests.length ? "mt-4" : ""} aria-label="Istoric cereri de semnare">
-        <button type="button" className="flex w-full items-center justify-between rounded-lg border bg-white px-3 py-2 text-left text-xs font-bold"
-          style={{ borderColor: "var(--line)", color: "var(--muted)" }} aria-expanded={showHistory}
-          onClick={() => setShowHistory((value) => !value)} data-testid="sign-previous-toggle">
-          <span>Istoric cereri încheiate ({historyRequests.length})</span><ChevronDown size={14} className={showHistory ? "rotate-180 transition-transform" : "transition-transform"} />
-        </button>
-        {showHistory && <div className="mt-2 space-y-2">{historyRequests.map((r) => <Req key={r.id} r={r} token={tokens[r.id]} reload={load} setToken={(id, t) => setTokens({ ...tokens, [id]: t })} />)}</div>}
-      </section>}
-      {!list.length && <p className="text-xs" style={{ color: "var(--muted)" }}>Nicio cerere de semnare.</p>}
+      <div className="space-y-2">{list.length ? list.map((r) => <Req key={r.id} r={r} token={tokens[r.id]} reload={load} setToken={(id, t) => setTokens({ ...tokens, [id]: t })} />)
+        : <p className="text-xs" style={{ color: "var(--muted)" }}>Nicio cerere de semnare.</p>}</div>
     </div>
   );
 }

@@ -107,15 +107,13 @@ class CefDrawing(Flowable):
             q = f"Q{i + 1}: C{v(ac.get('breaker_a') or pa.get('breaker_a'))} A {pa.get('poles', poles)}"
             c.drawString(bx + 3 * mm, ty + 5, self.fit(q + (" (propus)" if not ac.get("breaker_a") else "") + (f" · {inv.get('rcd')}" if inv.get("rcd") else ""), cw - 6 * mm, "LS", 5.8))
             iy, ih = 72 * mm, 24 * mm
-            cable = f"{ac.get('cable_type') or 'RV-K'} {v(ac.get('section') or pa.get('section'))} mm² {ac.get('material') or 'Cu'}, {v(ac.get('length_m'), ' m')}"
+            cable = f"{ac.get('cable_type') or 'CYY-F'} {v(ac.get('section') or pa.get('section'))} mm² {ac.get('material') or 'Cu'}, {v(ac.get('length_m'), ' m')}"
             self.line(mid, ty, mid, iy + ih, label=cable)
             ph = "3F" if r.get("tri") else ("1F" + (f" pe {inv.get('phase')}" if inv.get("phase") else ""))
-            quantity = int(r.get("count") or inv.get("count") or 1)
-            inv_label = f"INV {i + 1}" + (f" ({quantity} buc.)" if quantity > 1 else "")
-            self.box(bx + 3 * mm, iy, lw, ih, f"{inv_label} — {inv.get('brand_model') or '—'}",
+            self.box(bx + 3 * mm, iy, lw, ih, f"INV {i + 1} — {inv.get('brand_model') or '—'}",
                      [f"{inv.get('kind') or inv.get('type') or 'Invertor'} · {ph}",
                       f"Pn {v(inv.get('p_nom_kw'), ' kW')} · Pmax {v(inv.get('p_max_kw'), ' kW')}",
-                      ("Fără panouri · evacuare 0 kW" if inv.get("battery_only") or inv.get("no_panels") else f"Limitare: {v(inv.get('p_limit_kw'), ' kW')} · MPPT: {v(inv.get('mppt_count'))}"),
+                      f"Limitare: {v(inv.get('p_limit_kw'), ' kW')} · MPPT: {v(inv.get('mppt_count'))}",
                       f"Udc max {v(inv.get('vdc_max'), ' V')} · MPPT {v(inv.get('mppt_min'))}-{v(inv.get('mppt_max'), ' V')}"], "inv",
                      dashed=bool(inv.get("existing")))
             strings = r.get("strings") or []
@@ -133,9 +131,8 @@ class CefDrawing(Flowable):
                     sx = bx + 3 * mm + k * (sw + 1.5 * mm)
                     self.line(sx + sw / 2, dy, sx + sw / 2, 30 * mm, dc=True)
                     self.box(sx, 2 * mm, sw, 28 * mm, f"S{k + 1} / MPPT{s['mppt']}",
-                             [f"{s['panels']}× {v(s.get('panel_w'), ' W')}", str(s.get("panel_model") or inv.get("panel_model") or "")[:30],
-                              (f"Voc {s['voc_cold']:.0f} V@{res['tmin']:g}°C" if s.get("voc_cold") is not None else "Voc rece la Tmin: NECONFIRMAT"),
-                             f"Vmp {s['vmp_stc']:.0f} V", f"{s['kwp']:.2f} kWp"], "pv")
+                             [f"{s['panels']}× {v(inv.get('panel_w'), ' W')}", str(inv.get("panel_model") or "")[:30],
+                              f"Voc {s['voc_cold']:.0f} V@{res['tmin']:g}°C", f"Vmp {s['vmp_stc']:.0f} V", f"{s['kwp']:.2f} kWp"], "pv")
             rx = bx + 3 * mm + lw + 2 * mm
             rw = cw - lw - 7 * mm
             if inv.get("backup", {}).get("enabled"):
@@ -145,81 +142,22 @@ class CefDrawing(Flowable):
                          [f"Tip: {b.get('type') or 'parțial'}", f"Protecție: {b.get('breaker') or '—'}", str(b.get("circuits") or "")[:40]], "bk")
             if inv.get("battery_mode") == "own":
                 bt = inv.get("battery") or {}
-                bp = r.get("proposals", {}).get("battery", {})
-                coupling = str(bt.get("coupling") or "").strip().upper()
-                battery_x = rx + rw / 2
-                battery_top = 66 * mm
-                # A battery modeled as "own" is directly attached to the
-                # inverter on DC. An AC-coupled BESS needs its own PCS row.
-                if coupling == "DC":
-                    self.line(bx + 3 * mm + lw, iy + 4 * mm, battery_x, iy + 4 * mm, dc=True)
-                    self.line(battery_x, iy + 4 * mm, battery_x, 73 * mm, dc=True)
-                    c.setStrokeColor(RED); c.setLineWidth(0.8)
-                    c.rect(battery_x - 3.5 * mm, 69 * mm, 7 * mm, 4 * mm, stroke=1, fill=0)
-                    c.line(battery_x - 2 * mm, 69.5 * mm, battery_x + 2 * mm, 72.5 * mm)
-                    c.setFont("LSB", 4.8); c.setFillColor(RED); c.drawCentredString(battery_x, 74 * mm, "QBAT DC")
-                    self.line(battery_x, 69 * mm, battery_x, battery_top, dc=True)
-                coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
-                battery_section = bt.get("cable_section") or bp.get("section")
-                battery_fuse = bt.get("fuse_a") or bp.get("fuse_a")
-                switch_u = bt.get("dc_switch_voltage_v") or bt.get("breaker_voltage_dc")
-                switch_i = bt.get("dc_switch_current_a") or bt.get("breaker_a")
-                switch_text = f"Qbat DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "Qbat DC: tensiune/curent nominal de confirmat"
-                battery_lines = [
-                    str(bt.get("model") or "—"),
-                    f"{v(bt.get('modules'), ' mod.')} × {v(bt.get('kwh'), ' kWh')} · total {r.get('battery_kwh', 0):g} kWh",
-                    f"Ubat {v(bt.get('voltage'), ' V')} · Imax {v(bt.get('i_max'), ' A')}",
-                    f"Cablu DC: {v(battery_section, ' mm²')} · siguranță: {v(battery_fuse, ' A')}",
-                    switch_text,
-                    f"Protecție: {bt.get('protection') or 'de confirmat'}",
-                ]
-                if coupling == "AC":
-                    battery_lines.append("PCS AC separat: neconfigurat în această ramură")
-                self.box(rx, 36 * mm, rw, 30 * mm, f"BATERIE ({coupling_label})", battery_lines, "bat",
-                         dashed=bp.get("source") != "calculated" or not (switch_u and switch_i))
+                self.line(bx + 3 * mm + lw, iy + 4 * mm, rx + rw / 2, iy + 4 * mm, dc=bt.get("coupling", "DC") == "DC")
+                self.line(rx + rw / 2, iy + 4 * mm, rx + rw / 2, 66 * mm, dc=bt.get("coupling", "DC") == "DC")
+                self.box(rx, 42 * mm, rw, 24 * mm, f"BATERIE ({bt.get('coupling') or 'DC'})",
+                         [str(bt.get("model") or "—"), f"{v(bt.get('modules'), ' mod.')} × {v(bt.get('kwh'), ' kWh')}",
+                          f"{v(bt.get('ah'), ' Ah')} · {v(bt.get('voltage'), ' V')}", f"Total {r.get('battery_kwh', 0):g} kWh",
+                          f"Protecție: {bt.get('protection') or 'siguranță DC / BMS'}"], "bat")
         for k, b in enumerate(shared):
             bx = (len(invs) + k) * cw
             users = [i for i, inv in enumerate(invs) if inv.get("shared_battery_id") == b.get("id")]
-            bp = res.get("shared_battery_proposals", {}).get(b.get("id"), {})
-            coupling = str(b.get("coupling") or "").strip().upper()
-            link_users = [u for u in users if ("invertor de baterie (ac)" in str(invs[u].get("kind") or invs[u].get("type") or "").lower()) == (coupling == "AC")]
-            coupling_label = coupling if coupling in ("AC", "DC") else "CUPLARE NESPECIFICATĂ"
-            battery_section = b.get("cable_section") or bp.get("section")
-            battery_fuse = b.get("fuse_a") or bp.get("fuse_a")
-            switch_u = b.get("dc_switch_voltage_v") or b.get("breaker_voltage_dc")
-            switch_i = b.get("dc_switch_current_a") or b.get("breaker_a")
-            switch_text = f"Qbat DC: {v(switch_u, ' V')} / {v(switch_i, ' A')}" if switch_u and switch_i else "Qbat DC: tensiune/curent nominal de confirmat"
-            modules = max(1, int(C.n(b.get("modules"), 1) or 1))
-            module_kwh = C.n(b.get("kwh"))
-            total_kwh = module_kwh * modules
-            if not total_kwh and C.n(b.get("ah")) and C.n(b.get("voltage")):
-                total_kwh = C.n(b.get("ah")) * C.n(b.get("voltage")) / 1000 * modules
-            battery_connection = ("PCS BESS: " + ", ".join(f"INV {u + 1}" for u in link_users)) if coupling == "AC" else ("Invertoare PV: " + ", ".join(f"INV {u + 1}" for u in link_users))
-            if coupling in ("AC", "DC") and not link_users:
-                battery_connection = "Invertor compatibil: NESELECTAT"
-            self.box(bx + 3 * mm, 42 * mm, cw - 6 * mm, 30 * mm, f"BATERIE COMUNĂ ({coupling_label})",
-                     [str(b.get("model") or "—"),
-                      f"{modules} × {v(module_kwh, ' kWh')} · total {v(total_kwh, ' kWh')}",
-                      f"Ubat {v(b.get('voltage'), ' V')} · Imax {v(b.get('i_max'), ' A')}",
-                      f"Cablu DC: {v(battery_section, ' mm²')} · siguranță: {v(battery_fuse, ' A')}",
-                      switch_text,
-                      battery_connection], "bat",
-                     dashed=bp.get("source") != "calculated" or not (switch_u and switch_i))
-            if coupling in ("AC", "DC"):
-                for j, u in enumerate(link_users):
-                    yy = 70 * mm - j * 2.2 * mm
-                    self.line(cx[u], 72 * mm, cx[u], yy, dc=True)
-                    self.line(cx[u], yy, bx + 3 * mm, yy, dc=True)
-                    # Every battery-to-inverter DC connection must show its
-                    # isolation point. The documented voltage/current remain
-                    # in the battery callout above; missing ratings stay
-                    # explicitly marked for confirmation by the designer.
-                    switch_x = (cx[u] + bx + 3 * mm) / 2
-                    c.setStrokeColor(RED); c.setLineWidth(0.8)
-                    c.rect(switch_x - 3.5 * mm, yy - 2 * mm, 7 * mm, 4 * mm, stroke=1, fill=0)
-                    c.line(switch_x - 2 * mm, yy - 1.5 * mm, switch_x + 2 * mm, yy + 1.5 * mm)
-                    c.setFont("LSB", 4.8); c.setFillColor(RED)
-                    c.drawCentredString(switch_x, yy + 3 * mm, "QBAT DC")
+            self.box(bx + 3 * mm, 42 * mm, cw - 6 * mm, 30 * mm, f"BATERIE COMUNĂ ({b.get('coupling') or 'DC'})",
+                     [str(b.get("model") or "—"), f"{v(b.get('modules'), ' mod.')} × {v(b.get('kwh'), ' kWh')}", f"{v(b.get('ah'), ' Ah')} · {v(b.get('voltage'), ' V')}",
+                      "Invertoare: " + ", ".join(f"INV {u + 1}" for u in users), f"Protecție: {b.get('protection') or 'siguranță DC / BMS'}"], "bat")
+            for j, u in enumerate(users):
+                yy = 70 * mm - j * 2.2 * mm
+                self.line(cx[u], 72 * mm, cx[u], yy, dc=True)
+                self.line(cx[u], yy, bx + 3 * mm, yy, dc=True)
         # legend
         c = self.canv
         c.setFont("LS", 6); c.setFillColor(colors.black)
@@ -240,9 +178,8 @@ def story(ctx, P, table, S):
     for i, inv in enumerate(rec.get("cef", {}).get("inverters") or []):
         r = res["inverters"][i]
         ac, dc, pa, pd = inv.get("ac") or {}, inv.get("dc") or {}, r["proposals"]["ac"], r["proposals"]["dc"]
-        limit = "0" if r.get("battery_only") else v(inv.get("p_limit_kw"))
-        rows.append([str(i + 1), inv.get("brand_model") or "—", f"{v(inv.get('p_nom_kw'))}/{v(inv.get('p_max_kw'))}/{limit}",
-                     " + ".join(str(s["panels"]) for s in r["strings"]) or "—", f"{r['voc_cold_max']:g} / {v(inv.get('vdc_max'))} V" if r.get("voc_cold_max") else f"NECONFIRMAT / {v(inv.get('vdc_max'))} V",
+        rows.append([str(i + 1), inv.get("brand_model") or "—", f"{v(inv.get('p_nom_kw'))}/{v(inv.get('p_max_kw'))}/{v(inv.get('p_limit_kw'))}",
+                     " + ".join(str(s["panels"]) for s in r["strings"]) or "—", f"{r['voc_cold_max']:g} / {v(inv.get('vdc_max'))} V",
                      f"{r['isc_mppt_max']:g} / {v(inv.get('imax_mppt'))} A",
                      f"{v(ac.get('section') or pa.get('section'))} mm² {ac.get('material') or 'Cu'} {v(ac.get('length_m'), ' m')} / C{v(ac.get('breaker_a') or pa.get('breaker_a'))}",
                      f"{v(dc.get('section') or pd.get('section'))} mm² {v(dc.get('length_m'), ' m')} / {v(dc.get('spd_ucpv') or pd.get('spd_ucpv'), ' V')}",
@@ -264,8 +201,8 @@ def story(ctx, P, table, S):
                      [150 * mm, 70 * mm, 53 * mm]))
     tbl.append(P("CARTUȘ PLANȘĂ", "b"))
     tbl.append(table([["Denumire planșă", "Nr. proiect / planșă", "Prestator", "Beneficiar", "Adresă CEF", "POD"],
-                      [f"CEF {t['kwp']:g} kWp — Schemă monofilară", ctx.v("project_no"), ctx.company, ctx.name, ctx.loc, ctx.v("pod")]],
+                      [f"CEF {t['kwp']:g} kWp — Schemă monofilară", ctx.v("project_no"), ctx.company, ctx.name, ctx.loc, ctx.v("pod")],
+                      ["Proiectat", "Desenat", "Verificator", "Data", "Alimentare TEG", ""],
+                      [ctx.v("designer", ctx.rep), ctx.v("drawn_by", ctx.rep), ctx.e("verifier"), ctx.date, ctx.v("teg_supply"), ""]],
                      [50 * mm, 40 * mm, 40 * mm, 45 * mm, 60 * mm, 38 * mm]))
     return out, tbl
-
-
