@@ -14,6 +14,23 @@ import sld as SLD
 import pif_doc as PIFDOC
 
 STATUSES = ["de completat", "generat", "necesită semnătură", "atașat"]
+
+
+class SubmissionPackageIncomplete(ValueError):
+    """Raised when a submission package contains missing or unavailable evidence."""
+
+
+def _require_complete_submission(positions_info):
+    if positions_info.get("complete") and not positions_info.get("export_has_unavailable_items"):
+        return
+    missing = int(positions_info.get("missing_total") or 0)
+    if missing:
+        raise SubmissionPackageIncomplete(
+            f"Dosarul are {missing} elemente de completat sau verificat. Completează opisul înainte de exportul pentru depunere."
+        )
+    raise SubmissionPackageIncomplete(
+        "Unul sau mai multe documente nu au putut fi incluse. Verifică opisul și reîncearcă exportul."
+    )
 CLIENT_SLOTS = {"factura": "Factură furnizor de energie", "certificat": "Certificat de înregistrare", "constatator": "Certificat constatator",
                 "ci": "Act de identitate", "cf": "Extras de carte funciară", "imputernicire": "Împuternicire / mandat",
                 "fotografii_instalatie": "Fotografii instalație", "fotografii_lucrare": "Fotografii lucrare", "alt_document": "Alt document"}
@@ -323,6 +340,11 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                             "official_operator_form": official_form,
                             "missing": form_missing})
                 continue
+            pos.append({"key": key,
+                        "title": "Formularul oficial de notificare / cerere al operatorului",
+                        "source": "manual", "files": [],
+                        "missing": ["Formularul oficial curent nu este disponibil în registru. Încarcă formularul publicat de operator după completare și semnare; nu folosi formular generic la depunere."]})
+            continue
         if key == "priza" and rec.get("pram_source") == "none":
             if PIFDOC.filled(rec):
                 pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
@@ -677,7 +699,7 @@ def _incomplete_report(positions_info, unavailable):
                             topMargin=20 * mm, bottomMargin=18 * mm, title="Verificare dosar DNS Energy")
     story = [
         Paragraph("LISTĂ DE VERIFICARE — ELEMENTE DE COMPLETAT", docgen.S["h"]),
-        Paragraph("Lista de mai jos arată ce lipsește sau ce nu a putut fi inclus. Marcajul CIORNĂ apare numai pe documentele generate care au date incomplete; documentele complete și fișierele atașate rămân nemodificate. Dosarul se finalizează după completarea și verificarea elementelor de mai jos.", docgen.S["p"]),
+        Paragraph("Lista de mai jos arată ce date și documente mai trebuie completate sau verificate. Documentele disponibile sunt incluse în pachet; valorile măsurate, semnăturile și formularele oficiale nu sunt inventate. Completează elementele indicate înainte de depunerea la operator.", docgen.S["p"]),
         Spacer(1, 5 * mm),
     ]
     for title, items in rows:
@@ -697,11 +719,12 @@ def _pram_repeat_after(positions):
     return commissioning[-1] if commissioning else None
 
 
-async def export_bundle(positions_info, rec, client, settings, get_object, logger):
+async def export_bundle(positions_info, rec, client, settings, get_object, logger, require_complete=False):
+    if require_complete:
+        _require_complete_submission(positions_info)
     titles = positions_info["titles"]
     w = PdfWriter()
-    authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
-                                      draft=not positions_info["complete"])
+    authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles)
     main_parts = []
     technical_parts = []
     pram_parts = None
@@ -712,8 +735,6 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
             position_parts = await position_pdf(p, rec, client, settings, titles, get_object)
             if p.get("_official_form_unavailable"):
                 unavailable.append(f"{p.get('title') or p.get('key') or 'Formular oficial'} — formularul oficial nu a putut fi descărcat; fișa din pachet este doar de lucru")
-            if p.get("source") == "generat" and p.get("missing") and p.get("key") not in ("schema", "fisa_tehnica"):
-                position_parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in position_parts]
             # Match the reference submission layout: the authenticity
             # declaration closes the administrative forms, then the single-line
             # diagram and manufacturer evidence follow as a technical appendix.
@@ -727,11 +748,11 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
         except Exception as e:
             logger.error(f"bundle skip {p['key']}: {e}")
             unavailable.append(p.get("title") or p.get("key") or "Document atașat")
-    if unavailable and positions_info["complete"]:
-        authenticity_page = mark_draft(authenticity_page, "CIORNĂ — FIȘIER LIPSĂ")
     positions_info["export_has_unavailable_items"] = bool(unavailable)
     if unavailable:
         positions_info["complete"] = False
+    if require_complete:
+        _require_complete_submission(positions_info)
     # Keep the internal review/index page out of the official-document order;
     # it remains the final page so staff can see what still needs attention.
     report = _incomplete_report(positions_info, unavailable)
@@ -818,8 +839,10 @@ def _source_file_entries(positions, get_object, max_total=100 * 1024 * 1024):
     return {"files": files, "unavailable": unavailable}
 
 
-async def export_package_zip(positions_info, rec, client, settings, get_object, logger, file_count=4):
+async def export_package_zip(positions_info, rec, client, settings, get_object, logger, file_count=4, require_complete=False):
     """Build the selected, ordered submission package without duplicating evidence."""
+    if require_complete:
+        _require_complete_submission(positions_info)
     count = max(1, min(4, int(file_count or 4)))
     titles = positions_info["titles"]
     ordered_parts = []
@@ -848,6 +871,9 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
 
     if unavailable and positions_info.get("complete"):
         positions_info["complete"] = False
+    if require_complete:
+        positions_info["export_has_unavailable_items"] = bool(unavailable)
+        _require_complete_submission(positions_info)
     authenticity = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
                                  draft=not positions_info.get("complete", False))
     if unavailable:

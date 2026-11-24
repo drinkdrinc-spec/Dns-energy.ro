@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { hasConfiguredStorage } from "@/lib/cefStorage";
 import { MODULES } from "@/config/modules";
@@ -277,12 +277,12 @@ function Field({ f, value, onChange, refOptions, ai }) {
   );
 }
 
-export default function ModulePage({ moduleKey }) {
+export default function ModulePage({ moduleKey, intakeOnly = false }) {
   const params = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const key = moduleKey || params.module;
   const cfg = MODULES[key];
-  const startDocuments = key === "prosumator" && new URLSearchParams(location.search).get("start") === "documents";
   const { user } = useAuth();
   const role = user?.role || "admin";
   const canDelete = role === "admin" || (role !== "limitat" && !["prosumator", "clients"].includes(key));
@@ -859,9 +859,10 @@ export default function ModulePage({ moduleKey }) {
     anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const handleProsumerIntakeCreated = async (created) => {
-    // The intake endpoint returns a compact creation response. Load the saved
-    // dossier before rendering the detailed editor, including empty nested data.
-    const { data } = await api.get(`/data/prosumator/${encodeURIComponent(created.id)}`);
+    // The intake endpoint returns the complete saved dossier. Open it directly
+    // so creating a dossier does not depend on a second API round trip.
+    if (!created?.id) throw new Error("Serverul nu a returnat dosarul creat.");
+    const data = created;
     const cef = data?.cef && typeof data.cef === "object" ? data.cef : {};
     const dossier = {
       ...data,
@@ -884,8 +885,16 @@ export default function ModulePage({ moduleKey }) {
     setForm(dossier);
     setEditId(dossier.id);
     setChecks(dossier.checklist);
-    await load();
+    // Refresh the list in the background; a list refresh failure must not
+    // prevent the newly created dossier from staying open for completion.
+    try { await load(); }
+    catch (error) { console.warn("Dosarul s-a deschis; reîncărcarea listei a eșuat:", error); }
+    if (intakeOnly) navigate(`/prosumator?edit=${encodeURIComponent(dossier.id)}`, { replace: true });
   };
+
+  if (intakeOnly) return <div className="py-6 sm:py-10" data-testid="prosumer-intake-page">
+    <DossierDocumentStart pageMode autoOpen onCancel={() => navigate("/prosumator")} onCreated={handleProsumerIntakeCreated} />
+  </div>;
 
   return (
     <div>
@@ -894,7 +903,7 @@ export default function ModulePage({ moduleKey }) {
         action={<div className="flex gap-2 flex-wrap">
           {form ? <Btn data-testid="add-btn" onClick={() => setForm(null)}><X size={15} /> Închide</Btn> : key === "atr"
             ? <a data-testid="add-btn" href="/cerere-atr?new=atr" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> {cfg.addLabel}</a>
-            : key === "prosumator" ? <DossierDocumentStart autoOpen={startDocuments} onCreated={handleProsumerIntakeCreated} />
+            : key === "prosumator" ? <a data-testid="add-btn" href="/dosare/nou" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> Dosar nou</a>
             : <Btn data-testid="add-btn" onClick={openNew}><Plus size={15} /> {cfg.addLabel}</Btn>}
         </div>} />
 
@@ -947,7 +956,7 @@ export default function ModulePage({ moduleKey }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-bold" style={{ borderColor: "#198754", color: "#198754" }} onClick={() => openProsumerStep(nextProsumerStep?.[0] || PROSUMER_GUIDED_STEPS[0][0])} data-testid="guided-next-step-action">Completează</button>
-                  <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "#198754" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="guided-generate-dossier">Regenerează dosarul</button>
+                  <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "#198754" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="guided-generate-dossier">Generează dosarul</button>
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} onClick={() => {
                     const actions = document.querySelector('[data-testid="prosumer-quick-actions"]');
                     if (actions) { actions.open = true; actions.scrollIntoView({ behavior: "smooth", block: "center" }); }
@@ -976,7 +985,7 @@ export default function ModulePage({ moduleKey }) {
             </summary>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => setProsPre(true)} data-testid="quick-prosumer-ai-precheck">Verifică dosarul cu AI</button>
-              <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "var(--blue)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="quick-prosumer-pdf">Dosar complet PDF</button>
+              <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "var(--blue)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="quick-prosumer-pdf">Descarcă dosarul PDF</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf?download=1`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema">Schema monofilară</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${encodeURIComponent(editId)}`, `buletin_pram_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-pram">Buletin PRAM</button>
               <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/pv_teste/${encodeURIComponent(editId)}`, `pv_teste_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-tests">PV teste</button>

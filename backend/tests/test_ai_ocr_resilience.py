@@ -26,6 +26,7 @@ def test_local_ocr_keeps_readable_pages_when_one_page_fails(monkeypatch):
 
     def to_markdown(_doc, **kwargs):
         calls.append(kwargs)
+        assert callable(kwargs["ocr_function"])
         page = kwargs["pages"][0]
         if page == 1:
             raise RuntimeError("bad scan page")
@@ -46,6 +47,53 @@ def test_local_ocr_keeps_readable_pages_when_one_page_fails(monkeypatch):
     assert [call["pages"] for call in calls] == [[0], [1], [2], [3], [4], [5]]
     assert all(call["ocr_dpi"] == ai_extract.OCR_DPI for call in calls)
     assert document.closed
+
+
+def test_local_ocr_engine_uses_compact_romanian_models(monkeypatch):
+    calls = []
+
+    class ModelType:
+        TINY = "tiny"
+
+    class OCRVersion:
+        PPOCRV6 = "PP-OCRv6"
+
+    class Result:
+        boxes = [[[0, 0], [4, 0], [4, 2], [0, 2]]]
+        txts = ["Document DNS"]
+        scores = [0.99]
+
+    class Engine:
+        def __call__(self, image):
+            assert image == "image"
+            return Result()
+
+    def rapid_ocr(*, params):
+        calls.append(params)
+        return Engine()
+
+    fake_rapidocr = types.ModuleType("rapidocr")
+    fake_rapidocr.ModelType = ModelType
+    fake_rapidocr.OCRVersion = OCRVersion
+    fake_rapidocr.RapidOCR = rapid_ocr
+    monkeypatch.setitem(sys.modules, "rapidocr", fake_rapidocr)
+    monkeypatch.setattr(ai_extract, "_LOCAL_RAPIDOCR_ENGINE", None)
+
+    results = ai_extract._local_rapidocr_results("image")
+
+    assert results == [(Result.boxes[0], "Document DNS", 0.99)]
+    assert calls == [{
+        "Global.use_cls": False,
+        "Det.lang_type": "multi",
+        "Det.model_type": "tiny",
+        "Det.ocr_version": "PP-OCRv6",
+        "Det.limit_side_len": 960,
+        "Rec.lang_type": "ro",
+        "Rec.model_type": "tiny",
+        "Rec.ocr_version": "PP-OCRv6",
+        "EngineConfig.onnxruntime.intra_op_num_threads": 1,
+        "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+    }]
 
 
 def test_timed_out_ocr_keeps_slot_until_background_thread_finishes(monkeypatch):

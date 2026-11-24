@@ -1901,7 +1901,7 @@ async def import_prosumator(request: Request, user: dict = Depends(get_current_u
 
     # Keep consumption locations reusable on the client. A distinct POD is a
     # distinct service point even when the street address is shared.
-    site_fields = ("address", "county", "locality", "postal_code", "pod", "operator", "supplier", "cf_nr", "cadastral_nr", "nlc")
+    site_fields = ("address", "county", "locality", "postal_code", "pod", "operator", "supplier", "p_abs_kw", "p_abs_kva", "cf_nr", "cadastral_nr", "nlc")
     site_values = {key: str(d.get(key) or "").strip() for key in site_fields}
     if any(site_values.values()):
         sites = client.get("consumption_sites")
@@ -2072,6 +2072,17 @@ async def generate_doc(doc_type: str, item_id: str, authorization: str = Header(
         raise HTTPException(status_code=404, detail="Dosar inexistent")
     rec = CEF.from_legacy(rec)
     await auto_fill_cef_from_catalog(user["id"], rec)
+
+    _, _, _, dossier_info = await dossier_ctx(user, item_id, verify_files=True)
+    if doc_type != "all":
+        matching_positions = [p for p in dossier_info.get("positions", [])
+                              if doc_type in (p.get("docs") or []) or doc_type == p.get("key")]
+        incomplete_positions = [p for p in matching_positions if p.get("missing") or p.get("_official_form_unavailable")]
+        if incomplete_positions:
+            position = incomplete_positions[0]
+            missing = ", ".join(position.get("missing") or [])
+            detail = f"Completează {missing} înainte de generarea documentului {position.get('title') or doc_type}." if missing else f"Formularul oficial pentru {position.get('title') or doc_type} nu este disponibil. Atașează formularul curent al operatorului."
+            raise HTTPException(status_code=409, detail=detail)
 
     is_power_increase = str(rec.get("request_type") or "").strip() == "Spor de putere + prosumator"
     client = await get_client(user["id"], rec)
@@ -3476,12 +3487,16 @@ async def dossier_item(item_id: str, key: str, request: Request, user: dict = De
 @api_router.get("/dossier/{item_id}/file/{key}")
 async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int = 0, download: int = 0, authorization: str = Header(None), auth: str = Query(None)):
     user = await user_from_token(authorization, auth)
-    rec, client, settings, info = await dossier_ctx(user, item_id)
+    rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
     p = next((x for x in info["positions"] if x["key"] == key), None)
     if key == "opis":
         p = {"source": "generat", "docs": ["declaratie_autenticitate"], "key": "opis"}
     if not p:
         raise HTTPException(status_code=404, detail="Poziție inexistentă")
+    if p.get("missing"):
+        raise HTTPException(status_code=409, detail=f"Verifică {', '.join(p['missing'])} înainte de descărcarea documentului {p.get('title') or key}.")
+    if p.get("_official_form_unavailable"):
+        raise HTTPException(status_code=409, detail=f"Formularul oficial pentru {p.get('title') or key} nu este disponibil. Atașează formularul curent al operatorului.")
     name = f"{key}_{(client.get('name') or rec.get('client_name') or 'dosar').replace(' ', '_')}"
     if fmt == "docx":
         if p.get("official_operator_form"):
@@ -3498,6 +3513,8 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         headers={"Content-Disposition": disp('attachment', f"{name}.docx")})
     parts = await OPIS.position_pdf(p, rec, client, settings, info["titles"], get_object, force_generated=bool(generated))
+    if p.get("_official_form_unavailable"):
+        raise HTTPException(status_code=409, detail=f"Formularul oficial pentru {p.get('title') or key} nu este disponibil. Fișa de lucru nu poate fi folosită ca formular de depunere; atașează formularul curent al operatorului.")
     if not parts:
         raise HTTPException(status_code=404, detail="Documentul nu este încă încărcat")
     pdf = parts[0] if len(parts) == 1 else merge_pdfs(parts[0], [])
@@ -3518,8 +3535,8 @@ async def dossier_export(item_id: str, authorization: str = Header(None), auth: 
     user = await user_from_token(authorization, auth)
     rec, client, settings, info = await dossier_ctx(user, item_id, verify_files=True)
     pdf = await OPIS.export_bundle(info, rec, client, settings, get_object, logger)
-    name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not info['complete'] else ''}.pdf"
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', f"{name}")})
+    name = f"DOSAR_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}.pdf"
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('attachment', name)})
 
 SIMPLE_KEYS = ("notificare", "executant", "conformitate", "afm", "imputernicire", "priza", "pif_pv", "schema", "fisa_tehnica")
 
@@ -3548,8 +3565,8 @@ async def dossier_simple(item_id: str, authorization: str = Header(None), auth: 
     sub = {**info, "positions": pos, "titles": [p["title"] for p in pos],
            "complete": not any(p.get("missing") for p in pos) and not any(p.get("status") == "de completat" for p in pos)}
     pdf = await OPIS.export_bundle(sub, rec, client, settings, get_object, logger)
-    name = f"DOSAR_PROSUMATOR_SIMPLU_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}{'_CIORNA' if not sub['complete'] else ''}.pdf"
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('inline', name)})
+    name = f"DOSAR_PROSUMATOR_SIMPLU_{(client.get('name') or rec.get('client_name') or 'prosumator').replace(' ', '_')}.pdf"
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": disp('attachment', name)})
 
 import power_doc as PWR
 import atr_doc as ATR

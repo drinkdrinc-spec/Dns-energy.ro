@@ -14,7 +14,7 @@ const FLOW = [
     number: "01",
     title: "Client și loc de consum",
     desc: "Încarcă CI, factura și cartea funciară. Verifică datele citite și POD-ul înainte de salvare.",
-    to: "/prosumator?start=documents",
+    to: "/dosare/nou",
     action: "Începe din documente",
     icon: Upload,
     tone: "amber",
@@ -238,7 +238,7 @@ export default function Dashboard() {
         eyebrow="DNS ENERGY · SPAȚIU DE LUCRU"
         title="Panou principal"
         sub="Un singur flux pentru dosarul clientului, de la documentele inițiale până la pregătirea depunerii."
-        action={<Link to="/prosumator?start=documents"><Btn data-testid="new-diu-btn"><SunMedium size={15} /> Dosar nou</Btn></Link>}
+        action={<Link to="/dosare/nou"><Btn data-testid="new-diu-btn"><SunMedium size={15} /> Dosar nou</Btn></Link>}
       />
 
       <details className="den-panel mb-4 group" data-testid="dashboard-quick-guide">
@@ -250,7 +250,7 @@ export default function Dashboard() {
           <span className="shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }}>Deschide ghidul</span>
         </summary>
         <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <Link to="/prosumator?start=documents" className="rounded-xl border p-3 transition hover:shadow-sm" style={{ borderColor: "var(--line)" }}>
+          <Link to="/dosare/nou" className="rounded-xl border p-3 transition hover:shadow-sm" style={{ borderColor: "var(--line)" }}>
             <b className="block text-sm">Începe cu actele clientului</b>
             <span className="mt-1 block text-xs leading-relaxed" style={{ color: "var(--muted)" }}>Încarcă documentele și verifică datele extrase înainte să le folosești în dosar.</span>
             <span className="mt-2 inline-flex items-center gap-1 text-xs font-bold" style={{ color: "var(--blue)" }}>Deschide fluxul <ArrowRight size={13} /></span>

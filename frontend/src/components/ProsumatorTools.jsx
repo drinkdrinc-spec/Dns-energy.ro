@@ -85,7 +85,7 @@ export function GeneratedDocs({ id, files }) {
     <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--line)", background: "#f8fafd" }} data-testid="generated-docs">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <h3 className="font-bold text-sm">Documente generate automat</h3>
-        {id && <Btn onClick={() => openAuthenticatedFile(`/dossier/${id}/export`)} data-testid="doc-all"><FileDown size={15} /> Dosar complet (PDF)</Btn>}
+        {id && <Btn onClick={() => downloadAuthenticatedFile(`/dossier/${id}/export`, "Dosar_prosumator.pdf")} data-testid="doc-all"><FileDown size={15} /> Generează dosarul (PDF)</Btn>}
         {id && <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(schemaUrl(id), `schema_monofilara_${id}.pdf`)} data-testid="doc-schema"><FileDown size={15} /> Descarcă schema monofilară (PDF)</Btn>}
       </div>
       {id && <div className="mb-3 flex flex-wrap gap-2" aria-label="Descarcă separat documentele de predare">
