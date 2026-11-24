@@ -202,7 +202,8 @@ export function DossierDocumentStart({ onCreated, onCancel, autoOpen = false, pa
             county: x.county, locality: x.locality, phone: x.phone, email: x.email, id_series: x.id_series, id_number: x.id_number });
         }
         if (kind === "factura") mergedValues = putNonempty(mergedValues, { client_name: mergedValues.client_name || x.client_name, cnp: mergedValues.cnp || x.cnp,
-          address: mergedValues.address_same_as_ci ? mergedValues.hq_address : x.consumption_address || x.address, postal_code: x.postal_code, pod: x.pod, nlc: x.nlc, operator: x.operator, supplier: x.supplier, p_abs_kw: x.bransament_kw, p_abs_kva: x.p_abs_kva,
+          address: mergedValues.address_same_as_ci ? mergedValues.hq_address : x.consumption_address || x.address, postal_code: x.postal_code, pod: x.pod, nlc: x.nlc, operator: x.operator, supplier: x.supplier,
+          p_abs_kw: x.bransament_kw, p_abs_kva: x.p_abs_kva,
           county: mergedValues.county || x.county, locality: mergedValues.locality || x.locality, phone: mergedValues.phone || x.phone, email: mergedValues.email || x.email });
         if (kind === "factura" && !operatorManuallySet) {
           const suggestion = distributorSuggestion(mergedValues.pod, mergedValues.county);

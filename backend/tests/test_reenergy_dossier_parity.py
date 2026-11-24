@@ -4,6 +4,7 @@ import sys
 import zipfile
 from types import SimpleNamespace
 
+import pytest
 from pypdf import PdfReader
 from reportlab.pdfgen import canvas
 
@@ -94,7 +95,6 @@ def test_storage_document_does_not_invent_total_when_module_count_is_missing():
     assert storage_missing_fields({"model": "Battery Test", "kwh": 5.12}) == [
         "Battery Test: completează/verifică numărul modulelor, tensiunea nominală, capacitatea în Ah, clasa bateriei LV/HV, tipul de cuplare"
     ]
-
 
 
 def test_generated_operator_form_keeps_dns_energy_branding():
@@ -291,8 +291,62 @@ def test_bundle_keeps_official_form_fallback_and_marks_export_incomplete(monkeyp
 
     assert "OFFICIAL FORM UNAVAILABLE" in text
     assert "AUTHENTICITY" in text
-    assert "CIORNĂ" in text
+    assert "CIORNĂ" not in text
     assert info["export_has_unavailable_items"] is True
+
+
+def test_incomplete_bundle_remains_downloadable_without_ciorna_watermarks(monkeypatch):
+    async def render_position(_position, *_args, **_kwargs):
+        return [_marker_pdf("AVAILABLE DOCUMENT")]
+
+    monkeypatch.setattr(opis, "position_pdf", render_position)
+    monkeypatch.setattr(opis.docgen, "render", lambda *_args, **_kwargs: _marker_pdf("AUTHENTICITY DECLARATION"))
+    monkeypatch.setattr(opis, "_incomplete_report", lambda *_args: _marker_pdf("MISSING ITEMS CHECKLIST"))
+
+    class Logger:
+        def error(self, *_args, **_kwargs):
+            raise AssertionError("Unexpected PDF bundle error")
+
+    info = {"titles": {}, "complete": False, "missing_total": 2,
+            "positions": [{"key": "fisa_tehnica", "source": "generat", "missing": ["Cablu AC"], "marker": "AVAILABLE DOCUMENT"}]}
+    output = asyncio.run(opis.export_bundle(info, {}, {}, {}, None, Logger()))
+    text = " ".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(output)).pages)
+
+    assert "AVAILABLE DOCUMENT" in text
+    assert "AUTHENTICITY DECLARATION" in text
+    assert "MISSING ITEMS CHECKLIST" in text
+    assert "CIORNĂ" not in text
+
+
+def test_final_submission_pdf_rejects_dossiers_with_missing_requirements():
+    with pytest.raises(opis.SubmissionPackageIncomplete, match="elemente de completat"):
+        asyncio.run(opis.export_bundle(
+            {"titles": {}, "complete": False, "missing_total": 3, "positions": []},
+            {}, {}, {}, None, SimpleNamespace(), require_complete=True,
+        ))
+
+
+def test_final_submission_zip_rejects_dossiers_with_missing_requirements():
+    with pytest.raises(opis.SubmissionPackageIncomplete, match="elemente de completat"):
+        asyncio.run(opis.export_package_zip(
+            {"titles": {}, "complete": False, "missing_total": 2, "positions": []},
+            {}, {}, {}, None, SimpleNamespace(), require_complete=True,
+        ))
+
+
+def test_final_submission_pdf_rejects_unavailable_official_forms(monkeypatch):
+    async def unavailable_form(position, *_args, **_kwargs):
+        position["_official_form_unavailable"] = True
+        return [_marker_pdf("OFFICIAL FORM UNAVAILABLE")]
+
+    monkeypatch.setattr(opis, "position_pdf", unavailable_form)
+
+    with pytest.raises(opis.SubmissionPackageIncomplete, match="nu au putut fi incluse"):
+        asyncio.run(opis.export_bundle(
+            {"titles": {}, "complete": True, "missing_total": 0,
+             "positions": [{"key": "notificare", "title": "Formular oficial", "source": "official"}]},
+            {}, {}, {}, None, SimpleNamespace(), require_complete=True,
+        ))
 
 
 def _marker_pdf(text):
@@ -439,4 +493,5 @@ def test_submission_zip_preserves_uploaded_originals_separately_from_compiled_pd
 
     assert "verificarea semnăturilor" in manifest
     assert "Anexa semnata.pdf" in source_names[0]
+
 

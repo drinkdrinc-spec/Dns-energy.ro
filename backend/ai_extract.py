@@ -25,7 +25,7 @@ logger = logging.getLogger("d-energy.ai_extract")
 PROMPT = f"""Ești expert în dosare de racordare prosumatori din România. Extrage datele din documentul atașat și răspunde DOAR cu un obiect JSON valid, fără text suplimentar, cu cheile:
 client_name (nume beneficiar/titular), owner_name (proprietar CF), cnp (CNP sau CUI), address (adresa loc de consum), hq_address (domiciliu din CI), consumption_address (adresa de pe factură), id_series (serie CI), id_number (număr CI), cf_nr (număr carte funciară), cadastral_nr (număr cadastral), county (județ), locality (localitate/municipiu dacă apare explicit), pod (POD), nlc (numărul/codul locului de consum distinct de POD, numai dacă apare clar), postal_code (cod poștal, numai dacă apare clar), supplier (furnizor energie), phone, email, doc_type (tip document), summary (rezumat scurt),
 operator (alege EXACT una dintre: {OPERATORS}; Bihor/Cluj/Satu Mare/Sălaj/Maramureș/Bistrița => "DEER — Transilvania Nord"; Alba/Brașov/Covasna/Harghita/Mureș/Sibiu => "DEER — Transilvania Sud"; Prahova/Buzău/Brăila/Galați/Vrancea/Focșani => "DEER — Muntenia Nord"),
-power (puterea instalată a panourilor fotovoltaice în kWp, numai dacă apare explicit; nu o confunda cu puterea invertorului, puterea aprobată sau puterea evacuată), apparent_kva (putere aparentă în kVA, numai dacă apare explicit), supply ("Monofazat" sau "Trifazat", numai dacă apare explicit), bransament_kw (puterea aprobată a locului de consum în kW, numai dacă apare explicit), p_abs_kva (puterea aprobată a locului de consum în kVA, numai dacă apare explicit; nu o confunda cu apparent_kva pentru evacuare),
+power (puterea instalată a panourilor fotovoltaice în kWp, numai dacă apare explicit; nu o confunda cu puterea invertorului, puterea aprobată sau puterea evacuată), apparent_kva (puterea aparentă evacuată în kVA, numai dacă apare explicit), supply ("Monofazat" sau "Trifazat", numai dacă apare explicit), bransament_kw (puterea aprobată a locului de consum în kW, numai dacă apare explicit), p_abs_kva (puterea aprobată/aparentă a locului de consum în kVA, numai dacă apare explicit; nu o confunda cu apparent_kva pentru evacuare),
 system_type ("On-grid", "Hibrid cu baterie" sau "Off-grid"), inverter (marcă și model), inverter_kw (număr), inverter_count (număr),
 panels (marcă și model module), panel_count (număr), panel_w (W per modul, număr), battery (marcă și model sau null), battery_kwh, battery_ah, battery_v (numere sau null),
 grounding_ohm (rezistența prizei de pământ măsurată, număr sau null), date (data documentului YYYY-MM-DD), atr (nr ATR/aviz dacă există), afm ("Da" sau "Nu"),
@@ -567,4 +567,5 @@ async def extract_pdf(content: bytes, mime: str, doc_type: str = "auto", use_ai:
     fields["_engine"] = "OCR local (română)"
     fields["summary"] = "Date extrase local prin OCR din textul vizibil. Verifică valorile înainte de folosire; câmpurile neidentificate nu au fost deduse."
     return fields
+
 
