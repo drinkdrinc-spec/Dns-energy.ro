@@ -132,7 +132,7 @@ export function DossierOpis({ id, mode = "all", onChecklist }) {
         </div>
         {mode !== "attachments" && <div className="flex gap-2 flex-wrap">
           <Btn variant="secondary" onClick={lock} data-testid="opis-finalize">{d.finalized ? <><Unlock size={14} /> Redeschide</> : <><Lock size={14} /> Finalizează dosarul</>}</Btn>
-          <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(`/dossier/${id}/file/opis?download=1`, "Opis_declaratie_autenticitate.pdf")} data-testid="opis-declaration"><FileDown size={14} /> Opis (declarație autenticitate)</Btn>
+          <Btn variant="secondary" disabled={!d.complete} title={!d.complete ? "Disponibil după completarea tuturor documentelor" : undefined} onClick={() => downloadAuthenticatedFile(`/dossier/${id}/file/opis?download=1`, "Opis_declaratie_autenticitate.pdf")} data-testid="opis-declaration"><FileDown size={14} /> Opis dosar</Btn>
           <Btn disabled={exporting} aria-busy={exporting} onClick={async () => {
             if (exportLock.current) return;
             exportLock.current = true;
@@ -144,7 +144,7 @@ export function DossierOpis({ id, mode = "all", onChecklist }) {
             setPackageExporting(true);
             try { await downloadAuthenticatedFile(`/dossier/${encodeURIComponent(id)}/package.zip`, "Pachet_dosar_prosumator.zip"); }
             finally { setPackageExporting(false); }
-          }} data-testid="opis-package-export"><Archive size={14} /> {packageExporting ? "Se pregătește ZIP-ul…" : "Pachet ZIP pentru depunere"}</Btn>
+          }} data-testid="opis-package-export"><Archive size={14} /> {packageExporting ? "Se pregătește ZIP-ul…" : "Pachet pentru depunere (ZIP)"}</Btn>
         </div>}
       </div>
       {mode !== "attachments" && d.finalized && <p className="text-xs mb-2" style={{ color: "#166534" }} data-testid="opis-finalized">Finalizat la {new Date(d.finalized).toLocaleString("ro-RO")} — modificările din setări nu mai afectează acest dosar.</p>}
