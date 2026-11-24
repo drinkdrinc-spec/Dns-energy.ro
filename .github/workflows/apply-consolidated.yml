@@ -1,0 +1,39 @@
+name: Apply consolidated package
+on:
+  push:
+    paths:
+      - .github/workflows/apply-consolidated.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: deployment-prep
+          fetch-depth: 0
+      - name: Download package
+        run: |
+          curl -fSL "https://storage.googleapis.com/vincen-ai/sessions/XBTJmQMXk3wlfvsbgxuy/outputs/UfMWVtsWCz0GhR2FPirX/dns-energy-consolidated.zip?v=1795541617772" -o /tmp/pkg.zip
+          unzip -q /tmp/pkg.zip -d /tmp/pkg
+      - name: Locate package root
+        id: root
+        run: |
+          f=$(find /tmp/pkg -path '*/backend/server.py' | head -n1)
+          test -n "$f"
+          echo "dir=$(dirname "$(dirname "$f")")" >> "$GITHUB_OUTPUT"
+      - name: Sync files
+        run: rsync -a --exclude '.git' "${{ steps.root.outputs.dir }}/" ./
+      - name: Syntax gate
+        run: python3 -m compileall -q backend
+      - name: Commit and push
+        run: |
+          git config user.name "dns-energy-bot"
+          git config user.email "bot@dns-energy.ro"
+          git add -A
+          if git diff --cached --quiet; then echo "nothing to apply"; exit 0; fi
+          git commit -m "fix(deploy): consolidated boot fix and dossier package"
+          git push origin HEAD:deployment-prep
