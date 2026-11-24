@@ -57,7 +57,23 @@ export default function Simulare() {
       setClients(Array.isArray(responses[1].data) ? responses[1].data.filter((x) => !x.is_test && !/\bTEST\b/i.test(String(x.name || ""))) : []);
       setCatalog(Array.isArray(responses[2].data) ? responses[2].data.filter((x) => !/\bTEST\b/i.test(String(x.brand_model || ""))) : []);
       const dossierResponse = await api.get("/data/prosumator").catch(() => ({ data: [] }));
-      setDossiers(Array.isArray(dossierResponse.data) ? dossierResponse.data.filter((x) => !x.is_test && !/\bTEST\b/i.test(String(x.client_name || x.number || ""))) : []);
+      const dossierRows = Array.isArray(dossierResponse.data) ? dossierResponse.data.filter((x) => !x.is_test && !/\bTEST\b/i.test(String(x.client_name || x.number || ""))) : [];
+      setDossiers(dossierRows);
+      const params = new URLSearchParams(window.location.search);
+      const requestedDossierId = params.get("dossierId");
+      if (params.get("new") === "project" && requestedDossierId) {
+        const dossier = dossierRows.find((item) => item.id === requestedDossierId);
+        if (dossier) {
+          const client = (responses[1].data || []).find((item) => item.id === dossier.client_id);
+          setSelectedId("");
+          setForm({ ...EMPTY, name: `Proiect — ${dossier.client_name || client?.name || dossier.number || "dosar prosumator"}`,
+            client_id: dossier.client_id || "", client_name: dossier.client_name || client?.name || "",
+            address: dossier.address || client?.address || "", locality: dossier.locality || client?.locality || "",
+            county: dossier.county || client?.county || "", dossier_id: dossier.id, dossier_number: dossier.number || "" });
+          setOutline([]); setEquipmentMarks([]); setDrawingMode("roof");
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+      }
     } catch (e) {
       setError(e.response?.data?.detail || "Proiectele nu s-au putut încărca. Verifică accesul și încearcă din nou.");
     } finally { setLoading(false); }
