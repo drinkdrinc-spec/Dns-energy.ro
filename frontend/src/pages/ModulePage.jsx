@@ -997,10 +997,6 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                 </>;
               })()}
             </div>
-          </details>}).toLocaleString("ro-RO") : "Dată indisponibilă"}{entry.by ? ` · ${entry.by}` : ""}</span>
-                </li>)}
-              </ol>
-            </details>}
           </details>}
           {key === "prosumator" ? <div id="dossier-section-client" className="scroll-mt-24"><ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} stepComplete={prosumerProgress?.completed[0]} /></div> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
