@@ -907,6 +907,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false, createOnly =
           {createOnly ? <Btn data-testid="add-btn" variant="secondary" onClick={() => navigate(`/${key}`)}><X size={15} /> Renunță</Btn> : form ? <Btn data-testid="add-btn" onClick={() => setForm(null)}><X size={15} /> Închide</Btn> : key === "atr"
             ? <a data-testid="add-btn" href="/cerere-atr?new=atr" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> {cfg.addLabel}</a>
             : key === "prosumator" ? <a data-testid="add-btn" href="/dosare/nou" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> Dosar nou</a>
+            : ["diu", "mono", "pram"].includes(key) ? <Btn data-testid="add-btn" onClick={() => navigate(`/${key}/nou`)}><Plus size={15} /> {cfg.addLabel}</Btn>
             : <Btn data-testid="add-btn" onClick={openNew}><Plus size={15} /> {cfg.addLabel}</Btn>}
         </div>} />
 
