@@ -35,6 +35,7 @@ export default function Simulare() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const requestedProjectId = useRef(new URLSearchParams(window.location.search).get("edit") || "");
   const planInput = useRef(null);
 
   const load = async () => {
@@ -75,6 +76,14 @@ export default function Simulare() {
     setOutline(Array.isArray(p.roof_outline) ? p.roof_outline : []);
     setEquipmentMarks(Array.isArray(p.equipment_marks) ? p.equipment_marks : []);
     setDrawingMode("roof");
+  useEffect(() => {
+    if (!requestedProjectId.current || !projects.length) return;
+    const project = projects.find((item) => item.id === requestedProjectId.current);
+    if (!project) return;
+    selectProject(project);
+    requestedProjectId.current = "";
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [projects]);
   };
   const addPlanPoint = (event) => {
     const rect = event.currentTarget.getBoundingClientRect();

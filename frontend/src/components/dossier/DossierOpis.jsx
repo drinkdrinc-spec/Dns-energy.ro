@@ -140,8 +140,7 @@ export function DossierOpis({ id, mode = "all", onChecklist }) {
             try { await downloadAuthenticatedFile(`/dossier/${id}/export`, "Dosar_prosumator.pdf"); }
             finally { exportLock.current = false; setExporting(false); }
           }} data-testid="opis-export"><FileDown size={15} /> {exporting ? "Se pregătește PDF-ul… păstrează pagina deschisă" : "Generează dosarul PDF"}</Btn>
-          <Btn variant="secondary" disabled={packageExporting || !d.complete} title={!d.complete ? "Pachetul de depunere devine disponibil după completarea dosarului." : undefined} aria-busy={packageExporting} onClick={async () => {
-            if (!d.complete) return;
+          <Btn variant="secondary" disabled={packageExporting} aria-busy={packageExporting} onClick={async () => {
             setPackageExporting(true);
             try { await downloadAuthenticatedFile(`/dossier/${encodeURIComponent(id)}/package.zip`, "Pachet_dosar_prosumator.zip"); }
             finally { setPackageExporting(false); }

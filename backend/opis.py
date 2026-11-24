@@ -260,7 +260,8 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
     res_sld = SZ.compute(rec, client)
     st_sld = SZ.state(rec, client, settings)
     for key, title, docs, keys, ekeys in GEN:
-        # AFM declaration belongs only in dossiers explicitly marked for AFM financing.
+        # AFM declaration belongs in the generated bundle only when the
+        # installer explicitly selected AFM financing for this dossier.
         if key == "afm" and str(ctx.raw("afm") or rec.get("afm") or "").strip().casefold() not in {"da", "yes", "true", "1"}:
             continue
         if key == "imputernicire":
@@ -838,10 +839,10 @@ def _source_file_entries(positions, get_object, max_total=100 * 1024 * 1024):
     return {"files": files, "unavailable": unavailable}
 
 
+    """Build the selected, ordered submission package without duplicating evidence."""
 async def export_package_zip(positions_info, rec, client, settings, get_object, logger, file_count=4, require_complete=False):
     if require_complete:
         _require_complete_submission(positions_info)
-    """Build the selected, ordered submission package without duplicating evidence."""
     count = max(1, min(4, int(file_count or 4)))
     titles = positions_info["titles"]
     ordered_parts = []
@@ -869,6 +870,9 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
     unavailable.extend(original_sources["unavailable"])
 
     if unavailable and positions_info.get("complete"):
+    if require_complete:
+        positions_info["export_has_unavailable_items"] = bool(unavailable)
+        _require_complete_submission(positions_info)
         positions_info["complete"] = False
     authenticity = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
                                  draft=not positions_info.get("complete", False))
@@ -883,8 +887,6 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
     if report:
         ordered_parts.insert(technical_start + 1, (authenticity_group, report))
     positions_info["export_has_unavailable_items"] = bool(unavailable)
-    if require_complete:
-        _require_complete_submission(positions_info)
 
     # Merge adjacent sections for compact layouts, keeping submission order stable.
     layouts = {

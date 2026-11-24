@@ -514,10 +514,10 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
     const status = "Depus la operatorul de distribuție";
     setStatusSavingId(editId);
     try {
-      const { data } = await api.patch("/data/prosumator/" + encodeURIComponent(editId) + "/status", { status, reset_response_followup: true });
-      setForm((current) => ({ ...current, workflow_status: data.status, operator_stage: data.operator_stage || data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at, workflow_history: [...(current.workflow_history || []), data.history_entry].filter(Boolean) }));
-      setItems((current) => current.map((row) => row.id === editId ? { ...row, workflow_status: data.status, operator_stage: data.operator_stage || data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at } : row));
-      toast.success("Depunerea a fost înregistrată. Am setat reperul intern de urmărire la 30 de zile.");
+      const { data } = await api.patch(`/data/prosumator/${encodeURIComponent(editId)}/status`, { status, reset_response_followup: true });
+      setForm((current) => ({ ...current, workflow_status: data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at, workflow_history: [...(current.workflow_history || []), data.history_entry].filter(Boolean) }));
+      setItems((current) => current.map((row) => row.id === editId ? { ...row, workflow_status: data.status, submitted_at: data.submitted_at, response_followup_at: data.response_followup_at, updated_at: data.updated_at } : row));
+      toast.success("Depunerea a fost înregistrată. Am setat și reperul intern de urmărire la 30 de zile.");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Depunerea nu a putut fi înregistrată.");
     } finally {
@@ -959,25 +959,31 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-bold" style={{ borderColor: "#198754", color: "#198754" }} onClick={() => openProsumerStep(nextProsumerStep?.[0] || PROSUMER_GUIDED_STEPS[0][0])} data-testid="guided-next-step-action">Completează</button>
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "#198754" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="guided-generate-dossier">Generează dosarul</button>
-                  {key === "prosumator" && editId && <details className="relative" style={{ zIndex: 20 }} data-testid="prosumer-quick-actions">
-            <summary className="ml-auto flex min-h-10 w-fit cursor-pointer list-none items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold shadow-sm" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid="guided-other-documents">
-              <span aria-hidden="true">···</span> Alte documente
-            </summary>
-            <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-white py-1 shadow-xl" style={{ borderColor: "var(--line)" }} role="menu" aria-label="Documente dosar">
-              <button type="button" role="menuitem" className="block w-full px-4 py-3 text-left text-sm hover:bg-slate-50" onClick={() => openAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema-preview">Previzualizare schemă</button>
-              <button type="button" role="menuitem" className="block w-full px-4 py-3 text-left text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf?download=1`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema">Schemă monofilară (PDF)</button>
-              <button type="button" role="menuitem" className="block w-full px-4 py-3 text-left text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${encodeURIComponent(editId)}`, `buletin_pram_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-pram">Buletin PRAM</button>
-              <button type="button" role="menuitem" className="block w-full px-4 py-3 text-left text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/docs/pv_teste/${encodeURIComponent(editId)}`, `pv_teste_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-tests">PV probe</button>
-              {(() => {
-                const associatedDiu = linkedDiu.find((item) => item.pros_id === editId || (form.client_id && item.client_id === form.client_id));
-                const associatedProject = linkedProjects.find((item) => item.dossier_id === editId);
-                return <>
-                  {(associatedDiu || form.client_id) && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={associatedDiu ? `/diu?edit=${encodeURIComponent(associatedDiu.id)}` : `/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">DIU din dosar</a>}
-                  {associatedProject && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/simulare?edit=${encodeURIComponent(associatedProject.id)}`} data-testid="quick-prosumer-project">Proiectul asociat</a>}
-                </>;
-              })()}
-            </div>
-          </details>}
+                  <details className="relative" style={{ zIndex: 20 }} data-testid="prosumer-quick-actions">
+                    <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid="guided-other-documents-trigger">
+                      <span aria-hidden="true">···</span> Alte documente
+                    </summary>
+                    <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-white py-1 text-left shadow-xl" style={{ borderColor: "var(--line)" }} role="menu" aria-label="Documente dosar">
+                      <button type="button" role="menuitem" className="block w-full px-4 py-3 text-sm hover:bg-slate-50" onClick={() => openAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema-preview">Previzualizare schemă</button>
+                      <button type="button" role="menuitem" className="block w-full px-4 py-3 text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf?download=1`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema">Schemă monofilară (PDF)</button>
+                      <button type="button" role="menuitem" className="block w-full px-4 py-3 text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${encodeURIComponent(editId)}`, `buletin_pram_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-pram">Buletin PRAM</button>
+                      <button type="button" role="menuitem" className="block w-full px-4 py-3 text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/docs/pv_teste/${encodeURIComponent(editId)}`, `pv_teste_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-tests">PV probe</button>
+                      {(() => {
+                        const exactDiuMatches = linkedDiu.filter((item) => item.pros_id === editId);
+                        const clientDiuMatches = form.client_id ? linkedDiu.filter((item) => item.client_id === form.client_id) : [];
+                        const associatedDiu = exactDiuMatches.length === 1
+                          ? exactDiuMatches[0]
+                          : exactDiuMatches.length === 0 && clientDiuMatches.length === 1
+                            ? clientDiuMatches[0]
+                            : null;
+                        const associatedProject = linkedProjects.find((item) => item.dossier_id === editId);
+                        return <>
+                          {associatedDiu && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/diu?edit=${encodeURIComponent(associatedDiu.id)}`} data-testid="quick-prosumer-diu">DIU din dosar</a>}
+                          {associatedProject && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/simulare?edit=${encodeURIComponent(associatedProject.id)}`} data-testid="quick-prosumer-project">Proiectul asociat</a>}
+                        </>;
+                      })()}
+                    </div>
+                  </details>
                 </div>
               </div>
               <nav className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Pași dosar prosumator">
@@ -994,7 +1000,6 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
               </nav>
             </section>}
 
-          
           {key === "prosumator" ? <div id="dossier-section-client" className="scroll-mt-24"><ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} stepComplete={prosumerProgress?.completed[0]} /></div> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
