@@ -493,8 +493,11 @@ async def contract_pdf(cid: str, authorization: str = Header(None), auth: str = 
 
 @S.app.on_event("startup")
 async def _idx():
-    await db.offers.create_index([("owner", 1), ("number", 1)], unique=True)
-    await db.contracts.create_index([("owner", 1), ("number", 1)], unique=True)
+    try:
+        await db.offers.create_index([("owner", 1), ("number", 1)], unique=True)
+        await db.contracts.create_index([("owner", 1), ("number", 1)], unique=True)
+    except Exception as e:
+        S.logger.error("Startup index creation skipped (MongoDB unavailable): %s", e)
 
 
 _ = (timedelta, ReturnDocument)
