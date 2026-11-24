@@ -1,11 +1,16 @@
 name: Apply consolidated package
+
 on:
+  workflow_dispatch:
   push:
+    branches:
+      - deployment-prep
     paths:
       - .github/workflows/apply-consolidated.yml
-  workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   apply:
     runs-on: ubuntu-latest
@@ -15,25 +20,116 @@ jobs:
         with:
           ref: deployment-prep
           fetch-depth: 0
-      - name: Download package
+
+      - name: Download fixed files
         run: |
-          curl -fSL "https://storage.googleapis.com/vincen-ai/sessions/XBTJmQMXk3wlfvsbgxuy/outputs/UfMWVtsWCz0GhR2FPirX/dns-energy-consolidated.zip?v=1795541617772" -o /tmp/pkg.zip
-          unzip -q /tmp/pkg.zip -d /tmp/pkg
-      - name: Locate package root
-        id: root
+          set -euo pipefail
+          mkdir -p /tmp/fix
+          curl -fSL "https://storage.googleapis.com/vincen-ai/sessions/XBTJmQMXk3wlfvsbgxuy/outputs/UfMWVtsWCz0GhR2FPirX/server.py?v=1795541618435" -o /tmp/fix/server.py
+          curl -fSL "https://storage.googleapis.com/vincen-ai/sessions/XBTJmQMXk3wlfvsbgxuy/outputs/UfMWVtsWCz0GhR2FPirX/docgen.py?v=1795541618090" -o /tmp/fix/docgen.py
+          curl -fSL "https://storage.googleapis.com/vincen-ai/sessions/XBTJmQMXk3wlfvsbgxuy/outputs/UfMWVtsWCz0GhR2FPirX/gridfs_storage.py?v=1795541618752" -o /tmp/fix/gridfs_storage.py
+          wc -l /tmp/fix/server.py /tmp/fix/docgen.py /tmp/fix/gridfs_storage.py
+
+      - name: Gate - verify the downloaded files are the fixed ones
         run: |
-          f=$(find /tmp/pkg -path '*/backend/server.py' | head -n1)
-          test -n "$f"
-          echo "dir=$(dirname "$(dirname "$f")")" >> "$GITHUB_OUTPUT"
-      - name: Sync files
-        run: rsync -a --exclude '.git' --exclude '.github' "${{ steps.root.outputs.dir }}/" ./
+          set -euo pipefail
+          fail=0
+          chk() {
+            if grep -qF -- "$2" "$1"; then
+              echo "OK       $1 contains: $2"
+            else
+              echo "MISSING  $1 lacks: $2"
+              fail=1
+            fi
+          }
+          chk /tmp/fix/server.py "serverSelectionTimeoutMS"
+          chk /tmp/fix/docgen.py "nota_gdpr"
+          chk /tmp/fix/docgen.py "documentatie_echipamente"
+          chk /tmp/fix/gridfs_storage.py "serverSelectionTimeoutMS"
+          echo "----- health routes in fixed server.py -----"
+          grep -nE 'healthz|health|readyz' /tmp/fix/server.py || true
+          echo "----- ORDER in fixed docgen.py -----"
+          grep -n "ORDER" /tmp/fix/docgen.py || true
+          if [ "$fail" -ne 0 ]; then
+            echo "GATE FAILED: downloaded files are not the fixed ones, nothing applied"
+            exit 1
+          fi
+
+      - name: Pick health check path
+        run: |
+          set -euo pipefail
+          HP=""
+          for cand in "/healthz" "/health" "/api/healthz" "/api/health"; do
+            if grep -qF -- "\"$cand\"" /tmp/fix/server.py; then
+              HP="$cand"
+              break
+            fi
+          done
+          if [ -z "$HP" ]; then
+            echo "GATE FAILED: no health route found in fixed server.py"
+            exit 1
+          fi
+          printf 'HEALTH_PATH=%s\n' "$HP" >> "$GITHUB_ENV"
+          echo "health check path -> $HP"
+
+      - name: Revert the stale mass-apply
+        run: |
+          set -euo pipefail
+          git config user.name "dns-energy-bot"
+          git config user.email "bot@dns-energy.ro"
+          if git cat-file -e 0771c171fcb14cb1d22e5415ac273aa6e137fd1f^{commit}; then
+            git revert --no-edit 0771c171fcb14cb1d22e5415ac273aa6e137fd1f
+          else
+            echo "commit 0771c17 not present, skipping revert"
+          fi
+          git log --oneline -3
+
+      - name: Install fixed files
+        run: |
+          set -euo pipefail
+          cp /tmp/fix/server.py backend/server.py
+          cp /tmp/fix/docgen.py backend/docgen.py
+          cp /tmp/fix/gridfs_storage.py backend/gridfs_storage.py
+          wc -l backend/server.py backend/docgen.py backend/gridfs_storage.py
+
+      - name: Align render.yaml
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          import pathlib
+          hp = os.environ["HEALTH_PATH"]
+          p = pathlib.Path("render.yaml")
+          s = p.read_text()
+          s = s.replace("plan: free", "plan: starter")
+          s = re.sub(r"healthCheckPath:\s*\S+", "healthCheckPath: " + hp, s)
+          p.write_text(s)
+          print("health check path written ->", hp)
+          for line in s.splitlines():
+              t = line.strip()
+              if t.startswith("plan:") or t.startswith("healthCheckPath:") or t.startswith("- key: PUBLIC_APP_URL"):
+                  print("   ", t)
+          PY
+
       - name: Syntax gate
         run: python3 -m compileall -q backend
+
       - name: Commit and push
         run: |
+          set -euo pipefail
           git config user.name "dns-energy-bot"
           git config user.email "bot@dns-energy.ro"
           git add -A
-          if git diff --cached --quiet; then echo "nothing to apply"; exit 0; fi
-          git commit -m "fix(deploy): consolidated boot fix and dossier package"
-          git push origin HEAD:deployment-prep
+          if git diff --cached --quiet; then
+            echo "no working-tree changes to commit"
+          else
+            git commit -m "fix(boot): bounded Mongo startup, health routes, ordered dossier with GDPR and equipment docs"
+          fi
+          if [ -n "$(git rev-list origin/deployment-prep..HEAD)" ]; then
+            git push origin HEAD:deployment-prep
+          else
+            echo "nothing to push"
+          fi
+          git log --oneline -4
+          git show --stat --oneline HEAD | tail -n 20
