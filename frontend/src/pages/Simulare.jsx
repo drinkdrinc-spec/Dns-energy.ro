@@ -36,12 +36,24 @@ export default function Simulare() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const planInput = useRef(null);
+  const requestedProjectId = useRef(new URLSearchParams(window.location.search).get("edit") || "");
 
   const load = async () => {
     setLoading(true); setError("");
     try {
       const responses = await Promise.all([api.get("/data/projects"), api.get("/data/clients"), api.get("/data/catalog")]);
-      setProjects(Array.isArray(responses[0].data) ? responses[0].data : []);
+      const projectRows = Array.isArray(responses[0].data) ? responses[0].data : [];
+      setProjects(projectRows);
+      const requestedProjectId = new URLSearchParams(window.location.search).get("edit");
+      const requestedProject = requestedProjectId ? projectRows.find((item) => item.id === requestedProjectId) : null;
+      if (requestedProject) {
+        setSelectedId(requestedProject.id);
+        setForm({ ...EMPTY, ...requestedProject });
+        setOutline(Array.isArray(requestedProject.roof_outline) ? requestedProject.roof_outline : []);
+        setEquipmentMarks(Array.isArray(requestedProject.equipment_marks) ? requestedProject.equipment_marks : []);
+        setDrawingMode("roof");
+        window.history.replaceState(null, "", window.location.pathname);
+      }
       setClients(Array.isArray(responses[1].data) ? responses[1].data.filter((x) => !x.is_test && !/\bTEST\b/i.test(String(x.name || ""))) : []);
       setCatalog(Array.isArray(responses[2].data) ? responses[2].data.filter((x) => !/\bTEST\b/i.test(String(x.brand_model || ""))) : []);
       const dossierResponse = await api.get("/data/prosumator").catch(() => ({ data: [] }));
@@ -65,6 +77,14 @@ export default function Simulare() {
     setEquipmentMarks(Array.isArray(p.equipment_marks) ? p.equipment_marks : []);
     setDrawingMode("roof");
   };
+  useEffect(() => {
+    if (!requestedProjectId.current || !projects.length) return;
+    const project = projects.find((item) => item.id === requestedProjectId.current);
+    if (!project) return;
+    selectProject(project);
+    requestedProjectId.current = "";
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [projects]);
   const addPlanPoint = (event) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(800, ((event.clientX - rect.left) / rect.width) * 800));

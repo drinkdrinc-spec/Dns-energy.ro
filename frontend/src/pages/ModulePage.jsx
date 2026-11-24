@@ -289,6 +289,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
   const [items, setItems] = useState([]);
   const [linkedProsumer, setLinkedProsumer] = useState([]);
   const [linkedDiu, setLinkedDiu] = useState([]);
+  const [linkedProjects, setLinkedProjects] = useState([]);
   const [showTestRecords, setShowTestRecords] = useState(() => new URLSearchParams(window.location.search).get("showTests") === "1");
   const [creatingTestDossier, setCreatingTestDossier] = useState(false);
   const [form, setForm] = useState(null); // null=hidden, {} = open
@@ -430,6 +431,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
     if (key === "clients" || key === "prosumator" || key === "atr") {
       api.get("/data/prosumator").then((r) => setLinkedProsumer(r.data || [])).catch(() => {});
       if (key !== "atr") api.get("/data/diu").then((r) => setLinkedDiu(r.data || [])).catch(() => {});
+      if (key === "prosumator") api.get("/data/projects").then((r) => setLinkedProjects(r.data || [])).catch(() => {});
     }
     if (key === "diu") {
       const params = new URLSearchParams(window.location.search);
@@ -957,10 +959,31 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-bold" style={{ borderColor: "#198754", color: "#198754" }} onClick={() => openProsumerStep(nextProsumerStep?.[0] || PROSUMER_GUIDED_STEPS[0][0])} data-testid="guided-next-step-action">Completează</button>
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "#198754" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="guided-generate-dossier">Generează dosarul</button>
-                  <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} onClick={() => {
-                    const actions = document.querySelector('[data-testid="prosumer-quick-actions"]');
-                    if (actions) { actions.open = true; actions.scrollIntoView({ behavior: "smooth", block: "center" }); }
-                  }} data-testid="guided-other-documents">Alte documente</button>
+                  <details className="relative" style={{ zIndex: 20 }} data-testid="prosumer-quick-actions">
+                    <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid="guided-other-documents-trigger">
+                      <span aria-hidden="true">···</span> Alte documente
+                    </summary>
+                    <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-white py-1 text-left shadow-xl" style={{ borderColor: "var(--line)" }} role="menu" aria-label="Documente dosar">
+                      <button type="button" role="menuitem" className="block w-full px-4 py-3 text-sm hover:bg-slate-50" onClick={() => openAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema-preview">Previzualizare schemă</button>
+                      <button type="button" role="menuitem" className="block w-full px-4 py-3 text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf?download=1`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema">Schemă monofilară (PDF)</button>
+                      <button type="button" role="menuitem" className="block w-full px-4 py-3 text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${encodeURIComponent(editId)}`, `buletin_pram_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-pram">Buletin PRAM</button>
+                      <button type="button" role="menuitem" className="block w-full px-4 py-3 text-sm hover:bg-slate-50" onClick={() => downloadAuthenticatedFile(`/docs/pv_teste/${encodeURIComponent(editId)}`, `pv_teste_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-tests">PV probe</button>
+                      {(() => {
+                        const exactDiuMatches = linkedDiu.filter((item) => item.pros_id === editId);
+                        const clientDiuMatches = form.client_id ? linkedDiu.filter((item) => item.client_id === form.client_id) : [];
+                        const associatedDiu = exactDiuMatches.length === 1
+                          ? exactDiuMatches[0]
+                          : exactDiuMatches.length === 0 && clientDiuMatches.length === 1
+                            ? clientDiuMatches[0]
+                            : null;
+                        const associatedProject = linkedProjects.find((item) => item.dossier_id === editId);
+                        return <>
+                          {associatedDiu && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/diu?edit=${encodeURIComponent(associatedDiu.id)}`} data-testid="quick-prosumer-diu">DIU din dosar</a>}
+                          {associatedProject && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/simulare?edit=${encodeURIComponent(associatedProject.id)}`} data-testid="quick-prosumer-project">Proiectul asociat</a>}
+                        </>;
+                      })()}
+                    </div>
+                  </details>
                 </div>
               </div>
               <nav className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Pași dosar prosumator">
@@ -977,43 +1000,6 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
               </nav>
             </section>}
 
-          {key === "prosumator" && editId && <details className="mb-5 rounded-xl border bg-white" style={{ borderColor: "var(--line)" }} data-testid="prosumer-quick-actions">
-
-            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">
-              <div><div className="text-sm font-bold">{form.client_name || "Dosar prosumator"}</div><div className="text-xs" style={{ color: "var(--muted)" }}>{[form.operator, form.pod && `POD ${form.pod}`, form.status].filter(Boolean).join(" · ")}</div></div>
-              <span className="text-xs font-semibold" style={{ color: "var(--blue)" }}>⋯ Alte documente și acțiuni</span>
-            </summary>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} onClick={() => setProsPre(true)} data-testid="quick-prosumer-ai-precheck">Verifică dosarul cu AI</button>
-              <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "var(--blue)" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="quick-prosumer-pdf">Descarcă dosarul PDF</button>
-              <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/sld/${encodeURIComponent(editId)}/pdf?download=1`, `schema_monofilara_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-schema">Schema monofilară</button>
-              <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/buletin_priza/${encodeURIComponent(editId)}`, `buletin_pram_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-pram">Buletin PRAM</button>
-              <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => downloadAuthenticatedFile(`/docs/pv_teste/${encodeURIComponent(editId)}`, `pv_teste_${String(editId).slice(0, 8)}.pdf`)} data-testid="quick-prosumer-tests">PV teste</button>
-              <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)" }} onClick={() => openAuthenticatedFile(`/docs/pv_pif/${encodeURIComponent(editId)}`)} data-testid="quick-prosumer-pif">Proces-verbal PIF</button>
-              {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-atr">Cerere ATR</a>}
-              {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/cerere-atr?new=atr&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}&case=power-increase`} data-testid="quick-prosumer-power">Spor de putere</a>}
-              {form.client_id && <a className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--blue)" }} href={`/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">Creează DI-U</a>}
-            </div>
-            <details className="mt-3 rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="prosumer-blockers">
-              <summary className="cursor-pointer text-xs font-bold">Blocaje active ({Array.isArray(form.workflow_blockers) ? form.workflow_blockers.filter((item) => String(item || "").trim()).length : 0})</summary>
-              <label className="mt-2 block text-xs font-semibold" htmlFor="prosumer-workflow-blockers">Notează ce lipsește sau ce așteptăm, câte un blocaj pe rând</label>
-              <textarea id="prosumer-workflow-blockers" className="den-input mt-1 w-full" rows={3}
-                value={Array.isArray(form.workflow_blockers) ? form.workflow_blockers.join("\n") : String(form.workflow_blockers || "")}
-                onChange={(event) => setVal("workflow_blockers", event.target.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean))}
-                placeholder={"Ex.: Așteptăm răspunsul operatorului\nLipsește extrasul CF"}
-                data-testid="prosumer-workflow-blockers-input" />
-              <p className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>Blocajele se salvează împreună cu dosarul când apeși „Salvează”. Nu modifică datele tehnice și nu trimit informații către operator.</p>
-            </details>
-            {Array.isArray(form.workflow_history) && form.workflow_history.length > 0 && <details className="mt-3 rounded-lg border bg-white p-3" style={{ borderColor: "var(--line)" }} data-testid="prosumer-workflow-history">
-              <summary className="cursor-pointer text-xs font-bold">Istoric schimbări de stadiu ({form.workflow_history.length})</summary>
-              <ol className="mt-2 space-y-2">
-                {[...form.workflow_history].slice(-8).reverse().map((entry, index) => <li key={`${entry.at || "event"}-${index}`} className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
-                  <span>{entry.from || "—"} → <b>{entry.to || "—"}</b></span>
-                  <span style={{ color: "var(--muted)" }}>{entry.at ? new Date(entry.at).toLocaleString("ro-RO") : "Dată indisponibilă"}{entry.by ? ` · ${entry.by}` : ""}</span>
-                </li>)}
-              </ol>
-            </details>}
-          </details>}
           {key === "prosumator" ? <div id="dossier-section-client" className="scroll-mt-24"><ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} stepComplete={prosumerProgress?.completed[0]} /></div> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
