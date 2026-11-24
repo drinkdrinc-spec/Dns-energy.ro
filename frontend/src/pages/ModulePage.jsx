@@ -980,7 +980,7 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                         const associatedProject = linkedProjects.find((item) => item.dossier_id === editId);
                         return <>
                           {(associatedDiu || canCreateDiu) && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={associatedDiu ? `/diu?edit=${encodeURIComponent(associatedDiu.id)}` : `/diu?new=diu&clientId=${encodeURIComponent(form.client_id)}&prosId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-diu">DIU din dosar</a>}
-                          {associatedProject && <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={`/simulare?edit=${encodeURIComponent(associatedProject.id)}`} data-testid="quick-prosumer-project">Proiectul asociat</a>}
+                          <a role="menuitem" className="block px-4 py-3 text-sm hover:bg-slate-50" href={associatedProject ? `/simulare?edit=${encodeURIComponent(associatedProject.id)}` : `/simulare?new=project&dossierId=${encodeURIComponent(editId)}`} data-testid="quick-prosumer-project">{associatedProject ? "Proiectul asociat" : "Creează proiect asociat"}</a>
                         </>;
                       })()}
                     </div>
