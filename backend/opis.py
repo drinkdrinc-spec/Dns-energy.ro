@@ -339,6 +339,11 @@ async def build_positions(db, owner, rec, client, settings, public_documents=Non
                             "official_operator_form": official_form,
                             "missing": form_missing})
                 continue
+            pos.append({"key": key,
+                        "title": "Formularul oficial de notificare / cerere al operatorului",
+                        "source": "manual", "files": [],
+                        "missing": ["Formularul oficial curent nu este disponibil în registru. Încarcă formularul publicat de operator după completare și semnare; nu folosi formular generic la depunere."]})
+            continue
         if key == "priza" and rec.get("pram_source") == "none":
             if PIFDOC.filled(rec):
                 pos.append({"key": "pif_pv", "title": PIFDOC.TITLE, "source": "generat", "docs": ["pif_pv"], "missing": [], "files": []})
