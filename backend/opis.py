@@ -839,8 +839,8 @@ def _source_file_entries(positions, get_object, max_total=100 * 1024 * 1024):
     return {"files": files, "unavailable": unavailable}
 
 
-    """Build the selected, ordered submission package without duplicating evidence."""
 async def export_package_zip(positions_info, rec, client, settings, get_object, logger, file_count=4, require_complete=False):
+    """Build the selected, ordered submission package without duplicating evidence."""
     if require_complete:
         _require_complete_submission(positions_info)
     count = max(1, min(4, int(file_count or 4)))
@@ -870,10 +870,10 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
     unavailable.extend(original_sources["unavailable"])
 
     if unavailable and positions_info.get("complete"):
+        positions_info["complete"] = False
     if require_complete:
         positions_info["export_has_unavailable_items"] = bool(unavailable)
         _require_complete_submission(positions_info)
-        positions_info["complete"] = False
     authenticity = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles,
                                  draft=not positions_info.get("complete", False))
     if unavailable:

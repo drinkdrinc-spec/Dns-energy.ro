@@ -1031,10 +1031,10 @@ async def update_dossier_workflow_status(module: str, item_id: str, request: Req
     updated_at = datetime.now(timezone.utc).isoformat()
     history_entry = {"from": previous, "to": status, "at": updated_at, "by": user.get("email") or user.get("id")}
     update_set = {status_field: status, "updated_at": updated_at, "updated_by": user.get("email")}
+    if reset_response_followup:
         # A 30-day internal follow-up reminder, not a representation of a
         # statutory response deadline.
         from datetime import timedelta
-    if reset_response_followup:
         update_set["submitted_at"] = updated_at
         update_set["response_followup_at"] = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
         history_entry["event"] = "Depunere înregistrată; reper intern de urmărire la 30 de zile"
@@ -3552,8 +3552,8 @@ async def dossier_package(item_id: str, authorization: str = Header(None), auth:
     except (TypeError, ValueError):
         file_count = 4
     package = await OPIS.export_package_zip(info, rec, client, settings, get_object, logger, file_count)
-    suffix = "_CIORNA" if not info.get("complete") or info.get("export_has_unavailable_items") else ""
     label = (client.get("name") or rec.get("client_name") or "prosumator").replace(" ", "_")
+    suffix = "_CIORNA" if not info.get("complete") or info.get("export_has_unavailable_items") else ""
     return Response(content=package, media_type="application/zip",
                     headers={"Content-Disposition": disp('attachment', f"DOSAR_{label}{suffix}.zip")})
 
