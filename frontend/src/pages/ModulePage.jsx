@@ -859,9 +859,10 @@ export default function ModulePage({ moduleKey }) {
     anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const handleProsumerIntakeCreated = async (created) => {
-    // The intake endpoint returns a compact creation response. Load the saved
-    // dossier before rendering the detailed editor, including empty nested data.
-    const { data } = await api.get(`/data/prosumator/${encodeURIComponent(created.id)}`);
+    // The intake endpoint returns the complete saved dossier. Open it directly
+    // so creating a dossier does not depend on a second API round trip.
+    if (!created?.id) throw new Error("Serverul nu a returnat dosarul creat.");
+    const data = created;
     const cef = data?.cef && typeof data.cef === "object" ? data.cef : {};
     const dossier = {
       ...data,
@@ -884,7 +885,10 @@ export default function ModulePage({ moduleKey }) {
     setForm(dossier);
     setEditId(dossier.id);
     setChecks(dossier.checklist);
-    await load();
+    // Refresh the list in the background; a list refresh failure must not
+    // prevent the newly created dossier from staying open for completion.
+    try { await load(); }
+    catch (error) { console.warn("Dosarul s-a deschis; reîncărcarea listei a eșuat:", error); }
   };
 
   return (
