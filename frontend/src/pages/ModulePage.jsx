@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, API, openAuthenticatedFile, downloadAuthenticatedFile } from "@/lib/api";
 import { hasConfiguredStorage } from "@/lib/cefStorage";
 import { MODULES } from "@/config/modules";
@@ -277,12 +277,12 @@ function Field({ f, value, onChange, refOptions, ai }) {
   );
 }
 
-export default function ModulePage({ moduleKey }) {
+export default function ModulePage({ moduleKey, intakeOnly = false }) {
   const params = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const key = moduleKey || params.module;
   const cfg = MODULES[key];
-  const startDocuments = key === "prosumator" && new URLSearchParams(location.search).get("start") === "documents";
   const { user } = useAuth();
   const role = user?.role || "admin";
   const canDelete = role === "admin" || (role !== "limitat" && !["prosumator", "clients"].includes(key));
@@ -889,7 +889,12 @@ export default function ModulePage({ moduleKey }) {
     // prevent the newly created dossier from staying open for completion.
     try { await load(); }
     catch (error) { console.warn("Dosarul s-a deschis; reîncărcarea listei a eșuat:", error); }
+    if (intakeOnly) navigate(`/prosumator?edit=${encodeURIComponent(dossier.id)}`, { replace: true });
   };
+
+  if (intakeOnly) return <div className="py-6 sm:py-10" data-testid="prosumer-intake-page">
+    <DossierDocumentStart pageMode autoOpen onCancel={() => navigate("/prosumator")} onCreated={handleProsumerIntakeCreated} />
+  </div>;
 
   return (
     <div>
@@ -898,7 +903,7 @@ export default function ModulePage({ moduleKey }) {
         action={<div className="flex gap-2 flex-wrap">
           {form ? <Btn data-testid="add-btn" onClick={() => setForm(null)}><X size={15} /> Închide</Btn> : key === "atr"
             ? <a data-testid="add-btn" href="/cerere-atr?new=atr" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> {cfg.addLabel}</a>
-            : key === "prosumator" ? <DossierDocumentStart autoOpen={startDocuments} onCreated={handleProsumerIntakeCreated} />
+            : key === "prosumator" ? <a data-testid="add-btn" href="/dosare/nou" className="inline-flex items-center gap-2 rounded-[9px] px-4 py-2.5 text-[12px] font-bold text-white shadow-[0_4px_12px_#2878f022]" style={{ background: "var(--blue)" }}><Plus size={15} /> Dosar nou</a>
             : <Btn data-testid="add-btn" onClick={openNew}><Plus size={15} /> {cfg.addLabel}</Btn>}
         </div>} />
 
