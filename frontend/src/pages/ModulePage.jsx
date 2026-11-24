@@ -959,28 +959,8 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-bold" style={{ borderColor: "#198754", color: "#198754" }} onClick={() => openProsumerStep(nextProsumerStep?.[0] || PROSUMER_GUIDED_STEPS[0][0])} data-testid="guided-next-step-action">Completează</button>
                   <button type="button" className="inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-xs font-bold text-white" style={{ background: "#198754" }} onClick={() => downloadAuthenticatedFile(`/dossier/${encodeURIComponent(editId)}/export`, "Dosar_prosumator.pdf")} data-testid="guided-generate-dossier">Generează dosarul</button>
-                  <button type="button" className="inline-flex min-h-10 items-center rounded-lg border bg-white px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--ink)" }} onClick={() => {
-                    const actions = document.querySelector('[data-testid="prosumer-quick-actions"]');
-                    if (actions) { actions.open = true; actions.scrollIntoView({ behavior: "smooth", block: "center" }); }
-                  }} data-testid="guided-other-documents">Alte documente</button>
-                </div>
-              </div>
-              <nav className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Pași dosar prosumator">
-                {PROSUMER_GUIDED_STEPS.map(([id, label], index) => {
-                  const done = prosumerProgress.completed[index];
-                  const next = index === prosumerProgress.nextIndex;
-                  const borderColor = done ? "#b9d9c5" : next ? "#198754" : "var(--line)";
-                  const color = done ? "#198754" : next ? "#fff" : "var(--muted)";
-                  const background = done ? "#fff" : next ? "#198754" : "var(--panel)";
-                  return <a key={id} href={`#${id}`} onClick={() => openProsumerStep(id)} className="shrink-0 rounded-full border px-3 py-2 text-[11px] font-semibold" style={{ borderColor, color, background }} data-testid={`guided-step-${index + 1}`} aria-current={next ? "step" : undefined} aria-label={`${label}: ${done ? "completat" : next ? "pasul următor" : "de completat"}`}>
-                    {done ? "✓ " : ""}{label}
-                  </a>;
-                })}
-              </nav>
-            </section>}
-
-          {key === "prosumator" && editId && <details className="relative mb-5" style={{ zIndex: 20 }} data-testid="prosumer-quick-actions">
-            <summary className="ml-auto flex min-h-10 w-fit cursor-pointer list-none items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold shadow-sm" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid="guided-other-documents-trigger">
+                  {key === "prosumator" && editId && <details className="relative" style={{ zIndex: 20 }} data-testid="prosumer-quick-actions">
+            <summary className="ml-auto flex min-h-10 w-fit cursor-pointer list-none items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-semibold shadow-sm" style={{ borderColor: "var(--line)", color: "var(--ink)" }} data-testid="guided-other-documents">
               <span aria-hidden="true">···</span> Alte documente
             </summary>
             <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-white py-1 shadow-xl" style={{ borderColor: "var(--line)" }} role="menu" aria-label="Documente dosar">
@@ -998,6 +978,23 @@ export default function ModulePage({ moduleKey, intakeOnly = false }) {
               })()}
             </div>
           </details>}
+                </div>
+              </div>
+              <nav className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Pași dosar prosumator">
+                {PROSUMER_GUIDED_STEPS.map(([id, label], index) => {
+                  const done = prosumerProgress.completed[index];
+                  const next = index === prosumerProgress.nextIndex;
+                  const borderColor = done ? "#b9d9c5" : next ? "#198754" : "var(--line)";
+                  const color = done ? "#198754" : next ? "#fff" : "var(--muted)";
+                  const background = done ? "#fff" : next ? "#198754" : "var(--panel)";
+                  return <a key={id} href={`#${id}`} onClick={() => openProsumerStep(id)} className="shrink-0 rounded-full border px-3 py-2 text-[11px] font-semibold" style={{ borderColor, color, background }} data-testid={`guided-step-${index + 1}`} aria-current={next ? "step" : undefined} aria-label={`${label}: ${done ? "completat" : next ? "pasul următor" : "de completat"}`}>
+                    {done ? "✓ " : ""}{label}
+                  </a>;
+                })}
+              </nav>
+            </section>}
+
+          
           {key === "prosumator" ? <div id="dossier-section-client" className="scroll-mt-24"><ProsumatorQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} onImportsBusyChange={setCatalogImportsBusy} stepComplete={prosumerProgress?.completed[0]} /></div> : key === "atr" ? <AtrQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : key === "diu" ? <DiuQuickForm cfg={cfg} form={form} setVal={setVal} refOptions={refOptions} /> : (
             <div className="grid sm:grid-cols-2 gap-4">
               {cfg.fields.map((f, i) => <Field key={f.name || `s${i}`} f={f} value={form[f.name]} onChange={(name, value) => setVal(name, value)} refOptions={refOptions} ai={can(user, "ai_gpt") ? { module: key, form } : null} />)}
