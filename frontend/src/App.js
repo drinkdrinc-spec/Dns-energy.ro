@@ -73,6 +73,7 @@ function AppRoutes() {
         <Route path="/prosumator" element={<Gate feat={ROUTE_FEATURE["/prosumator"]}><ModulePage moduleKey="prosumator" /></Gate>} />
         <Route path="/dosare/nou" element={<Gate feat={ROUTE_FEATURE["/prosumator"]}><ModulePage key="prosumer-intake" moduleKey="prosumator" intakeOnly /></Gate>} />
         <Route path="/diu" element={<Gate feat={ROUTE_FEATURE["/diu"]}><ModulePage moduleKey="diu" /></Gate>} />
+        <Route path="/diu/nou" element={<Gate feat={ROUTE_FEATURE["/diu"]}><ModulePage moduleKey="diu" createOnly /></Gate>} />
         <Route path="/lucrari" element={<Gate feat={ROUTE_FEATURE["/lucrari"]}><ModulePage moduleKey="works" /></Gate>} />
         <Route path="/mono" element={<Gate feat={ROUTE_FEATURE["/mono"]}><ModulePage moduleKey="mono" /></Gate>} />
         <Route path="/tablouri" element={<Gate feat={ROUTE_FEATURE["/tablouri"]}><ModulePage moduleKey="panels" /></Gate>} />
