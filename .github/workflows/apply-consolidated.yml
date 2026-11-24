@@ -26,7 +26,7 @@ jobs:
           test -n "$f"
           echo "dir=$(dirname "$(dirname "$f")")" >> "$GITHUB_OUTPUT"
       - name: Sync files
-        run: rsync -a --exclude '.git' "${{ steps.root.outputs.dir }}/" ./
+        run: rsync -a --exclude '.git' --exclude '.github' "${{ steps.root.outputs.dir }}/" ./
       - name: Syntax gate
         run: python3 -m compileall -q backend
       - name: Commit and push
