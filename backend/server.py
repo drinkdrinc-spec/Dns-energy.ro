@@ -3516,6 +3516,8 @@ async def dossier_file(item_id: str, key: str, fmt: str = "pdf", generated: int 
         return Response(content=docx, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         headers={"Content-Disposition": disp('attachment', f"{name}.docx")})
     parts = await OPIS.position_pdf(p, rec, client, settings, info["titles"], get_object, force_generated=bool(generated))
+    if p.get("_official_form_unavailable"):
+        raise HTTPException(status_code=409, detail=f"Formularul oficial pentru {p.get('title') or key} nu este disponibil. Fișa de lucru nu poate fi folosită ca formular de depunere; atașează formularul curent al operatorului.")
     if not parts:
         raise HTTPException(status_code=404, detail="Documentul nu este încă încărcat")
     pdf = parts[0] if len(parts) == 1 else merge_pdfs(parts[0], [])
