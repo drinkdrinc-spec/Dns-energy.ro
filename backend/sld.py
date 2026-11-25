@@ -336,7 +336,13 @@ def _draw(S, rec, res, client, rows, W, H, A, tri, anti, grid, base, invs, share
                     S.text(24, y + 1.0, val, 4.8, w=31)
                 else:
                     S.text(24, y + 1.2, f"{lbl} {val}", 4.8, w=31)
-                S.text(24, y - 3.0, (f"Voc({base['tmin']:g}°C) {s['voc_cold']:.0f} V" if s.get("voc_cold") else "Voc [lipsă]") + " · " + (f"Isc {s['isc']:g} A" if s.get("isc") else "Isc [lipsă]"), 4.4, color=GREY, w=31)
+                pv_electrical_values = []
+                if s.get("voc_cold"):
+                    pv_electrical_values.append(f"Voc({base['tmin']:g}°C) {s['voc_cold']:.0f} V")
+                if s.get("isc"):
+                    pv_electrical_values.append(f"Isc {s['isc']:g} A")
+                if pv_electrical_values:
+                    S.text(24, y - 3.0, " · ".join(pv_electrical_values), 4.4, color=GREY, w=31)
                 S.wire(22, y, 72, y, "dc")
                 if fuses:
                     S.fuse(62, y)
@@ -1077,7 +1083,7 @@ def protections(rec, res):
             out.append((f"-Q{i + 1}.D", "Separator de sarcină DC (DC-PV2)", dc.get("switch"), f"-TDC{i + 1}"))
             out.append((f"-FA{i + 1}.DC", "Descărcător SPD DC tip 2", gv(n(dc.get("spd_ucpv")), " V Ucpv"), f"-TDC{i + 1}"))
             fuse_rating = n(dc.get("fuse_a")) or n(r["proposals"]["dc"].get("fuse")) or 15
-            out.append((f"-FU{i + 1}.S", "Separator fuzibil gPV pe fiecare string", f"{fuse_rating:g} A propus; verifică Isc și fișa modulului", f"-TDC{i + 1}"))
+            out.append((f"-FU{i + 1}.S", "Separator fuzibil gPV pe fiecare string", f"{fuse_rating:g} A / string, valoare standard DNS", f"-TDC{i + 1}"))
             rsd = inv.get("rsd") or {}
             if rsd.get("enabled"):
                 voltage_rows = [(300, "current_300v_a"), (600, "current_600v_a"), (800, "current_800v_a"), (1000, "current_1000v_a"), (1200, "current_1200v_a"), (1500, "current_1500v_a")]

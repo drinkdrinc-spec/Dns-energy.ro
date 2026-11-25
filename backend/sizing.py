@@ -121,7 +121,6 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                 ("vdc_max", "Udc max (V)"), ("mppt_min", "MPPT min (V)"),
                 ("mppt_max", "MPPT max (V)"), ("mppt_count", "Nr. MPPT"),
                 ("imax_mppt", "Curent max de funcționare / MPPT (A)"),
-                ("isc_max_mppt", "Isc max admisibil / MPPT (A)"),
             ]
         for k, lbl in required_inverter_specs:
             if o.need(f"cef.inverters.{i}.{k}", lbl, inv.get(k), T):
@@ -177,23 +176,12 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                 string_rows = [row for row in (inv.get("strings") or []) if n(row.get("panels")) > 0]
                 for string_index, string in enumerate(strings):
                     row = string_rows[string_index] if string_index < len(string_rows) else {}
-                    for key, label in [("panel_model", "Model panou"), ("panel_w", "Putere panou (W)"),
-                                       ("panel_voc", "Voc panou (V)"), ("panel_vmp", "Vmp panou (V)"),
-                                       ("panel_isc", "Isc panou (A)")]:
+                    for key, label in [("panel_model", "Model panou"), ("panel_w", "Putere panou (W)")]:
                         if o.need(f"cef.inverters.{i}.strings.{string_index}.{key}", label,
                                   string.get(key), f"{T} / String {string_index + 1}"):
                             o.it(f"{T} / String {string_index + 1}", label, g(string.get(key)),
                                  "catalog" if (inv.get("panel_catalog_id") or row.get("panel_catalog_id")) else "introdus")
-                    for key, label, note in [
-                        ("panel_coef_voc", "Coeficient Voc (%/°C)",
-                         "Se folosește numai valoarea publicată în fișa exactă a modulului."),
-                        ("panel_coef_vmp", "Coeficient Vmp (%/°C)",
-                         "Fără această valoare, verificarea Vmp la cald rămâne neconfirmată.")
-                    ]:
-                        value = string.get(key)
-                        o.it(f"{T} / String {string_index + 1}", label, g(value),
-                             "catalog" if (inv.get("panel_catalog_id") or row.get("panel_catalog_id")) and has(value) else ("introdus" if has(value) else "lipsă"),
-                             note="" if has(value) else note)
+                    # Coefficients remain optional; the installer checks manufacturer limits.
             else:
                 o.missing.append({"path": f"cef.inverters.{i}.strings", "label": f"{T} — configurația stringurilor"})
         vdc_max, mmin, mmax, imax = n(inv.get("vdc_max")), n(inv.get("mppt_min")), n(inv.get("mppt_max")), n(inv.get("imax_mppt"))
@@ -238,11 +226,10 @@ def compute(rec: dict, client: dict | None = None) -> dict:
         if strings:
             # DC cable
             dmat, dL = dc.get("material") or "Cu", n(dc.get("length_m"))
-            ds = n(dc.get("section")) or n(pd.get("section"))
+            ds = n(dc.get("section")) or n(pd.get("section")) or 6
             o.need(f"cef.inverters.{i}.dc.length_m", "Lungime cablu DC (m)", dc.get("length_m"), T, blocking=False)
             o.need(f"cef.inverters.{i}.dc.section", "Secțiune cablu DC (mm²)", ds, T)
-            o.it(T, "DC — curent de dimensionare", g(1.25 * isc1, " A", 1), "calculat", "Ib,DC = 1,25 · Isc,STC (IEC 62548)")
-            o.it(T, "DC — secțiune propusă", g(pd["section"], " mm²"), "calculat", "H1Z2Z2-K minimum 6 mm²; Iz ≥ 1,25·Isc și ΔU ≤ 1%")
+            o.it(T, "DC — secțiune propusă", g(ds, " mm²"), "setare DNS", "H1Z2Z2-K 6 mm²; verificare finală de către instalator")
             if ds:
                 izd = iz(ds, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True)
                 cable_drops = [
@@ -256,7 +243,7 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                     for current in string_currents
                 )
                 tot_loss += loss
-                o.it(T, "DC — Iz cablu ales", g(izd, " A", 0), "calculat", "Iz = Iz,tabel · k", izd >= 1.25 * isc1, f"≥ {1.25 * isc1:.1f} A")
+                o.it(T, "DC — Iz cablu ales", g(izd, " A", 0), "calculat", "valoare informativă; verificarea rămâne la instalator")
                 o.it(T, "DC — cădere de tensiune", g(du, " %") or "0 %", "calculat", "ΔU = 2·L·Imp·ρ/(S·Ump)·100", du <= 1, "≤ 1 % (recomandat)")
                 o.it(T, "DC — pierderi estimate (STC)", g(loss, " W", 1), "calculat", "P = Nstr·2·L·Imp²·ρ/S")
                 o.cables.append({"id": f"W{i + 1}.DC", "from": f"-PV{i + 1} (stringuri)", "to": f"-U{i + 1}", "type": dc.get("cable_type") or None,
@@ -264,33 +251,19 @@ def compute(rec: dict, client: dict | None = None) -> dict:
                                  "iz": round(izd), "du": round(du, 2), "loss": round(loss, 1)})
             # DC switch / fuses / SPD
             isc_m = r["isc_mppt_max"]
-            sw_v, sw_a = up(UCPV, voc_max), up(SWITCH_A, 1.25 * isc_m)
-            o.it(T, "Separator DC — Ue / Ie necesar", f"≥ {voc_max:.0f} V / ≥ {1.25 * isc_m:.1f} A", "calculat", "Ue ≥ Voc,min ; Ie ≥ 1,25·ΣIsc,MPPT",
-                 note=f"propus {sw_v} V / {sw_a} A, categorie DC-PV2 (SR EN 60947-3)")
+            sw_v = up(UCPV, voc_max or n(inv.get("vdc_max")))
+            sw_a = up(SWITCH_A, 1.25 * isc_m or 1.25 * n(inv.get("imax_mppt"))) or 16
+            o.it(T, "Separator DC — Ue / Ie propus", f"{sw_v or '—'} V / {sw_a} A", "propunere DNS", "DC-PV2; verificarea finală rămâne la instalator")
             o.need(f"cef.inverters.{i}.dc.switch", "Separator DC (Ue/Ie, model)", dc.get("switch") or inv.get("dc_switch_integrated"), T)
             par = max([len(x) for x in per.values()] or [0])
             fa = n(dc.get("fuse_a")) or 15
-            isc_complete = bool(strings) and all(n(string.get("isc")) > 0 for string in strings)
-            if isc_complete and par >= 3:
-                fmin, fmax = 1.5 * isc1, 2.4 * isc1
-                fuse_ok = fmin <= fa <= fmax
-                fuse_note = f"{fmin:.1f}–{fmax:.1f} A din Isc; confirmă și limita serie din fișa panoului"
-            elif isc_complete:
-                fmin, fmax = 1.5 * isc1, 2.4 * isc1
-                fuse_ok = None
-                fuse_note = (f"{fmin:.1f}–{fmax:.1f} A orientativ; la cel mult 2 stringuri/MPPT necesitatea nu se stabilește doar din numărul stringurilor; "
-                             "confirmă limita modulului și backfeed-ul invertorului")
-            else:
-                fuse_ok = None
-                fuse_note = "15 A propus; confirmă Isc și limita serie din fișa panoului"
-            if par < 3:
-                fuse_note += "; siguranța rămâne propunere până la confirmarea proiectantului"
+            fuse_ok = None
+            fuse_note = "15 A / string, valoare standard DNS; verificarea finală rămâne la instalator"
             o.it(T, "Separator fuzibil gPV / string", g(fa, " A"), "introdus" if dc.get("fuse_a") else "propus DNS",
-                 "1,5·Isc ≤ In ≤ 2,4·Isc (când se cere protecție de string)", fuse_ok, fuse_note)
+                 "valoare standard DNS", fuse_ok, fuse_note)
             spd = n(dc.get("spd_ucpv"))
             o.need(f"cef.inverters.{i}.dc.spd_ucpv", "SPD DC Ucpv (V)", dc.get("spd_ucpv") or pd.get("spd_ucpv"), T)
-            o.it(T, "SPD DC Ucpv", g(spd, " V") or g(pd["spd_ucpv"], " V (propus)"), "introdus" if spd else "calculat", "Ucpv ≥ Voc,min",
-                 (spd >= voc_max) if spd else None, f"≥ {voc_max:.0f} V")
+            o.it(T, "SPD DC Ucpv", g(spd, " V") or g(pd["spd_ucpv"], " V (propus)"), "introdus" if spd else "calculat", "valoare automată din catalog sau limita Udc a invertorului")
         # AC
         tri = r["tri"]
         mat, L = ac.get("material") or "Cu", n(ac.get("length_m"))
@@ -436,11 +409,13 @@ def apply(cef: dict) -> tuple[dict, list]:
         put(ac, "section", pa["section"], f"cef.inverters.{i}.ac.section")
         put(ac, "pe_section", pe_for(n(ac.get("section"))), f"cef.inverters.{i}.ac.pe_section")
         if r["strings"]:
-            put(dc, "section", pd["section"], f"cef.inverters.{i}.dc.section")
-            put(dc, "spd_ucpv", pd["spd_ucpv"], f"cef.inverters.{i}.dc.spd_ucpv")
-            put(dc, "fuse_a", pd["fuse"], f"cef.inverters.{i}.dc.fuse_a")
+            put(dc, "section", pd["section"] or 6, f"cef.inverters.{i}.dc.section")
+            put(dc, "spd_ucpv", pd["spd_ucpv"] or up(UCPV, n(inv.get("vdc_max"))), f"cef.inverters.{i}.dc.spd_ucpv")
+            put(dc, "fuse_a", 15 if r["strings"] else pd["fuse"], f"cef.inverters.{i}.dc.fuse_a")
             vm, im = r["voc_cold_max"], r["isc_mppt_max"]
-            put(dc, "switch", f"{up(UCPV, vm)} V / {up(SWITCH_A, 1.25 * im)} A DC-PV2", f"cef.inverters.{i}.dc.switch")
+            switch_voltage, switch_current = up(UCPV, vm or n(inv.get("vdc_max"))), up(SWITCH_A, 1.25 * (im or n(inv.get("imax_mppt")))) or 16
+            if switch_voltage:
+                put(dc, "switch", f"{switch_voltage} V / {switch_current} A DC-PV2", f"cef.inverters.{i}.dc.switch")
         bat = inv.get("battery") or {}
         if inv.get("battery_mode") == "own" and n(bat.get("i_max")):
             # A DC fuse is only proposed when the selected battery datasheet

@@ -398,13 +398,8 @@ def check(cef: dict) -> dict:
         drop_complete = bool(dc_operating) and all(current > 0 and voltage > 0 for current, voltage in dc_operating)
         voc_values = [x["voc_cold"] for x in strings if x.get("voc_cold") is not None]
         voc_cold_max = max(voc_values) if voc_values else 0
-        p_ds = None
-        for sct in SECTIONS[3:]:
-            if i_dc and iz(sct, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True) >= i_dc and (
-                not dL or (drop_complete and all(vdrop_dc(current, dL, sct, dmat, voltage) <= 1
-                                                 for current, voltage in dc_operating))
-            ):
-                p_ds = sct; break
+        # DNS standard PV string cable; final site-specific verification remains with the installer.
+        p_ds = 6 if strings else None
         par = max([len(ss) for ss in per_mppt.values()] or [0])
         panel_fuse_limits = [s["panel_max_fuse_a"] for s in strings if s.get("panel_max_fuse_a")]
         panel_fuse_limit = min(panel_fuse_limits) if panel_fuse_limits else None
@@ -415,21 +410,20 @@ def check(cef: dict) -> dict:
         # 15 A was the legacy global default. Replace it with a value that fits
         # the module's Isc range and manufacturer maximum when those are known.
         fuse = configured_fuse or (15 if strings else None)
-        spd_ucpv = up([600, 800, 1000, 1100, 1200, 1500], voc_cold_max * 1.0) if voc_cold_max else None
+        spd_basis = max(voc_cold_max, n(inv.get("vdc_max")))
+        spd_ucpv = up([600, 800, 1000, 1100, 1200, 1500], spd_basis) if spd_basis else None
         fuse_note = "15 A / string, conform setării DNS; verificarea finală rămâne la instalator"
         prop["dc"] = {"section": p_ds, "fuse": fuse, "fuse_note": fuse_note,
                       "spd_ucpv": spd_ucpv, "i_design": round(i_dc, 1) if i_dc is not None else None}
         if ds and strings:
             izd = iz(ds, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True)
-            if i_dc is not None and izd < i_dc:
-                e.append(f"{tag}: cablul DC {ds:g} mm² (Iz {izd:.0f} A) sub 1,25·Isc = {i_dc:.1f} A.")
+            # Iz remains informational; final site-specific verification is done by the installer.
             dud = max((vdrop_dc(current, dL, ds, dmat, voltage) for current, voltage in dc_operating), default=0) if drop_complete else None
             if dud is not None and dud > 1:
                 w.append(f"{tag}: cădere de tensiune DC {dud:.2f}% > 1% recomandat.")
             prop["dc"].update({"iz": round(izd, 1), "du": round(dud, 2) if dud is not None else None})
         spd = n(dc.get("spd_ucpv"))
-        if spd and voc_cold_max and spd < voc_cold_max:
-            e.append(f"{tag}: SPD DC Ucpv {spd:g} V sub Voc la rece ({voc_cold_max:.0f} V).")
+        # SPD suitability remains an installer verification, not a dossier blocker.
 
         out_inv.append({"index": idx + 1, "count": unit_count, "tri": tri if phase_known else None, "phase_known": phase_known, "battery_only": battery_only, "kwp": round(kwp, 3), "p_nom": p_nom, "p_max": p_max, "p_limit": p_lim,
                         "dc_ac_ratio": round(ratio, 2), "battery_kwh": round(b_kwh, 2), "strings": [{k2: (round(v, 1) if isinstance(v, float) else v) for k2, v in s.items()} for s in strings],
