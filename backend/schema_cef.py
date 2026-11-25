@@ -2,12 +2,23 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.platypus import Flowable, Spacer, Paragraph
 import cef as C
+import re
 
 NAVY = colors.HexColor("#0b1f3a")
 RED = colors.HexColor("#c0392b")
 GREEN = colors.HexColor("#1e8449")
 FILLS = {"grid": "#e8eef8", "bmp": "#f3f7ff", "anti": "#fdeff0", "tg": "#f3f7ff", "inv": "#eef4ff",
          "dc": "#fff4f2", "pv": "#fffbe8", "bat": "#effaf2", "bk": "#f5f0ff"}
+_PLACEHOLDER_MARKERS = ("de confirmat", "de completat", "de verificat", "neconfirmat", "necompletat",
+                        "[lipsă]", "[lipsa]", "date lipsă", "date lipsa", "valoare lipsă", "valoare lipsa",
+                        "neprecizat", "neconfigurat", "neselectat", "nemăsurat", "nestabilit", "neidentificat")
+
+
+def _is_placeholder(value):
+    text = str(value or "").casefold()
+    return (text.strip() in ("—", "–", "-")
+            or bool(re.search(r":\s*[—–-]\s*$", text))
+            or any(marker in text for marker in _PLACEHOLDER_MARKERS))
 
 
 def v(x, unit="", d="—"):
@@ -30,6 +41,7 @@ class CefDrawing(Flowable):
 
     def box(self, x, y, w, h, title, lines, kind, dashed=False):
         c = self.canv
+        lines = [line for line in lines if not _is_placeholder(line)]
         c.setFillColor(colors.HexColor(FILLS[kind])); c.setStrokeColor(NAVY); c.setLineWidth(0.8)
         if dashed:
             c.setDash(3, 2)
