@@ -2501,9 +2501,9 @@ async def allocate_prosumer_pram_number(item_id: str, user: dict = Depends(get_c
     floor = max((numeric_tail(row.get("bulletin_no") or row.get("number")) for row in prior), default=0)
     settings = await db.settings.find_one({"owner": user["id"]}, {"_id": 0, "pram_next_number": 1}) or {}
     try:
-        configured_next = max(1, int(settings.get("pram_next_number") or 1))
+        configured_next = max(160, int(settings.get("pram_next_number") or 160))
     except (TypeError, ValueError):
-        configured_next = 1
+        configured_next = 160
     floor = max(floor, configured_next - 1)
     counter_id = f"pram:{user['id']}"
     await db.counters.update_one({"id": counter_id}, {"$max": {"next": floor}}, upsert=True)

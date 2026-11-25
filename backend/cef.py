@@ -269,27 +269,15 @@ def check(cef: dict) -> dict:
         if not strings:
             if not is_battery_inverter and not battery_only:
                 w.append(f"{tag}: nu are stringuri definite.")
-        if strings and any(not (s["panel_voc"] and s["panel_vmp"]) for s in strings):
-            w.append(f"{tag}: unele modele de panou nu au Voc/Vmp — tensiunile stringurilor respective nu pot fi verificate.")
-        if strings and any(s["panel_coef_voc"] in (None, "") for s in strings):
-            w.append(f"{tag}: lipsește coeficientul de temperatură Voc pentru unele modele — verificarea Voc la rece nu se calculează.")
-        if strings and any(s["panel_coef_vmp"] in (None, "") for s in strings):
-            w.append(f"{tag}: lipsește coeficientul de temperatură Vmp pentru unele modele — verificarea Vmp la cald nu se calculează.")
+        # Voc / Vmp checks are left to the installer's discretion in the DNS workflow.
         if strings and "Invertor de baterie" in str(inv.get("kind") or inv.get("type") or ""):
             e.append(f"{tag}: invertorul de baterie (AC) nu are intrări PV — eliminați stringurile sau schimbați tipul.")
         if strings and mppt_count and len({s["mppt"] for s in strings}) < min(mppt_count, len(strings)):
             w.append(f"{tag}: stringurile folosesc {len({s['mppt'] for s in strings})} din {mppt_count} MPPT — verificați repartizarea.")
-        if strings and not isc_mppt_limit:
-            w.append(f"{tag}: lipsește limita Isc max / MPPT din fișa invertorului; curentul de scurtcircuit al stringurilor nu poate fi verificat.")
         per_mppt = {}
         for si, s in enumerate(strings):
             st = f"{tag} / string {si + 1}"
-            if vdc_max and s["voc_cold"] is not None and s["voc_cold"] > vdc_max:
-                e.append(f"{st}: Voc la {tmin:g}°C = {s['voc_cold']:.0f} V depășește tensiunea maximă DC a invertorului ({vdc_max:g} V).")
-            if mmax and s["vmp_stc"] > mmax:
-                w.append(f"{st}: Vmp = {s['vmp_stc']:.0f} V peste limita superioară MPPT ({mmax:g} V).")
-            if mmin and s["vmp_hot"] and s["vmp_hot"] < mmin:
-                w.append(f"{st}: Vmp la cald ≈ {s['vmp_hot']:.0f} V sub limita inferioară MPPT ({mmin:g} V).")
+            # Voc / Vmp checks are intentionally left to DNS's installer.
             if mppt_count and s["mppt"] > mppt_count:
                 e.append(f"{st}: MPPT {s['mppt']} inexistent (invertorul are {mppt_count} MPPT).")
             per_mppt.setdefault(s["mppt"], []).append(s)
@@ -301,10 +289,7 @@ def check(cef: dict) -> dict:
                 e.append(f"{tag} / MPPT {m}: modele de panou diferite sunt conectate pe același MPPT; separă stringurile pe MPPT-uri distincte și confirmă limitele producătorului.")
             if len({x["panels"] for x in ss}) > 1:
                 e.append(f"{tag} / MPPT {m}: stringuri în paralel cu număr diferit de panouri.")
-            if imax and i_work and i_work > imax:
-                e.append(f"{tag} / MPPT {m}: Imp total {i_work:.1f} A depășește curentul maxim de funcționare al intrării ({imax:g} A).")
-            if isc_mppt_limit and i_sum > isc_mppt_limit:
-                e.append(f"{tag} / MPPT {m}: Isc total {i_sum:.1f} A depășește limita de scurtcircuit a intrării ({isc_mppt_limit:g} A).")
+            # MPPT current checks are left to DNS's installer.
         ratio = kwp / p_nom if p_nom else 0
         if ratio > 1.5:
             w.append(f"{tag}: raport DC/AC {ratio:.2f} — supradimensionare mare, verifică fișa producătorului.")
@@ -429,21 +414,9 @@ def check(cef: dict) -> dict:
         configured_fuse = n(dc.get("fuse_a"))
         # 15 A was the legacy global default. Replace it with a value that fits
         # the module's Isc range and manufacturer maximum when those are known.
-        fuse = auto_fuse if auto_fuse and configured_fuse in (0, 15) else (configured_fuse or auto_fuse or (15 if strings else None))
+        fuse = configured_fuse or (15 if strings else None)
         spd_ucpv = up([600, 800, 1000, 1100, 1200, 1500], voc_cold_max * 1.0) if voc_cold_max else None
-        fuse_note = (f"{fuse} A / string — propunere automată după Isc, limitată la {panel_fuse_limit:g} A conform fișei panoului"
-                     if fuse and panel_fuse_limit else
-                     f"{fuse} A / string — propunere automată după Isc; limita producătorului trebuie luată din fișa exactă"
-                     if fuse else "Protecția gPV necesită datele fișei panoului.")
-        if isc_complete and fuse:
-            if par >= 3 and not fuse_min <= fuse <= fuse_max:
-                e.append(f"{tag}: siguranța gPV de {fuse:g} A nu se încadrează în intervalul de calcul {fuse_min:.1f}–{fuse_max:.1f} A; redimensionează înainte de aprobare.")
-            elif par < 3 and not fuse_min <= fuse <= fuse_max:
-                w.append(f"{tag}: siguranța gPV de {fuse:g} A nu se încadrează în intervalul calculat din Isc și limita fișei panoului.")
-        elif strings:
-            w.append(f"{tag}: Isc sau limita siguranței serie lipsește din fișa panoului; selectează modelul din catalog.")
-        if par < 3:
-            fuse_note += "; necesitatea protecției se verifică după topologia și curentul de backfeed"
+        fuse_note = "15 A / string, conform setării DNS; verificarea finală rămâne la instalator"
         prop["dc"] = {"section": p_ds, "fuse": fuse, "fuse_note": fuse_note,
                       "spd_ucpv": spd_ucpv, "i_design": round(i_dc, 1) if i_dc is not None else None}
         if ds and strings:

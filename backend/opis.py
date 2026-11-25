@@ -712,13 +712,19 @@ def _incomplete_report(positions_info, unavailable):
 async def export_bundle(positions_info, rec, client, settings, get_object, logger, require_complete=False):
     if require_complete:
         _require_complete_submission(positions_info)
-    titles = positions_info["titles"]
+    # Keep generated working sheets with missing inputs out of the client-facing PDF.
+    # Preserve uploaded originals and official operator forms.
+    export_positions = [
+        p for p in positions_info["positions"]
+        if not (p.get("source") == "generat" and p.get("missing"))
+    ]
+    titles = [p.get("title") or p.get("key") or "Document" for p in export_positions]
     w = PdfWriter()
-    authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles)
+    authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles) if export_positions else None
     main_parts = []
     technical_parts = []
     unavailable = []
-    for p in positions_info["positions"]:
+    for p in export_positions:
         try:
             position_parts = await position_pdf(p, rec, client, settings, titles, get_object)
             if p.get("_official_form_unavailable"):
@@ -737,7 +743,7 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
         positions_info["complete"] = False
     if require_complete:
         _require_complete_submission(positions_info)
-    parts = main_parts + [authenticity_page] + technical_parts
+    parts = main_parts + ([authenticity_page] if authenticity_page else []) + technical_parts
     for b in parts:
         try:
             for pg in PdfReader(io.BytesIO(b)).pages:
