@@ -589,7 +589,14 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
     kw = f"{t['inverters_kw']:g} kW" if t["inverters_kw"] else "[kW lipsă]"
     loc = ", ".join(str(x) for x in [get("address"), get("locality"), ("jud. " + str(get("county"))) if get("county") else None] if x)
     st = approval.get("status")
-    stat = {"approved": "APROBAT — validare internă înregistrată", "stale": "APROBARE ANULATĂ — configurația s-a modificat", "draft": "CIORNĂ — neverificat / neaprobat"}.get(st, "CIORNĂ")
+    approvals = approval.get("approvals") or {}
+    approved_count = sum(bool(approvals.get(role, {}).get("valid")) for role in ("designer", "verifier"))
+    stat = {
+        "approved": "VERIFICAT DE AMBII MEMBRI",
+        "partial": f"ÎN VERIFICARE · {approved_count}/2 MEMBRI",
+        "stale": "APROBĂRI DE REFĂCUT · CONFIGURAȚIE MODIFICATĂ",
+        "draft": "CIORNĂ · NECESITĂ 2 VERIFICĂRI",
+    }.get(st, "CIORNĂ · NECESITĂ 2 VERIFICĂRI")
     if demo:
         stat = "EXEMPLU DEMONSTRATIV — nu este document de execuție"
     rows = [
@@ -597,7 +604,8 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
         [("Beneficiar", get("name"), 80, False), ("Nr. proiect", get("project_no"), 57, False)],
         [("Adresă CEF", loc or None, 80, False), ("Planșa", f"E-0{sheet} ({sheet}/{sheets})", 57, False)],
         [("Titlu", f"CEF {kwp} — Schemă monofilară" if sheet == 1 else "Tabel cabluri, aparate și verificări", 82, True), ("Format / scara", f"{fmt} orizontal · fără scară", 55, False)],
-        [("Proiectant", settings.get("designer_name"), 68, False), ("Verificator", settings.get("verifier"), 69, False)],
+        [("Membru 1 · Proiectant", approvals.get("designer", {}).get("name") or settings.get("designer_name"), 68, False),
+         ("Membru 2 · Verificator", approvals.get("verifier", {}).get("name") or settings.get("verifier"), 69, False)],
         [("Data", docgen.ro_date(get("doc_date") or get("date")) or datetime.now().strftime("%d.%m.%Y"), 52, False), ("POD", get("pod"), 85, False)],
         [("Stare", stat, meta_w, True)],
     ]
@@ -615,13 +623,14 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
             color = RED if (val in (None, "") or "lipsă" in str(val) or (ri == 6 and st != "approved")) else INK
             S.text(xx + (16 if lbl else 1.5), yy + 1.5, val if val not in (None, "") else "[lipsă]", 5.6, bold, color, w=w - (17 if lbl else 3))
             xx += w
-    # Signature and company-stamp boxes remain empty until authorized images are
-    # present in Settings. Nothing is synthesized or copied from another file.
-    sig_x, box_y, box_w, box_h = x0 + 141, y0 + 8, 20, 37
-    stamp_x = x0 + 165
-    S.text(sig_x + box_w / 2, y0 + tbh - 3.8, "PROIECTANT", 4.0, True, anchor="c")
-    S.text(stamp_x + box_w / 2, y0 + tbh - 3.8, "ȘTAMPILĂ", 4.0, True, anchor="c")
-    for bx in (sig_x, stamp_x):
+    # ReEnergy-style title block: two separate reviewer slots and the company stamp.
+    # Signatures appear only after authorized approval of this exact schema version.
+    box_y, box_w, box_h = y0 + 8, 15, 37
+    sig_x, verifier_x, stamp_x = x0 + 139, x0 + 157, x0 + 175
+    S.text(sig_x + box_w / 2, y0 + tbh - 3.8, "PROIECTANT", 3.6, True, anchor="c")
+    S.text(verifier_x + box_w / 2, y0 + tbh - 3.8, "VERIFICATOR", 3.4, True, anchor="c")
+    S.text(stamp_x + box_w / 2, y0 + tbh - 3.8, "FIRMĂ", 3.8, True, anchor="c")
+    for bx in (sig_x, verifier_x, stamp_x):
         S.lw(0.25, GREY, ([1.5, 1.0], 0)); c.rect(bx, box_y, box_w, box_h, stroke=1, fill=0); S.lw()
     def place_image(data, bx, by, bw, bh):
         if not data:
@@ -635,10 +644,12 @@ def frame(S, PW, PH, rec, client, settings, res, approval, sheet, sheets, fmt, d
         except Exception:
             return
     signatures = settings.get("_sld_signature_bytes") or {}
-    place_image(signatures.get("designer"), sig_x + 0.5, box_y + 2, box_w - 1, box_h - 4)
+    place_image(signatures.get("designer") if approvals.get("designer", {}).get("valid") else None, sig_x + 0.5, box_y + 2, box_w - 1, box_h - 4)
+    place_image(signatures.get("verifier") if approvals.get("verifier", {}).get("valid") else None, verifier_x + 0.5, box_y + 2, box_w - 1, box_h - 4)
     place_image(settings.get("_stamp_bytes"), stamp_x + 0.5, box_y + 2, box_w - 1, box_h - 4)
     S.text(sig_x + box_w / 2, y0 + 2, "semnătură", 3.7, color=GREY, anchor="c")
-    S.text(stamp_x + box_w / 2, y0 + 2, "firmă", 3.7, color=GREY, anchor="c")
+    S.text(verifier_x + box_w / 2, y0 + 2, "semnătură", 3.7, color=GREY, anchor="c")
+    S.text(stamp_x + box_w / 2, y0 + 2, "ștampilă", 3.7, color=GREY, anchor="c")
     # legend
     lw_ = x0 - L - 4
     if sheet == 1 and lw_ > 70:

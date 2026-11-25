@@ -472,7 +472,11 @@ def state(rec: dict, client: dict | None, s: dict) -> dict:
     aps = sld.get("approvals") or ({sld["approval"]["role"]: sld["approval"]} if sld.get("approval") else {})
     valid = {r: a for r, a in aps.items() if a.get("hash") == fp}
     ap = max(valid.values(), key=lambda a: a.get("at") or "") if valid else (max(aps.values(), key=lambda a: a.get("at") or "") if aps else None)
-    status = "draft" if not aps else ("approved" if valid else "stale")
+    required_roles = ("designer", "verifier")
+    has_required_approvals = all(role in valid for role in required_roles)
+    status = "draft" if not aps else (
+        "approved" if has_required_approvals else "partial" if valid else "stale"
+    )
     return {**(ap or {}), "status": status, "fingerprint": fp, "approvals": {r: {**a, "valid": r in valid} for r, a in aps.items()},
             "designer": f"{s.get('designer_name')} ({s.get('designer_name_auth')})" if s.get("designer_name") else None,
             "verifier": f"{s.get('verifier')} ({s.get('verifier_auth')})" if s.get("verifier") else None}

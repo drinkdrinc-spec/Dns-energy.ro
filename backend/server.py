@@ -2603,12 +2603,14 @@ async def sld_pdf(item_id: str, authorization: str = Header(None), auth: str = Q
             s["designer_name"] = designer.get("name") or ""
         if verifier and staff_eligible(verifier):
             s["verifier"] = verifier.get("name") or ""
-        if designer and staff_eligible(designer) and designer.get("signature_authorized") and (designer.get("signature") or {}).get("storage_path"):
-            try:
-                signature, _ = get_object(designer["signature"]["storage_path"])
-                s["_sld_signature_bytes"] = {"designer": signature}
-            except Exception:
-                s["_sld_signature_bytes"] = {}
+        signatures = {}
+        for role, person in (("designer", designer), ("verifier", verifier)):
+            if person and staff_eligible(person) and person.get("signature_authorized") and (person.get("signature") or {}).get("storage_path"):
+                try:
+                    signatures[role], _ = get_object(person["signature"]["storage_path"])
+                except Exception:
+                    pass
+        s["_sld_signature_bytes"] = signatures
     name = f"schema_monofilara_{rec.get('number') or item_id}.pdf"
     return Response(content=SLD.render(rec, client, s, res, state, fmt), media_type="application/pdf",
                     headers={"Content-Disposition": disp("attachment" if download else "inline", name)})

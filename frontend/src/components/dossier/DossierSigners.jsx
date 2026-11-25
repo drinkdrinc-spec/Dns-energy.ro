@@ -3,12 +3,8 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 
 const ROLES = [
-  ["designer", "Proiectat / desenat (schemă)"],
+  ["designer", "Proiectant (schemă)"],
   ["verifier", "Verificator (schemă)"],
-  ["executant", "Semnatar PIF / executant"],
-  ["resp_tehnic", "Responsabil tehnic cu execuția"],
-  ["electrician", "Electrician autorizat"],
-  ["measurer", "Inginer măsurători PRAM"],
 ];
 
 export function DossierSigners({ id, form, setVal }) {
@@ -28,8 +24,8 @@ export function DossierSigners({ id, form, setVal }) {
   };
 
   return <section className="rounded-xl border bg-white p-4" style={{ borderColor: "var(--line)" }} data-testid="dossier-team-signers">
-    <h4 className="font-bold text-sm">Echipa și semnături</h4>
-    <p className="mt-1 mb-3 text-xs" style={{ color: "var(--muted)" }}>Selectează persoanele din Setări → Personal. Autorizațiile și datele verificate se folosesc în documentele dosarului.</p>
+    <h4 className="font-bold text-sm">Verificarea schemei · 2 membri</h4>
+    <p className="mt-1 mb-3 text-xs" style={{ color: "var(--muted)" }}>Schema se verifică de proiectant și verificator. Selectează cele două persoane din Setări → Personal.</p>
     {data?.error ? <div className="text-sm text-red-700">Nu s-au putut încărca responsabilii. <button className="underline font-semibold" onClick={() => load().catch(() => setData({ error: true }))}>Reîncearcă</button></div> : !data ? <p className="text-sm" style={{ color: "var(--muted)" }}>Se încarcă personalul…</p> : <>
       <div className="grid gap-3 sm:grid-cols-2">
         {ROLES.map(([role, label]) => <label className="den-field" key={role}><span>{label}</span>

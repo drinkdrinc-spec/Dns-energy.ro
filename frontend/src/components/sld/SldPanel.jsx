@@ -8,7 +8,7 @@ import { SldChecks } from "./SldChecks";
 import { SldCompare } from "./SldCompare";
 import { SldEditor } from "./SldEditor";
 
-const ST = { approved: ["Aprobată", "#e7f7ee", "#1e7a46"], stale: ["Aprobare anulată — configurație modificată", "#fff4e0", "#8a5a00"], draft: ["Necesită verificarea proiectantului", "#fff8e8", "#8a5a00"] };
+const ST = { approved: ["Aprobată de ambii membri", "#e7f7ee", "#1e7a46"], partial: ["În așteptarea verificării celui de-al doilea membru", "#fff8e8", "#8a5a00"], stale: ["Aprobările trebuie refăcute — configurație modificată", "#fff4e0", "#8a5a00"], draft: ["Necesită verificarea celor doi membri", "#fff8e8", "#8a5a00"] };
 
 export function SldPanel({ id, form, setVal }) {
   const [d, setD] = useState(null);
@@ -27,7 +27,13 @@ export function SldPanel({ id, form, setVal }) {
     toast.success(r.data.filled.length ? `${r.data.filled.length} câmpuri completate din catalog și calcule — verifică propunerile` : "Nu există câmpuri goale care se pot completa din catalog sau calcula");
   });
   const open = (path) => run(async () => { await persist(); await openAuthenticatedFile(path); await load(); });
-  const approve = (role) => run(async () => { await persist(); await api.post(`/sld/${id}/approve`, { role }); await load(); toast.success("Schema a fost aprobată"); });
+  const approve = (role) => run(async () => {
+    await persist();
+    await api.post(`/sld/${id}/approve`, { role });
+    const { data } = await api.get(`/sld/${id}`);
+    setD(data);
+    toast.success(data.approval.status === "approved" ? "Schema a fost verificată de ambii membri" : "Verificarea a fost salvată; este necesară și aprobarea celuilalt membru");
+  });
   const unapprove = () => run(async () => { await api.post(`/sld/${id}/unapprove`); await load(); });
   const requestApproval = () => run(async () => { await persist(); const r = await api.post(`/sld/${id}/request-approval`, { origin: window.location.origin }); await load(); toast.success(r.data.recipients.some((x) => x.sent) ? "Cerere de aprobare trimisă" : "Cerere înregistrată — e-mail netrimis (dosar TEST fără e-mail de test)"); });
   const sendSign = (role) => run(async () => { const r = await api.post(`/sld/${id}/send-sign`, { role, origin: window.location.origin, pos_keys: ["schema"] }); toast.success(r.data.every((x) => x.email_sent) ? "Link de semnare trimis pe e-mail" : "Cerere creată — e-mail netrimis (dosar TEST fără e-mail de test)"); });
