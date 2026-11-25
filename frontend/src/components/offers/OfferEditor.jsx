@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FileDown, Copy, Eye, FileSignature, Save, ArrowLeft, Trash2 } from "lucide-react";
-import { api, openAuthenticatedFile } from "@/lib/api";
+import { api, downloadAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OfferItems } from "./OfferItems";
@@ -65,7 +65,7 @@ export function OfferEditor({ id, onBack, onOpen }) {
         <select className="den-input !py-1 !text-sm ml-auto" style={{ width: 140 }} value={o.status} onChange={(e) => status(e.target.value)} data-testid="offer-status">{ST.map((s) => <option key={s}>{s}</option>)}</select>
         <Btn onClick={() => save()} data-testid="offer-save"><Save size={14} /> Salvează</Btn>
         <Btn variant="secondary" onClick={async () => (await save()) && setPrev(true)} data-testid="offer-preview"><Eye size={14} /> Previzualizare</Btn>
-        <Btn type="button" variant="secondary" onClick={() => openAuthenticatedFile(pdf)} data-testid="offer-pdf"><FileDown size={14} /> PDF</Btn>
+        <Btn type="button" variant="secondary" onClick={() => downloadAuthenticatedFile(`${pdf}?download=1`, `Oferta_de_pret_${o.number}.pdf`)} data-testid="offer-pdf"><FileDown size={14} /> Descarcă PDF</Btn>
         <Btn variant="secondary" onClick={dup} data-testid="offer-duplicate"><Copy size={14} /> Duplică</Btn>
         {o.status === "Ciornă" && !o.contract_id && <Btn variant="secondary" onClick={async () => { if (!window.confirm(`Ștergi oferta nr. ${o.number}? Numărul rămâne rezervat.`)) return; try { await api.delete(`/offers/${id}`); toast.success("Ofertă ștearsă"); onBack(); } catch (e) { toast.error(e.response?.data?.detail || "Eroare"); } }} data-testid="offer-delete"><Trash2 size={14} /> Șterge</Btn>}
         {o.status === "Acceptată" && <Btn onClick={async () => (await save()) && setCd(true)} data-testid="offer-generate-contract"><FileSignature size={14} /> Generează contract</Btn>}

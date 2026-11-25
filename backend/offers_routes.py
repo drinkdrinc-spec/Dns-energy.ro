@@ -153,7 +153,7 @@ EDIT = ("title", "date", "validity_days", "beneficiary", "system", "items", "dis
 def pick(b):
     o = {k: b.get(k) for k in EDIT if k in b}
     if "items" in o:
-        o["items"] = [{k: it.get(k) for k in ("category", "kind", "name", "description", "manufacturer", "model", "power", "capacity", "warranty", "qty", "unit", "unit_price")}
+        o["items"] = [{k: it.get(k) for k in ("category", "kind", "name", "description", "manufacturer", "model", "catalog_id", "power", "capacity", "warranty", "qty", "unit", "unit_price")}
                       for it in o["items"] or [] if isinstance(it, dict)][:200]
     if o.get("currency") not in (None, "RON", "EUR"):
         raise HTTPException(status_code=400, detail="Moneda trebuie să fie RON sau EUR")
@@ -290,12 +290,12 @@ async def offer_versions(oid: str, user: dict = Depends(get_current_user)):
 
 
 @api.get("/offers/{oid}/pdf")
-async def offer_pdf(oid: str, authorization: str = Header(None), auth: str = Query(None)):
+async def offer_pdf(oid: str, download: int = Query(0), authorization: str = Header(None), auth: str = Query(None)):
     user = await S.user_from_token(authorization, auth)
     need(user)
     o = await own("offers", user, oid)
     pdf = OD.offer_pdf(o, await settings(user))
-    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": S.disp("inline", f"Oferta_de_pret_{o['number']}.pdf")})
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": S.disp("attachment" if download else "inline", f"Oferta_de_pret_{o['number']}.pdf")})
 
 
 # ---------------- Șablon contract (clauze cu aprobare) ----------------

@@ -12,9 +12,22 @@ const SPEC = { panouri: ["power", "Putere panou (W)"], invertor: ["power", "Pute
 const W = { name: 150, manufacturer: 100, model: 110, spec: 70, warranty: 80, qty: 55, unit: 50, unit_price: 85 };
 
 export function OfferItems({ items, onChange, currency }) {
+  const [catalog, setCatalog] = useState([]);
+  useEffect(() => { api.get("/data/catalog").then((r) => setCatalog(Array.isArray(r.data) ? r.data : [])).catch(() => setCatalog([])); }, []);
+  const choices = (category) => catalog.filter((item) => item.category === CATALOG_CAT[category]);
   const upd = (i, k, v) => onChange(items.map((it, j) => (j === i ? { ...it, [k]: v } : it)));
   const add = () => onChange([...items, { category: "panouri", kind: "echipament", name: "Panouri fotovoltaice", qty: 1, unit: "buc", unit_price: 0 }]);
   const move = (i, d) => { const a = [...items]; const [x] = a.splice(i, 1); a.splice(i + d, 0, x); onChange(a); };
+  const chooseModel = (index, id) => {
+    const item = catalog.find((x) => x.id === id);
+    onChange(items.map((x, j) => j !== index ? x : item ? {
+      ...x, catalog_id: item.id, manufacturer: item.manufacturer || item.brand || "", model: item.brand_model || "",
+      name: item.brand_model || x.name,
+      ...(x.category === "panouri" ? { power: item.w ?? "" } : {}),
+      ...(x.category === "invertor" ? { power: item.p_nom_kw ?? "" } : {}),
+      ...(x.category === "baterii" ? { capacity: item.kwh ?? "" } : {})
+    } : { ...x, catalog_id: "" }));
+  };
   const inp = (i, k, w, ph) => <input className="den-input !py-1 !text-xs" style={{ width: w }} placeholder={ph} value={items[i][k] ?? ""} onChange={(e) => upd(i, k, e.target.value)} data-testid={`offer-item-${i}-${k}`} />;
   return (
     <div data-testid="offer-items">
@@ -25,10 +38,10 @@ export function OfferItems({ items, onChange, currency }) {
             <div className="flex flex-wrap items-center gap-1.5">
               <b className="text-xs w-5">{i + 1}.</b>
               <select className="den-input !py-1 !text-xs" style={{ width: 190 }} value={it.category} data-testid={`offer-item-${i}-category`}
-                onChange={(e) => { const c = CATS.find((x) => x[0] === e.target.value); onChange(items.map((x, j) => (j === i ? { ...x, category: c[0], kind: c[2], name: x.name && !CATS.some((y) => y[1] === x.name) ? x.name : c[1] } : x))); }}>
+                onChange={(e) => { const c = CATS.find((x) => x[0] === e.target.value); onChange(items.map((x, j) => (j === i ? { ...x, catalog_id: "", category: c[0], kind: c[2], name: x.name && !CATS.some((y) => y[1] === x.name) ? x.name : c[1] } : x))); }}>
                 {CATS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
               {CATALOG_CAT[it.category] && <select className="den-input !py-1 !text-xs" style={{ width: 220 }} value={it.catalog_id || ""} onChange={(e) => chooseModel(i, e.target.value)} data-testid={`offer-item-${i}-catalog-model`}>
-                <option value="">Alege model din catalog…</option>{choices.map((m) => <option key={m.id} value={m.id}>{m.brand_model}</option>)}
+                <option value="">Alege model din catalog…</option>{choices(it.category).map((m) => <option key={m.id} value={m.id}>{m.brand_model}</option>)}
               </select>}
               {inp(i, "name", W.name, "Denumire")}{inp(i, "manufacturer", W.manufacturer, "Producător")}{inp(i, "model", W.model, "Model")}
               {spec && inp(i, spec[0], W.spec, spec[1])}{inp(i, "warranty", W.warranty, "Garanție")}
@@ -41,7 +54,8 @@ export function OfferItems({ items, onChange, currency }) {
             <textarea className="den-input !text-xs mt-1.5" rows={2} placeholder="Descriere (câte un rând per caracteristică)" value={it.description ?? ""} onChange={(e) => upd(i, "description", e.target.value)} data-testid={`offer-item-${i}-description`} />
           </div>);
       })}</div>
-      <button className="text-xs font-bold inline-flex items-center gap-1 mt-2" style={{ color: "var(--blue)" }} onClick={add} data-testid="offer-item-add"><Plus size={13} /> Poziție</button>\n      <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Modelul poate fi ales din catalog, iar puterea/capacitatea completată automat rămâne editabilă pentru oferta curentă. Prețul și cantitatea se stabilesc separat.</p>
+      <button className="text-xs font-bold inline-flex items-center gap-1 mt-2" style={{ color: "var(--blue)" }} onClick={add} data-testid="offer-item-add"><Plus size={13} /> Poziție</button>
+      <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Alege modelul din catalog sau completează-l manual. Cantitatea, prețul unitar și descrierea se pot modifica pentru fiecare poziție.</p>
     </div>
   );
 }
