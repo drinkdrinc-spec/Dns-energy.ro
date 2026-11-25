@@ -26,6 +26,33 @@ PAPER = colors.HexColor("#fbf8f2")
 GRID_LINE = colors.HexColor("#e8e2d8")
 CELL = ParagraphStyle("c", fontName="LS", fontSize=6.6, leading=8)
 CELLB = ParagraphStyle("cb", fontName="LSB", fontSize=6.6, leading=8)
+_MISSING_LABELS = ("de confirmat", "de completat", "de verificat", "neconfirmat", "necompletat", "[lipsă]", "[lipsa]",
+                   "lipsă", "lipsa", "neprecizat", "neconfigurat", "neselectat", "neidentificat", "neidentificată",
+                   "nemăsurat", "nestabilit", "faze/secțiune de confirmat")
+
+
+def _is_missing_label(value):
+    text = str(value or "").casefold()
+    return text.strip() in ("—", "–", "-") or any(marker in text for marker in _MISSING_LABELS)
+
+
+def _clean_pdf_rows(rows):
+    """Keep only populated rows, omitting placeholders instead of printing them."""
+    if not rows:
+        return []
+    def cell_text(cell):
+        return cell.getPlainText() if hasattr(cell, "getPlainText") else str(cell or "")
+    header, *data = rows
+    kept = []
+    for row in data:
+        values = [cell_text(cell).strip() for cell in row]
+        if any(_is_missing_label(value) for value in values):
+            continue
+        if len(values) > 1 and not any(value and value not in ("—", "-") for value in values[1:]):
+            continue
+        kept.append(row)
+    return [header, *kept] if kept else []
+
 
 
 def battery_protection(battery, proposal=None):
@@ -95,6 +122,8 @@ class Sheet:
         f = "LSB" if bold else "LS"
         fs = size * PT
         s = str(s)
+        if _is_missing_label(s):
+            return
         if w:
             while s and c.stringWidth(s, f, fs) > w:
                 s = s[:-2]
@@ -113,8 +142,7 @@ class Sheet:
     def val(self, x, y, label, value, unit="", size=5.2, anchor="l", w=None, bold=False):
         v = gv(value, unit)
         if v is None:
-            self.miss += 1
-            self.text(x, y, f"{label}[lipsă]" if label else "[lipsă]", size, bold, RED, anchor, w)
+            return
         else:
             self.text(x, y, f"{label}{v}", size, bold, INK, anchor, w)
 
@@ -795,7 +823,7 @@ def table_page(S, area, res, rec):
     c = S.c
     x1, y1, x2, y2 = area
     W = x2 - x1
-    P = lambda t, b=False: Paragraph(escape(str(t)) if t not in (None, "") else "<font color='#c0392b'>[lipsă]</font>", CELLB if b else CELL)
+    P = lambda t, b=False: Paragraph("" if _is_missing_label(t) or t in (None, "") else escape(str(t)), CELLB if b else CELL)
     blocks = []
     hdr = ["Cod", "De la → la", "Tip cablu", "Conductoare", "S (mm²)", "Mat.", "L (m)", "Ib (A)", "Iz (A)", "ΔU (%)", "Pierderi (W)", "PE (mm²)"]
     rows = [[P(h, True) for h in hdr]] + [[P(x["id"]), P(f"{x['from']} → {x['to']}"), P(x.get("type")), P(x.get("cores")), P(gv(x.get("section"))), P(x.get("material")),
@@ -816,6 +844,10 @@ def table_page(S, area, res, rec):
         S.text(x1 + 2, y, title, 7, True)
         y -= 2
         scale = (W - 4) / sum(ws)
+        rows = _clean_pdf_rows(rows)
+        if not rows:
+            y -= 5
+            continue
         t = Table(rows, colWidths=[w * scale * mm for w in ws], repeatRows=1)
         t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f7")),
                                ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 1.2), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.2)]))
@@ -829,12 +861,8 @@ def table_page(S, area, res, rec):
         t.drawOn(c, (x1 + 2) * mm, y * mm - h)
         c.restoreState()
         y -= h / mm + 6
-    if res["missing"]:
-        p = Paragraph("<font color='#c0392b'><b>DATE LIPSĂ (schema nu poate fi emisă ca document final):</b> " + escape("; ".join(m["label"] for m in res["missing"])) + "</font>", CELL)
-        c.saveState(); c.scale(1 / mm, 1 / mm)
-        _, h = p.wrapOn(c, (W - 190) * mm if y < y1 + 50 else (W - 4) * mm, 60 * mm)
-        p.drawOn(c, (x1 + 2) * mm, max(y * mm - h, (y1 + 2) * mm))
-        c.restoreState()
+    # Missing-value fields are omitted. Approval and draft watermarks still
+    # distinguish generated work copies from final, approved drawings.
 
 
 def report(rec, client, settings, res, approval) -> bytes:
@@ -845,9 +873,12 @@ def report(rec, client, settings, res, approval) -> bytes:
     doc = SimpleDocTemplate(buf, pagesize=P4, leftMargin=16 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
                             title="Raport de calcul — dimensionare CEF")
     get = lambda k: client.get(k) or rec.get(k)
-    Pp = lambda t, st="p": Paragraph(t, St[st])
-    C_ = lambda t, b=False: Paragraph(escape(str(t)) if t not in (None, "") else "<font color='#c0392b'>[lipsă]</font>", CELLB if b else CELL)
+    Pp = lambda t, st="p": (Spacer(1, 0) if _is_missing_label(t) else Paragraph(t, St[st]))
+    C_ = lambda t, b=False: Paragraph("" if _is_missing_label(t) or t in (None, "") else escape(str(t)), CELLB if b else CELL)
     def tbl(rows, ws):
+        rows = _clean_pdf_rows(rows)
+        if not rows:
+            return Spacer(1, 0)
         t = Table(rows, colWidths=[w * mm for w in ws], repeatRows=1)
         t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f7")),
                                ("VALIGN", (0, 0), (-1, -1), "TOP")]))
@@ -1156,10 +1187,13 @@ def tech_sheet(rec, client, settings, res, approval) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=P4, leftMargin=16 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm, title="Fișă tehnică instalație")
     Pp = lambda x, st="p": Paragraph(x, St[st])
-    C_ = lambda x, b=False: Paragraph(escape(str(x)) if x not in (None, "") else "<font color='#c0392b'>[lipsă]</font>", CELLB if b else CELL)
+    C_ = lambda x, b=False: Paragraph("" if _is_missing_label(x) or x in (None, "") else escape(str(x)), CELLB if b else CELL)
     out = [Pp(f"<b>{escape(D['company'])}</b>", "small"), Spacer(1, 4), Pp(TS_TITLE, "h"), Pp(escape(TS_NOTE + D["status"]), "small")]
     for title, head, rows, ws in D["sections"]:
-        tb = Table([[C_(h, True) for h in head]] + [[C_(c) for c in r] for r in rows], colWidths=[w * mm for w in ws], repeatRows=1)
+        clean_rows = _clean_pdf_rows([[C_(h, True) for h in head]] + [[C_(c) for c in r] for r in rows])
+        if not clean_rows:
+            continue
+        tb = Table(clean_rows, colWidths=[w * mm for w in ws], repeatRows=1)
         tb.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#999999")), ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef2f7")), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
         out += [Pp(title, "b"), tb]
     if D["issues"]:
@@ -1191,7 +1225,7 @@ def tech_sheet_docx(rec, client, settings, res, approval) -> bytes:
         for row in rows:
             cells = tb.add_row().cells
             for j, x in enumerate(row):
-                cells[j].text = str(x) if x not in (None, "") else "[lipsă]"
+                cells[j].text = str(x) if x not in (None, "") else ""
                 if x in (None, ""):
                     cells[j].paragraphs[0].runs[0].font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
         for row in tb.rows:
