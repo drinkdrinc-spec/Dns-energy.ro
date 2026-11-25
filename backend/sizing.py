@@ -450,8 +450,11 @@ def apply(cef: dict) -> tuple[dict, list]:
             put(bat, "fuse_a", proposal.get("fuse_a"), f"cef.inverters.{i}.battery.fuse_a")
     gd = cef.setdefault("grid", {})
     put(gd, "bmp_a", base["grid"]["main_proposal"], "cef.grid.bmp_a")
-    if has(gd.get("column_length")):
-        put(gd, "column_section", base["grid"].get("main_section_proposal"), "cef.grid.column_section")
+    # Propose the feeder size from the approved service current and installation
+    # method as soon as those inputs are known. A missing route length only
+    # prevents the voltage-drop check; it should not leave the cable blank.
+    put(gd, "column_section", base["grid"].get("main_section_proposal"), "cef.grid.column_section")
+    put(gd, "column_cable", base["grid"].get("main_column_cable_proposal"), "cef.grid.column_cable")
     cef["auto_filled"] = sorted(set((cef.get("auto_filled") or []) + filled))
     return cef, filled
 
