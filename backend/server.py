@@ -2679,7 +2679,9 @@ async def hydrate_cef_catalog_values(owner: str, cef: dict, rec: dict | None = N
     def panel_values(item: dict) -> dict:
         return {"panel_catalog_id": item.get("id"), "panel_model": item.get("brand_model"), "panel_w": item.get("w"),
                 "panel_voc": item.get("voc"), "panel_vmp": item.get("vmp"), "panel_isc": item.get("isc"),
-                "panel_imp": item.get("imp"), "panel_coef_voc": item.get("coef_voc"), "panel_coef_vmp": item.get("coef_vmp")}
+                "panel_imp": item.get("imp"), "panel_coef_voc": item.get("coef_voc"), "panel_coef_vmp": item.get("coef_vmp"),
+                "panel_coef_isc": item.get("coef_isc"), "panel_temp_pmax": item.get("temp_pmax"),
+                "panel_max_fuse_a": item.get("max_fuse_a")}
 
     def battery_values(item: dict, phases: str | None) -> dict:
         three_phase = "tri" in str(phases or "").casefold()

@@ -204,12 +204,23 @@ def string_calc(s, inv, tmin):
     cv_raw = panel_value("coef_voc")
     cv = (n(cv_raw) / 100) if cv_raw not in (None, "") else None
     cvmp_raw = panel_value("coef_vmp")
+    cvmp_source = "manufacturer datasheet" if cvmp_raw not in (None, "") else None
+    if cvmp_raw in (None, ""):
+        temp_pmax = panel_value("temp_pmax")
+        coef_isc = panel_value("coef_isc")
+        if temp_pmax not in (None, "") and coef_isc not in (None, ""):
+            # Approximate beta_Vmp from published beta_Pmax and beta_Isc when the
+            # manufacturer does not publish beta_Vmp: beta_Pmax ≈ beta_Vmp + beta_Imp.
+            cvmp_raw = round(n(temp_pmax) - n(coef_isc), 4)
+            cvmp_source = "estimated from manufacturer Pmax and Isc temperature coefficients"
     cvmp = (n(cvmp_raw) / 100) if cvmp_raw not in (None, "") else None
     voc_cold = cnt * voc * (1 + cv * (tmin - 25)) if voc and cv is not None else None
     vmp_hot = cnt * vmp * (1 + cvmp * (T_CELL_HOT - 25)) if vmp and cvmp is not None else None
     return {"panels": cnt, "mppt": int(n(s.get("mppt"), 1)) or 1, "panel_model": panel_model,
             "panel_w": panel_w, "panel_voc": voc, "panel_vmp": vmp, "panel_isc": isc, "panel_imp": imp,
             "panel_coef_voc": cv_raw, "panel_coef_vmp": cvmp_raw,
+            "panel_coef_vmp_source": cvmp_source,
+            "panel_max_fuse_a": n(panel_value("max_fuse_a")) or None,
             "voc_stc": cnt * voc, "voc_cold": voc_cold,
             "vmp_stc": cnt * vmp, "vmp_hot": vmp_hot, "isc": isc, "imp": imp,
             "kwp": cnt * panel_w / 1000}
@@ -410,19 +421,29 @@ def check(cef: dict) -> dict:
             ):
                 p_ds = sct; break
         par = max([len(ss) for ss in per_mppt.values()] or [0])
-        fuse = n(dc.get("fuse_a")) or (15 if strings else None)
+        panel_fuse_limits = [s["panel_max_fuse_a"] for s in strings if s.get("panel_max_fuse_a")]
+        panel_fuse_limit = min(panel_fuse_limits) if panel_fuse_limits else None
+        fuse_min = 1.5 * isc1 if isc_complete else None
+        fuse_max = min(2.4 * isc1, panel_fuse_limit) if isc_complete and panel_fuse_limit else (2.4 * isc1 if isc_complete else None)
+        auto_fuse = next((rating for rating in GPV if fuse_min is not None and fuse_max is not None and fuse_min <= rating <= fuse_max), None)
+        configured_fuse = n(dc.get("fuse_a"))
+        # 15 A was the legacy global default. Replace it with a value that fits
+        # the module's Isc range and manufacturer maximum when those are known.
+        fuse = auto_fuse if auto_fuse and configured_fuse in (0, 15) else (configured_fuse or auto_fuse or (15 if strings else None))
         spd_ucpv = up([600, 800, 1000, 1100, 1200, 1500], voc_cold_max * 1.0) if voc_cold_max else None
-        fuse_note = "15 A / string, conform setării DNS; verifică Isc și siguranța maximă admisă din fișa panoului"
+        fuse_note = (f"{fuse} A / string — propunere automată după Isc, limitată la {panel_fuse_limit:g} A conform fișei panoului"
+                     if fuse and panel_fuse_limit else
+                     f"{fuse} A / string — propunere automată după Isc; limita producătorului trebuie luată din fișa exactă"
+                     if fuse else "Protecția gPV necesită datele fișei panoului.")
         if isc_complete and fuse:
-            fuse_min, fuse_max = 1.5 * isc1, 2.4 * isc1
             if par >= 3 and not fuse_min <= fuse <= fuse_max:
-                e.append(f"{tag}: siguranța gPV de {fuse:g} A nu se încadrează în intervalul de calcul {fuse_min:.1f}–{fuse_max:.1f} A (1,5–2,4 × Isc); verifică fișa panoului și redimensionează înainte de aprobare.")
+                e.append(f"{tag}: siguranța gPV de {fuse:g} A nu se încadrează în intervalul de calcul {fuse_min:.1f}–{fuse_max:.1f} A; redimensionează înainte de aprobare.")
             elif par < 3 and not fuse_min <= fuse <= fuse_max:
-                w.append(f"{tag}: siguranța gPV propusă de {fuse:g} A nu se încadrează în intervalul orientativ {fuse_min:.1f}–{fuse_max:.1f} A; la cel mult 2 stringuri/MPPT necesitatea protecției nu se stabilește doar din numărul stringurilor. Verifică fișa modulului și curentul de backfeed al invertorului înainte de execuție.")
+                w.append(f"{tag}: siguranța gPV de {fuse:g} A nu se încadrează în intervalul calculat din Isc și limita fișei panoului.")
         elif strings:
-            w.append(f"{tag}: separatorul fuzibil de 15 A este propus; Isc sau limita siguranței serie lipsește din fișa panoului și trebuie verificată.")
+            w.append(f"{tag}: Isc sau limita siguranței serie lipsește din fișa panoului; selectează modelul din catalog.")
         if par < 3:
-            fuse_note += "; pentru cel mult 2 stringuri/MPPT, necesitatea se confirmă din limita de curent invers a modulului și backfeed-ul invertorului"
+            fuse_note += "; necesitatea protecției se verifică după topologia și curentul de backfeed"
         prop["dc"] = {"section": p_ds, "fuse": fuse, "fuse_note": fuse_note,
                       "spd_ucpv": spd_ucpv, "i_design": round(i_dc, 1) if i_dc is not None else None}
         if ds and strings:

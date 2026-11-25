@@ -1,7 +1,7 @@
 NOTE = "Date orientative — verificați fișa tehnică oficială a modelului exact."
 
 SEED_BACKFILL_FIELDS = (
-    "i_max", "coupling", "voltage_1ph", "voltage_3ph", "i_max_source_url",
+    "i_max", "coupling", "voltage_1ph", "voltage_3ph", "i_max_source_url", "bat_v_min", "bat_v_max",
     "manufacturer", "max_fuse_a", "breaker_a", "breaker_voltage_dc", "breaker_integrated",
     "breaker_poles", "breaker_icu_ka", "dc_switch_voltage_v", "dc_switch_current_a", "breaker_source_url",
     "string_count", "poles", "voltage_min_v", "voltage_max_v",
@@ -9,17 +9,17 @@ SEED_BACKFILL_FIELDS = (
     "ac_voltage_min_v", "ac_voltage_max_v", "ip_rating", "protection_class",
     "type", "phases", "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max",
     "mppt_count", "imax_mppt", "isc_max_mppt", "bat_i_max", "battery_voltage",
-    "w", "voc", "vmp", "isc", "imp", "coef_voc", "coef_vmp", "temp_pmax",
+    "w", "voc", "vmp", "isc", "imp", "coef_voc", "coef_vmp", "coef_isc", "temp_pmax",
     "kwh", "ah", "voltage", "tech",
 )
 NUMERIC_SEED_FIELDS = {
-    "i_max", "voltage_1ph", "voltage_3ph", "string_count", "poles", "max_fuse_a", "breaker_a", "breaker_voltage_dc",
+    "i_max", "voltage_1ph", "voltage_3ph", "bat_v_min", "bat_v_max", "string_count", "poles", "max_fuse_a", "breaker_a",
     "breaker_poles", "breaker_icu_ka", "dc_switch_voltage_v", "dc_switch_current_a", "voltage_min_v", "voltage_max_v",
     "current_300v_a", "current_600v_a", "current_800v_a", "current_1000v_a", "current_1200v_a", "current_1500v_a",
     "ac_voltage_min_v", "ac_voltage_max_v",
     "p_nom_kw", "p_max_kw", "vdc_max", "mppt_min", "mppt_max", "mppt_count",
     "imax_mppt", "isc_max_mppt", "bat_i_max", "w", "voc", "vmp", "isc", "imp",
-    "coef_voc", "coef_vmp", "temp_pmax", "kwh", "ah", "voltage",
+    "coef_voc", "coef_vmp", "coef_isc", "temp_pmax", "kwh", "ah", "voltage",
 }
 
 
@@ -79,7 +79,7 @@ SEED = [
      "notes": "Fișa europeană Solis pentru familia S6-EH3P(8–18)K02-NV-YD-L include valorile variantei de 15 kW: 2 MPPT, 40 A și Isc 50 A/MPPT, maximum 3 stringuri PV, 200–850 V MPPT, 1.000 V maxim DC, 290 A baterie și 40–60 V. Certificatul EN 50549-1/-10 V02 listează explicit S6-EH3P15K02-NV-YD-L. Confirmați revizia firmware și acceptarea de către OD pentru dosarul concret."},
     {"category": "Panou", "brand_model": "AIKO-A500-MAH60Mb", "manufacturer": "AIKO",
      "w": 500, "voc": 45.02, "vmp": 37.90, "isc": 14.05, "imp": 13.20,
-     "coef_voc": -0.22, "temp_pmax": -0.26,
+     "coef_voc": -0.22, "coef_isc": 0.05, "temp_pmax": -0.26, "max_fuse_a": 25,
      "datasheet_url": "https://aikosolar.com/wp-content/uploads/2025/12/Neostar-2S60_AIKO-A-MAH60Mb_500-520W-1954x1134x30mm_DsDr_DE_20251215.pdf",
      "conformity_url": "https://solsol.eu/pl/file/view/1703/aiko_doc_en.pdf",
      "source_url": "https://aikosolar.com/wp-content/uploads/2025/12/Neostar-2S60_AIKO-A-MAH60Mb_500-520W-1954x1134x30mm_DsDr_DE_20251215.pdf",
@@ -134,6 +134,15 @@ SEED = [
      "vdc_max": 800, "mppt_min": 200, "mppt_max": 650, "mppt_count": 2, "imax_mppt": 26, "battery_voltage": "LV 48 V",
      "datasheet_url": "https://www.deyeinverter.com/deyeinverter/2023/12/11/datasheet_sun-5-12k-sg04lp3_231211_en.pdf",
      "conformity_url": "https://it.deyeinverter.com/deyeinverter/2025/04/17/hybridinverter_eudeclaration-sun-5-12k-sg04lp3-eu%2B240628001.pdf"},
+    {"category": "Invertor", "brand_model": "Deye SUN-12K-SG05LP3-EU-SM2", "manufacturer": "Deye",
+     "type": "Hibrid", "phases": "Trifazat", "p_nom_kw": 12, "p_max_kw": 12,
+     "vdc_max": 800, "mppt_min": 200, "mppt_max": 650, "mppt_count": 2,
+     "imax_mppt": 26, "isc_max_mppt": 39, "bat_i_max": 240, "bat_v_min": 40, "bat_v_max": 60,
+     "battery_voltage": "LV 40–60 V", "pv_input_max_kw": 19.2, "pv_access_max_kw": 24,
+     "datasheet_url": "https://www.deyeinverter.com/deyeinverter/2025/07/03/%5Bb%5Ddatasheet_30240102202171_sun-3-12k-sg05lp3-eu-sm2_250703_en.pdf",
+     "conformity_url": "https://www.deyeinverter.com/deyeinverter/2025/08/04/certificate_en50549-1.pdf",
+     "source_url": "https://www.deyeinverter.com/product/three-phase-hybrid-inverter-1/sun3-4-5-6-8-10-12ksg05lp3eusm2-312kw-three-phase-2-mppt-hybrid-inverter-lv-battery-supported.html",
+     "notes": "Date tehnice preluate din fișa și certificatul oficial Deye pentru modelul SUN-12K-SG05LP3-EU-SM2. Curent PV 26 A/MPPT, Isc max 39 A/MPPT, 2 MPPT, tensiune DC max. 800 V; baterie LV 40–60 V, 240 A max."},
     {"category": "Invertor", "brand_model": "Deye SUN-6K-SG03LP1-EU", "type": "Hibrid", "phases": "Monofazat", "p_nom_kw": 6, "p_max_kw": 6.6,
      "vdc_max": 500, "mppt_min": 125, "mppt_max": 425, "mppt_count": 2, "imax_mppt": 13, "battery_voltage": "LV 48 V",
      "datasheet_url": "https://www.deyeinverter.com/deyeinverter/2023/12/11/datasheet_sun-3.6-6k-sg03lp1_231211_en.pdf",
