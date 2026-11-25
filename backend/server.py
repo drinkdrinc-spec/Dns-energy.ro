@@ -2765,6 +2765,14 @@ async def hydrate_cef_catalog_values(owner: str, cef: dict, rec: dict | None = N
                     battery["catalog_id"] = battery_item.get("id")
                     filled.append(f"cef.inverters.{index}.battery.catalog_id")
                 merge(battery, battery_values(battery_item, inv.get("phases")), f"cef.inverters.{index}.battery")
+            inverter_type = str(inv.get("type") or inv.get("kind") or "").casefold()
+            if (battery.get("model") and not battery.get("coupling")
+                    and ("hibrid" in inverter_type or "hybrid" in inverter_type)):
+                # The own-battery selector in DNS only offers DC coupling for
+                # hybrid inverters, so carry that explicit UI choice into older
+                # saved dossiers instead of asking for it again.
+                battery["coupling"] = "DC"
+                filled.append(f"cef.inverters.{index}.battery.coupling")
     for index, battery in enumerate(cef.get("shared_batteries") or []):
         item = await catalog_item("Baterie", battery.get("catalog_id"), battery.get("model"))
         if item:
