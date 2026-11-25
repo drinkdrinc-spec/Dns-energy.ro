@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FileDown, Wand2, RefreshCw, ShieldCheck, Upload, X, Eye, Send } from "lucide-react";
-import { api, openAuthenticatedFile } from "@/lib/api";
+import { api, downloadAuthenticatedFile, openAuthenticatedFile } from "@/lib/api";
 import { Btn } from "@/components/Layout";
 import { uploadFile } from "@/components/dossier/ClientDocs";
 import { SldChecks } from "./SldChecks";
@@ -59,7 +59,7 @@ export function SldPanel({ id, form, setVal }) {
         <Btn variant="secondary" onClick={refresh} disabled={busy} data-testid="sld-refresh"><RefreshCw size={14} /> Salvează și verifică</Btn>
         <Btn variant="secondary" onClick={apply} disabled={busy} data-testid="sld-apply"><Wand2 size={14} /> Completează automat valorile calculate</Btn>
         <Btn onClick={() => open(`/sld/${id}/pdf`)} disabled={busy} data-testid="sld-preview"><Eye size={14} /> Previzualizare schemă generată ({d.format})</Btn>
-        <Btn variant="secondary" onClick={() => open(`/sld/${id}/pdf?fmt=${d.format === "A3" ? "A4" : "A3"}`)} disabled={busy} data-testid="sld-preview-alt"><FileDown size={14} /> PDF {d.format === "A3" ? "A4" : "A3"}</Btn>
+        <Btn variant="secondary" onClick={() => downloadAuthenticatedFile(`/sld/${encodeURIComponent(id)}/pdf?fmt=${d.format === "A3" ? "A4" : "A3"}&download=1`, `schema_monofilara_${String(id).slice(0, 8)}_${d.format === "A3" ? "A4" : "A3"}.pdf`)} disabled={busy} data-testid="sld-preview-alt"><FileDown size={14} /> Descarcă PDF {d.format === "A3" ? "A4" : "A3"}</Btn>
         <Btn variant="secondary" onClick={() => open(`/sld/${id}/report`)} disabled={busy} data-testid="sld-report"><FileDown size={14} /> Raport de calcul</Btn>
         <Btn variant="secondary" onClick={() => openAuthenticatedFile("/sld/demo/pdf")} data-testid="sld-demo"><Eye size={14} /> Schemă demonstrativă</Btn>
       </div>
