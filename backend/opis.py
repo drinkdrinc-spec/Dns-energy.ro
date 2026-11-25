@@ -712,12 +712,9 @@ def _incomplete_report(positions_info, unavailable):
 async def export_bundle(positions_info, rec, client, settings, get_object, logger, require_complete=False):
     if require_complete:
         _require_complete_submission(positions_info)
-    # Keep generated working sheets with missing inputs out of the client-facing PDF.
-    # Preserve uploaded originals and official operator forms.
-    export_positions = [
-        p for p in positions_info["positions"]
-        if not (p.get("source") == "generat" and p.get("missing"))
-    ]
+    # Draft exports include every available document so the PDF is never empty.
+    # Final submission remains gated by _require_complete_submission above.
+    export_positions = positions_info["positions"]
     titles = [p.get("title") or p.get("key") or "Document" for p in export_positions]
     w = PdfWriter()
     authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles) if export_positions else None
