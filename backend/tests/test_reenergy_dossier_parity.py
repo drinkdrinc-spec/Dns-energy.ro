@@ -125,6 +125,8 @@ def test_dossier_positions_follow_submission_order():
         {"key": "cf", "title": "Extras de carte funciară"},
         {"key": "factura", "title": "Factură furnizor de energie"},
         {"key": "certificat", "title": "Act de identitate"},
+        {"key": "anre_firma", "title": "Atestat ANRE firmă"},
+        {"key": "metrologie_pram", "title": "Metrologie aparat PRAM"},
         {"key": "fotografii_instalatie", "title": "Fotografii instalație"},
         {"key": "fotografii_lucrare", "title": "Fotografii lucrare"},
     ]
@@ -132,8 +134,9 @@ def test_dossier_positions_follow_submission_order():
     ordered = sorted(positions, key=dossier_order)
 
     assert [position["key"] for position in ordered] == [
-        "priza", "notificare", "date_stocare", "certificat", "factura", "cf",
-        "fotografii_instalatie", "schema", "cat_datasheet_battery", "fotografii_lucrare",
+        "certificat", "factura", "cf", "anre_firma", "metrologie_pram",
+        "fotografii_instalatie", "notificare", "date_stocare", "priza", "schema",
+        "cat_datasheet_battery", "fotografii_lucrare",
     ]
 
 
@@ -147,8 +150,8 @@ def test_full_packet_order_matches_the_signed_reenergy_reference():
     ordered = sorted(positions, key=dossier_order)
 
     assert [position["key"] for position in ordered] == [
-        "priza", "notificare", "date_stocare", "gdpr", "imputernicire", "afm",
-        "executant", "conformitate", "receptie", "serii", "pif", "reglaj",
+        "notificare", "date_stocare", "gdpr", "imputernicire", "afm",
+        "executant", "conformitate", "receptie", "serii", "pif", "priza", "reglaj",
         "declaratie_autenticitate", "schema", "cat_datasheet_inverter", "fotografii_lucrare",
     ]
 
@@ -295,7 +298,7 @@ def test_bundle_keeps_official_form_fallback_and_marks_export_incomplete(monkeyp
     assert info["export_has_unavailable_items"] is True
 
 
-def test_incomplete_bundle_remains_downloadable_without_ciorna_watermarks(monkeypatch):
+def test_pdf_bundle_keeps_internal_missing_items_checklist_out_of_download(monkeypatch):
     async def render_position(_position, *_args, **_kwargs):
         return [_marker_pdf("AVAILABLE DOCUMENT")]
 
@@ -314,7 +317,7 @@ def test_incomplete_bundle_remains_downloadable_without_ciorna_watermarks(monkey
 
     assert "AVAILABLE DOCUMENT" in text
     assert "AUTHENTICITY DECLARATION" in text
-    assert "MISSING ITEMS CHECKLIST" in text
+    assert "MISSING ITEMS CHECKLIST" not in text
     assert "CIORNĂ" not in text
 
 
@@ -384,8 +387,8 @@ def test_export_bundle_places_authenticity_before_schema_and_equipment(monkeypat
     pages = PdfReader(io.BytesIO(output)).pages
     page_text = [page.extract_text() for page in pages]
 
-    assert len(page_text) == 7
-    expected = ["OFFICIAL FORM", "INSTALLATION PHOTOS", "AUTHENTICITY", "SINGLE-LINE DIAGRAM", "PANEL DATASHEET", "WORK PHOTOS", "INTERNAL REVIEW"]
+    assert len(page_text) == 6
+    expected = ["OFFICIAL FORM", "INSTALLATION PHOTOS", "AUTHENTICITY", "SINGLE-LINE DIAGRAM", "PANEL DATASHEET", "WORK PHOTOS"]
     actual = [
         next(marker for marker in expected if marker in text)
         for text in page_text
@@ -393,7 +396,7 @@ def test_export_bundle_places_authenticity_before_schema_and_equipment(monkeypat
     assert actual == expected
 
 
-def test_export_bundle_repeats_pram_after_commissioning_as_in_the_signed_reference(monkeypatch):
+def test_export_bundle_includes_pram_once_after_commissioning(monkeypatch):
     async def fake_position_pdf(position, *_args, **_kwargs):
         return [_marker_pdf(position["marker"])]
 
@@ -408,10 +411,10 @@ def test_export_bundle_repeats_pram_after_commissioning_as_in_the_signed_referen
     info = {
         "titles": {}, "complete": True,
         "positions": [
-            {"key": "priza", "source": "generat", "marker": "PRAM"},
             {"key": "notificare", "source": "manual", "marker": "OFFICIAL FORM"},
             {"key": "serii", "source": "generat", "marker": "EQUIPMENT SERIES"},
             {"key": "pif", "source": "generat", "marker": "PIF"},
+            {"key": "priza", "source": "generat", "marker": "PRAM"},
             {"key": "reglaj", "source": "generat", "marker": "SETTINGS"},
             {"key": "schema", "source": "generat", "marker": "SCHEMA"},
         ],
@@ -421,10 +424,10 @@ def test_export_bundle_repeats_pram_after_commissioning_as_in_the_signed_referen
     texts = [page.extract_text() or "" for page in PdfReader(io.BytesIO(output)).pages]
     markers = [next((marker for marker in ("PRAM", "OFFICIAL FORM", "EQUIPMENT SERIES", "PIF", "SETTINGS", "AUTHENTICITY", "SCHEMA") if marker in text), "") for text in texts]
 
-    assert markers == ["PRAM", "OFFICIAL FORM", "EQUIPMENT SERIES", "PIF", "PRAM", "SETTINGS", "AUTHENTICITY", "SCHEMA"]
+    assert markers == ["OFFICIAL FORM", "EQUIPMENT SERIES", "PIF", "PRAM", "SETTINGS", "AUTHENTICITY", "SCHEMA"]
 
 
-def test_submission_zip_preserves_reference_order_and_repeats_pram_after_pif(monkeypatch):
+def test_submission_zip_preserves_reference_order_without_duplicate_pram(monkeypatch):
     async def fake_position_pdf(position, *_args, **_kwargs):
         return [_marker_pdf(position["marker"])]
 
@@ -439,11 +442,11 @@ def test_submission_zip_preserves_reference_order_and_repeats_pram_after_pif(mon
     info = {
         "titles": {}, "complete": True,
         "positions": [
-            {"key": "priza", "source": "generat", "marker": "PRAM"},
             {"key": "notificare", "source": "manual", "marker": "OFFICIAL FORM"},
             {"key": "date_stocare", "source": "generat", "marker": "STORAGE"},
             {"key": "serii", "source": "generat", "marker": "EQUIPMENT SERIES"},
             {"key": "pif", "source": "generat", "marker": "PIF"},
+            {"key": "priza", "source": "generat", "marker": "PRAM"},
             {"key": "reglaj", "source": "generat", "marker": "SETTINGS"},
             {"key": "schema", "source": "generat", "marker": "SCHEMA"},
         ],
@@ -453,7 +456,7 @@ def test_submission_zip_preserves_reference_order_and_repeats_pram_after_pif(mon
     with zipfile.ZipFile(io.BytesIO(output)) as archive:
         pages = PdfReader(io.BytesIO(archive.read("01_Dosar_complet.pdf"))).pages
     texts = [page.extract_text() or "" for page in pages]
-    expected = ["PRAM", "OFFICIAL FORM", "STORAGE", "EQUIPMENT SERIES", "PIF", "PRAM", "SETTINGS", "AUTHENTICITY", "SCHEMA"]
+    expected = ["OFFICIAL FORM", "STORAGE", "EQUIPMENT SERIES", "PIF", "PRAM", "SETTINGS", "AUTHENTICITY", "SCHEMA"]
     actual = [next(marker for marker in expected if marker in text) for text in texts]
 
     assert actual == expected
