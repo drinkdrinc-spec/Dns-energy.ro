@@ -44,7 +44,13 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
   const fold = (value) => String(value || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("ro-RO");
   const hasValue = (value) => value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value));
   const positive = (value) => hasValue(value) && Number(value) > 0;
-  const missing = (item) => {
+  const missingDocuments = (item) => {
+    const absent = [];
+    if (!(item.datasheet?.storage_path || item.datasheet_url)) absent.push("fișa tehnică");
+    if (!(item.conformity?.storage_path || item.conformity_url)) absent.push("certificatul de conformitate");
+    return absent;
+  };
+  const missingTechnical = (item) => {
     const absent = [];
     const name = String(item.brand_model || "");
     const foldedName = fold(name);
@@ -68,8 +74,6 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
         }
       }
     }
-    if (!(item.datasheet?.storage_path || item.datasheet_url)) absent.push("fișa tehnică oficială");
-    if (!(item.conformity?.storage_path || item.conformity_url)) absent.push("documentul de conformitate");
     const required = category === "Invertor" ? [
       [positive(item.p_nom_kw), "puterea nominală"],
       [!!item.phases, "numărul de faze"],
@@ -91,7 +95,7 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
   };
   const filtered = list.filter((item) => fold(item.brand_model).includes(fold(query)));
   const pick = (item) => {
-    if (missing(item).length) return;
+    if (missingTechnical(item).length) return;
     onPick(item);
     setQuery(item.brand_model);
     setOpen(false);
@@ -128,11 +132,11 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
               type="button"
               role="option"
               aria-selected={false}
-              aria-disabled={missing(item).length > 0}
-              disabled={missing(item).length > 0}
+              aria-disabled={missingTechnical(item).length > 0}
+              disabled={missingTechnical(item).length > 0}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => pick(item)}
-              className={`block w-full rounded-md px-3 py-2 text-left text-xs ${missing(item).length ? "cursor-not-allowed opacity-60" : "hover:bg-[#eef4ff]"}`}
+              className={`block w-full rounded-md px-3 py-2 text-left text-xs ${missingTechnical(item).length ? "cursor-not-allowed opacity-60" : "hover:bg-[#eef4ff]"}`}
             >
               <span className="block font-semibold">{item.brand_model}</span>
               <span className="block" style={{ color: "var(--muted)" }}>
@@ -142,7 +146,9 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
                   : [item.phases].filter(Boolean).join(" · ")}
               </span>
               {item.source_price && <span className="mt-1 block text-[11px] font-semibold" style={{ color: "var(--green, #168363)" }}>Preț furnizor: {item.source_price}{formatPartnerPrice(item.source_price, markup) ? ` · DNS (+${markup}%): ${formatPartnerPrice(item.source_price, markup)}` : ""} · {item.source_price_tax_note || "TVA de verificat"}</span>}
-              {missing(item).length > 0 && <span className="mt-1 block text-[11px] font-medium text-amber-700">Indisponibil pentru proiectare · verifică: {missing(item).join(", ")}</span>}
+              {missingTechnical(item).length > 0
+                ? <span className="mt-1 block text-[11px] font-medium text-amber-700">Lipsesc date tehnice necesare calculului · completează-le manual sau alege un model cu date complete: {missingTechnical(item).join(", ")}</span>
+                : missingDocuments(item).length > 0 && <span className="mt-1 block text-[11px] font-medium text-amber-700">Poți selecta echipamentul. Adaugă ulterior: {missingDocuments(item).join(" și ")}.</span>}
             </button>
           ))}
           {!filtered.length && <p className="px-3 py-2 text-xs" style={{ color: "var(--muted)" }}>Modelul nu este în catalog. Îl poți scrie în câmpul de model de mai jos.</p>}
