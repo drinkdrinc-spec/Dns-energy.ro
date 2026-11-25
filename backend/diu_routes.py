@@ -316,12 +316,33 @@ async def import_prosumer_into_diu(user: dict, item_id: str, rec: dict, pid: str
     inverters = cef.get("inverters") or []
     has_storage = CEF.has_storage(p)
     switching = rec.get("pros_id") != pid
+    panel_kw = cef.get("total_kw") or p.get("panel_kw") or p.get("pv_kw")
+    inverter_models = list(dict.fromkeys(str(item.get("brand_model")).strip() for item in inverters if item.get("brand_model")))
+    battery_models = list(dict.fromkeys(
+        str(model).strip()
+        for model in [
+            *[(item.get("brand_model") or item.get("model")) for item in (cef.get("shared_batteries") or [])],
+            *[(item.get("battery") or {}).get("model") for item in inverters],
+        ] if model
+    ))
+    description = "; ".join(part for part in [
+        "Instalație fotovoltaică" if inverters else "",
+        f"{panel_kw} kWp panouri" if panel_kw not in (None, "") else "",
+        f"invertor(e): {', '.join(inverter_models)}" if inverter_models else "",
+        f"stocare: {', '.join(battery_models)}" if battery_models else "",
+        f"regim backup: {g.get('backup_mode')}" if g.get("backup_mode") and g.get("backup_mode") != "—" else "",
+    ] if part)
     fill = {"client_name": p.get("client_name"), "client_id": p.get("client_id"), "address": p.get("address"),
             "operator": p.get("operator"), "power": p.get("power"), "atr": p.get("atr"),
             "supply": p.get("supply"), "earthing": g.get("earthing"), "tg_breaker_a": g.get("tg_breaker_a"),
             "bmp_a": g.get("bmp_a"), "meter_enabled": bool(g.get("meter_enabled") if g.get("meter_enabled") is not None else g.get("meter")),
             "meter": g.get("meter"), "smart_meter_type": g.get("meter"),
             "meter_serial": g.get("meter_serial"), "meter_specs": g.get("meter_specs"),
+            "column_cable": g.get("column_cable") or g.get("main_column_cable") or g.get("main_column_cable_proposal"),
+            "relay": g.get("anti_relay") or g.get("relay"),
+            "breaker": g.get("anti_breaker") or g.get("teg_main_protection") or g.get("tg_breaker"),
+            "memoriu_desc": description,
+            "mono_ref": p.get("mono_ref"), "pram_ref": p.get("pram_ref"),
             "type": "Sistem fotovoltaic hibrid" if has_storage else "Sistem fotovoltaic on-grid",
             **{k: p.get(k) for k in ("receptie_date", "receptie_decision", "receptie_findings", "pif_date", "warranty_months")}}
     upd = {"pros_id": pid}
