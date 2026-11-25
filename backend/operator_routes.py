@@ -382,9 +382,12 @@ async def adm_cfg_set(request: Request, user: dict = Depends(get_current_user)):
 
 @S.app.on_event("startup")
 async def _cutoff():
-    await db.billing_config.update_one({"id": "main", "attest_cutoff": {"$exists": False}}, {"$set": {"attest_cutoff": now()}})
-    await db.operators.create_index("tenant", unique=True)
-    if not await db.billing_config.find_one({"id": "main", "tariffs_2026_06": True}):
-        for code, price in (("start", 500), ("pro", 900), ("full", 1250)):
-            await db.plans.update_one({"code": code}, {"$set": {"price": price}})
-        await db.billing_config.update_one({"id": "main"}, {"$set": {"tariffs_2026_06": True, "payment_mode": "transfer", "default_months": 1}}, upsert=True)
+    try:
+        await db.billing_config.update_one({"id": "main", "attest_cutoff": {"$exists": False}}, {"$set": {"attest_cutoff": now()}})
+        await db.operators.create_index("tenant", unique=True)
+        if not await db.billing_config.find_one({"id": "main", "tariffs_2026_06": True}):
+            for code, price in (("start", 500), ("pro", 900), ("full", 1250)):
+                await db.plans.update_one({"code": code}, {"$set": {"price": price}})
+            await db.billing_config.update_one({"id": "main"}, {"$set": {"tariffs_2026_06": True, "payment_mode": "transfer", "default_months": 1}}, upsert=True)
+    except Exception as e:
+        S.logger.error("Startup billing/operator seed skipped (MongoDB unavailable): %s", e)

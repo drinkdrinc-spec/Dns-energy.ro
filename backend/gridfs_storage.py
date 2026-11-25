@@ -14,18 +14,26 @@ logger = logging.getLogger("d-energy.storage")
 class LegacyObjectUnavailable(FileNotFoundError):
     """A legacy object exists outside GridFS but its former storage account rejects access."""
 
+_mongo_url = (os.environ.get("MONGO_URL") or "").strip()
+if not _mongo_url:
+    logger.error("MONGO_URL is not set; GridFS storage starts in degraded mode")
+    _mongo_url = "mongodb://127.0.0.1:27017/?serverSelectionTimeoutMS=2000"
 _client = MongoClient(
-    os.environ["MONGO_URL"],
-    serverSelectionTimeoutMS=10000,
-    connectTimeoutMS=10000,
+    _mongo_url,
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=5000,
 )
-_bucket = GridFSBucket(_client[os.environ.get("DB_NAME", "dns_energy")], bucket_name="dns_energy_files")
+_bucket = GridFSBucket(_client[(os.environ.get("DB_NAME") or "dns_energy").strip() or "dns_energy"], bucket_name="dns_energy_files")
 _legacy_key = None
 
 
 def init_storage(force: bool = False):
-    """Fail startup if MongoDB is unavailable; legacy storage remains read-only and lazy."""
-    _client.admin.command("ping")
+    """Report storage readiness; never raise, so a bad DB URI cannot block boot."""
+    try:
+        _client.admin.command("ping")
+    except Exception as exc:
+        logger.error("MongoDB GridFS storage unavailable at startup: %s", exc)
+        return False
     r2_required = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME")
     r2_missing = [name for name in r2_required if not (os.environ.get(name) or "").strip()]
     legacy_status = "not configured"

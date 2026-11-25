@@ -116,17 +116,16 @@ def dossier_order(p):
     """Order the packet to match the supplied signed Reenergy dossier example."""
     key = p.get("key", "")
     priority = {
-        # Signed reference: PRAM, operator form, storage, privacy notice,
-        # mandate and AFM declaration are the opening submission documents.
-        "priza": 5, "metrologie_pram": 7, "notificare": 10,
+        # Keep the client's original evidence first, as in the signed reference,
+        # then the operator form and the generated administrative documents.
+        "certificat": 1, "factura": 2, "cf": 3,
+        "anre_firma": 4, "metrologie_pram": 5,
+        "fotografii_instalatie": 6, "alt_document": 7,
+        "notificare": 10,
         "date_stocare": 20, "gdpr": 30, "imputernicire": 40, "afm": 50,
-        # Keep uploaded client evidence in the packet without displacing the
-        # equipment and commissioning documents that follow it in the sample.
-        "certificat": 52, "factura": 53, "cf": 54,
-        "fotografii_instalatie": 55, "alt_document": 56,
-        "executant": 60, "anre_firma": 61, "conformitate": 65,
+        "executant": 60, "conformitate": 65,
         "receptie": 70, "serii": 75, "pif": 80, "pif_pv": 82,
-        # The reference dossier includes its PRAM report again after PIF.
+        "priza": 85,
         "reglaj": 90, "declaratie_autenticitate": 100, "opis": 101,
         "schema": 110, "fisa_tehnica": 115,
         "fotografii_lucrare": 130,
@@ -710,15 +709,6 @@ def _incomplete_report(positions_info, unavailable):
     return buf.getvalue()
 
 
-def _pram_repeat_after(positions):
-    """Return the last commissioning row after which the reference repeats PRAM."""
-    if not any(position.get("key") == "priza" for position in positions):
-        return None
-    commissioning = [position.get("key") for position in positions
-                     if position.get("key") in {"serii", "pif", "pif_pv"}]
-    return commissioning[-1] if commissioning else None
-
-
 async def export_bundle(positions_info, rec, client, settings, get_object, logger, require_complete=False):
     if require_complete:
         _require_complete_submission(positions_info)
@@ -727,8 +717,6 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
     authenticity_page = docgen.render(["declaratie_autenticitate"], rec, settings, client, titles)
     main_parts = []
     technical_parts = []
-    pram_parts = None
-    repeat_pram_after = _pram_repeat_after(positions_info.get("positions") or [])
     unavailable = []
     for p in positions_info["positions"]:
         try:
@@ -741,10 +729,6 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
             is_technical_appendix = (p.get("key") in ("schema", "fisa_tehnica", "fotografii_lucrare")
                                      or p.get("source") == "catalog")
             (technical_parts if is_technical_appendix else main_parts).extend(position_parts)
-            if p.get("key") == "priza":
-                pram_parts = list(position_parts)
-            if repeat_pram_after and p.get("key") == repeat_pram_after and pram_parts:
-                main_parts.extend(pram_parts)
         except Exception as e:
             logger.error(f"bundle skip {p['key']}: {e}")
             unavailable.append(p.get("title") or p.get("key") or "Document atașat")
@@ -753,12 +737,7 @@ async def export_bundle(positions_info, rec, client, settings, get_object, logge
         positions_info["complete"] = False
     if require_complete:
         _require_complete_submission(positions_info)
-    # Keep the internal review/index page out of the official-document order;
-    # it remains the final page so staff can see what still needs attention.
-    report = _incomplete_report(positions_info, unavailable)
     parts = main_parts + [authenticity_page] + technical_parts
-    if report:
-        parts.append(report)
     for b in parts:
         try:
             for pg in PdfReader(io.BytesIO(b)).pages:
@@ -847,8 +826,6 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
     titles = positions_info["titles"]
     ordered_parts = []
     unavailable = []
-    pram_parts = None
-    repeat_pram_after = _pram_repeat_after(positions_info.get("positions") or [])
     for position in positions_info["positions"]:
         try:
             parts = await position_pdf(position, rec, client, settings, titles, get_object)
@@ -858,10 +835,6 @@ async def export_package_zip(positions_info, rec, client, settings, get_object, 
                 parts = [mark_draft(part, "CIORNĂ — DATE DE COMPLETAT") for part in parts]
             group = _package_group(position.get("key"), position.get("source"))
             ordered_parts.extend((group, part) for part in parts)
-            if position.get("key") == "priza":
-                pram_parts = list(parts)
-            if repeat_pram_after and position.get("key") == repeat_pram_after and pram_parts:
-                ordered_parts.extend((1, part) for part in pram_parts)
         except Exception as exc:
             logger.error(f"package skip {position.get('key')}: {exc}")
             unavailable.append(position.get("title") or position.get("key") or "Document atașat")
@@ -933,5 +906,3 @@ def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int =
     watermark(w, text, size)
     o = io.BytesIO(); w.write(o)
     return o.getvalue()
-
-
