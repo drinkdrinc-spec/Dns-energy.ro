@@ -42,6 +42,30 @@ S = {
     "sig": ParagraphStyle("sig", fontName="LS", fontSize=9.2, leading=12.5, alignment=TA_CENTER),
 }
 M = "…………………"
+_PDF_MISSING_MARKERS = (M, "de confirmat", "de completat", "de verificat", "necompletat", "neconfirmat",
+                        "[lipsă]", "[lipsa]", "lipsă —", "lipsa —", "date lipsă", "date lipsa",
+                        "valoare lipsă", "valoare lipsa", "model lipsă", "model lipsa", "neprecizat",
+                        "neconfigurat", "neselectat", "nemăsurat", "nestabilit", "neidentificat")
+
+
+def _has_pdf_placeholder(value):
+    text = str(value or "").strip().casefold()
+    return any(marker.casefold() in text for marker in _PDF_MISSING_MARKERS)
+
+
+def _clean_pdf_table(rows):
+    """Omit rows whose source data is incomplete; never print placeholder fields."""
+    if not rows:
+        return rows
+    header, *data = rows
+    def empty(cell):
+        text = str(cell or "").strip()
+        return not text or text == "—" or text == "-"
+    kept = [row for row in data
+            if not any(_has_pdf_placeholder(cell) for cell in row)
+            and (len(row) < 2 or any(not empty(cell) for cell in row[1:]))]
+    return [header, *kept] if kept else []
+
 GDPR_FILL = "……………………………………………………………………………………………………"
 GDPR_TITLE = ("NOTĂ DE INFORMARE CU PRIVIRE LA PRELUCRAREA DATELOR DUMNEAVOASTRĂ CU CARACTER PERSONAL "
               "DE CĂTRE DISTRIBUȚIA ENERGIE ELECTRICĂ ROMÂNIA S.A.")
@@ -1066,11 +1090,16 @@ def to_flow(blocks, ctx):
         elif k == "title":
             out.append(Paragraph(b[1], S["h"]))
         elif k in ("sub", "c", "p", "r", "b", "small"):
+            if _has_pdf_placeholder(b[1]):
+                continue
             out.append(Paragraph(b[1], S[k]))
         elif k == "bullets":
-            out += [Paragraph(x, S["li"], bulletText="•" if (len(b) < 3 or b[2]) else None) for x in b[1]]
+            out += [Paragraph(x, S["li"], bulletText="•" if (len(b) < 3 or b[2]) else None)
+                    for x in b[1] if not _has_pdf_placeholder(x)]
         elif k == "table":
-            out += [pdf_table(b[1], b[2], b[3], b[4] if len(b) > 4 else None), Spacer(1, 6)]
+            rows = _clean_pdf_table(b[1])
+            if rows:
+                out += [pdf_table(rows, b[2], b[3], b[4] if len(b) > 4 else None), Spacer(1, 6)]
         elif k == "sign":
             out.append(pdf_sign(b[1], b[2], ctx.s))
         elif k == "pagebreak":
@@ -1146,7 +1175,12 @@ def render(doc_keys, rec, settings, client, opis_titles=None, draft=False):
     keys = list(doc_keys)
     for i, k in enumerate(keys):
         if k in ("schema_cef", "schema"):
-            draw, tbl = schema_cef.story(ctx, lambda t, st="p": Paragraph(t, S[st]), lambda rows, w, head=True: pdf_table(rows, [x / mm for x in w], head, None, 273), S)
+            def schema_paragraph(text, style="p"):
+                return Spacer(1, 0) if _has_pdf_placeholder(text) else Paragraph(text, S[style])
+            def schema_table(rows, widths, head=True):
+                cleaned = _clean_pdf_table(rows)
+                return pdf_table(cleaned, [x / mm for x in widths], head, None, 273) if cleaned else Spacer(1, 0)
+            draw, tbl = schema_cef.story(ctx, schema_paragraph, schema_table, S)
             if i:
                 story += [NextPageTemplate("land"), PageBreak()]
             story += draw + [PageBreak()] + tbl + [NextPageTemplate("port")]
