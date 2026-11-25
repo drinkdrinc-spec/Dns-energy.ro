@@ -66,11 +66,17 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password }, { timeout: LOGIN_TIMEOUT_MS });
+    adoptSession(data);
+  };
+
+  const adoptSession = useCallback((data) => {
+    checkSequence.current += 1;
     localStorage.setItem("den_token", data.access_token);
     localStorage.setItem(CACHED_USER_KEY, JSON.stringify(data.user));
     setAuthIssue("");
+    setAuthChecking(false);
     setUser(data.user);
-  };
+  }, []);
 
   const logout = () => {
     checkSequence.current += 1;
@@ -82,7 +88,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, refresh, logout, authIssue, authChecking }}>
+    <AuthContext.Provider value={{ user, login, refresh, logout, adoptSession, authIssue, authChecking }}>
       {children}
     </AuthContext.Provider>
   );

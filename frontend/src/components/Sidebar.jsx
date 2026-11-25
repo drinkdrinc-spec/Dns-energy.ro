@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { BrandMark } from "@/components/BrandMark";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 import {
   LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, Archive, Map,
   FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt, Sparkles, Mail,
@@ -59,9 +62,24 @@ const NAV = [
 ];
 
 export function Sidebar({ open, onClose }) {
-  const { user, logout } = useAuth();
+  const { user, logout, adoptSession } = useAuth();
   const navigate = useNavigate();
+  const [revokingSessions, setRevokingSessions] = useState(false);
   const initials = (user?.name || user?.email || "A").slice(0, 2).toUpperCase();
+
+  const logoutOtherSessions = async () => {
+    if (revokingSessions) return;
+    setRevokingSessions(true);
+    try {
+      const { data } = await api.post("/auth/logout-other-sessions");
+      adoptSession(data);
+      toast.success("Celelalte sesiuni au fost deconectate. Acest dispozitiv rămâne conectat.");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Nu am putut deconecta celelalte sesiuni.");
+    } finally {
+      setRevokingSessions(false);
+    }
+  };
 
   return (
     <>
@@ -112,6 +130,15 @@ export function Sidebar({ open, onClose }) {
         </nav>
 
         <div className="mt-6 pt-4 border-t border-white/10">
+          <button
+            type="button"
+            data-testid="logout-other-sessions-btn"
+            disabled={revokingSessions}
+            onClick={logoutOtherSessions}
+            className="flex items-center gap-2 w-full rounded-[10px] px-3 py-2.5 mb-2 text-left text-[12px] text-[#bdc8da] hover:bg-[#1c2c48] hover:text-white disabled:opacity-60"
+          >
+            <LogOut size={16} /> {revokingSessions ? "Se deconectează…" : "Deloghează celelalte sesiuni"}
+          </button>
           <div className="flex items-center gap-3 px-2 mb-3">
             <div className="h-9 w-9 rounded-full grid place-items-center font-bold text-[13px]" style={{ background: "#e6f1ff", color: "#2469c8" }}>{initials}</div>
             <div className="min-w-0">

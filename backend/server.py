@@ -534,6 +534,17 @@ async def login(body: LoginReq, request: Request):
 async def me(user: dict = Depends(get_current_user)):
     return pub_user(user)
 
+@api_router.post("/auth/logout-other-sessions")
+async def logout_other_sessions(user: dict = Depends(get_current_user)):
+    """Revoke all existing access tokens while issuing a replacement for this device."""
+    uid = user["id"]
+    await db.users.update_one({"id": uid}, {"$inc": {"token_version": 1}})
+    account = await db.users.find_one({"id": uid})
+    if not account:
+        raise HTTPException(status_code=401, detail="Utilizator inexistent")
+    token = create_access_token(uid, account["email"], int(account.get("token_version", 0)))
+    return {"access_token": token, "user": pub_user(await finish_user(account))}
+
 @api_router.post("/auth/change-password")
 async def change_password(body: PasswordChangeReq, user: dict = Depends(get_current_user)):
     current = body.current_password or ""
