@@ -83,13 +83,15 @@ function SharedBatteries({ list, set, catalog, supplierMarkup }) {
 
 export function CefEditor({ value, onChange, onSave, saving = false }) {
   const cef = value || { grid: {}, inverters: [], shared_batteries: [] };
+  // Keep supplier markup state with the other top-level editor state so every
+  // rendered equipment card has a defined value during the first render.
+  const [supplierMarkup, setSupplierMarkup] = useSupplierMarkup();
   const [catalog, setCatalog] = useState([]);
   const [res, setRes] = useState(null);
   const [supplierCategory, setSupplierCategory] = useState("Invertor");
   const [supplierQuery, setSupplierQuery] = useState("");
   const [supplierResults, setSupplierResults] = useState([]);
   const [supplierMessage, setSupplierMessage] = useState("");
-  const [supplierMarkup, setSupplierMarkup] = useSupplierMarkup();
   const [supplierBusy, setSupplierBusy] = useState(false);
   const set = (patch) => onChange({ ...cef, ...patch });
   const invs = cef.inverters || [];
