@@ -91,7 +91,15 @@ const activeFileOperations = new Map();
 function runFileOperationOnce(key, operation) {
   const active = activeFileOperations.get(key);
   if (active) return active;
-  const request = Promise.resolve().then(operation).finally(() => {
+  // Start synchronously so browser APIs that require a user gesture (such as
+  // the Save As picker) are invoked while the click is still active.
+  let request;
+  try {
+    request = Promise.resolve(operation());
+  } catch (error) {
+    request = Promise.reject(error);
+  }
+  request = request.finally(() => {
     if (activeFileOperations.get(key) === request) activeFileOperations.delete(key);
   });
   activeFileOperations.set(key, request);
@@ -101,6 +109,17 @@ function runFileOperationOnce(key, operation) {
 export function downloadAuthenticatedFile(path, fallbackName = "document") {
   return runFileOperationOnce(`download:${path}:${fallbackName}`, async () => {
   try {
+    // Edge and Chrome can take several seconds to build a large dossier PDF.
+    // Open the native Save As dialog during the original click, then stream the
+    // authenticated response straight to the chosen file instead of relying on
+    // a delayed synthetic <a download> click after the request finishes.
+    let saveHandle = null;
+    if (/\.pdf$/i.test(fallbackName) && typeof window.showSaveFilePicker === "function") {
+      saveHandle = await window.showSaveFilePicker({
+        suggestedName: fallbackName,
+        types: [{ description: "Document PDF", accept: { "application/pdf": [".pdf"] } }],
+      });
+    }
     const response = await api.get(path, { responseType: "blob" });
     const disposition = response.headers["content-disposition"] || "";
     const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
@@ -121,6 +140,12 @@ export function downloadAuthenticatedFile(path, fallbackName = "document") {
         return;
       }
     }
+    if (saveHandle) {
+      const writable = await saveHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    }
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
@@ -131,6 +156,7 @@ export function downloadAuthenticatedFile(path, fallbackName = "document") {
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
   } catch (error) {
+    if (error?.name === "AbortError") return;
     window.alert(error.response ? await apiErrorMessage(error) : (error.message || "Nu am putut genera documentul. Verifică datele și încearcă din nou."));
   }
   });
@@ -253,4 +279,5 @@ if (typeof document !== "undefined" && typeof window !== "undefined" && !window.
     }
   }, true);
 }
+
 
