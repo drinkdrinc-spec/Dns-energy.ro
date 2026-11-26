@@ -59,7 +59,7 @@ export default function StructureCalculator() {
         if (n > 0) { groundEnds += 4; groundMiddles += 2 * Math.max(0, n - 1); }
       }
     }
-    return { count, cols, rows, railRun, railCount, railMeters, hooks, ends, middles, bars, chosenBar, tableTotal, groundEnds, groundMiddles, groundRows: rowCount };
+    return { count, cols, rows, railCount, railMeters, hooks, ends, middles, bars, chosenBar, tableTotal, groundEnds, groundMiddles, groundRows: rowCount };
   }, [type, panels, panelWidth, panelLength, orientation, perRow, hookSpacing, barLength, tableSize, tableRows]);
 
   const title = type === "ground" ? "Structură la sol" : type === "sheet" ? "Acoperiș din tablă · Minirail" : "Acoperiș cu țiglă";
