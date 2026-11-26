@@ -406,10 +406,22 @@ def apply(cef: dict) -> tuple[dict, list]:
         pa, pd = r["proposals"]["ac"], r["proposals"]["dc"]
         ac, dc = inv.setdefault("ac", {}), inv.setdefault("dc", {})
         put(ac, "breaker_a", pa["breaker_a"], f"cef.inverters.{i}.ac.breaker_a")
-        put(ac, "section", pa["section"], f"cef.inverters.{i}.ac.section")
+        # Keep valid user selections. Replace legacy values outside the
+        # supported mono/three-phase conductor ranges with a computed proposal.
+        ac_choices = C.INVERTER_AC_SECTIONS_3PH if r.get("tri") is True else C.INVERTER_AC_SECTIONS_1PH
+        if has(ac.get("section")) and n(ac.get("section")) not in ac_choices and has(pa.get("section")):
+            ac["section"] = pa["section"]
+            filled.append(f"cef.inverters.{i}.ac.section")
+            ac["pe_section"] = pe_for(n(ac.get("section")))
+            filled.append(f"cef.inverters.{i}.ac.pe_section")
+        else:
+            put(ac, "section", pa["section"], f"cef.inverters.{i}.ac.section")
         put(ac, "pe_section", pe_for(n(ac.get("section"))), f"cef.inverters.{i}.ac.pe_section")
         if r["strings"]:
-            put(dc, "section", pd["section"] or 6, f"cef.inverters.{i}.dc.section")
+            # DNS standardizes PV string cable at 6 mm² as requested.
+            if n(dc.get("section")) != 6:
+                dc["section"] = 6
+                filled.append(f"cef.inverters.{i}.dc.section")
             put(dc, "spd_ucpv", pd["spd_ucpv"] or up(UCPV, n(inv.get("vdc_max"))), f"cef.inverters.{i}.dc.spd_ucpv")
             put(dc, "fuse_a", 15 if r["strings"] else pd["fuse"], f"cef.inverters.{i}.dc.fuse_a")
             vm, im = r["voc_cold_max"], r["isc_mppt_max"]
@@ -428,8 +440,18 @@ def apply(cef: dict) -> tuple[dict, list]:
     # Propose the feeder size from the approved service current and installation
     # method as soon as those inputs are known. A missing route length only
     # prevents the voltage-drop check; it should not leave the cable blank.
-    put(gd, "column_section", base["grid"].get("main_section_proposal"), "cef.grid.column_section")
-    put(gd, "column_cable", base["grid"].get("main_column_cable_proposal"), "cef.grid.column_cable")
+    feeder_sections = C.FEEDER_SECTIONS
+    selected_feeder = n(gd.get("column_section"))
+    if selected_feeder and selected_feeder not in feeder_sections and has(base["grid"].get("main_section_proposal")):
+        gd["column_section"] = base["grid"]["main_section_proposal"]
+        filled.append("cef.grid.column_section")
+    else:
+        put(gd, "column_section", base["grid"].get("main_section_proposal"), "cef.grid.column_section")
+    proposal_cable = base["grid"].get("main_column_cable_proposal")
+    if not has(gd.get("column_cable")) or (selected_feeder and selected_feeder not in feeder_sections and proposal_cable):
+        gd["column_cable"] = proposal_cable
+        if has(proposal_cable):
+            filled.append("cef.grid.column_cable")
     cef["auto_filled"] = sorted(set((cef.get("auto_filled") or []) + filled))
     return cef, filled
 
@@ -465,4 +487,5 @@ def approved_file(rec: dict, fp: str):
         if h.get("hash") == fp and h.get("file"):
             return h["file"]
     return None
+
 
