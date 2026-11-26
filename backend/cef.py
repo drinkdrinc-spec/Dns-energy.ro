@@ -204,23 +204,12 @@ def string_calc(s, inv, tmin):
     cv_raw = panel_value("coef_voc")
     cv = (n(cv_raw) / 100) if cv_raw not in (None, "") else None
     cvmp_raw = panel_value("coef_vmp")
-    cvmp_source = "manufacturer datasheet" if cvmp_raw not in (None, "") else None
-    if cvmp_raw in (None, ""):
-        temp_pmax = panel_value("temp_pmax")
-        coef_isc = panel_value("coef_isc")
-        if temp_pmax not in (None, "") and coef_isc not in (None, ""):
-            # Approximate beta_Vmp from published beta_Pmax and beta_Isc when the
-            # manufacturer does not publish beta_Vmp: beta_Pmax ≈ beta_Vmp + beta_Imp.
-            cvmp_raw = round(n(temp_pmax) - n(coef_isc), 4)
-            cvmp_source = "estimated from manufacturer Pmax and Isc temperature coefficients"
     cvmp = (n(cvmp_raw) / 100) if cvmp_raw not in (None, "") else None
     voc_cold = cnt * voc * (1 + cv * (tmin - 25)) if voc and cv is not None else None
     vmp_hot = cnt * vmp * (1 + cvmp * (T_CELL_HOT - 25)) if vmp and cvmp is not None else None
     return {"panels": cnt, "mppt": int(n(s.get("mppt"), 1)) or 1, "panel_model": panel_model,
             "panel_w": panel_w, "panel_voc": voc, "panel_vmp": vmp, "panel_isc": isc, "panel_imp": imp,
             "panel_coef_voc": cv_raw, "panel_coef_vmp": cvmp_raw,
-            "panel_coef_vmp_source": cvmp_source,
-            "panel_max_fuse_a": n(panel_value("max_fuse_a")) or None,
             "voc_stc": cnt * voc, "voc_cold": voc_cold,
             "vmp_stc": cnt * vmp, "vmp_hot": vmp_hot, "isc": isc, "imp": imp,
             "kwp": cnt * panel_w / 1000}
@@ -269,7 +258,9 @@ def check(cef: dict) -> dict:
         if not strings:
             if not is_battery_inverter and not battery_only:
                 w.append(f"{tag}: nu are stringuri definite.")
-        # Voc / Vmp checks are left to the installer's discretion in the DNS workflow.
+        # DNS requested that temperature/Voc checks remain under the installer's
+        # responsibility. Missing manufacturer coefficients must not block the
+        # dossier flow or appear as actionable errors in the editor.
         if strings and "Invertor de baterie" in str(inv.get("kind") or inv.get("type") or ""):
             e.append(f"{tag}: invertorul de baterie (AC) nu are intrări PV — eliminați stringurile sau schimbați tipul.")
         if strings and mppt_count and len({s["mppt"] for s in strings}) < min(mppt_count, len(strings)):
@@ -277,7 +268,8 @@ def check(cef: dict) -> dict:
         per_mppt = {}
         for si, s in enumerate(strings):
             st = f"{tag} / string {si + 1}"
-            # Voc / Vmp checks are intentionally left to DNS's installer.
+            # Voc / Vmp checks are intentionally left to DNS's installer per
+            # the requested workflow; retain the calculated values for the SLD.
             if mppt_count and s["mppt"] > mppt_count:
                 e.append(f"{st}: MPPT {s['mppt']} inexistent (invertorul are {mppt_count} MPPT).")
             per_mppt.setdefault(s["mppt"], []).append(s)
@@ -289,7 +281,7 @@ def check(cef: dict) -> dict:
                 e.append(f"{tag} / MPPT {m}: modele de panou diferite sunt conectate pe același MPPT; separă stringurile pe MPPT-uri distincte și confirmă limitele producătorului.")
             if len({x["panels"] for x in ss}) > 1:
                 e.append(f"{tag} / MPPT {m}: stringuri în paralel cu număr diferit de panouri.")
-            # MPPT current checks are left to DNS's installer.
+            # MPPT current checks are left to the installer, as requested.
         ratio = kwp / p_nom if p_nom else 0
         if ratio > 1.5:
             w.append(f"{tag}: raport DC/AC {ratio:.2f} — supradimensionare mare, verifică fișa producătorului.")
@@ -398,32 +390,26 @@ def check(cef: dict) -> dict:
         drop_complete = bool(dc_operating) and all(current > 0 and voltage > 0 for current, voltage in dc_operating)
         voc_values = [x["voc_cold"] for x in strings if x.get("voc_cold") is not None]
         voc_cold_max = max(voc_values) if voc_values else 0
-        # DNS standard PV string cable; final site-specific verification remains with the installer.
+        # DNS standardizes PV string wiring on 6 mm². Isc/Voc compliance is
+        # left to the installer as requested; do not leave the cable blank
+        # merely because a catalogue datasheet omits those values.
         p_ds = 6 if strings else None
         par = max([len(ss) for ss in per_mppt.values()] or [0])
-        panel_fuse_limits = [s["panel_max_fuse_a"] for s in strings if s.get("panel_max_fuse_a")]
-        panel_fuse_limit = min(panel_fuse_limits) if panel_fuse_limits else None
-        fuse_min = 1.5 * isc1 if isc_complete else None
-        fuse_max = min(2.4 * isc1, panel_fuse_limit) if isc_complete and panel_fuse_limit else (2.4 * isc1 if isc_complete else None)
-        auto_fuse = next((rating for rating in GPV if fuse_min is not None and fuse_max is not None and fuse_min <= rating <= fuse_max), None)
-        configured_fuse = n(dc.get("fuse_a"))
-        # 15 A was the legacy global default. Replace it with a value that fits
-        # the module's Isc range and manufacturer maximum when those are known.
-        fuse = configured_fuse or (15 if strings else None)
+        fuse = n(dc.get("fuse_a")) or (15 if strings else None)
         spd_basis = max(voc_cold_max, n(inv.get("vdc_max")))
         spd_ucpv = up([600, 800, 1000, 1100, 1200, 1500], spd_basis) if spd_basis else None
-        fuse_note = "15 A / string, conform setării DNS; verificarea finală rămâne la instalator"
+        fuse_note = "15 A / string, conform setării DNS; confirmarea finală rămâne la instalator"
         prop["dc"] = {"section": p_ds, "fuse": fuse, "fuse_note": fuse_note,
                       "spd_ucpv": spd_ucpv, "i_design": round(i_dc, 1) if i_dc is not None else None}
         if ds and strings:
             izd = iz(ds, dmat, None, 1, n(dc.get("k_correction"), 1), dc=True)
-            # Iz remains informational; final site-specific verification is done by the installer.
             dud = max((vdrop_dc(current, dL, ds, dmat, voltage) for current, voltage in dc_operating), default=0) if drop_complete else None
             if dud is not None and dud > 1:
                 w.append(f"{tag}: cădere de tensiune DC {dud:.2f}% > 1% recomandat.")
             prop["dc"].update({"iz": round(izd, 1), "du": round(dud, 2) if dud is not None else None})
         spd = n(dc.get("spd_ucpv"))
-        # SPD suitability remains an installer verification, not a dossier blocker.
+        # PV voltage/current compatibility remains an installer verification;
+        # these values are not used to block dossier completion.
 
         out_inv.append({"index": idx + 1, "count": unit_count, "tri": tri if phase_known else None, "phase_known": phase_known, "battery_only": battery_only, "kwp": round(kwp, 3), "p_nom": p_nom, "p_max": p_max, "p_limit": p_lim,
                         "dc_ac_ratio": round(ratio, 2), "battery_kwh": round(b_kwh, 2), "strings": [{k2: (round(v, 1) if isinstance(v, float) else v) for k2, v in s.items()} for s in strings],
