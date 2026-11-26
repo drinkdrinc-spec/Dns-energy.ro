@@ -99,6 +99,41 @@ def test_bmp_to_board_feeder_rejects_section_below_requested_minimum():
     assert any("Coloana BMP–TG (10 mm²) este în afara domeniului DNS" in error for error in checked["errors"])
 
 
+def test_apply_replaces_legacy_invalid_cable_values_with_automatic_proposals():
+    inverter = sample_inverter()
+    inverter["ac"] = {"section": 4, "breaker_a": 32}
+    inverter["dc"] = {"section": 10}
+    cef_data = {"grid": {"supply": "Trifazat", "bransament_kw": 25,
+                         "bmp_a": 40, "column_section": 10},
+                "inverters": [inverter]}
+
+    updated, filled = sizing.apply(cef_data)
+
+    assert updated["inverters"][0]["dc"]["section"] == 6
+    assert updated["inverters"][0]["ac"]["section"] in cef.INVERTER_AC_SECTIONS_3PH
+    assert updated["grid"]["column_section"] in cef.FEEDER_SECTIONS
+    assert "cef.inverters.0.dc.section" in filled
+    assert "cef.inverters.0.ac.section" in filled
+    assert "cef.grid.column_section" in filled
+
+
+def test_apply_preserves_valid_manual_cable_values():
+    inverter = sample_inverter()
+    inverter["ac"] = {"section": 16, "breaker_a": 32}
+    inverter["dc"] = {"section": 6}
+    cef_data = {"grid": {"supply": "Trifazat", "bransament_kw": 25,
+                         "bmp_a": 40, "column_section": 25},
+                "inverters": [inverter]}
+
+    updated, filled = sizing.apply(cef_data)
+
+    assert updated["inverters"][0]["ac"]["section"] == 16
+    assert updated["inverters"][0]["dc"]["section"] == 6
+    assert updated["grid"]["column_section"] == 25
+    assert "cef.inverters.0.ac.section" not in filled
+    assert "cef.grid.column_section" not in filled
+
+
 def test_battery_cable_proposal_uses_conservative_standard_table():
     result = cef.battery_cable_proposal({"i_max": 40, "voltage": 51.2})
     assert result["section"] == 10
@@ -150,6 +185,28 @@ def test_sizing_autofill_respects_battery_datasheet_fuse_limit():
     result, filled = sizing.apply({"grid": {"supply": "Trifazat"}, "inverters": [inverter]})
     assert result["inverters"][0]["battery"]["fuse_a"] == 50
     assert "cef.inverters.0.battery.fuse_a" in filled
+
+
+def test_sizing_autofill_corrects_undersized_battery_cable_and_fills_grid_protection_fields():
+    inverter = {
+        **sample_inverter(),
+        "battery_mode": "own",
+        "battery": {
+            "model": "Baterie test", "i_max": 100, "voltage": 51.2,
+            "max_fuse_a": 125, "fuse_a": 100, "cable_section": 35,
+        },
+    }
+    result, filled = sizing.apply({
+        "grid": {"supply": "Trifazat", "bransament_kw": 25, "anti_required": True},
+        "inverters": [inverter],
+    })
+
+    updated_battery = result["inverters"][0]["battery"]
+    assert updated_battery["cable_section"] == 50
+    assert result["grid"]["spd_dc"].startswith("Tip 2")
+    assert result["grid"]["spd_ac"]
+    assert result["grid"]["anti_relay"]
+    assert "cef.inverters.0.battery.cable_section" in filled
 
 
 
@@ -248,3 +305,4 @@ def test_mixed_panel_models_use_each_strings_current_and_voltage_for_checks():
     # The 14 A, 300 V string needs 25 mm² at 100 m to meet the 1% proposal.
     # Combining its current with the other string's higher voltage would under-size it.
     assert result["inverters"][0]["proposals"]["dc"]["section"] == 25
+

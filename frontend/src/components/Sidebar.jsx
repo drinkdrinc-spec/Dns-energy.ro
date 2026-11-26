@@ -5,32 +5,38 @@ import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, Archive, Map,
+  LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, Archive, Map, Ruler,
   FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, LogOut, X, Briefcase, ShieldCheck, PenLine, Lock, CreditCard, Receipt, Sparkles, Mail,
 } from "lucide-react";
 import { can, isOff, ROUTE_FEATURE } from "@/lib/plan";
 
-const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles, Archive, Mail, Map };
+const ICONS = { LayoutDashboard, Users, FolderOpen, GitBranch, LayoutGrid, ShieldAlert, FileCheck2, Cpu, BookOpen, PlugZap, SunMedium, Network, Files, Settings, Briefcase, ShieldCheck, PenLine, CreditCard, Receipt, Sparkles, Archive, Mail, Map, Ruler };
 
 const NAV = [
-  { label: "Flux dosare", items: [
-    { to: "/clienti", icon: "Users", text: "Clienți și documente", testid: "nav-clients" },
-    { to: "/cerere-atr", icon: "FileCheck2", text: "Cerere ATR", testid: "nav-atr" },
-    { to: "/spor-putere", icon: "PlugZap", text: "Spor de putere", testid: "nav-power" },
-    { to: "/prosumator", icon: "SunMedium", text: "Dosar prosumator", testid: "nav-prosumator" },
-    { to: "/diu", icon: "FolderOpen", text: "Dosar DIU", testid: "nav-diu" },
-    { to: "/pram", icon: "FileCheck2", text: "Buletine PRAM", testid: "nav-pram" },
-    { to: "/mono", icon: "GitBranch", text: "Schema monofilară", testid: "nav-mono" },
-    { to: "/dosare-anre", icon: "Briefcase", text: "Dosare ANRE", testid: "nav-anre" },
-    { to: "/catalog-echipamente", icon: "Cpu", text: "Catalog echipamente", testid: "nav-equipment-catalog" },
-  ]},
   { label: "Principal", items: [
     { to: "/", icon: "LayoutDashboard", text: "Panou principal", testid: "nav-home" },
-    { to: "/asistent-ai", icon: "Sparkles", text: "Asistent AI", testid: "nav-ai-assistant" },
+  ]},
+  { label: "Flux de lucru", items: [
+    { to: "/clienti", icon: "Users", text: "Date client", testid: "nav-clients" },
     { to: "/oferte", icon: "Receipt", text: "Oferte de preț", testid: "nav-offers" },
     { to: "/contracte", icon: "FileCheck2", text: "Contracte", testid: "nav-contracts" },
+    { to: "/prosumator", icon: "SunMedium", text: "Dosar prosumator", testid: "nav-prosumator" },
+    { to: "/spor-putere", icon: "PlugZap", text: "Spor de putere", testid: "nav-power" },
+    { to: "/diu", icon: "FolderOpen", text: "Dosar DIU", testid: "nav-diu" },
+    { to: "/mono", icon: "GitBranch", text: "Schema monofilară", testid: "nav-mono" },
+    { to: "/pram", icon: "FileCheck2", text: "PRAM", testid: "nav-pram" },
   ]},
   { label: "Tehnic", items: [
+    { to: "/echipamente", icon: "Cpu", text: "Tehnic", testid: "nav-equipment" },
+    { to: "/calculator-structura", icon: "Ruler", text: "Calculator structură", testid: "nav-structure-calculator" },
+  ]},
+  { label: "Catalog echipamente", items: [
+    { to: "/catalog-echipamente", icon: "Cpu", text: "Catalog echipamente", testid: "nav-equipment-catalog" },
+  ]},
+  { label: "Altele", items: [
+    { to: "/cerere-atr", icon: "FileCheck2", text: "Cerere ATR", testid: "nav-atr" },
+    { to: "/dosare-anre", icon: "Briefcase", text: "Dosare ANRE", testid: "nav-anre" },
+    { to: "/asistent-ai", icon: "Sparkles", text: "Asistent AI", testid: "nav-ai-assistant" },
     { to: "/lucrari", icon: "Briefcase", text: "Gestionarea lucrărilor", testid: "nav-works" },
     { to: "/harta-lucrari", icon: "Map", text: "Hartă lucrări", testid: "nav-work-map" },
     { to: "/tablouri", icon: "LayoutGrid", text: "Tablouri electrice", testid: "nav-panels" },
@@ -159,3 +165,4 @@ export function Sidebar({ open, onClose }) {
     </>
   );
 }
+

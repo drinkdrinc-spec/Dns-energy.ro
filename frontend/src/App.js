@@ -13,6 +13,7 @@ const Operators = lazy(() => import("@/pages/Operators"));
 const Simulare = lazy(() => import("@/pages/Simulare"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const EquipmentCatalog = lazy(() => import("@/pages/EquipmentCatalog"));
+const StructureCalculator = lazy(() => import("@/pages/StructureCalculator"));
 const BaseSettings = lazy(() => import("@/pages/BaseSettings"));
 const SignPage = lazy(() => import("@/pages/SignPage"));
 const RemoteSigning = lazy(() => import("@/pages/RemoteSigning"));
@@ -89,6 +90,7 @@ function AppRoutes() {
         <Route path="/mesaje-od" element={<Gate feat="prosumator"><OperatorMessages /></Gate>} />
         <Route path="/catalog" element={<Gate feat={ROUTE_FEATURE["/catalog"]}><Catalog /></Gate>} />
         <Route path="/catalog-echipamente" element={<Gate feat={ROUTE_FEATURE["/catalog-echipamente"]}><EquipmentCatalog /></Gate>} />
+        <Route path="/calculator-structura" element={<StructureCalculator />} />
         <Route path="/setari-baza" element={<Gate feat={ROUTE_FEATURE["/setari-baza"]}><BaseSettings /></Gate>} />
         <Route path="/simulare" element={<Gate feat={ROUTE_FEATURE["/simulare"]}><Simulare /></Gate>} />
         <Route path="/distribuitori" element={<Gate feat={ROUTE_FEATURE["/distribuitori"]}><Operators /></Gate>} />
@@ -124,4 +126,5 @@ export default function App() {
     </AuthProvider>
   );
 }
+
 

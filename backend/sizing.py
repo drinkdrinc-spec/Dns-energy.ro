@@ -435,8 +435,29 @@ def apply(cef: dict) -> tuple[dict, list]:
             # maximum from a generic multiple of battery current.
             proposal = C.battery_cable_proposal(bat)
             put(bat, "fuse_a", proposal.get("fuse_a"), f"cef.inverters.{i}.battery.fuse_a")
+            # A previous automatic proposal can become undersized after the
+            # fuse or battery current changes. Replace it only when the current
+            # section no longer protects the stated design current/fuse; keep
+            # every still-valid installer-selected section unchanged.
+            selected_battery_section = n(bat.get("cable_section"))
+            required_battery_iz = max(n(proposal.get("fuse_a")), 1.25 * n(bat.get("i_max")))
+            if (selected_battery_section and proposal.get("section")
+                    and C.iz(selected_battery_section, str(bat.get("cable_material") or "Cu"), "C", 3, 1)
+                    < required_battery_iz):
+                bat["cable_section"] = proposal["section"]
+                filled.append(f"cef.inverters.{i}.battery.cable_section")
     gd = cef.setdefault("grid", {})
     put(gd, "bmp_a", base["grid"]["main_proposal"], "cef.grid.bmp_a")
+    # Carry the calculated DC surge protector to the general schema schedule
+    # and fill the standard DNS AC SPD description when not provided.
+    dc_spd_values = [n((inv.get("dc") or {}).get("spd_ucpv")) for inv in (cef.get("inverters") or [])]
+    dc_spd_values = [value for value in dc_spd_values if value]
+    if dc_spd_values and not has(gd.get("spd_dc")):
+        gd["spd_dc"] = f"Tip 2 · Ucpv {max(dc_spd_values):g} V"
+        filled.append("cef.grid.spd_dc")
+    put(gd, "spd_ac", "tip 1+2", "cef.grid.spd_ac")
+    if base["grid"].get("anti"):
+        put(gd, "anti_relay", "model conform ATR / OD", "cef.grid.anti_relay")
     # Propose the feeder size from the approved service current and installation
     # method as soon as those inputs are known. A missing route length only
     # prevents the voltage-drop check; it should not leave the cable blank.
