@@ -599,6 +599,16 @@ async def position_pdf(p, rec, client, settings, titles, get_object, force_gener
             out.append(file_pdf(data, file.get("content_type") or ct))
         return out
     if p.get("docx_only"):
+        if p.get("official_doc_endpoint") == "anexa2":
+            # DEER publishes this official form as DOCX. Include a PDF
+            # prefill sheet in the dossier bundle so Anexa 2 is present in
+            # the generated PDF; the official DOCX remains downloadable in
+            # the dossier row, and an uploaded signed PDF takes precedence.
+            import atr_doc as ATR
+            return [ATR.render_operator_annex_prep(
+                rec, client, rec, "deer", 2,
+                p.get("title") or "Notificare oficială DEER — Anexa 2",
+            )]
         return []
     official_form = p.get("official_operator_form")
     if official_form:
@@ -909,3 +919,4 @@ def mark_test(pdf: bytes, text: str = "DOSAR DE TEST — NEOFICIAL", size: int =
     watermark(w, text, size)
     o = io.BytesIO(); w.write(o)
     return o.getvalue()
+
