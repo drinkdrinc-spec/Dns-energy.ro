@@ -95,7 +95,6 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
   };
   const filtered = list.filter((item) => fold(item.brand_model).includes(fold(query)));
   const pick = (item) => {
-    if (missingTechnical(item).length) return;
     onPick(item);
     setQuery(item.brand_model);
     setOpen(false);
@@ -132,11 +131,9 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
               type="button"
               role="option"
               aria-selected={false}
-              aria-disabled={missingTechnical(item).length > 0}
-              disabled={missingTechnical(item).length > 0}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => pick(item)}
-              className={`block w-full rounded-md px-3 py-2 text-left text-xs ${missingTechnical(item).length ? "cursor-not-allowed opacity-60" : "hover:bg-[#eef4ff]"}`}
+              className="block w-full rounded-md px-3 py-2 text-left text-xs hover:bg-[#eef4ff]"
             >
               <span className="block font-semibold">{item.brand_model}</span>
               <span className="block" style={{ color: "var(--muted)" }}>
@@ -147,7 +144,7 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
               </span>
               {item.source_price && <span className="mt-1 block text-[11px] font-semibold" style={{ color: "var(--green, #168363)" }}>Preț furnizor: {item.source_price}{formatPartnerPrice(item.source_price, markup) ? ` · DNS (+${markup}%): ${formatPartnerPrice(item.source_price, markup)}` : ""} · {item.source_price_tax_note || "TVA de verificat"}</span>}
               {missingTechnical(item).length > 0
-                ? <span className="mt-1 block text-[11px] font-medium text-amber-700">Lipsesc date tehnice necesare calculului · completează-le manual sau alege un model cu date complete: {missingTechnical(item).join(", ")}</span>
+                ? <span className="mt-1 block text-[11px] font-medium text-amber-700">Selectabil. Pentru calcul lipsesc: {missingTechnical(item).join(", ")}.</span>
                 : missingDocuments(item).length > 0 && <span className="mt-1 block text-[11px] font-medium text-amber-700">Poți selecta echipamentul. Adaugă ulterior: {missingDocuments(item).join(" și ")}.</span>}
             </button>
           ))}
@@ -162,3 +159,4 @@ export function CatalogPick({ items, category, onPick, onQueryChange, testid, se
 export const INSTALL = [["A1", "A1 — în tub, perete izolat"], ["B1", "B1 — în tub pe perete"], ["B2", "B2 — multiconductor în tub"], ["C", "C — aparent pe perete"], ["D", "D — îngropat"], ["E", "E — pat de cabluri / aer liber"]];
 export const SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240];
 export const uid = () => Math.random().toString(36).slice(2, 9);
+
